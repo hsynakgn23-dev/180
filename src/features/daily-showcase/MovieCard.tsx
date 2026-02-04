@@ -8,18 +8,58 @@ interface MovieCardProps {
 }
 
 export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, onClick }) => {
-    const [error, setError] = useState(false);
+    const [imgSrc, setImgSrc] = useState<string | null>(null);
+    const [hasError, setHasError] = useState(false);
+    const [isRetrying, setIsRetrying] = useState(false);
     const [imageLoaded, setImageLoaded] = useState(false);
 
-    // Safe URL Construct
-    const getPosterUrl = () => {
-        if (!movie.posterPath) return null;
-        // Simple, robust construction
+    // Initial Load & URL Construction
+    const constructUrl = (path: string) => {
         const baseUrl = 'https://image.tmdb.org/t/p/w500';
-        const fullUrl = movie.posterPath.startsWith('/') ? `${baseUrl}${movie.posterPath}` : `${baseUrl}/${movie.posterPath}`;
-
-        // Proxy to bypass Vercel/TMDB 403 blocks
+        const fullUrl = path.startsWith('/') ? `${baseUrl}${path}` : `${baseUrl}/${path}`;
         return `https://images.weserv.nl/?url=${encodeURIComponent(fullUrl)}`;
+    };
+
+    React.useEffect(() => {
+        if (movie.posterPath) {
+            setImgSrc(constructUrl(movie.posterPath));
+        } else {
+            handleRetry();
+        }
+    }, [movie.posterPath]);
+
+    const handleRetry = async () => {
+        if (isRetrying) {
+            setHasError(true);
+            return;
+        }
+
+        setIsRetrying(true);
+        console.log(`[Image Recovery] Attempting to fetch fresh poster for: ${movie.title}`);
+
+        const apiKey = import.meta.env.VITE_TMDB_API_KEY;
+        if (!apiKey || apiKey === 'YOUR_TMDB_API_KEY') {
+            setHasError(true);
+            return;
+        }
+
+        try {
+            const res = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(movie.title)}`);
+            const data = await res.json();
+            const firstMatch = data.results?.[0];
+
+            if (firstMatch?.poster_path) {
+                console.log(`[Image Recovery] Found new poster: ${firstMatch.poster_path}`);
+                setImgSrc(constructUrl(firstMatch.poster_path));
+                setHasError(false);
+                // Note: we stay in isRetrying=true to prevent infinite loops if new one also fails
+            } else {
+                setHasError(true);
+            }
+        } catch (e) {
+            console.error("Recovery failed", e);
+            setHasError(true);
+        }
     };
 
     return (
@@ -29,7 +69,7 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, onClick }) =
         >
             {/* Background / Poster */}
             <div className={`absolute inset-0 transition-all duration-700 bg-gradient-to-br ${movie.color}`}>
-                {!error && movie.posterPath ? (
+                {!hasError && imgSrc ? (
                     <>
                         {/* Shimmer Loading State */}
                         {!imageLoaded && (
@@ -37,29 +77,37 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, onClick }) =
                         )}
 
                         <img
-                            src={getPosterUrl() || ''}
+                            src={imgSrc}
                             alt={movie.title}
-                            // Global <meta name="referrer" content="no-referrer" /> handles privacy
-                            // Removing individual attributes to avoid conflict
                             onLoad={() => setImageLoaded(true)}
-                            onError={(e) => {
-                                console.error(`FAILED_URL: ${e.currentTarget.src}`);
-                                setError(true);
-                            }}
+                            onError={() => handleRetry()}
                             className={`w-full h-full object-cover transition-all duration-[1500ms] ease-out
                                 ${imageLoaded ? 'opacity-90 group-hover:opacity-100 group-hover:scale-110' : 'opacity-0'}
                             `}
                         />
                     </>
                 ) : (
-                    /* Fallback / Error State: Sage Minimalist Placeholder */
-                    <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-[#8A9A5B]/10">
-                        <div className="w-12 h-px bg-[#8A9A5B] mb-4 opacity-50"></div>
-                        <h3 className="text-xl font-serif font-bold text-[#8A9A5B] opacity-80 leading-tight mb-2">
+                    /* Premium Fallback State: "Absolute Cinema" Style */
+                    <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-[#151515] border border-[#8A9A5B]/20">
+                        {/* Camera Icon */}
+                        <div className="mb-4 text-[#8A9A5B]/80 opacity-80">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M21 7L13 7L13 17L21 17L21 7Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                <path d="M18 7V5H6V7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                <path d="M18 17V19H6V17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                <path d="M3 7L11 7L11 17L3 17L3 7Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                <path d="M11 12H13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                        </div>
+
+                        <div className="w-8 h-px bg-[#8A9A5B] mb-3 opacity-40"></div>
+
+                        <h3 className="text-lg font-serif font-bold text-[#E5E4E2] leading-tight mb-1">
                             {movie.title}
                         </h3>
-                        <span className="text-[10px] uppercase tracking-widest text-[#8A9A5B]/60 animate-pulse">
-                            Loading Film...
+
+                        <span className="text-[9px] uppercase tracking-[0.25em] text-[#8A9A5B]/60 font-medium animate-pulse">
+                            {isRetrying ? 'Searching Archive...' : 'Image Unavailable'}
                         </span>
                     </div>
                 )}
@@ -68,9 +116,6 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, onClick }) =
                 <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80" />
                 <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors duration-500" />
             </div>
-
-            {/* Noise Texture Overlay (Optional, for texture) - DISABLED to prevent 402 error */}
-            {/* <div className="absolute inset-0 opacity-20 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] mix-blend-overlay" /> */}
 
             {/* Content Container */}
             <div className="absolute inset-0 p-6 flex flex-col justify-between text-white">
