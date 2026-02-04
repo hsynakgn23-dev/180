@@ -67,8 +67,8 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, onClick }) =
                         <h3 className="text-xl font-serif font-bold text-[#8A9A5B] opacity-80 leading-tight mb-2">
                             {movie.title}
                         </h3>
-                        <span className="text-[10px] uppercase tracking-widest text-[#8A9A5B]/60">
-                            Poster Missing
+                        <span className="text-[10px] uppercase tracking-widest text-[#8A9A5B]/60 animate-pulse">
+                            Loading Film...
                         </span>
                     </div>
                 )}

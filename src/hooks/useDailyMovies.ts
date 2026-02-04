@@ -28,7 +28,7 @@ export const useDailyMovies = () => {
         const fetchDaily5 = async () => {
             // 1. Check Local Storage for Today's Selection
             const todayKey = new Date().toISOString().split('T')[0];
-            const cachedData = localStorage.getItem('DAILY_SELECTION_V10');
+            const cachedData = localStorage.getItem('DAILY_SELECTION_V11');
 
             if (cachedData) {
                 const { date, movies: cachedMovies } = JSON.parse(cachedData);
@@ -40,6 +40,7 @@ export const useDailyMovies = () => {
             }
 
             const apiKey = import.meta.env.VITE_TMDB_API_KEY;
+            console.log('API Status:', !!apiKey, apiKey ? 'Defined' : 'Undefined');
 
             // Helper to get raw movie list
             const getSeeds = () => TMDB_SEEDS.slice(0, 5).map((m, i) => ({
@@ -82,7 +83,7 @@ export const useDailyMovies = () => {
                     const liveMovies = await Promise.all(promises);
 
                     // Cache Live Data
-                    localStorage.setItem('DAILY_SELECTION_V10', JSON.stringify({ date: todayKey, movies: liveMovies }));
+                    localStorage.setItem('DAILY_SELECTION_V11', JSON.stringify({ date: todayKey, movies: liveMovies }));
                     setMovies(liveMovies);
                     setLoading(false);
                     return;
@@ -98,7 +99,7 @@ export const useDailyMovies = () => {
             const fallbackMovies = getSeeds();
 
             // Cache the result
-            localStorage.setItem('DAILY_SELECTION_V10', JSON.stringify({ date: todayKey, movies: fallbackMovies }));
+            localStorage.setItem('DAILY_SELECTION_V11', JSON.stringify({ date: todayKey, movies: fallbackMovies }));
             setMovies(fallbackMovies);
             setLoading(false);
         };
