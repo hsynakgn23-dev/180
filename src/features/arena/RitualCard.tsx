@@ -49,19 +49,87 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
         });
     };
 
+    // --- Image Handling Logic (Copied from MovieCard) ---
+    const [imgSrc, setImgSrc] = useState<string | null>(null);
+    const [hasError, setHasError] = useState(false);
+    const [isRetrying, setIsRetrying] = useState(false);
+    const [imageLoaded, setImageLoaded] = useState(false);
+
+    const constructUrl = (path: string) => {
+        const baseUrl = 'https://image.tmdb.org/t/p/w500';
+        const fullUrl = path.startsWith('/') ? `${baseUrl}${path}` : `${baseUrl}/${path}`;
+        return `https://images.weserv.nl/?url=${encodeURIComponent(fullUrl)}`;
+    };
+
+    React.useEffect(() => {
+        if (ritual.posterPath) {
+            setImgSrc(constructUrl(ritual.posterPath));
+        } else {
+            // If no poster provided, try to find one? Or just show fallback?
+            // If it's a seed with no poster catch, handleRetry might find one.
+            if (ritual.movieTitle) handleRetry();
+        }
+    }, [ritual.posterPath, ritual.movieTitle]);
+
+    const handleRetry = async () => {
+        if (isRetrying || !ritual.movieTitle) {
+            setHasError(true);
+            return;
+        }
+
+        setIsRetrying(true);
+        // console.log(`[Arena Recovery] Fetching poster for: ${ritual.movieTitle}`);
+
+        const apiKey = import.meta.env.VITE_TMDB_API_KEY;
+        if (!apiKey || apiKey === 'YOUR_TMDB_API_KEY') {
+            setHasError(true);
+            return;
+        }
+
+        try {
+            const res = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(ritual.movieTitle)}`);
+            const data = await res.json();
+            const firstMatch = data.results?.[0];
+
+            if (firstMatch?.poster_path) {
+                setImgSrc(constructUrl(firstMatch.poster_path));
+                setHasError(false);
+            } else {
+                setHasError(true);
+            }
+        } catch (e) {
+            setHasError(true);
+        }
+    };
+
     return (
         <div className={`group relative pt-6 pb-6 border-b border-gray-100/5 flex gap-6 animate-fade-in hover:bg-transparent transition-all duration-500 px-4 -mx-4 rounded-xl border border-transparent
             ${isFollowing ? 'shadow-[0_0_20px_rgba(138,154,91,0.05)] border-sage/10 bg-gradient-to-r from-sage/5 to-transparent' : 'hover:border-gray-100/5 hover:shadow-sm'}
         `}>
             {/* Left: Mini Movie Poster (Contextual Identity) */}
             <div className="shrink-0 pt-1 group-hover:scale-105 transition-transform duration-500">
-                {ritual.posterPath ? (
-                    <div className="w-10 h-14 bg-gray-800 rounded shadow-sm overflow-hidden border border-white/10 opacity-80 group-hover:opacity-100 transition-opacity">
-                        <img src={ritual.posterPath} alt={ritual.movieTitle} className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700" />
+                {(!hasError && imgSrc) || !ritual.movieTitle ? (
+                    <div className="w-10 h-14 bg-gray-800 rounded shadow-sm overflow-hidden border border-white/10 opacity-80 group-hover:opacity-100 transition-opacity relative">
+                        {/* Loading Shimmer */}
+                        {!imageLoaded && <div className="absolute inset-0 bg-white/10 animate-pulse" />}
+
+                        <img
+                            src={imgSrc || ''}
+                            alt={ritual.movieTitle}
+                            onLoad={() => setImageLoaded(true)}
+                            onError={() => handleRetry()}
+                            className={`w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+                        />
                     </div>
                 ) : (
-                    <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-[10px] text-sage/60 font-medium">
-                        {ritual.author.charAt(0).toLowerCase()}
+                    /* Mini Premium Fallback (Sage Camera) */
+                    <div className="w-10 h-14 bg-[#151515] rounded border border-[#8A9A5B]/30 flex flex-col items-center justify-center p-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="text-[#8A9A5B] mb-1 opacity-80">
+                            <path d="M21 7L13 7L13 17L21 17L21 7Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                            <path d="M18 7V5H6V7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                            <path d="M3 7L11 7L11 17L3 17L3 7Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                        <div className="w-2 h-px bg-[#8A9A5B]/50" />
                     </div>
                 )}
             </div>
