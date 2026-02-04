@@ -28,7 +28,7 @@ export const useDailyMovies = () => {
         const fetchDaily5 = async () => {
             // 1. Check Local Storage for Today's Selection
             const todayKey = new Date().toISOString().split('T')[0];
-            const cachedData = localStorage.getItem('DAILY_SELECTION_V9');
+            const cachedData = localStorage.getItem('DAILY_SELECTION_V10');
 
             if (cachedData) {
                 const { date, movies: cachedMovies } = JSON.parse(cachedData);
@@ -39,17 +39,66 @@ export const useDailyMovies = () => {
                 }
             }
 
-            // 2. SKIP API - Use Seeds Directly (CORS issues with TMDB from browser)
-            // API calls from browser cause CORS errors, so we use curated seeds
-            console.log('Using Curated TMDB Seeds (API disabled to avoid CORS)');
-            const fallbackMovies = TMDB_SEEDS.slice(0, 5).map((m, i) => ({
+            const apiKey = import.meta.env.VITE_TMDB_API_KEY;
+
+            // Helper to get raw movie list
+            const getSeeds = () => TMDB_SEEDS.slice(0, 5).map((m, i) => ({
                 ...m,
                 slotLabel: SLOTS[i].label,
                 color: FALLBACK_GRADIENTS[i]
             }));
 
+            // 2. Try Fetching from API if Key Exists
+            if (apiKey && apiKey !== 'YOUR_TMDB_API_KEY') {
+                try {
+                    console.log('Fetching fresh Daily 5 from TMDB...');
+                    const promises = SLOTS.map(async (slot, index) => {
+                        const response = await fetch(
+                            `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&language=en-US&include_adult=false&include_video=false&page=1${slot.params}`
+                        );
+                        if (!response.ok) throw new Error(`TMDB Error: ${response.status}`);
+                        const data = await response.json();
+                        const result = data.results[0]; // Take top result
+
+                        // Map to our Movie interface
+                        return {
+                            id: result.id,
+                            title: result.title,
+                            director: "Unknown", // API doesn't return director in list view usually, but strictly speaking we might need a 2nd call. For now, keep it simple or placeholder. 
+                            // Actually, let's keep it robust. If we want director we need /movie/{id}/credits. 
+                            // Optimization: Just use "TBA" or fetch details if critical. For MVP speed, "Unknown" or better fetching.
+                            // Let's assume user just wants the posters/titles for now to prove connection.
+                            year: parseInt(result.release_date?.split('-')[0]) || 2024,
+                            genre: "Cinema", // We'd need genre mapping. 
+                            tagline: result.overview ? result.overview.slice(0, 50) + "..." : "Discover this masterpiece.",
+                            color: FALLBACK_GRADIENTS[index],
+                            posterPath: result.poster_path, // IMPORTANT: /path.jpg
+                            voteAverage: result.vote_average,
+                            overview: result.overview,
+                            slotLabel: slot.label
+                        } as Movie;
+                    });
+
+                    const liveMovies = await Promise.all(promises);
+
+                    // Cache Live Data
+                    localStorage.setItem('DAILY_SELECTION_V10', JSON.stringify({ date: todayKey, movies: liveMovies }));
+                    setMovies(liveMovies);
+                    setLoading(false);
+                    return;
+
+                } catch (error) {
+                    console.error("API Fetch Failed (CORS or Key), falling back to seeds:", error);
+                    // Fall through to seeds
+                }
+            }
+
+            // 3. Fallback: Use Seeds Directly (CORS issues or No Key)
+            console.log('Using Curated TMDB Seeds (Fallback)');
+            const fallbackMovies = getSeeds();
+
             // Cache the result
-            localStorage.setItem('DAILY_SELECTION_V9', JSON.stringify({ date: todayKey, movies: fallbackMovies }));
+            localStorage.setItem('DAILY_SELECTION_V10', JSON.stringify({ date: todayKey, movies: fallbackMovies }));
             setMovies(fallbackMovies);
             setLoading(false);
         };
