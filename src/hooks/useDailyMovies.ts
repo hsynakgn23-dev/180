@@ -26,9 +26,12 @@ export const useDailyMovies = () => {
 
     useEffect(() => {
         const fetchDaily5 = async () => {
-            // 1. Check Local Storage for Today's Selection
+            // 0. HARD CACHE CLEAR (Fixes stuck V11/V12/V13 states)
+            ['DAILY_SELECTION_V11', 'DAILY_SELECTION_V12', 'DAILY_SELECTION_V13'].forEach(key => localStorage.removeItem(key));
+
+            // 1. Check Local Storage for V14
             const todayKey = new Date().toISOString().split('T')[0];
-            const cachedData = localStorage.getItem('DAILY_SELECTION_V13');
+            const cachedData = localStorage.getItem('DAILY_SELECTION_V14');
 
             if (cachedData) {
                 const { date, movies: cachedMovies } = JSON.parse(cachedData);
@@ -52,8 +55,18 @@ export const useDailyMovies = () => {
                 color: FALLBACK_GRADIENTS[i]
             }));
 
-            // 2. Try Fetching from API if Key Exists (SKIPPED IF FORCED)
-            if (!FORCE_SEEDS && apiKey && apiKey !== 'YOUR_TMDB_API_KEY') {
+            // 1.5 FORCE MODE: Return immediately if forcing seeds
+            if (FORCE_SEEDS) {
+                console.log('FORCE_SEEDS Active: Using Curated List');
+                const seedMovies = getSeeds();
+                localStorage.setItem('DAILY_SELECTION_V14', JSON.stringify({ date: todayKey, movies: seedMovies }));
+                setMovies(seedMovies);
+                setLoading(false);
+                return;
+            }
+
+            // 2. Try Fetching from API if Key Exists (AND NOT FORCED)
+            if (apiKey && apiKey !== 'YOUR_TMDB_API_KEY') {
                 try {
                     console.log('Fetching fresh Daily 5 from TMDB...');
                     const promises = SLOTS.map(async (slot, index) => {
@@ -86,7 +99,7 @@ export const useDailyMovies = () => {
                     const liveMovies = await Promise.all(promises);
 
                     // Cache Live Data
-                    localStorage.setItem('DAILY_SELECTION_V13', JSON.stringify({ date: todayKey, movies: liveMovies }));
+                    localStorage.setItem('DAILY_SELECTION_V14', JSON.stringify({ date: todayKey, movies: liveMovies }));
                     setMovies(liveMovies);
                     setLoading(false);
                     return;
@@ -102,7 +115,7 @@ export const useDailyMovies = () => {
             const fallbackMovies = getSeeds();
 
             // Cache the result
-            localStorage.setItem('DAILY_SELECTION_V13', JSON.stringify({ date: todayKey, movies: fallbackMovies }));
+            localStorage.setItem('DAILY_SELECTION_V14', JSON.stringify({ date: todayKey, movies: fallbackMovies }));
             setMovies(fallbackMovies);
             setLoading(false);
         };
