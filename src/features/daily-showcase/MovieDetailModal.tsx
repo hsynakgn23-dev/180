@@ -12,18 +12,9 @@ export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({ movie, onClo
     // Safe URL Construct
     const getPosterUrl = () => {
         if (!movie.posterPath) return null;
-        let path = movie.posterPath;
-
-        // Ensure path starts with / for w500/path construction
-        if (!path.startsWith('/')) {
-            path = `/${path}`;
-        }
-
-        // Standard TMDB URL
-        const tmdbUrl = `https://image.tmdb.org/t/p/w500${path}`;
-
-        // WeServ Proxy with encodeURIComponent
-        return `https://images.weserv.nl/?url=${encodeURIComponent(tmdbUrl)}`;
+        const baseUrl = 'https://image.tmdb.org/t/p/w500';
+        const fullUrl = movie.posterPath.startsWith('/') ? `${baseUrl}${movie.posterPath}` : `${baseUrl}/${movie.posterPath}`;
+        return `https://images.weserv.nl/?url=${encodeURIComponent(fullUrl)}`;
     };
 
     return (
@@ -43,10 +34,9 @@ export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({ movie, onClo
                         <img
                             src={getPosterUrl() || ''}
                             alt={movie.title}
-                            referrerPolicy="no-referrer"
-                            crossOrigin="anonymous"
                             className="absolute inset-0 w-full h-full object-cover"
                             onError={(e) => {
+                                console.error(`FAILED_URL_MODAL: ${e.currentTarget.src}`);
                                 e.currentTarget.style.display = 'none';
                                 e.currentTarget.nextElementSibling?.classList.remove('hidden');
                             }}

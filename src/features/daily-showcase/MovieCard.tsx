@@ -14,21 +14,12 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, onClick }) =
     // Safe URL Construct
     const getPosterUrl = () => {
         if (!movie.posterPath) return null;
-        let path = movie.posterPath;
+        // Simple, robust construction
+        const baseUrl = 'https://image.tmdb.org/t/p/w500';
+        const fullUrl = movie.posterPath.startsWith('/') ? `${baseUrl}${movie.posterPath}` : `${baseUrl}/${movie.posterPath}`;
 
-        // Ensure path starts with / for w500/path construction
-        if (!path.startsWith('/')) {
-            path = `/${path}`;
-        }
-
-        // Standard TMDB URL
-        const tmdbUrl = `https://image.tmdb.org/t/p/w500${path}`;
-
-        // WeServ Proxy with encodeURIComponent
-        const finalUrl = `https://images.weserv.nl/?url=${encodeURIComponent(tmdbUrl)}`;
-
-        console.log(`[Image Debug] Proxyv2:`, finalUrl);
-        return finalUrl;
+        // Proxy to bypass Vercel/TMDB 403 blocks
+        return `https://images.weserv.nl/?url=${encodeURIComponent(fullUrl)}`;
     };
 
     return (
@@ -48,11 +39,11 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, onClick }) =
                         <img
                             src={getPosterUrl() || ''}
                             alt={movie.title}
-                            referrerPolicy="no-referrer"
-                            crossOrigin="anonymous"
+                            // Global <meta name="referrer" content="no-referrer" /> handles privacy
+                            // Removing individual attributes to avoid conflict
                             onLoad={() => setImageLoaded(true)}
                             onError={(e) => {
-                                console.error(`[Image Error] Failed to load: ${movie.title}`, e.currentTarget.src);
+                                console.error(`FAILED_URL: ${e.currentTarget.src}`);
                                 setError(true);
                             }}
                             className={`w-full h-full object-cover transition-all duration-[1500ms] ease-out
