@@ -1,0 +1,118 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Default: Deep Night */
+  --color-bg: #121212;
+  /* Deep Obsidian */
+  --color-text: #E5E4E2;
+  /* Platinum/Mist */
+  --color-sage: #8A9A5B;
+  --color-clay: #A57164;
+  --color-highlight: #8A9A5B;
+  /* Sage in Night Mode */
+  --poster-opacity: 0.9;
+}
+
+body {
+  @apply antialiased transition-colors duration-700;
+  background-color: #121212 !important;
+  color: #8A9A5B;
+  /* Sage Default */
+  font-family: 'Inter', sans-serif;
+}
+
+#root,
+html {
+  background-color: #121212 !important;
+  color: #8A9A5B;
+  /* Sage Default */
+}
+
+/* Light Mode (Dawn) Override via class */
+body.light-mode {
+  --color-bg: #FDFCF8;
+  /* Cream/Paper */
+  --color-text: #1A1A1A;
+  --color-highlight: #A57164;
+  /* Clay in Dawn Mode */
+  --poster-opacity: 1.0;
+}
+
+/* Scrollbar styling for a premium feel */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(138, 154, 91, 0.3);
+  /* Sage low opacity */
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(138, 154, 91, 0.6);
+}
+
+/* Breathing animation for splash screen logo */
+@keyframes breathe {
+
+  0%,
+  100% {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.02);
+  }
+}
+
+.animate-breathe {
+  animation: breathe 3s ease-in-out infinite;
+}
+
+/* Delayed fade-in for whisper text */
+@keyframes fade-in-delayed {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  60% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-delayed {
+  animation: fade-in-delayed 2.5s ease-out forwards;
+}
+
+/* Slide in from right for Settings modal */
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.3s ease-out forwards;
+}
