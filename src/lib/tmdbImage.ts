@@ -12,8 +12,8 @@ const getImageMode = (): 'direct-first' | 'proxy-first' | 'proxy-only' => {
 
 const getProxyList = (): string[] => {
     const raw = import.meta.env.VITE_IMAGE_PROXIES;
-    const list = raw ? raw.split(',') : DEFAULT_PROXIES;
-    return list.map((item) => item.trim()).filter(Boolean);
+    const list: string[] = raw ? raw.split(',') : DEFAULT_PROXIES;
+    return list.map((item: string) => item.trim()).filter(Boolean);
 };
 
 const buildProxyUrl = (proxyBase: string, targetUrl: string): string => {
