@@ -34,6 +34,18 @@ const getBucketName = (): string => {
     return process.env.SUPABASE_STORAGE_BUCKET || 'posters';
 };
 
+const ensureBucket = async (supabase: ReturnType<typeof createClient>, bucket: string) => {
+    const { data, error } = await supabase.storage.getBucket(bucket);
+    if (data && !error) return;
+
+    const { error: createError } = await supabase.storage.createBucket(bucket, {
+        public: true
+    });
+    if (createError) {
+        throw new Error(`Bucket create failed: ${createError.message}`);
+    }
+};
+
 const toImageUrl = (posterPath: string, size: 'w200' | 'w500' | 'w780' | 'original'): string => {
     if (/^https?:\/\//i.test(posterPath)) {
         const tmdbMatch = posterPath.match(/^https?:\/\/image\.tmdb\.org\/t\/p\/[^/]+\/(.+)$/i);
@@ -119,9 +131,10 @@ const buildSeedMovies = (): Movie[] => {
 export default async function handler(req: any, res: any) {
     try {
         const secret = getCronSecret();
+        const querySecret = typeof req.query?.secret === 'string' ? req.query.secret : null;
         if (secret) {
             const auth = req.headers.authorization || '';
-            if (auth !== `Bearer ${secret}`) {
+            if (auth !== `Bearer ${secret}` && querySecret !== secret) {
                 return res.status(401).json({ error: 'Unauthorized' });
             }
         }
@@ -133,6 +146,7 @@ export default async function handler(req: any, res: any) {
         });
 
         const bucket = getBucketName();
+        await ensureBucket(supabase, bucket);
         const todayKey = new Date().toISOString().split('T')[0];
         const force = req.query.force === '1' || req.query.force === 'true';
 
