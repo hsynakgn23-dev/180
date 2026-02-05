@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { Movie } from '../../data/mockMovies';
-import { isWeservUrl, resolveImageUrl, toWeservUrl } from '../../lib/tmdbImage';
+import { resolveImageCandidates } from '../../lib/tmdbImage';
+import { searchPosterPath } from '../../lib/tmdbApi';
 
 interface MovieCardProps {
     movie: Movie;
@@ -13,17 +14,25 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, onClick }) =
     const [hasError, setHasError] = useState(false);
     const [isRetrying, setIsRetrying] = useState(false);
     const [imageLoaded, setImageLoaded] = useState(false);
+    const [candidates, setCandidates] = useState<string[]>([]);
+    const [candidateIndex, setCandidateIndex] = useState(0);
+
+    const applyCandidates = (nextCandidates: string[]) => {
+        setCandidates(nextCandidates);
+        setCandidateIndex(0);
+        setImageLoaded(false);
+        setImgSrc(nextCandidates[0] ?? null);
+        setHasError(nextCandidates.length === 0);
+    };
 
     React.useEffect(() => {
         setIsRetrying(false);
         setHasError(false);
         setImageLoaded(false);
 
-        const initialSrc = resolveImageUrl(movie.posterPath, 'w500');
-        if (initialSrc) {
-            setImgSrc(initialSrc);
-        } else {
-            setImgSrc(null);
+        const nextCandidates = resolveImageCandidates(movie.posterPath, 'w500');
+        applyCandidates(nextCandidates);
+        if (!nextCandidates.length) {
             handleRetry();
         }
     }, [movie.id, movie.posterPath, movie.title]);
@@ -45,24 +54,16 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, onClick }) =
         }
 
         try {
-            const res = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(movie.title)}`);
-            const data = await res.json();
-            const firstMatch = data.results?.[0];
-
-            if (firstMatch?.poster_path) {
-                console.log(`[Image Recovery] Found new poster: ${firstMatch.poster_path}`);
-                const nextSrc = resolveImageUrl(firstMatch.poster_path, 'w500');
-                if (nextSrc) {
-                    setImgSrc(nextSrc);
-                    setImageLoaded(false);
-                    setHasError(false);
-                } else {
-                    setHasError(true);
+            const posterPath = await searchPosterPath(movie.title, apiKey);
+            if (posterPath) {
+                console.log(`[Image Recovery] Found new poster: ${posterPath}`);
+                const nextCandidates = resolveImageCandidates(posterPath, 'w500');
+                if (nextCandidates.length) {
+                    applyCandidates(nextCandidates);
+                    return;
                 }
-                // Note: we stay in isRetrying=true to prevent infinite loops if new one also fails
-            } else {
-                setHasError(true);
             }
+            setHasError(true);
         } catch (e) {
             console.error("Recovery failed", e);
             setHasError(true);
@@ -70,14 +71,13 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, onClick }) =
     };
 
     const handleImageError = () => {
-        if (imgSrc && !isWeservUrl(imgSrc)) {
-            const fallback = toWeservUrl(imgSrc);
-            if (fallback) {
-                setImageLoaded(false);
-                setHasError(false);
-                setImgSrc(fallback);
-                return;
-            }
+        const nextIndex = candidateIndex + 1;
+        if (nextIndex < candidates.length) {
+            setCandidateIndex(nextIndex);
+            setImageLoaded(false);
+            setHasError(false);
+            setImgSrc(candidates[nextIndex]);
+            return;
         }
         handleRetry();
     };

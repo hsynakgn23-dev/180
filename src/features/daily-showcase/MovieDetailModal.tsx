@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Movie } from '../../data/mockMovies';
-import { isWeservUrl, resolveImageUrl, toWeservUrl } from '../../lib/tmdbImage';
+import { resolveImageCandidates } from '../../lib/tmdbImage';
 
 interface MovieDetailModalProps {
     movie: Movie;
@@ -10,19 +10,26 @@ interface MovieDetailModalProps {
 
 export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({ movie, onClose, onStartRitual }) => {
 
-    const [imgSrc, setImgSrc] = React.useState<string | null>(() => resolveImageUrl(movie.posterPath, 'w500'));
+    const [candidates, setCandidates] = React.useState<string[]>(() => resolveImageCandidates(movie.posterPath, 'w500'));
+    const [candidateIndex, setCandidateIndex] = React.useState(0);
+    const [imgSrc, setImgSrc] = React.useState<string | null>(() => {
+        const initial = resolveImageCandidates(movie.posterPath, 'w500');
+        return initial[0] ?? null;
+    });
 
     React.useEffect(() => {
-        setImgSrc(resolveImageUrl(movie.posterPath, 'w500'));
+        const nextCandidates = resolveImageCandidates(movie.posterPath, 'w500');
+        setCandidates(nextCandidates);
+        setCandidateIndex(0);
+        setImgSrc(nextCandidates[0] ?? null);
     }, [movie.id, movie.posterPath]);
 
     const handleImageError = () => {
-        if (imgSrc && !isWeservUrl(imgSrc)) {
-            const fallback = toWeservUrl(imgSrc);
-            if (fallback) {
-                setImgSrc(fallback);
-                return;
-            }
+        const nextIndex = candidateIndex + 1;
+        if (nextIndex < candidates.length) {
+            setCandidateIndex(nextIndex);
+            setImgSrc(candidates[nextIndex]);
+            return;
         }
         setImgSrc(null);
     };

@@ -3,7 +3,8 @@ import type { Ritual } from '../../data/mockArena';
 import { MarkIcons } from '../marks/MarkIcons';
 import { useXP } from '../../context/XPContext';
 import { useNotifications } from '../../context/NotificationContext';
-import { isWeservUrl, resolveImageUrl, toWeservUrl } from '../../lib/tmdbImage';
+import { resolveImageCandidates } from '../../lib/tmdbImage';
+import { searchPosterPath } from '../../lib/tmdbApi';
 
 interface RitualCardProps {
     ritual: Ritual;
@@ -55,20 +56,26 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
     const [hasError, setHasError] = useState(false);
     const [isRetrying, setIsRetrying] = useState(false);
     const [imageLoaded, setImageLoaded] = useState(false);
+    const [candidates, setCandidates] = useState<string[]>([]);
+    const [candidateIndex, setCandidateIndex] = useState(0);
+
+    const applyCandidates = (nextCandidates: string[]) => {
+        setCandidates(nextCandidates);
+        setCandidateIndex(0);
+        setImageLoaded(false);
+        setImgSrc(nextCandidates[0] ?? null);
+        setHasError(nextCandidates.length === 0);
+    };
 
     React.useEffect(() => {
         setIsRetrying(false);
         setHasError(false);
         setImageLoaded(false);
 
-        const initialSrc = resolveImageUrl(ritual.posterPath, 'w200');
-        if (initialSrc) {
-            setImgSrc(initialSrc);
-        } else if (ritual.movieTitle) {
-            setImgSrc(null);
+        const nextCandidates = resolveImageCandidates(ritual.posterPath, 'w200');
+        applyCandidates(nextCandidates);
+        if (!nextCandidates.length && ritual.movieTitle) {
             handleRetry();
-        } else {
-            setImgSrc(null);
         }
     }, [ritual.id, ritual.posterPath, ritual.movieTitle]);
 
@@ -89,36 +96,28 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
         }
 
         try {
-            const res = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(ritual.movieTitle)}`);
-            const data = await res.json();
-            const firstMatch = data.results?.[0];
-
-            if (firstMatch?.poster_path) {
-                const nextSrc = resolveImageUrl(firstMatch.poster_path, 'w200');
-                if (nextSrc) {
-                    setImgSrc(nextSrc);
-                    setImageLoaded(false);
-                    setHasError(false);
-                } else {
-                    setHasError(true);
+            const posterPath = await searchPosterPath(ritual.movieTitle, apiKey);
+            if (posterPath) {
+                const nextCandidates = resolveImageCandidates(posterPath, 'w200');
+                if (nextCandidates.length) {
+                    applyCandidates(nextCandidates);
+                    return;
                 }
-            } else {
-                setHasError(true);
             }
+            setHasError(true);
         } catch (e) {
             setHasError(true);
         }
     };
 
     const handleImageError = () => {
-        if (imgSrc && !isWeservUrl(imgSrc)) {
-            const fallback = toWeservUrl(imgSrc);
-            if (fallback) {
-                setImageLoaded(false);
-                setHasError(false);
-                setImgSrc(fallback);
-                return;
-            }
+        const nextIndex = candidateIndex + 1;
+        if (nextIndex < candidates.length) {
+            setCandidateIndex(nextIndex);
+            setImageLoaded(false);
+            setHasError(false);
+            setImgSrc(candidates[nextIndex]);
+            return;
         }
         handleRetry();
     };
