@@ -99,6 +99,7 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, onClick }) =
                         <img
                             src={imgSrc}
                             alt={movie.title}
+                            referrerPolicy="origin"
                             onLoad={() => setImageLoaded(true)}
                             onError={handleImageError}
                             className={`w-full h-full object-cover transition-all duration-[1500ms] ease-out

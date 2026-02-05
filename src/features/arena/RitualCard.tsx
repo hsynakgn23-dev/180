@@ -137,6 +137,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
                         <img
                             src={imgSrc || ''}
                             alt={ritual.movieTitle}
+                            referrerPolicy="origin"
                             onLoad={() => setImageLoaded(true)}
                             onError={handleImageError}
                             className={`w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}

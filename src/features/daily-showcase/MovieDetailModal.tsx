@@ -44,6 +44,7 @@ export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({ movie, onClo
                         <img
                             src={imgSrc}
                             alt={movie.title}
+                            referrerPolicy="origin"
                             className="absolute inset-0 w-full h-full object-cover"
                             onError={handleImageError}
                         />
