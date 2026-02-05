@@ -83,7 +83,7 @@ const uploadPoster = async (
 
     const { error } = await supabase.storage
         .from(bucket)
-        .upload(filePath, Buffer.from(arrayBuffer), {
+        .upload(filePath, new Uint8Array(arrayBuffer), {
             contentType: contentType || 'image/jpeg',
             cacheControl: '31536000',
             upsert: true
