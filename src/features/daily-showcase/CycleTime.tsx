@@ -41,7 +41,7 @@ export const CycleTime = () => {
     return (
         <div className="flex flex-col items-end gap-2 animate-fade-in">
             <div className="text-[10px] uppercase tracking-[0.2em] text-sage font-bold drop-shadow-sm w-full text-right">
-                <span className="opacity-70 mr-2">NEXT FILM IN</span>
+                <span className="opacity-70 mr-2">YENİ SEÇKİ</span>
                 <span className="font-mono">{status.remaining}</span>
             </div>
             {/* Progress Bar (Enhanced) */}

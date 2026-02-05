@@ -49,16 +49,16 @@ export interface LeagueInfo {
 }
 
 export const LEAGUES_DATA: Record<string, LeagueInfo> = {
-    'Bronze': { name: 'Bronze', color: '#CD7F32', description: 'The Foundation' },
-    'Silver': { name: 'Silver', color: '#C0C0C0', description: 'The Structure' },
-    'Gold': { name: 'Gold', color: '#FFD700', description: 'The Glimmer' },
-    'Platinum': { name: 'Platinum', color: '#E5E4E2', description: 'The Reflection' },
-    'Emerald': { name: 'Emerald', color: '#50C878', description: 'The Growth' },
-    'Sapphire': { name: 'Sapphire', color: '#0F52BA', description: 'The Depth' },
-    'Ruby': { name: 'Ruby', color: '#E0115F', description: 'The Passion' },
-    'Diamond': { name: 'Diamond', color: '#B9F2FF', description: 'The Clarity' },
-    'Master': { name: 'Master', color: '#9400D3', description: 'The Vision' },
-    'Grandmaster': { name: 'Grandmaster', color: '#FF0000', description: 'The Legacy' },
+    'Bronze': { name: 'Figüran', color: '#CD7F32', description: 'Sahneye ilk adım.' },
+    'Silver': { name: 'İzleyici', color: '#C0C0C0', description: 'Gözlemlemeye başladın.' },
+    'Gold': { name: 'Yorumcu', color: '#FFD700', description: 'Sesin duyuluyor.' },
+    'Platinum': { name: 'Eleştirmen', color: '#E5E4E2', description: 'Analizlerin derinleşiyor.' },
+    'Emerald': { name: 'Sinema Gurmesi', color: '#50C878', description: 'Zevklerin inceliyor.' },
+    'Sapphire': { name: 'Sinefil', color: '#0F52BA', description: 'Tutkun bir yaşam biçimi.' },
+    'Ruby': { name: 'Vizyoner', color: '#E0115F', description: 'Geleceği görüyorsun.' },
+    'Diamond': { name: 'Yönetmen', color: '#B9F2FF', description: 'Kendi sahnelerini kur.' },
+    'Master': { name: 'Auteur', color: '#9400D3', description: 'İmzanı at.' },
+    'Grandmaster': { name: 'Efsane', color: '#FF0000', description: 'Tarihe geçtin.' },
     'Absolute': { name: 'Absolute', color: '#000000', description: 'The Void' },
     'Eternal': { name: 'Eternal', color: '#FFFFFF', description: 'The Light' }
 };

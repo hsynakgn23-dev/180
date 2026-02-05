@@ -14,6 +14,7 @@ import { LeagueTransition } from './components/LeagueTransition'
 import type { Movie } from './data/mockMovies'
 
 import { LoginView } from './features/auth/LoginView'
+import { LandingPage } from './features/landing/LandingPage'
 
 const AppContent = () => {
   const { levelUpEvent, closeLevelUp, user } = useXP();
@@ -21,7 +22,12 @@ const AppContent = () => {
   const [detailMovie, setDetailMovie] = useState<Movie | null>(null);
   const [showProfile, setShowProfile] = useState(false);
 
+  const [showLanding, setShowLanding] = useState(true);
+
   if (!user) {
+    if (showLanding) {
+      return <LandingPage onStart={() => setShowLanding(false)} />;
+    }
     return <LoginView />;
   }
 

@@ -15,7 +15,7 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
     if (loading) {
         return (
             <div className="max-w-6xl mx-auto mb-24 h-96 flex items-center justify-center">
-                <span className="text-sage/50 text-xs tracking-widest animate-pulse">CURATING THE DAILY 5...</span>
+                <span className="text-sage/50 text-xs tracking-widest animate-pulse">GÜNLÜK 5'Lİ YÜKLENİYOR...</span>
             </div>
         );
     }
@@ -26,8 +26,8 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
             {/* Header */}
             <div className="flex justify-between items-end px-6 mb-8 border-b border-gray-200/50 pb-4">
                 <div>
-                    <h3 className="text-sm font-bold tracking-widest text-sage uppercase">Today's Selection</h3>
-                    <span className="text-[10px] font-serif italic text-gray-400">The Daily 5</span>
+                    <h3 className="text-sm font-bold tracking-widest text-sage uppercase">GÜNÜN FİLMLERİ</h3>
+                    <span className="text-[10px] font-serif italic text-gray-400">Her gün özenle seçilen 5 film</span>
                 </div>
                 <CycleTime />
             </div>
@@ -66,7 +66,7 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
                                     </svg>
                                 </div>
                                 <span className="text-[10px] md:text-xs font-bold tracking-[0.2em] text-[#2C2C2C] uppercase drop-shadow-sm">
-                                    Write a ritual<br />to reveal
+                                    Kilidi Açmak İçin<br />1 Yorum Yap
                                 </span>
                             </div>
                         </div>

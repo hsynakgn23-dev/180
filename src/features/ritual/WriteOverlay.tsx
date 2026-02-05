@@ -46,8 +46,17 @@ export const WriteOverlay: React.FC<WriteOverlayProps> = ({ movie, onClose }) =>
                     />
 
                     {/* Char Counter (The Ritual Counter) */}
-                    <div className={`absolute -bottom-8 right-0 text-xs font-mono tracking-widest transition-all duration-300 ${charsLeft <= 10 ? 'text-sage font-bold drop-shadow-[0_0_8px_rgba(138,154,91,0.5)] animate-pulse' : 'text-gray-500'}`}>
-                        {charsLeft}
+                    {/* Progress Bar & Counter */}
+                    <div className="flex items-center justify-between mt-4 px-1">
+                        <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden mr-4">
+                            <div
+                                className={`h-full transition-all duration-300 ease-out ${charsLeft < 20 ? 'bg-red-500' : 'bg-sage'}`}
+                                style={{ width: `${(text.length / MAX_CHARS) * 100}%` }}
+                            />
+                        </div>
+                        <div className={`text-xs font-mono tracking-widest transition-all duration-300 ${charsLeft <= 10 ? 'text-red-500 font-bold shake' : 'text-gray-500'}`}>
+                            {text.length}/{MAX_CHARS}
+                        </div>
                     </div>
                 </div>
 
