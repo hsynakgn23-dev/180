@@ -5,7 +5,7 @@ const DEFAULT_PROXIES = ['https://images.weserv.nl/?url=', 'https://wsrv.nl/?url
 const isAbsoluteUrl = (value: string) => /^https?:\/\//i.test(value);
 
 const getImageMode = (): 'direct-first' | 'proxy-first' | 'proxy-only' => {
-    const raw = (import.meta.env.VITE_IMAGE_MODE || 'proxy-first').toLowerCase();
+    const raw = (import.meta.env.VITE_IMAGE_MODE || 'direct-first').toLowerCase();
     if (raw === 'direct-first' || raw === 'proxy-first' || raw === 'proxy-only') return raw;
     return 'proxy-first';
 };
@@ -39,6 +39,13 @@ export const resolveImageUrl = (
         const tmdbMatch = value.match(/^https?:\/\/image\.tmdb\.org\/t\/p\/[^/]+\/(.+)$/i);
         if (tmdbMatch) {
             return `${TMDB_IMAGE_BASE}/${size}/${tmdbMatch[1]}`;
+        }
+        const sizeMatch = value.match(/\/(w200|w342|w500|w780|original)(\.[a-zA-Z0-9]+)(\?.*)?$/);
+        if (sizeMatch) {
+            const currentSize = sizeMatch[1];
+            if (currentSize !== size) {
+                return value.replace(`/${currentSize}${sizeMatch[2]}`, `/${size}${sizeMatch[2]}`);
+            }
         }
         return value;
     }

@@ -66,3 +66,15 @@ create policy "Public Rituals Update"
 on public.rituals for update
 to anon
 using (true);
+
+-- 4. Storage Bucket (Posters)
+-- Create a public bucket for movie posters
+insert into storage.buckets (id, name, public)
+values ('posters', 'posters', true)
+on conflict (id) do nothing;
+
+-- Allow public read access to posters
+create policy "Public Posters Read"
+on storage.objects for select
+to anon
+using (bucket_id = 'posters');
