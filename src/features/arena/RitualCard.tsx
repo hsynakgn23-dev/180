@@ -3,6 +3,7 @@ import type { Ritual } from '../../data/mockArena';
 import { MarkIcons } from '../marks/MarkIcons';
 import { useXP } from '../../context/XPContext';
 import { useNotifications } from '../../context/NotificationContext';
+import { isWeservUrl, resolveImageUrl, toWeservUrl } from '../../lib/tmdbImage';
 
 interface RitualCardProps {
     ritual: Ritual;
@@ -55,21 +56,21 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
     const [isRetrying, setIsRetrying] = useState(false);
     const [imageLoaded, setImageLoaded] = useState(false);
 
-    const constructUrl = (path: string) => {
-        const baseUrl = 'https://image.tmdb.org/t/p/w500';
-        const fullUrl = path.startsWith('/') ? `${baseUrl}${path}` : `${baseUrl}/${path}`;
-        return `https://images.weserv.nl/?url=${encodeURIComponent(fullUrl)}`;
-    };
-
     React.useEffect(() => {
-        if (ritual.posterPath) {
-            setImgSrc(constructUrl(ritual.posterPath));
+        setIsRetrying(false);
+        setHasError(false);
+        setImageLoaded(false);
+
+        const initialSrc = resolveImageUrl(ritual.posterPath, 'w200');
+        if (initialSrc) {
+            setImgSrc(initialSrc);
+        } else if (ritual.movieTitle) {
+            setImgSrc(null);
+            handleRetry();
         } else {
-            // If no poster provided, try to find one? Or just show fallback?
-            // If it's a seed with no poster catch, handleRetry might find one.
-            if (ritual.movieTitle) handleRetry();
+            setImgSrc(null);
         }
-    }, [ritual.posterPath, ritual.movieTitle]);
+    }, [ritual.id, ritual.posterPath, ritual.movieTitle]);
 
     const handleRetry = async () => {
         if (isRetrying || !ritual.movieTitle) {
@@ -78,6 +79,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
         }
 
         setIsRetrying(true);
+        setHasError(false);
         // console.log(`[Arena Recovery] Fetching poster for: ${ritual.movieTitle}`);
 
         const apiKey = import.meta.env.VITE_TMDB_API_KEY;
@@ -92,14 +94,33 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
             const firstMatch = data.results?.[0];
 
             if (firstMatch?.poster_path) {
-                setImgSrc(constructUrl(firstMatch.poster_path));
-                setHasError(false);
+                const nextSrc = resolveImageUrl(firstMatch.poster_path, 'w200');
+                if (nextSrc) {
+                    setImgSrc(nextSrc);
+                    setImageLoaded(false);
+                    setHasError(false);
+                } else {
+                    setHasError(true);
+                }
             } else {
                 setHasError(true);
             }
         } catch (e) {
             setHasError(true);
         }
+    };
+
+    const handleImageError = () => {
+        if (imgSrc && !isWeservUrl(imgSrc)) {
+            const fallback = toWeservUrl(imgSrc);
+            if (fallback) {
+                setImageLoaded(false);
+                setHasError(false);
+                setImgSrc(fallback);
+                return;
+            }
+        }
+        handleRetry();
     };
 
     return (
@@ -117,7 +138,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
                             src={imgSrc || ''}
                             alt={ritual.movieTitle}
                             onLoad={() => setImageLoaded(true)}
-                            onError={() => handleRetry()}
+                            onError={handleImageError}
                             className={`w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
                         />
                     </div>

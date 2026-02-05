@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { Movie } from '../../data/mockMovies';
+import { isWeservUrl, resolveImageUrl, toWeservUrl } from '../../lib/tmdbImage';
 
 interface MovieCardProps {
     movie: Movie;
@@ -13,20 +14,19 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, onClick }) =
     const [isRetrying, setIsRetrying] = useState(false);
     const [imageLoaded, setImageLoaded] = useState(false);
 
-    // Initial Load & URL Construction
-    const constructUrl = (path: string) => {
-        const baseUrl = 'https://image.tmdb.org/t/p/w500';
-        const fullUrl = path.startsWith('/') ? `${baseUrl}${path}` : `${baseUrl}/${path}`;
-        return `https://images.weserv.nl/?url=${encodeURIComponent(fullUrl)}`;
-    };
-
     React.useEffect(() => {
-        if (movie.posterPath) {
-            setImgSrc(constructUrl(movie.posterPath));
+        setIsRetrying(false);
+        setHasError(false);
+        setImageLoaded(false);
+
+        const initialSrc = resolveImageUrl(movie.posterPath, 'w500');
+        if (initialSrc) {
+            setImgSrc(initialSrc);
         } else {
+            setImgSrc(null);
             handleRetry();
         }
-    }, [movie.posterPath]);
+    }, [movie.id, movie.posterPath, movie.title]);
 
     const handleRetry = async () => {
         if (isRetrying) {
@@ -35,6 +35,7 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, onClick }) =
         }
 
         setIsRetrying(true);
+        setHasError(false);
         console.log(`[Image Recovery] Attempting to fetch fresh poster for: ${movie.title}`);
 
         const apiKey = import.meta.env.VITE_TMDB_API_KEY;
@@ -50,8 +51,14 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, onClick }) =
 
             if (firstMatch?.poster_path) {
                 console.log(`[Image Recovery] Found new poster: ${firstMatch.poster_path}`);
-                setImgSrc(constructUrl(firstMatch.poster_path));
-                setHasError(false);
+                const nextSrc = resolveImageUrl(firstMatch.poster_path, 'w500');
+                if (nextSrc) {
+                    setImgSrc(nextSrc);
+                    setImageLoaded(false);
+                    setHasError(false);
+                } else {
+                    setHasError(true);
+                }
                 // Note: we stay in isRetrying=true to prevent infinite loops if new one also fails
             } else {
                 setHasError(true);
@@ -60,6 +67,19 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, onClick }) =
             console.error("Recovery failed", e);
             setHasError(true);
         }
+    };
+
+    const handleImageError = () => {
+        if (imgSrc && !isWeservUrl(imgSrc)) {
+            const fallback = toWeservUrl(imgSrc);
+            if (fallback) {
+                setImageLoaded(false);
+                setHasError(false);
+                setImgSrc(fallback);
+                return;
+            }
+        }
+        handleRetry();
     };
 
     return (
@@ -80,7 +100,7 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, onClick }) =
                             src={imgSrc}
                             alt={movie.title}
                             onLoad={() => setImageLoaded(true)}
-                            onError={() => handleRetry()}
+                            onError={handleImageError}
                             className={`w-full h-full object-cover transition-all duration-[1500ms] ease-out
                                 ${imageLoaded ? 'opacity-90 group-hover:opacity-100 group-hover:scale-110' : 'opacity-0'}
                             `}

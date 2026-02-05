@@ -20,6 +20,12 @@ const FALLBACK_GRADIENTS = [
     "from-green-700 to-green-900"
 ];
 
+const normalizeMovie = (movie: any): Movie => {
+    if (!movie) return movie;
+    const posterPath = movie.posterPath ?? movie.poster_path ?? movie.posterURL ?? movie.poster_url;
+    return { ...movie, posterPath };
+};
+
 export const useDailyMovies = () => {
     const [movies, setMovies] = useState<Movie[]>([]);
     const [loading, setLoading] = useState(true);
@@ -43,7 +49,8 @@ export const useDailyMovies = () => {
 
                     if (data && data.movies) {
                         console.log('[Daily5] Sync successful. Using global daily selection.');
-                        setMovies(data.movies);
+                        const normalized = data.movies.map((m: any) => normalizeMovie(m));
+                        setMovies(normalized);
                         setLoading(false);
                         return;
                     }
@@ -67,7 +74,8 @@ export const useDailyMovies = () => {
             if (cachedData) {
                 const { date, movies: cachedMovies } = JSON.parse(cachedData);
                 if (date === todayKey && cachedMovies.length === 5) {
-                    setMovies(cachedMovies);
+                    const normalized = cachedMovies.map((m: any) => normalizeMovie(m));
+                    setMovies(normalized);
                     setLoading(false);
                     return;
                 }

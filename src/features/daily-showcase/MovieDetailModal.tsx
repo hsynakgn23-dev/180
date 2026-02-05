@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Movie } from '../../data/mockMovies';
+import { isWeservUrl, resolveImageUrl, toWeservUrl } from '../../lib/tmdbImage';
 
 interface MovieDetailModalProps {
     movie: Movie;
@@ -9,12 +10,21 @@ interface MovieDetailModalProps {
 
 export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({ movie, onClose, onStartRitual }) => {
 
-    // Safe URL Construct
-    const getPosterUrl = () => {
-        if (!movie.posterPath) return null;
-        const baseUrl = 'https://image.tmdb.org/t/p/w500';
-        const fullUrl = movie.posterPath.startsWith('/') ? `${baseUrl}${movie.posterPath}` : `${baseUrl}/${movie.posterPath}`;
-        return `https://images.weserv.nl/?url=${encodeURIComponent(fullUrl)}`;
+    const [imgSrc, setImgSrc] = React.useState<string | null>(() => resolveImageUrl(movie.posterPath, 'w500'));
+
+    React.useEffect(() => {
+        setImgSrc(resolveImageUrl(movie.posterPath, 'w500'));
+    }, [movie.id, movie.posterPath]);
+
+    const handleImageError = () => {
+        if (imgSrc && !isWeservUrl(imgSrc)) {
+            const fallback = toWeservUrl(imgSrc);
+            if (fallback) {
+                setImgSrc(fallback);
+                return;
+            }
+        }
+        setImgSrc(null);
     };
 
     return (
@@ -30,21 +40,17 @@ export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({ movie, onClo
 
                 {/* Visual Side (Poster) - Hidden on very small screens or top on mobile */}
                 <div className="md:w-2/5 h-64 md:h-auto relative bg-[#1A1A1A] shrink-0">
-                    {movie.posterPath ? (
+                    {imgSrc ? (
                         <img
-                            src={getPosterUrl() || ''}
+                            src={imgSrc}
                             alt={movie.title}
                             className="absolute inset-0 w-full h-full object-cover"
-                            onError={(e) => {
-                                console.error(`FAILED_URL_MODAL: ${e.currentTarget.src}`);
-                                e.currentTarget.style.display = 'none';
-                                e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                            }}
+                            onError={handleImageError}
                         />
                     ) : null}
 
                     {/* Fallback UI (Hidden by default unless error/no poster) */}
-                    <div className={`${movie.posterPath ? 'hidden' : ''} absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-[#8A9A5B]/10`}>
+                    <div className={`${imgSrc ? 'hidden' : ''} absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-[#8A9A5B]/10`}>
                         <div className="w-12 h-px bg-[#8A9A5B] mb-4 opacity-50"></div>
                         <span className="text-[10px] uppercase tracking-widest text-[#8A9A5B]/60">
                             {movie.title}
