@@ -21,6 +21,7 @@ const AppContent = () => {
   const [activeMovie, setActiveMovie] = useState<Movie | null>(null);
   const [detailMovie, setDetailMovie] = useState<Movie | null>(null);
   const [showProfile, setShowProfile] = useState(false);
+  const [startProfileInSettings, setStartProfileInSettings] = useState(false);
 
   const [showLanding, setShowLanding] = useState(true);
 
@@ -46,7 +47,16 @@ const AppContent = () => {
       {/* Top Right Controls */}
       <div className="fixed top-6 right-6 z-40 flex items-center gap-4">
         <NotificationCenter />
-        <ProfileWidget onClick={() => setShowProfile(true)} />
+        <ProfileWidget
+          onClick={() => {
+            setStartProfileInSettings(false);
+            setShowProfile(true);
+          }}
+          onOpenSettings={() => {
+            setStartProfileInSettings(true);
+            setShowProfile(true);
+          }}
+        />
       </div>
 
       {detailMovie && (
@@ -68,7 +78,13 @@ const AppContent = () => {
       )}
 
       {showProfile && (
-        <ProfileView onClose={() => setShowProfile(false)} />
+        <ProfileView
+          onClose={() => {
+            setShowProfile(false);
+            setStartProfileInSettings(false);
+          }}
+          startInSettings={startProfileInSettings}
+        />
       )}
 
       <div className={`min-h-screen font-sans selection:bg-sage selection:text-white transition-opacity duration-500 ${activeMovie || showProfile || detailMovie ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>

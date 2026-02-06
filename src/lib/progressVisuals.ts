@@ -32,8 +32,10 @@ export const getProgressTailColor = (progress: number): string => {
 export const getProgressFill = (progress: number): string =>
     `linear-gradient(90deg, ${getProgressHeadColor(progress)} 0%, ${getProgressTailColor(progress)} 100%)`;
 
+export const PROGRESS_EASING = 'cubic-bezier(0.12, 0.78, 0.08, 1)';
+
 export const getProgressTransitionMs = (progress: number): number => {
     const t = getProgressRatio(progress);
-    // Make late-stage progress feel heavier/slower.
-    return Math.round(420 + Math.pow(t, 2.2) * 1900);
+    // Aggressive deceleration near the end.
+    return Math.round(260 + Math.pow(t, 4.1) * 5400);
 };

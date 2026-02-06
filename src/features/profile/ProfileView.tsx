@@ -3,10 +3,11 @@ import { useXP, LEAGUES_DATA, LEAGUE_NAMES } from '../../context/XPContext';
 import { MAJOR_MARKS } from '../../data/marksData';
 import { SettingsModal } from './SettingsModal';
 import { resolvePosterCandidates } from '../../lib/posterCandidates';
-import { getProgressFill, getProgressTransitionMs } from '../../lib/progressVisuals';
+import { PROGRESS_EASING, getProgressFill, getProgressTransitionMs } from '../../lib/progressVisuals';
 
 interface ProfileViewProps {
     onClose: () => void;
+    startInSettings?: boolean;
 }
 
 type FilmCommentSummary = {
@@ -56,7 +57,7 @@ const CommentFilmPoster: React.FC<{ movieId: number; posterPath?: string; title:
     );
 };
 
-export const ProfileView: React.FC<ProfileViewProps> = ({ onClose }) => {
+export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettings = false }) => {
     const { xp, league, progressPercentage, marks, daysPresent, streak, featuredMarks, toggleFeaturedMark, dailyRituals, nextLevelXP, bio, avatarId, updateIdentity, user, logout, updateAvatar, avatarUrl } = useXP();
     const [isVisible, setIsVisible] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
@@ -138,6 +139,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose }) => {
         return () => setIsVisible(false);
     }, [bio, avatarId]);
 
+    useEffect(() => {
+        if (startInSettings) {
+            setShowSettings(true);
+        }
+    }, [startInSettings]);
+
     const handleClose = () => {
         setIsVisible(false);
         setTimeout(onClose, 500); // Wait for fade out
@@ -163,14 +170,22 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose }) => {
                 Sign Out
             </button>
 
-            {/* Close Button (Top Right) */}
-            <button
-                onClick={handleClose}
-                className="absolute top-8 right-8 text-xs tracking-widest uppercase transition-colors p-4 z-50 font-bold hover:scale-105"
-                style={{ color: 'var(--color-highlight)' }}
-            >
-                Close
-            </button>
+            <div className="absolute top-8 right-8 z-50 flex items-center gap-2">
+                <button
+                    onClick={() => setShowSettings(true)}
+                    className="text-xs tracking-widest uppercase p-3 font-bold border border-sage/30 rounded hover:border-sage/60 hover:text-sage transition-colors"
+                    style={{ color: 'var(--color-highlight)' }}
+                >
+                    Settings
+                </button>
+                <button
+                    onClick={handleClose}
+                    className="text-xs tracking-widest uppercase transition-colors p-3 font-bold hover:scale-105"
+                    style={{ color: 'var(--color-highlight)' }}
+                >
+                    Close
+                </button>
+            </div>
 
             {/* Content Container - Two Column Layout */}
             <div className="w-full max-w-7xl px-6 md:px-12 pb-16 pt-24">
@@ -291,7 +306,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose }) => {
                                                 background: progressFill,
                                                 transitionProperty: 'width, background',
                                                 transitionDuration: `${progressTransitionMs}ms`,
-                                                transitionTimingFunction: 'cubic-bezier(0.22, 0.61, 0.36, 1)'
+                                                transitionTimingFunction: PROGRESS_EASING
                                             }}
                                         >
                                             <div className="absolute right-0 top-0 bottom-0 w-[2px] bg-white/50 blur-[1px] animate-pulse"></div>

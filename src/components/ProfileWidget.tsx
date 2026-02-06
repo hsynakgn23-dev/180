@@ -2,13 +2,14 @@ import { useMemo } from 'react';
 import { useXP } from '../context/XPContext';
 import { MinorMarks } from '../features/marks/MinorMarks';
 import { MAJOR_MARKS } from '../data/marksData';
-import { getProgressFill, getProgressTransitionMs } from '../lib/progressVisuals';
+import { PROGRESS_EASING, getProgressFill, getProgressTransitionMs } from '../lib/progressVisuals';
 
 interface ProfileWidgetProps {
     onClick?: () => void;
+    onOpenSettings?: () => void;
 }
 
-export const ProfileWidget: React.FC<ProfileWidgetProps> = ({ onClick }) => {
+export const ProfileWidget: React.FC<ProfileWidgetProps> = ({ onClick, onOpenSettings }) => {
     const {
         xp,
         league,
@@ -67,7 +68,19 @@ export const ProfileWidget: React.FC<ProfileWidgetProps> = ({ onClick }) => {
 
                     <div className="text-right">
                         <p className="text-[9px] uppercase tracking-[0.2em] text-gray-500">Profile</p>
-                        <p className="text-[10px] text-sage/80 uppercase tracking-[0.18em]">Open Archive</p>
+                        <div className="flex items-center justify-end gap-2 mt-1">
+                            <p className="text-[10px] text-sage/80 uppercase tracking-[0.18em]">Open Archive</p>
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onOpenSettings?.();
+                                }}
+                                className="h-6 px-2 rounded border border-sage/25 bg-white/5 text-[9px] tracking-[0.18em] uppercase text-sage/80 hover:text-sage hover:border-sage/40 transition-colors"
+                            >
+                                Settings
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -79,7 +92,7 @@ export const ProfileWidget: React.FC<ProfileWidgetProps> = ({ onClick }) => {
                             background: progressFill,
                             transitionProperty: 'width, background',
                             transitionDuration: `${progressTransitionMs}ms`,
-                            transitionTimingFunction: 'cubic-bezier(0.22, 0.61, 0.36, 1)'
+                            transitionTimingFunction: PROGRESS_EASING
                         }}
                     />
                 </div>
