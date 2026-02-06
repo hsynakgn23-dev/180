@@ -18,6 +18,20 @@ type Movie = {
     slotLabel?: string;
 };
 
+type UploadResult = {
+    url: string | null;
+    error: string | null;
+    sourceUrl?: string;
+};
+
+type PosterDiagnostic = {
+    movieId: number;
+    title: string;
+    size: 'w200' | 'w500';
+    sourceUrl?: string;
+    error: string;
+};
+
 const DEFAULT_SLOT_LABELS = [
     'The Legend',
     'The Hidden Gem',
@@ -103,6 +117,7 @@ const DEFAULT_SEED_MOVIES: Movie[] = [
 ];
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
+const IMAGE_SOURCE_PROXIES = ['https://images.weserv.nl/?url=', 'https://wsrv.nl/?url='];
 
 const getEnv = (key: string, required = true): string => {
     const value = process.env[key];
@@ -124,6 +139,27 @@ const getSupabaseUrl = (): string => {
 
 const getSupabaseServiceRoleKey = (): string => {
     return process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+};
+
+const decodeJwtRole = (jwt: string): string | null => {
+    try {
+        const parts = jwt.split('.');
+        if (parts.length < 2) return null;
+        const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+        const normalized = payload + '='.repeat((4 - (payload.length % 4)) % 4);
+        let decoded = '';
+        if (typeof atob === 'function') {
+            decoded = atob(normalized);
+        } else if (typeof Buffer !== 'undefined') {
+            decoded = Buffer.from(normalized, 'base64').toString('utf8');
+        } else {
+            return null;
+        }
+        const json = JSON.parse(decoded);
+        return typeof json?.role === 'string' ? json.role : null;
+    } catch {
+        return null;
+    }
 };
 
 const getQueryParam = (req: any, key: string): string | null => {
@@ -199,6 +235,19 @@ const toImageUrl = (posterPath: string, size: 'w200' | 'w500' | 'w780' | 'origin
     return `${TMDB_IMAGE_BASE}/${size}${clean}`;
 };
 
+const buildSourceCandidates = (posterPath: string, size: 'w200' | 'w500'): string[] => {
+    const direct = toImageUrl(posterPath, size);
+    if (!direct) return [];
+    const candidates = [direct];
+    if (/^https?:\/\/image\.tmdb\.org\//i.test(direct)) {
+        const encoded = encodeURIComponent(direct);
+        for (const proxy of IMAGE_SOURCE_PROXIES) {
+            candidates.push(`${proxy}${encoded}`);
+        }
+    }
+    return Array.from(new Set(candidates));
+};
+
 const extFromContentType = (contentType: string | null): string => {
     if (!contentType) return 'jpg';
     if (contentType.includes('png')) return 'png';
@@ -212,48 +261,94 @@ const uploadPoster = async (
     movieId: number,
     posterPath: string,
     size: 'w200' | 'w500'
-): Promise<string | null> => {
-    const sourceUrl = toImageUrl(posterPath, size);
-    const res = await fetch(sourceUrl);
-    if (!res.ok) return null;
+): Promise<UploadResult> => {
+    const sources = buildSourceCandidates(posterPath, size);
+    if (!sources.length) return { url: null, error: 'no_source_candidates' };
 
-    const contentType = res.headers.get('content-type');
+    let selectedSource: string | null = null;
+    let contentType: string | null = null;
+    let bytes: Uint8Array | null = null;
+    let fetchError = 'fetch_failed';
+
+    for (const sourceUrl of sources) {
+        try {
+            const res = await fetch(sourceUrl);
+            if (!res.ok) {
+                fetchError = `fetch_http_${res.status}`;
+                continue;
+            }
+            contentType = res.headers.get('content-type');
+            const arrayBuffer = await res.arrayBuffer();
+            bytes = new Uint8Array(arrayBuffer);
+            selectedSource = sourceUrl;
+            break;
+        } catch (error: any) {
+            fetchError = error?.message || 'fetch_exception';
+        }
+    }
+
+    if (!bytes || !selectedSource) {
+        return { url: null, error: fetchError };
+    }
+
     const ext = extFromContentType(contentType);
-    const arrayBuffer = await res.arrayBuffer();
     const filePath = `${movieId}/${size}.${ext}`;
 
     const { error } = await supabase.storage
         .from(bucket)
-        .upload(filePath, new Uint8Array(arrayBuffer), {
+        .upload(filePath, bytes, {
             contentType: contentType || 'image/jpeg',
             cacheControl: '31536000',
             upsert: true
         });
 
-    if (error) return null;
+    if (error) {
+        return { url: null, error: `upload_${error.message}`, sourceUrl: selectedSource };
+    }
 
     const { data } = supabase.storage.from(bucket).getPublicUrl(filePath);
-    return data.publicUrl;
+    return { url: data.publicUrl, error: null, sourceUrl: selectedSource };
 };
 
 const ensurePosters = async (
     supabase: any,
     bucket: string,
-    movie: Movie
+    movie: Movie,
+    diagnostics: PosterDiagnostic[]
 ): Promise<Movie> => {
     if (!movie.posterPath) return movie;
 
-    const [w500Url, w200Url] = await Promise.all([
+    const [w500Result, w200Result] = await Promise.all([
         uploadPoster(supabase, bucket, movie.id, movie.posterPath, 'w500'),
         uploadPoster(supabase, bucket, movie.id, movie.posterPath, 'w200')
     ]);
 
+    if (w500Result.error) {
+        diagnostics.push({
+            movieId: movie.id,
+            title: movie.title,
+            size: 'w500',
+            sourceUrl: w500Result.sourceUrl,
+            error: w500Result.error
+        });
+    }
+
+    if (w200Result.error) {
+        diagnostics.push({
+            movieId: movie.id,
+            title: movie.title,
+            size: 'w200',
+            sourceUrl: w200Result.sourceUrl,
+            error: w200Result.error
+        });
+    }
+
     return {
         ...movie,
-        posterPath: w500Url || movie.posterPath,
-        posterStoragePath: w500Url || null,
-        posterThumbPath: w200Url || null,
-        posterSource: w500Url ? 'storage' : 'tmdb'
+        posterPath: w500Result.url || movie.posterPath,
+        posterStoragePath: w500Result.url || null,
+        posterThumbPath: w200Result.url || null,
+        posterSource: w500Result.url ? 'storage' : 'tmdb'
     } as Movie & {
         posterStoragePath?: string | null;
         posterThumbPath?: string | null;
@@ -274,14 +369,17 @@ export default async function handler(req: any, res: any) {
         console.log('[daily-cron] start');
         const ping = getQueryParam(req, 'ping');
         const envCheck = getQueryParam(req, 'env');
+        const debug = getQueryParam(req, 'debug') === '1';
         if (ping === '1') {
             return sendJson(res, 200, { ok: true, runtime: 'node', time: new Date().toISOString() });
         }
         if (envCheck === '1') {
+            const serviceRoleKey = getSupabaseServiceRoleKey();
             return sendJson(res, 200, {
                 ok: true,
                 hasSupabaseUrl: !!getSupabaseUrl(),
-                hasServiceKey: !!getSupabaseServiceRoleKey(),
+                hasServiceKey: !!serviceRoleKey,
+                serviceRoleClaim: decodeJwtRole(serviceRoleKey),
                 hasBucket: !!process.env.SUPABASE_STORAGE_BUCKET,
                 hasCronSecret: !!process.env.CRON_SECRET || !!process.env.VERCEL_CRON_SECRET
             });
@@ -300,6 +398,10 @@ export default async function handler(req: any, res: any) {
         const supabaseServiceKey = getSupabaseServiceRoleKey();
         if (!supabaseUrl) throw new Error('Missing env: SUPABASE_URL');
         if (!supabaseServiceKey) throw new Error('Missing env: SUPABASE_SERVICE_ROLE_KEY');
+        const role = decodeJwtRole(supabaseServiceKey);
+        if (role && role !== 'service_role') {
+            throw new Error(`SUPABASE_SERVICE_ROLE_KEY role is '${role}', expected 'service_role'`);
+        }
         console.log('[daily-cron] env ok');
         const { createClient } = await import('@supabase/supabase-js');
         const supabase = createClient(supabaseUrl, supabaseServiceKey, {
@@ -324,13 +426,14 @@ export default async function handler(req: any, res: any) {
         }
 
         let movies: Movie[] = Array.isArray(existing?.movies) ? existing.movies : buildSeedMovies();
+        const diagnostics: PosterDiagnostic[] = [];
 
         const isStorageBacked = movies.every((m: any) => typeof m.posterPath === 'string' && m.posterPath.includes('/storage/v1/object/public/'));
         if (existing?.movies && isStorageBacked && !force) {
             return sendJson(res, 200, { ok: true, reused: true, date: todayKey });
         }
 
-        movies = await Promise.all(movies.map((movie) => ensurePosters(supabase, bucket, movie)));
+        movies = await Promise.all(movies.map((movie) => ensurePosters(supabase, bucket, movie, diagnostics)));
         const storageBackedCount = movies.filter(
             (movie) =>
                 typeof movie.posterPath === 'string' &&
@@ -351,7 +454,13 @@ export default async function handler(req: any, res: any) {
             date: todayKey,
             count: movies.length,
             storageBackedCount,
-            allStorageBacked: storageBackedCount === movies.length
+            allStorageBacked: storageBackedCount === movies.length,
+            ...(debug
+                ? {
+                      diagnosticsCount: diagnostics.length,
+                      diagnostics: diagnostics.slice(0, 10)
+                  }
+                : {})
         });
     } catch (error: any) {
         console.error('[daily-cron] error', error);
