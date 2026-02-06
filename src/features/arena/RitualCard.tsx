@@ -8,6 +8,7 @@ import { searchPosterPath } from '../../lib/tmdbApi';
 
 interface RitualCardProps {
     ritual: Ritual;
+    onDelete?: () => void;
 }
 
 const MAIN_TEXT_PREVIEW_LIMIT = 220;
@@ -20,7 +21,7 @@ const formatRitualTimestamp = (timestamp: string): string => {
     return timestamp;
 };
 
-export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
+export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete }) => {
     const { echoRitual, following } = useXP();
     const { addNotification } = useNotifications();
     const [echoed, setEchoed] = useState(ritual.isEchoedByMe);
@@ -119,6 +120,11 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
         setEchoed(true);
         setEchoCount((prev) => prev + 1);
         echoRitual(ritual.id);
+    };
+
+    const handleDelete = () => {
+        if (!onDelete) return;
+        onDelete();
     };
 
     const handleReplySubmit = () => {
@@ -254,6 +260,18 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
                             WHISPER BACK ({replies.length})
                         </span>
                     </button>
+
+                    {ritual.isCustom && onDelete && (
+                        <button
+                            onClick={handleDelete}
+                            className="w-full sm:w-auto justify-start px-0 py-1 sm:px-0 sm:py-0 rounded-none border-0 flex items-center gap-2 group/btn transition-colors text-gray-400 hover:text-clay"
+                            title="Delete your comment"
+                        >
+                            <span className="text-[10px] tracking-widest font-medium">
+                                ERASE
+                            </span>
+                        </button>
+                    )}
                 </div>
 
                 {showReply && (

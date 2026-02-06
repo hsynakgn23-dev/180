@@ -88,6 +88,7 @@ interface XPContextType {
     updateIdentity: (bio: string, avatarId: string) => void;
     toggleFollowUser: (username: string) => void;
     submitRitual: (movieId: number, text: string, rating: number, genre: string, title?: string, posterPath?: string) => void;
+    deleteRitual: (ritualId: string) => void;
     echoRitual: (ritualId: string) => void;
     receiveEcho: (movieTitle?: string) => void;
     debugAddXP: (amount: number) => void;
@@ -536,6 +537,15 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         });
     };
 
+    const deleteRitual = (ritualId: string) => {
+        if (!ritualId) return;
+        const currentRituals = state.dailyRituals || [];
+        const remaining = currentRituals.filter((ritual) => ritual.id !== ritualId);
+        if (remaining.length === currentRituals.length) return;
+        updateState({ dailyRituals: remaining });
+        triggerWhisper("Ritual erased.");
+    };
+
     // 4. Social
     const echoRitual = (_ritualId: string) => {
         const newXP = state.totalXP + 1;
@@ -645,6 +655,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             updateIdentity,
             toggleFollowUser,
             submitRitual,
+            deleteRitual,
             echoRitual,
             receiveEcho,
             debugAddXP,

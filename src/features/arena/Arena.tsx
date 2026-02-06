@@ -39,10 +39,15 @@ const formatDateAsRitualTimestamp = (dateStr: string): string => {
 };
 
 export const Arena: React.FC = () => {
-    const { dailyRituals, user, league } = useXP();
+    const { dailyRituals, user, league, deleteRitual } = useXP();
     const [filter, setFilter] = useState<'all' | 'today'>('all');
     const [sortMode, setSortMode] = useState<'latest' | 'echoes'>('latest');
     const [query, setQuery] = useState('');
+
+    const handleDelete = (ritualId: string) => {
+        const normalized = ritualId.startsWith('log-') ? ritualId.slice(4) : ritualId;
+        deleteRitual(normalized);
+    };
 
     const rituals = useMemo<Ritual[]>(() => {
         const mine: Ritual[] = dailyRituals.map((ritual) => ({
@@ -134,7 +139,11 @@ export const Arena: React.FC = () => {
             <div className="flex flex-col">
                 {filteredRituals.length > 0 ? (
                     filteredRituals.map((ritual) => (
-                        <RitualCard key={ritual.id} ritual={ritual} />
+                        <RitualCard
+                            key={ritual.id}
+                            ritual={ritual}
+                            onDelete={ritual.isCustom ? () => handleDelete(ritual.id) : undefined}
+                        />
                     ))
                 ) : (
                     <div className="text-center py-10 text-[10px] text-gray-500 uppercase tracking-[0.18em] border border-white/5 rounded">

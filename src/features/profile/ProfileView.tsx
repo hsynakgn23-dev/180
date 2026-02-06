@@ -60,7 +60,7 @@ const CommentFilmPoster: React.FC<{ movieId: number; posterPath?: string; title:
 };
 
 export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettings = false }) => {
-    const { xp, league, progressPercentage, marks, daysPresent, streak, featuredMarks, toggleFeaturedMark, dailyRituals, nextLevelXP, bio, avatarId, updateIdentity, user, logout, updateAvatar, avatarUrl } = useXP();
+    const { xp, league, progressPercentage, marks, daysPresent, streak, featuredMarks, toggleFeaturedMark, dailyRituals, nextLevelXP, bio, avatarId, updateIdentity, deleteRitual, user, logout, updateAvatar, avatarUrl } = useXP();
     const [isVisible, setIsVisible] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [tempBio, setTempBio] = useState(bio);
@@ -70,6 +70,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
     const progressTransitionMs = getProgressTransitionMs(progressPercentage);
 
     const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+    const handleDeleteRitual = (ritualId: string) => {
+        deleteRitual(ritualId);
+    };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -543,13 +547,22 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                                 {dailyRituals.length > 0 ? (
                                     dailyRituals.map((ritual) => (
                                         <div key={ritual.id} className="group relative bg-white/5 border border-white/5 p-4 rounded hover:border-sage/20 transition-colors">
-                                            <div className="flex justify-between items-start mb-2">
+                                            <div className="flex justify-between items-start mb-2 gap-3">
                                                 <span className="text-xs font-bold text-[#E5E4E2] tracking-wider uppercase">
                                                     {ritual.movieTitle}
                                                 </span>
-                                                <span className="text-[10px] font-mono text-gray-500">
-                                                    {ritual.date}
-                                                </span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] font-mono text-gray-500 whitespace-nowrap">
+                                                        {ritual.date}
+                                                    </span>
+                                                    <button
+                                                        onClick={() => handleDeleteRitual(ritual.id)}
+                                                        className="text-[9px] tracking-widest uppercase text-gray-500 hover:text-clay transition-colors"
+                                                        title="Delete this ritual"
+                                                    >
+                                                        Erase
+                                                    </button>
+                                                </div>
                                             </div>
                                             <p className="text-xs font-serif text-gray-400 italic line-clamp-2 leading-relaxed">
                                                 "{ritual.text}"
