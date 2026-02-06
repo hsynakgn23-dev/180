@@ -10,6 +10,8 @@ export interface Ritual {
     isEchoedByMe: boolean;
     timestamp: string;
     league: string;
+    createdAt?: number;
+    isCustom?: boolean;
     featuredMarks?: React.FC<any>[]; // Array of Icon components
     replies?: {
         id: string;
@@ -38,7 +40,7 @@ export const MOCK_ARENA_RITUALS: Ritual[] = [
         league: 'Gold',
         featuredMarks: [HexagonMark, TriangleMark],
         replies: [
-            { id: 'r1', author: 'Cineast_Pro', text: 'Zimmer transcends sound. It’s physical.', timestamp: '1h ago' }
+            { id: 'r1', author: 'Cineast_Pro', text: 'Zimmer transcends sound. It\'s physical.', timestamp: '1h ago' }
         ]
     },
     {
