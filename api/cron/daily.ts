@@ -116,6 +116,19 @@ const DEFAULT_SEED_MOVIES: Movie[] = [
     }
 ];
 
+const EXTRA_POSTER_CACHE_MOVIES: Movie[] = [
+    {
+        id: 843,
+        title: 'In the Mood for Love',
+        director: 'Wong Kar-wai',
+        year: 2000,
+        genre: 'Romance/Drama',
+        tagline: 'Feelings keep lingering...',
+        color: 'from-red-900 to-red-800',
+        posterPath: '/inVq3FRqcYIRl2la8iZikYYxFNR.jpg'
+    }
+];
+
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
 const TMDB_API_BASE = 'https://api.themoviedb.org/3';
 const IMAGE_SOURCE_PROXIES = ['https://images.weserv.nl/?url=', 'https://wsrv.nl/?url='];
@@ -491,6 +504,14 @@ export default async function handler(req: any, res: any) {
         }
 
         movies = await Promise.all(movies.map((movie) => ensurePosters(supabase, bucket, movie, diagnostics)));
+
+        const extraMovies = EXTRA_POSTER_CACHE_MOVIES.filter(
+            (extraMovie) => !movies.some((movie) => movie.id === extraMovie.id)
+        );
+        if (extraMovies.length > 0) {
+            await Promise.all(extraMovies.map((movie) => ensurePosters(supabase, bucket, movie, diagnostics)));
+        }
+
         const storageBackedCount = movies.filter(
             (movie) =>
                 typeof movie.posterPath === 'string' &&

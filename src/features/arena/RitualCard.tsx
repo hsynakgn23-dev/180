@@ -3,7 +3,7 @@ import type { Ritual } from '../../data/mockArena';
 import { MarkIcons } from '../marks/MarkIcons';
 import { useXP } from '../../context/XPContext';
 import { useNotifications } from '../../context/NotificationContext';
-import { resolveImageCandidates } from '../../lib/tmdbImage';
+import { resolvePosterCandidates } from '../../lib/posterCandidates';
 import { searchPosterPath } from '../../lib/tmdbApi';
 
 interface RitualCardProps {
@@ -72,12 +72,12 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
         setHasError(false);
         setImageLoaded(false);
 
-        const nextCandidates = resolveImageCandidates(ritual.posterPath, 'w200');
+        const nextCandidates = resolvePosterCandidates(ritual.movieId, ritual.posterPath, 'w200');
         applyCandidates(nextCandidates);
         if (!nextCandidates.length && ritual.movieTitle) {
             handleRetry();
         }
-    }, [ritual.id, ritual.posterPath, ritual.movieTitle]);
+    }, [ritual.id, ritual.movieId, ritual.posterPath, ritual.movieTitle]);
 
     const handleRetry = async () => {
         if (isRetrying || !ritual.movieTitle) {
@@ -99,7 +99,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
         try {
             const posterPath = await searchPosterPath(ritual.movieTitle, apiKey);
             if (posterPath) {
-                const nextCandidates = resolveImageCandidates(posterPath, 'w200');
+                const nextCandidates = resolvePosterCandidates(ritual.movieId, posterPath, 'w200');
                 if (nextCandidates.length) {
                     applyCandidates(nextCandidates);
                     setIsRetrying(false);

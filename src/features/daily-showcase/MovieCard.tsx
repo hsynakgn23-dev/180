@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { Movie } from '../../data/mockMovies';
-import { resolveImageCandidates } from '../../lib/tmdbImage';
+import { resolvePosterCandidates } from '../../lib/posterCandidates';
 import { searchPosterPath } from '../../lib/tmdbApi';
 
 interface MovieCardProps {
@@ -30,7 +30,7 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, onClick }) =
         setHasError(false);
         setImageLoaded(false);
 
-        const nextCandidates = resolveImageCandidates(movie.posterPath, 'w500');
+        const nextCandidates = resolvePosterCandidates(movie.id, movie.posterPath, 'w500');
         applyCandidates(nextCandidates);
         if (!nextCandidates.length) {
             handleRetry();
@@ -58,7 +58,7 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, onClick }) =
             const posterPath = await searchPosterPath(movie.title, apiKey);
             if (posterPath) {
                 console.log(`[Image Recovery] Found new poster: ${posterPath}`);
-                const nextCandidates = resolveImageCandidates(posterPath, 'w500');
+                const nextCandidates = resolvePosterCandidates(movie.id, posterPath, 'w500');
                 if (nextCandidates.length) {
                     applyCandidates(nextCandidates);
                     setIsRetrying(false);

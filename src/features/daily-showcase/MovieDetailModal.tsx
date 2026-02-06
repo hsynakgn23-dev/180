@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Movie } from '../../data/mockMovies';
-import { resolveImageCandidates } from '../../lib/tmdbImage';
+import { resolvePosterCandidates } from '../../lib/posterCandidates';
 
 interface MovieDetailModalProps {
     movie: Movie;
@@ -10,15 +10,17 @@ interface MovieDetailModalProps {
 
 export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({ movie, onClose, onStartRitual }) => {
 
-    const [candidates, setCandidates] = React.useState<string[]>(() => resolveImageCandidates(movie.posterPath, 'w500'));
+    const [candidates, setCandidates] = React.useState<string[]>(() =>
+        resolvePosterCandidates(movie.id, movie.posterPath, 'w500')
+    );
     const [candidateIndex, setCandidateIndex] = React.useState(0);
     const [imgSrc, setImgSrc] = React.useState<string | null>(() => {
-        const initial = resolveImageCandidates(movie.posterPath, 'w500');
+        const initial = resolvePosterCandidates(movie.id, movie.posterPath, 'w500');
         return initial[0] ?? null;
     });
 
     React.useEffect(() => {
-        const nextCandidates = resolveImageCandidates(movie.posterPath, 'w500');
+        const nextCandidates = resolvePosterCandidates(movie.id, movie.posterPath, 'w500');
         setCandidates(nextCandidates);
         setCandidateIndex(0);
         setImgSrc(nextCandidates[0] ?? null);
