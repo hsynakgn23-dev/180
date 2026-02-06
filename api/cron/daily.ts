@@ -1,6 +1,3 @@
-import { TMDB_SEEDS } from '../../src/data/tmdbSeeds';
-import { DAILY_SLOTS, FALLBACK_GRADIENTS } from '../../src/data/dailyConfig';
-
 export const config = {
     runtime: 'nodejs'
 };
@@ -21,6 +18,90 @@ type Movie = {
     slotLabel?: string;
 };
 
+const DEFAULT_SLOT_LABELS = [
+    'The Legend',
+    'The Hidden Gem',
+    'DNA Flip',
+    'The Modern',
+    'The Mystery'
+];
+
+const DEFAULT_GRADIENTS = [
+    'from-red-900 to-red-800',
+    'from-orange-400 to-orange-600',
+    'from-blue-800 to-blue-900',
+    'from-pink-300 to-purple-400',
+    'from-green-700 to-green-900'
+];
+
+const DEFAULT_SEED_MOVIES: Movie[] = [
+    {
+        id: 157336,
+        title: 'Interstellar',
+        director: 'Christopher Nolan',
+        year: 2014,
+        genre: 'Sci-Fi/Adventure',
+        tagline: 'Mankind was born on Earth. It was never meant to die here.',
+        color: 'from-slate-900 to-indigo-900',
+        posterPath: '/gEU2QniL6C8zYEfe4NCJw46LCDp.jpg',
+        voteAverage: 8.4,
+        overview:
+            'The adventures of a group of explorers who make use of a newly discovered wormhole to surpass the limitations on human space travel.'
+    },
+    {
+        id: 155,
+        title: 'The Dark Knight',
+        director: 'Christopher Nolan',
+        year: 2008,
+        genre: 'Action/Crime',
+        tagline: 'Why So Serious?',
+        color: 'from-gray-900 to-slate-800',
+        posterPath: '/qJ2tW6WMUDux911r6m775X8H3rC.jpg',
+        voteAverage: 8.5,
+        overview:
+            'Batman raises the stakes in his war on crime with the help of Lt. Jim Gordon and District Attorney Harvey Dent.'
+    },
+    {
+        id: 129,
+        title: 'Spirited Away',
+        director: 'Hayao Miyazaki',
+        year: 2001,
+        genre: 'Animation/Fantasy',
+        tagline: 'The tunnel led Chihiro to a mysterious town...',
+        color: 'from-blue-800 to-teal-700',
+        posterPath: '/3G1Q5Jd9dqmHGS3U8Y2jPuygQ8K.jpg',
+        voteAverage: 8.5,
+        overview:
+            'A young girl, Chihiro, becomes trapped in a strange new world of spirits and must free her family.'
+    },
+    {
+        id: 496243,
+        title: 'Parasite',
+        director: 'Bong Joon-ho',
+        year: 2019,
+        genre: 'Comedy/Thriller',
+        tagline: 'Act like you own the place.',
+        color: 'from-green-900 to-gray-900',
+        posterPath: '/7IiTTgloJzvGIBNfSdNqOfqgFW9.jpg',
+        voteAverage: 8.5,
+        overview:
+            "All unemployed, Ki-taek's family takes peculiar interest in the wealthy Parks until they are entangled in an unexpected incident."
+    },
+    {
+        id: 389,
+        title: '12 Angry Men',
+        director: 'Sidney Lumet',
+        year: 1957,
+        genre: 'Drama',
+        tagline: 'Life is in their hands. Death is on their minds.',
+        color: 'from-gray-700 to-gray-900',
+        posterPath: '/2JP0P0XM4Lh3M26fU9h8rQ7B1Yx.jpg',
+        voteAverage: 8.5,
+        overview:
+            'The jury enters deliberations to decide whether a young defendant is guilty of murdering his father.'
+    }
+];
+
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
 
 const getEnv = (key: string, required = true): string => {
@@ -37,6 +118,55 @@ const getBucketName = (): string => {
     return process.env.SUPABASE_STORAGE_BUCKET || 'posters';
 };
 
+const getSupabaseUrl = (): string => {
+    return process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
+};
+
+const getSupabaseServiceRoleKey = (): string => {
+    return process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+};
+
+const getQueryParam = (req: any, key: string): string | null => {
+    const rawQueryValue = req?.query?.[key];
+    if (typeof rawQueryValue === 'string') return rawQueryValue;
+    if (Array.isArray(rawQueryValue) && typeof rawQueryValue[0] === 'string') return rawQueryValue[0];
+
+    const rawUrl = typeof req?.url === 'string' ? req.url : '';
+    if (!rawUrl) return null;
+
+    try {
+        const host = req?.headers?.host || 'localhost';
+        const url = new URL(rawUrl, rawUrl.startsWith('http') ? undefined : `https://${host}`);
+        return url.searchParams.get(key);
+    } catch {
+        return null;
+    }
+};
+
+const getHeader = (req: any, key: string): string => {
+    const lowerKey = key.toLowerCase();
+    const headers = req?.headers;
+
+    if (!headers) return '';
+
+    if (typeof headers.get === 'function') {
+        return headers.get(key) || '';
+    }
+
+    return headers[lowerKey] || headers[key] || '';
+};
+
+const sendJson = (res: any, status: number, payload: Record<string, unknown>) => {
+    if (res && typeof res.status === 'function') {
+        return res.status(status).json(payload);
+    }
+
+    return new Response(JSON.stringify(payload), {
+        status,
+        headers: { 'content-type': 'application/json; charset=utf-8' }
+    });
+};
+
 const ensureBucket = async (supabase: any, bucket: string) => {
     const { data, error } = await supabase.storage.getBucket(bucket);
     if (data && !error) return;
@@ -44,7 +174,7 @@ const ensureBucket = async (supabase: any, bucket: string) => {
     const { error: createError } = await supabase.storage.createBucket(bucket, {
         public: true
     });
-    if (createError) {
+    if (createError && !createError.message.toLowerCase().includes('already exists')) {
         throw new Error(`Bucket create failed: ${createError.message}`);
     }
 };
@@ -124,40 +254,44 @@ const ensurePosters = async (
 };
 
 const buildSeedMovies = (): Movie[] => {
-    return TMDB_SEEDS.slice(0, 5).map((movie, index) => ({
+    return DEFAULT_SEED_MOVIES.slice(0, 5).map((movie, index) => ({
         ...movie,
-        slotLabel: DAILY_SLOTS[index].label,
-        color: FALLBACK_GRADIENTS[index]
+        slotLabel: DEFAULT_SLOT_LABELS[index] || movie.slotLabel,
+        color: DEFAULT_GRADIENTS[index] || movie.color
     }));
 };
 
 export default async function handler(req: any, res: any) {
     try {
         console.log('[daily-cron] start');
-        if (req.query?.ping === '1') {
-            return res.status(200).json({ ok: true, runtime: 'node', time: new Date().toISOString() });
+        const ping = getQueryParam(req, 'ping');
+        const envCheck = getQueryParam(req, 'env');
+        if (ping === '1') {
+            return sendJson(res, 200, { ok: true, runtime: 'node', time: new Date().toISOString() });
         }
-        if (req.query?.env === '1') {
-            return res.status(200).json({
+        if (envCheck === '1') {
+            return sendJson(res, 200, {
                 ok: true,
-                hasSupabaseUrl: !!process.env.SUPABASE_URL,
-                hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+                hasSupabaseUrl: !!getSupabaseUrl(),
+                hasServiceKey: !!getSupabaseServiceRoleKey(),
                 hasBucket: !!process.env.SUPABASE_STORAGE_BUCKET,
                 hasCronSecret: !!process.env.CRON_SECRET || !!process.env.VERCEL_CRON_SECRET
             });
         }
         const secret = getCronSecret();
-        const querySecret = typeof req.query?.secret === 'string' ? req.query.secret : null;
+        const querySecret = getQueryParam(req, 'secret');
         if (secret) {
-            const auth = req.headers.authorization || '';
+            const auth = getHeader(req, 'authorization');
             if (auth !== `Bearer ${secret}` && querySecret !== secret) {
                 console.warn('[daily-cron] unauthorized');
-                return res.status(401).json({ error: 'Unauthorized' });
+                return sendJson(res, 401, { error: 'Unauthorized' });
             }
         }
 
-        const supabaseUrl = getEnv('SUPABASE_URL');
-        const supabaseServiceKey = getEnv('SUPABASE_SERVICE_ROLE_KEY');
+        const supabaseUrl = getSupabaseUrl();
+        const supabaseServiceKey = getSupabaseServiceRoleKey();
+        if (!supabaseUrl) throw new Error('Missing env: SUPABASE_URL');
+        if (!supabaseServiceKey) throw new Error('Missing env: SUPABASE_SERVICE_ROLE_KEY');
         console.log('[daily-cron] env ok');
         const { createClient } = await import('@supabase/supabase-js');
         const supabase = createClient(supabaseUrl, supabaseServiceKey, {
@@ -168,7 +302,8 @@ export default async function handler(req: any, res: any) {
         console.log('[daily-cron] bucket', bucket);
         await ensureBucket(supabase, bucket);
         const todayKey = new Date().toISOString().split('T')[0];
-        const force = req.query.force === '1' || req.query.force === 'true';
+        const forceValue = getQueryParam(req, 'force');
+        const force = forceValue === '1' || forceValue === 'true';
 
         const { data: existing, error: readError } = await supabase
             .from('daily_showcase')
@@ -177,14 +312,14 @@ export default async function handler(req: any, res: any) {
             .single();
 
         if (readError && readError.code !== 'PGRST116') {
-            return res.status(500).json({ error: readError.message });
+            return sendJson(res, 500, { error: readError.message });
         }
 
         let movies: Movie[] = Array.isArray(existing?.movies) ? existing.movies : buildSeedMovies();
 
         const isStorageBacked = movies.every((m: any) => typeof m.posterPath === 'string' && m.posterPath.includes('/storage/v1/object/public/'));
         if (existing?.movies && isStorageBacked && !force) {
-            return res.status(200).json({ ok: true, reused: true, date: todayKey });
+            return sendJson(res, 200, { ok: true, reused: true, date: todayKey });
         }
 
         movies = await Promise.all(movies.map((movie) => ensurePosters(supabase, bucket, movie)));
@@ -194,12 +329,12 @@ export default async function handler(req: any, res: any) {
             .upsert({ date: todayKey, movies }, { onConflict: 'date' });
 
         if (upsertError) {
-            return res.status(500).json({ error: upsertError.message });
+            return sendJson(res, 500, { error: upsertError.message });
         }
 
-        return res.status(200).json({ ok: true, updated: true, date: todayKey, count: movies.length });
+        return sendJson(res, 200, { ok: true, updated: true, date: todayKey, count: movies.length });
     } catch (error: any) {
         console.error('[daily-cron] error', error);
-        return res.status(500).json({ error: error.message || 'Unexpected error' });
+        return sendJson(res, 500, { error: error.message || 'Unexpected error' });
     }
 }
