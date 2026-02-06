@@ -470,11 +470,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                             </div>
 
                             {categories.map(category => (
-                                <div key={category} className="mb-10">
-                                    <div className="text-[9px] tracking-[0.2em] text-gray-500 uppercase mb-4 pl-2">
+                                <div key={category} className="mb-8">
+                                    <div className="text-[9px] tracking-[0.2em] text-gray-500 uppercase mb-3 pl-1">
                                         {category} Marks
                                     </div>
-                                    <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-7 gap-x-3 gap-y-8">
+                                    <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-7 gap-x-2 sm:gap-x-3 gap-y-4 sm:gap-y-5">
                                         {MAJOR_MARKS.filter(m => m.category === category).map(mark => {
                                             const isUnlocked = marks.includes(mark.id);
                                             const isFeatured = featuredMarks.includes(mark.id);
@@ -483,7 +483,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                                             return (
                                                 <div
                                                     key={mark.id}
-                                                    className="relative group flex flex-col items-center justify-start h-28 cursor-pointer"
+                                                    className="relative group flex flex-col items-center justify-start min-h-[112px] cursor-pointer px-1"
                                                     onClick={() => {
                                                         if (isUnlocked) toggleFeaturedMark(mark.id);
                                                     }}
@@ -511,20 +511,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                                                         )}
                                                     </div>
 
-                                                    {isUnlocked ? (
-                                                        <div className="mt-2 flex flex-col items-center gap-1 animate-fade-in w-full">
-                                                            <span className="text-[9px] font-sans font-bold tracking-wider text-[#E5E4E2]/90 uppercase text-center leading-none">
-                                                                {mark.title}
-                                                            </span>
-                                                            <span className="text-[8px] font-serif italic text-sage/50 text-center leading-tight max-w-[70px]">
-                                                                "{mark.whisper}"
-                                                            </span>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                            <span className="text-[8px] tracking-widest text-gray-700 uppercase">Locked</span>
-                                                        </div>
-                                                    )}
+                                                    <div className="mt-2 flex flex-col items-center gap-1 w-full">
+                                                        <span className={`text-[9px] font-sans font-bold tracking-wider uppercase text-center leading-none ${isUnlocked ? 'text-[#E5E4E2]/90' : 'text-[#E5E4E2]/60'}`}>
+                                                            {mark.title}
+                                                        </span>
+                                                        <span className={`text-[8px] text-center leading-tight max-w-[86px] ${isUnlocked ? 'text-sage/60' : 'text-gray-500'}`}>
+                                                            {mark.description}
+                                                        </span>
+                                                        <span className={`text-[7px] tracking-[0.14em] uppercase transition-opacity ${isUnlocked ? 'text-clay/60 opacity-0 group-hover:opacity-100' : 'text-gray-600 opacity-80'}`}>
+                                                            {isUnlocked ? 'Unlocked' : 'Locked'}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             );
                                         })}
