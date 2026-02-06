@@ -116,3 +116,70 @@ body.light-mode {
 .animate-slide-in-right {
   animation: slide-in-right 0.3s ease-out forwards;
 }
+
+/* League transition: abrupt presence, soft visual load */
+@keyframes league-overlay {
+  0% {
+    opacity: 1;
+  }
+
+  75% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+.animate-league-overlay {
+  animation: league-overlay 1.9s ease-out forwards;
+}
+
+@keyframes league-card {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+
+  12% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  78% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.996);
+  }
+}
+
+.animate-league-card {
+  animation: league-card 1.9s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
+@keyframes league-line {
+  0% {
+    opacity: 0;
+    transform: scaleX(0.25);
+  }
+
+  20% {
+    opacity: 0.95;
+    transform: scaleX(1);
+  }
+
+  100% {
+    opacity: 0.55;
+    transform: scaleX(1);
+  }
+}
+
+.animate-league-line {
+  transform-origin: center;
+  animation: league-line 1.9s ease-out forwards;
+}
