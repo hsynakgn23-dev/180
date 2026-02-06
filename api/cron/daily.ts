@@ -2,6 +2,10 @@ import { createClient } from '@supabase/supabase-js';
 import { TMDB_SEEDS } from '../../src/data/tmdbSeeds';
 import { DAILY_SLOTS, FALLBACK_GRADIENTS } from '../../src/data/dailyConfig';
 
+export const config = {
+    runtime: 'nodejs'
+};
+
 type Movie = {
     id: number;
     title: string;
@@ -130,22 +134,26 @@ const buildSeedMovies = (): Movie[] => {
 
 export default async function handler(req: any, res: any) {
     try {
+        console.log('[daily-cron] start');
         const secret = getCronSecret();
         const querySecret = typeof req.query?.secret === 'string' ? req.query.secret : null;
         if (secret) {
             const auth = req.headers.authorization || '';
             if (auth !== `Bearer ${secret}` && querySecret !== secret) {
+                console.warn('[daily-cron] unauthorized');
                 return res.status(401).json({ error: 'Unauthorized' });
             }
         }
 
         const supabaseUrl = getEnv('SUPABASE_URL');
         const supabaseServiceKey = getEnv('SUPABASE_SERVICE_ROLE_KEY');
+        console.log('[daily-cron] env ok');
         const supabase = createClient(supabaseUrl, supabaseServiceKey, {
             auth: { persistSession: false }
         });
 
         const bucket = getBucketName();
+        console.log('[daily-cron] bucket', bucket);
         await ensureBucket(supabase, bucket);
         const todayKey = new Date().toISOString().split('T')[0];
         const force = req.query.force === '1' || req.query.force === 'true';
@@ -179,6 +187,7 @@ export default async function handler(req: any, res: any) {
 
         return res.status(200).json({ ok: true, updated: true, date: todayKey, count: movies.length });
     } catch (error: any) {
+        console.error('[daily-cron] error', error);
         return res.status(500).json({ error: error.message || 'Unexpected error' });
     }
 }
