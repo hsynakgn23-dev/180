@@ -511,14 +511,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                                                         )}
                                                     </div>
 
-                                                    <div className="mt-2 flex flex-col items-center gap-1 w-full">
+                                                    <div className="mt-2 flex flex-col items-center gap-1.5 w-full">
                                                         <span className={`text-[9px] font-sans font-bold tracking-wider uppercase text-center leading-none ${isUnlocked ? 'text-[#E5E4E2]/90' : 'text-[#E5E4E2]/60'}`}>
                                                             {mark.title}
                                                         </span>
-                                                        <span className={`text-[8px] text-center leading-tight max-w-[86px] ${isUnlocked ? 'text-sage/60' : 'text-gray-500'}`}>
-                                                            {mark.description}
+                                                        <span className={`text-[9px] text-center leading-[1.25] max-w-[116px] ${isUnlocked ? 'text-[#E5E4E2]/72' : 'text-[#E5E4E2]/46'}`}>
+                                                            Kazanim: {mark.description}
                                                         </span>
-                                                        <span className={`text-[7px] tracking-[0.14em] uppercase transition-opacity ${isUnlocked ? 'text-clay/60 opacity-0 group-hover:opacity-100' : 'text-gray-600 opacity-80'}`}>
+                                                        <span className={`text-[8px] tracking-[0.14em] uppercase ${isUnlocked ? 'text-clay/70' : 'text-gray-600'}`}>
                                                             {isUnlocked ? 'Unlocked' : 'Locked'}
                                                         </span>
                                                     </div>
