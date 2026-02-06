@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { getProgressFill, getProgressTransitionMs } from '../../lib/progressVisuals';
 
 export const CycleTime = () => {
     const [status, setStatus] = useState({
@@ -37,6 +38,8 @@ export const CycleTime = () => {
     }, []);
 
     if (!status.remaining) return null; // Avoid hydration mismatch or flash
+    const progressFill = getProgressFill(status.progress);
+    const transitionMs = getProgressTransitionMs(status.progress);
 
     return (
         <div className="flex flex-col items-end gap-2 animate-fade-in">
@@ -47,8 +50,14 @@ export const CycleTime = () => {
             {/* Progress Bar (Enhanced) */}
             <div className="w-32 h-[2px] bg-white/10 rounded-full overflow-hidden relative">
                 <div
-                    className="h-full bg-gradient-to-r from-sage/40 to-sage shadow-[0_0_10px_rgba(138,154,91,0.8)] transition-all duration-1000 linear relative z-10"
-                    style={{ width: `${status.progress}%` }}
+                    className="h-full shadow-[0_0_10px_rgba(138,154,91,0.6)] relative z-10"
+                    style={{
+                        width: `${status.progress}%`,
+                        background: progressFill,
+                        transitionProperty: 'width, background',
+                        transitionDuration: `${transitionMs}ms`,
+                        transitionTimingFunction: 'cubic-bezier(0.22, 0.61, 0.36, 1)'
+                    }}
                 />
             </div>
         </div>

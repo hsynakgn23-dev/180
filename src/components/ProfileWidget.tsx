@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useXP } from '../context/XPContext';
 import { MinorMarks } from '../features/marks/MinorMarks';
 import { MAJOR_MARKS } from '../data/marksData';
+import { getProgressFill, getProgressTransitionMs } from '../lib/progressVisuals';
 
 interface ProfileWidgetProps {
     onClick?: () => void;
@@ -32,6 +33,8 @@ export const ProfileWidget: React.FC<ProfileWidgetProps> = ({ onClick }) => {
     );
 
     const xpToNext = Math.max(0, Math.floor(nextLevelXP - xp));
+    const progressFill = getProgressFill(progressPercentage);
+    const progressTransitionMs = getProgressTransitionMs(progressPercentage);
 
     return (
         <div className="flex flex-col items-end gap-2 animate-fade-in pointer-events-auto">
@@ -70,8 +73,14 @@ export const ProfileWidget: React.FC<ProfileWidgetProps> = ({ onClick }) => {
 
                 <div className="w-full h-[2px] bg-white/5 rounded-full overflow-hidden mb-2">
                     <div
-                        className="h-full bg-sage shadow-[0_0_10px_rgba(138,154,91,0.5)] transition-all duration-1000 ease-out"
-                        style={{ width: `${progressPercentage}%` }}
+                        className="h-full shadow-[0_0_10px_rgba(138,154,91,0.45)]"
+                        style={{
+                            width: `${progressPercentage}%`,
+                            background: progressFill,
+                            transitionProperty: 'width, background',
+                            transitionDuration: `${progressTransitionMs}ms`,
+                            transitionTimingFunction: 'cubic-bezier(0.22, 0.61, 0.36, 1)'
+                        }}
                     />
                 </div>
 
@@ -124,4 +133,3 @@ export const ProfileWidget: React.FC<ProfileWidgetProps> = ({ onClick }) => {
         </div>
     );
 };
-

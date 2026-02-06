@@ -3,6 +3,7 @@ import { useXP, LEAGUES_DATA, LEAGUE_NAMES } from '../../context/XPContext';
 import { MAJOR_MARKS } from '../../data/marksData';
 import { SettingsModal } from './SettingsModal';
 import { resolvePosterCandidates } from '../../lib/posterCandidates';
+import { getProgressFill, getProgressTransitionMs } from '../../lib/progressVisuals';
 
 interface ProfileViewProps {
     onClose: () => void;
@@ -62,6 +63,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose }) => {
     const [tempBio, setTempBio] = useState(bio);
     const [tempAvatar, setTempAvatar] = useState(avatarId);
     const [showSettings, setShowSettings] = useState(false);
+    const progressFill = getProgressFill(progressPercentage);
+    const progressTransitionMs = getProgressTransitionMs(progressPercentage);
 
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -282,8 +285,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose }) => {
                                     </div>
                                     <div className="h-1 w-full bg-[#1A1A1A] rounded-full overflow-hidden border border-white/5 relative">
                                         <div
-                                            className="h-full bg-gradient-to-r from-sage/40 to-sage transition-all duration-1000 ease-out relative"
-                                            style={{ width: `${progressPercentage}%` }}
+                                            className="h-full relative"
+                                            style={{
+                                                width: `${progressPercentage}%`,
+                                                background: progressFill,
+                                                transitionProperty: 'width, background',
+                                                transitionDuration: `${progressTransitionMs}ms`,
+                                                transitionTimingFunction: 'cubic-bezier(0.22, 0.61, 0.36, 1)'
+                                            }}
                                         >
                                             <div className="absolute right-0 top-0 bottom-0 w-[2px] bg-white/50 blur-[1px] animate-pulse"></div>
                                         </div>
