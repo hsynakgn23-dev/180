@@ -152,7 +152,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
 
     return (
         <div
-            className={`group relative pt-6 pb-6 border-b border-gray-100/5 flex gap-6 animate-fade-in hover:bg-transparent transition-all duration-500 px-4 -mx-4 rounded-xl border border-transparent
+            className={`group relative pt-6 pb-6 border-b border-gray-100/5 flex gap-3 sm:gap-4 md:gap-6 animate-fade-in hover:bg-transparent transition-all duration-500 px-4 -mx-4 rounded-xl border border-transparent
             ${isFollowing ? 'shadow-[0_0_20px_rgba(138,154,91,0.05)] border-sage/10 bg-gradient-to-r from-sage/5 to-transparent' : 'hover:border-gray-100/5 hover:shadow-sm'}
         `}
         >
@@ -236,7 +236,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
                     <button
                         onClick={handleEcho}
                         disabled={echoed}
-                        className={`flex items-center gap-2 group/btn transition-colors ${echoed ? 'text-sage cursor-default' : 'text-gray-300 hover:text-sage'}`}
+                        className={`flex items-center gap-2 group/btn transition-colors ${echoed ? 'text-clay cursor-default' : 'text-gray-300 hover:text-clay'}`}
                     >
                         <div className={`transition-transform duration-500 ${echoed ? 'scale-110' : 'group-hover/btn:scale-110'}`}>
                             <MarkIcons.Echo size={16} />
@@ -248,9 +248,9 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
 
                     <button
                         onClick={() => setShowReply(!showReply)}
-                        className="flex items-center gap-2 group/btn transition-colors text-gray-300 hover:text-sage"
+                        className="flex items-center gap-2 group/btn transition-colors text-gray-300 hover:text-clay"
                     >
-                        <span className="text-[10px] tracking-widest font-medium group-hover/btn:underline decoration-sage/50 underline-offset-4">
+                        <span className="text-[10px] tracking-widest font-medium group-hover/btn:underline decoration-clay/50 underline-offset-4">
                             WHISPER BACK ({replies.length})
                         </span>
                     </button>
@@ -292,7 +292,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
                                         )}
 
                                         <div className="flex justify-end">
-                                            <button className="text-[9px] text-gray-500 hover:text-sage flex items-center gap-1 transition-colors group/echo">
+                                            <button className="text-[9px] text-gray-500 hover:text-clay flex items-center gap-1 transition-colors group/echo">
                                                 <MarkIcons.Echo size={10} className="group-hover/echo:scale-110 transition-transform" />
                                                 <span className="opacity-0 group-hover/reply:opacity-100 transition-opacity duration-300">ECHO</span>
                                             </button>

@@ -38,7 +38,7 @@ export const NotificationCenter: React.FC = () => {
             {isOpen && (
                 <>
                     <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-                    <div className="absolute right-0 mt-2 w-72 bg-[#121212] border border-white/10 rounded-lg shadow-2xl z-50 animate-fade-in overflow-hidden">
+                    <div className="absolute right-0 mt-2 w-[min(18rem,calc(100vw-1rem))] bg-[#121212] border border-white/10 rounded-lg shadow-2xl z-50 animate-fade-in overflow-hidden">
                         <div className="p-3 border-b border-white/5 bg-white/5">
                             <h3 className="text-[10px] font-bold tracking-[0.2em] text-sage uppercase">
                                 Echo Chamber

@@ -86,7 +86,7 @@ export const Arena: React.FC = () => {
     }, [filter, query, rituals, sortMode]);
 
     return (
-        <section className="max-w-4xl mx-auto px-6 mb-32 animate-slide-up">
+        <section className="max-w-4xl mx-auto px-4 sm:px-6 mb-32 animate-slide-up">
             <div className="flex flex-col items-center mb-10 opacity-70">
                 <div className="w-px h-12 bg-sage/20 mb-4" />
                 <h2 className="text-xs font-bold tracking-[0.3em] text-sage uppercase">
@@ -98,7 +98,7 @@ export const Arena: React.FC = () => {
             </div>
 
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6 border-b border-sage/10 pb-3">
-                <div className="flex gap-6">
+                <div className="flex gap-4 sm:gap-6">
                     <button
                         onClick={() => setFilter('all')}
                         className={`text-[10px] uppercase tracking-widest transition-colors ${filter === 'all' ? 'text-sage font-bold' : 'text-gray-500 hover:text-gray-300'}`}
@@ -113,17 +113,17 @@ export const Arena: React.FC = () => {
                     </button>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex w-full md:w-auto flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
                     <input
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
                         placeholder="Search comments..."
-                        className="w-44 bg-[#121212] border border-white/10 text-[11px] text-[#E5E4E2] px-3 py-1.5 rounded outline-none focus:border-sage/40"
+                        className="w-full sm:w-56 md:w-44 bg-[#121212] border border-white/10 text-[11px] text-[#E5E4E2] px-3 py-1.5 rounded outline-none focus:border-sage/40"
                     />
                     <select
                         value={sortMode}
                         onChange={(e) => setSortMode(e.target.value as 'latest' | 'echoes')}
-                        className="bg-[#141414] border border-white/10 text-[11px] text-[#E5E4E2] px-2 py-1.5 rounded outline-none focus:border-sage/40"
+                        className="w-full sm:w-auto bg-[#141414] border border-white/10 text-[11px] text-[#E5E4E2] px-2 py-1.5 rounded outline-none focus:border-sage/40"
                     >
                         <option value="latest">Latest</option>
                         <option value="echoes">Most Echoed</option>

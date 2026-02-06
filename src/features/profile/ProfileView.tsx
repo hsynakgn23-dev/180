@@ -4,6 +4,7 @@ import { MAJOR_MARKS } from '../../data/marksData';
 import { SettingsModal } from './SettingsModal';
 import { resolvePosterCandidates } from '../../lib/posterCandidates';
 import { PROGRESS_EASING, getProgressFill, getProgressTransitionMs } from '../../lib/progressVisuals';
+import { GearIcon } from '../../components/icons/GearIcon';
 
 interface ProfileViewProps {
     onClose: () => void;
@@ -165,22 +166,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
             {/* Sign Out Button (Top Left) */}
             <button
                 onClick={logout}
-                className="absolute top-8 left-8 text-[10px] tracking-widest uppercase text-red-400/60 hover:text-red-400 transition-colors z-50 p-4 font-bold"
+                className="absolute top-3 left-3 sm:top-8 sm:left-8 text-[9px] sm:text-[10px] tracking-widest uppercase text-red-400/60 hover:text-red-400 transition-colors z-50 p-2 sm:p-4 font-bold"
             >
                 Sign Out
             </button>
 
-            <div className="absolute top-8 right-8 z-50 flex items-center gap-2">
+            <div className="absolute top-3 right-3 sm:top-8 sm:right-8 z-50 flex items-center gap-1.5 sm:gap-2">
                 <button
                     onClick={() => setShowSettings(true)}
-                    className="text-xs tracking-widest uppercase p-3 font-bold border border-sage/30 rounded hover:border-sage/60 hover:text-sage transition-colors"
-                    style={{ color: 'var(--color-highlight)' }}
+                    className="h-9 w-9 rounded-full border border-sage/30 hover:border-clay/60 text-clay/80 hover:text-clay transition-colors flex items-center justify-center bg-[#1A1A1A]/80"
+                    title="Settings"
+                    aria-label="Open settings"
                 >
-                    Settings
+                    <GearIcon className="w-4 h-4" />
                 </button>
                 <button
                     onClick={handleClose}
-                    className="text-xs tracking-widest uppercase transition-colors p-3 font-bold hover:scale-105"
+                    className="text-[10px] sm:text-xs tracking-widest uppercase transition-colors p-2 sm:p-3 font-bold hover:scale-105"
                     style={{ color: 'var(--color-highlight)' }}
                 >
                     Close
@@ -188,7 +190,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
             </div>
 
             {/* Content Container - Two Column Layout */}
-            <div className="w-full max-w-7xl px-6 md:px-12 pb-16 pt-24">
+            <div className="w-full max-w-7xl px-4 sm:px-6 md:px-12 pb-16 pt-20 sm:pt-24">
                 {/* Header - 180 Absolute Cinema */}
                 <header className="mb-12 text-center animate-fade-in">
                     <h1 className="text-4xl md:text-5xl font-bold tracking-tighter text-sage mb-3 drop-shadow-sm">180</h1>
@@ -226,7 +228,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                                             <img
                                                 src={avatarUrl}
                                                 alt="User Avatar"
-                                                className="w-full h-full object-cover grayscale opacity-80 hover:opacity-100 transition-all duration-700 hover:scale-105"
+                                                className="w-full h-full object-cover transition-all duration-700 hover:scale-105"
                                             />
                                         ) : (
                                             <div className={`w-20 h-20 rounded-full flex items-center justify-center text-2xl text-sage/50 font-serif italic ${avatarId === 'geo_1' ? 'bg-sage/10' : avatarId === 'geo_2' ? 'bg-clay/10' : 'bg-gray-50/5'}`}>
@@ -238,14 +240,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                                     {/* Settings Icon */}
                                     <button
                                         onClick={() => setShowSettings(true)}
-                                        className="absolute -bottom-1 -right-1 w-7 h-7 bg-[#1A1A1A] hover:bg-sage/10 rounded-full flex items-center justify-center border border-sage/20 transition-all hover:scale-110"
+                                        className="absolute -bottom-1 -right-1 w-8 h-8 bg-[#1A1A1A] hover:bg-clay/10 rounded-full flex items-center justify-center border border-sage/20 hover:border-clay/30 transition-all hover:scale-110"
                                         title="Ayarlar"
                                     >
-                                        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className="text-sage/60">
-                                            <circle cx="2" cy="8" r="1.5" />
-                                            <circle cx="8" cy="8" r="1.5" />
-                                            <circle cx="14" cy="8" r="1.5" />
-                                        </svg>
+                                        <GearIcon className="w-4 h-4 text-clay/80" />
                                     </button>
                                 </div>
 
@@ -475,7 +473,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                                     <div className="text-[9px] tracking-[0.2em] text-gray-500 uppercase mb-4 pl-2">
                                         {category} Marks
                                     </div>
-                                    <div className="grid grid-cols-5 md:grid-cols-7 gap-x-3 gap-y-8">
+                                    <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-7 gap-x-3 gap-y-8">
                                         {MAJOR_MARKS.filter(m => m.category === category).map(mark => {
                                             const isUnlocked = marks.includes(mark.id);
                                             const isFeatured = featuredMarks.includes(mark.id);

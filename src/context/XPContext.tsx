@@ -148,69 +148,78 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         bio: "A silent observer.",
         avatarId: "geo_1"
     });
-
-    // Load data when user changes
-    useEffect(() => {
-        if (user) {
-            const userKey = `180_xp_data_${user.email}`;
-            const stored = localStorage.getItem(userKey);
-            if (stored) {
-                const parsed = JSON.parse(stored);
-                setState({
-                    ...parsed,
-                    dailyRituals: Array.isArray(parsed.dailyRituals)
-                        ? parsed.dailyRituals.map((ritual: RitualLog) => normalizeRitualLog(ritual))
-                        : [],
-                    marks: parsed.marks || [],
-                    featuredMarks: parsed.featuredMarks || [],
-                    activeDays: parsed.activeDays || [],
-                    uniqueGenres: parsed.uniqueGenres || [],
-                    streak: parsed.streak || 0,
-                    lastStreakDate: parsed.lastStreakDate || null,
-                    echoesReceived: parsed.echoesReceived || 0,
-                    echoesGiven: parsed.echoesGiven || 0,
-                    echoHistory: parsed.echoHistory || [],
-                    followers: parsed.followers || 0,
-                    nonConsecutiveCount: parsed.nonConsecutiveCount || 0,
-                    bio: parsed.bio || "A silent observer.",
-                    avatarId: parsed.avatarId || "geo_1"
-                });
-                previousLeagueIndexRef.current = getLeagueIndexFromXp(parsed.totalXP || 0);
-            } else {
-                // New user default state
-                const defaultState: XPState = {
-                    totalXP: 0,
-                    lastLoginDate: null,
-                    dailyDwellXP: 0,
-                    lastDwellDate: null,
-                    dailyRituals: [],
-                    marks: [],
-                    featuredMarks: [],
-                    activeDays: [],
-                    uniqueGenres: [],
-                    streak: 0,
-                    lastStreakDate: null,
-                    echoesReceived: 0,
-                    echoesGiven: 0,
-                    echoHistory: [],
-                    followers: 0,
-                    following: [],
-                    nonConsecutiveCount: 0,
-                    bio: "A silent observer.",
-                    avatarId: "geo_1"
-                };
-                setState(defaultState);
-                localStorage.setItem(userKey, JSON.stringify(defaultState));
-                previousLeagueIndexRef.current = getLeagueIndexFromXp(defaultState.totalXP);
-            }
-        }
-    }, [user]);
-
     const [whisper, setWhisper] = useState<string | null>(null);
     const [levelUpEvent, setLevelUpEvent] = useState<LeagueInfo | null>(null);
     const [levelUpQueue, setLevelUpQueue] = useState<LeagueInfo[]>([]);
     const previousLeagueIndexRef = useRef(getLeagueIndexFromXp(state.totalXP));
     const pendingWelcomeWhisperRef = useRef(false);
+    const [isXpHydrated, setIsXpHydrated] = useState(false);
+
+    // Load data when user changes
+    useEffect(() => {
+        setIsXpHydrated(false);
+        setLevelUpEvent(null);
+        setLevelUpQueue([]);
+
+        if (!user) {
+            previousLeagueIndexRef.current = getLeagueIndexFromXp(0);
+            return;
+        }
+
+        const userKey = `180_xp_data_${user.email}`;
+        const stored = localStorage.getItem(userKey);
+        if (stored) {
+            const parsed = JSON.parse(stored);
+            setState({
+                ...parsed,
+                dailyRituals: Array.isArray(parsed.dailyRituals)
+                    ? parsed.dailyRituals.map((ritual: RitualLog) => normalizeRitualLog(ritual))
+                    : [],
+                marks: parsed.marks || [],
+                featuredMarks: parsed.featuredMarks || [],
+                activeDays: parsed.activeDays || [],
+                uniqueGenres: parsed.uniqueGenres || [],
+                streak: parsed.streak || 0,
+                lastStreakDate: parsed.lastStreakDate || null,
+                echoesReceived: parsed.echoesReceived || 0,
+                echoesGiven: parsed.echoesGiven || 0,
+                echoHistory: parsed.echoHistory || [],
+                followers: parsed.followers || 0,
+                nonConsecutiveCount: parsed.nonConsecutiveCount || 0,
+                bio: parsed.bio || "A silent observer.",
+                avatarId: parsed.avatarId || "geo_1"
+            });
+            previousLeagueIndexRef.current = getLeagueIndexFromXp(parsed.totalXP || 0);
+        } else {
+            // New user default state
+            const defaultState: XPState = {
+                totalXP: 0,
+                lastLoginDate: null,
+                dailyDwellXP: 0,
+                lastDwellDate: null,
+                dailyRituals: [],
+                marks: [],
+                featuredMarks: [],
+                activeDays: [],
+                uniqueGenres: [],
+                streak: 0,
+                lastStreakDate: null,
+                echoesReceived: 0,
+                echoesGiven: 0,
+                echoHistory: [],
+                followers: 0,
+                following: [],
+                nonConsecutiveCount: 0,
+                bio: "A silent observer.",
+                avatarId: "geo_1"
+            };
+            setState(defaultState);
+            localStorage.setItem(userKey, JSON.stringify(defaultState));
+            previousLeagueIndexRef.current = getLeagueIndexFromXp(defaultState.totalXP);
+        }
+
+        setIsXpHydrated(true);
+    }, [user?.email]);
 
     const getToday = () => new Date().toISOString().split('T')[0];
 
@@ -308,6 +317,8 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     // --- EFFECT: Global Level Up Detection ---
     // Collect all crossed leagues in a queue so transitions are not skipped.
     useEffect(() => {
+        if (!isXpHydrated) return;
+
         const currentLeagueIndex = getLeagueIndexFromXp(state.totalXP);
         const previousLeagueIndex = previousLeagueIndexRef.current;
 
@@ -322,13 +333,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         }
 
         previousLeagueIndexRef.current = currentLeagueIndex;
-    }, [state.totalXP]);
-
-    useEffect(() => {
-        setLevelUpEvent(null);
-        setLevelUpQueue([]);
-        previousLeagueIndexRef.current = getLeagueIndexFromXp(state.totalXP);
-    }, [user?.email]);
+    }, [isXpHydrated, state.totalXP]);
 
     // Display one queued transition at a time.
     useEffect(() => {
@@ -340,7 +345,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
     // 1. Daily Login & Persistence
     useEffect(() => {
-        if (!user) return;
+        if (!user || !isXpHydrated) return;
 
         const today = getToday();
 
@@ -384,7 +389,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             localStorage.setItem(`180_xp_data_${user.email}`, JSON.stringify(updated));
             return updated;
         });
-    }, [user?.email]);
+    }, [isXpHydrated, user?.email]);
 
     useEffect(() => {
         if (!pendingWelcomeWhisperRef.current) return;

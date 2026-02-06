@@ -24,7 +24,7 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
         <section className="max-w-6xl mx-auto mb-24">
 
             {/* Header */}
-            <div className="flex justify-between items-end px-6 mb-8 border-b border-gray-200/50 pb-4">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end items-start gap-4 px-4 sm:px-6 mb-8 border-b border-gray-200/50 pb-4">
                 <div>
                     <h3 className="text-sm font-bold tracking-widest text-sage uppercase">GÜNÜN FİLMLERİ</h3>
                     <span className="text-[10px] font-serif italic text-gray-400">Her gün özenle seçilen 5 film</span>
@@ -33,7 +33,7 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
             </div>
 
             {/* Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 px-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6 px-4 sm:px-6">
                 {movies.map((movie, index) => {
                     // Mystery Slot Logic for 5th Movie (index 4)
                     const isMysterySlot = index === 4;

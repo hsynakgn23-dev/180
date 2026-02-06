@@ -3,6 +3,7 @@ import { useXP } from '../context/XPContext';
 import { MinorMarks } from '../features/marks/MinorMarks';
 import { MAJOR_MARKS } from '../data/marksData';
 import { PROGRESS_EASING, getProgressFill, getProgressTransitionMs } from '../lib/progressVisuals';
+import { GearIcon } from './icons/GearIcon';
 
 interface ProfileWidgetProps {
     onClick?: () => void;
@@ -41,19 +42,19 @@ export const ProfileWidget: React.FC<ProfileWidgetProps> = ({ onClick, onOpenSet
         <div className="flex flex-col items-end gap-2 animate-fade-in pointer-events-auto">
             <div
                 onClick={onClick}
-                className="bg-[var(--color-bg)]/95 backdrop-blur-xl shadow-2xl border border-white/5 px-5 py-4 rounded-2xl flex flex-col pointer-events-auto transition-all hover:border-sage/30 cursor-pointer min-w-[340px] max-w-[380px] group"
+                className="bg-[var(--color-bg)]/95 backdrop-blur-xl shadow-2xl border border-white/5 px-4 sm:px-5 py-4 rounded-2xl flex flex-col pointer-events-auto transition-all hover:border-sage/30 cursor-pointer w-[min(92vw,380px)] sm:min-w-[340px] sm:max-w-[380px] group"
             >
                 <div className="flex items-center justify-between gap-4 mb-3">
                     <div className="flex items-center gap-3 min-w-0">
                         <div className="w-11 h-11 shrink-0 rounded-lg bg-[#0a0a0a] border border-white/10 overflow-hidden relative shadow-inner">
                             {avatarUrl ? (
-                                <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover grayscale opacity-80 group-hover:grayscale-0 transition-all duration-500" />
+                                <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center text-xs text-sage/50 font-mono">
                                     {user?.name?.substring(0, 2).toUpperCase() || 'OB'}
                                 </div>
                             )}
-                            <div className="absolute inset-0 bg-sage/10 mix-blend-overlay pointer-events-none" />
+                            {!avatarUrl && <div className="absolute inset-0 bg-sage/10 mix-blend-overlay pointer-events-none" />}
                         </div>
 
                         <div className="min-w-0">
@@ -69,16 +70,18 @@ export const ProfileWidget: React.FC<ProfileWidgetProps> = ({ onClick, onOpenSet
                     <div className="text-right">
                         <p className="text-[9px] uppercase tracking-[0.2em] text-gray-500">Profile</p>
                         <div className="flex items-center justify-end gap-2 mt-1">
-                            <p className="text-[10px] text-sage/80 uppercase tracking-[0.18em]">Open Archive</p>
+                            <p className="text-[9px] sm:text-[10px] text-sage/80 uppercase tracking-[0.18em]">Open Archive</p>
                             <button
                                 type="button"
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     onOpenSettings?.();
                                 }}
-                                className="h-6 px-2 rounded border border-sage/25 bg-white/5 text-[9px] tracking-[0.18em] uppercase text-sage/80 hover:text-sage hover:border-sage/40 transition-colors"
+                                className="h-6 w-6 rounded-full border border-sage/25 bg-white/5 text-clay/80 hover:text-clay hover:border-clay/40 transition-colors flex items-center justify-center"
+                                title="Settings"
+                                aria-label="Open settings"
                             >
-                                Settings
+                                <GearIcon className="w-3.5 h-3.5" />
                             </button>
                         </div>
                     </div>

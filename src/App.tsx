@@ -45,7 +45,7 @@ const AppContent = () => {
       <DebugPanel />
 
       {/* Top Right Controls */}
-      <div className="fixed top-6 right-6 z-40 flex items-center gap-4">
+      <div className="fixed top-3 right-3 sm:top-6 sm:right-6 z-40 flex items-start sm:items-center gap-2 sm:gap-4 max-w-[calc(100vw-1.5rem)]">
         <NotificationCenter />
         <ProfileWidget
           onClick={() => {
@@ -90,7 +90,7 @@ const AppContent = () => {
       <div className={`min-h-screen font-sans selection:bg-sage selection:text-white transition-opacity duration-500 ${activeMovie || showProfile || detailMovie ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
         <div className="h-[160px] w-full bg-transparent flex items-end justify-center pb-8 pointer-events-none" />
 
-        <main className="container mx-auto px-6 relative z-10">
+        <main className="container mx-auto px-4 sm:px-6 relative z-10">
           <header className="mb-16 text-center animate-fade-in">
             <h1 className="text-5xl md:text-7xl font-bold tracking-tighter text-sage mb-4 drop-shadow-sm">180</h1>
             <p className="text-clay font-medium tracking-[0.2em] text-sm md:text-base uppercase">Absolute Cinema</p>
