@@ -103,6 +103,8 @@ interface XPContextType {
 const MAX_DAILY_DWELL_XP = 20;
 const LEVEL_THRESHOLD = 500;
 export const LEAGUE_NAMES = Object.keys(LEAGUES_DATA);
+const getLeagueIndexFromXp = (xp: number): number =>
+    Math.min(Math.floor(xp / LEVEL_THRESHOLD), LEAGUE_NAMES.length - 1);
 const KNOWN_MOVIES_BY_ID = new Map(
     TMDB_SEEDS.map((movie) => [movie.id, { title: movie.title, posterPath: movie.posterPath }])
 );
@@ -173,6 +175,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                     bio: parsed.bio || "A silent observer.",
                     avatarId: parsed.avatarId || "geo_1"
                 });
+                previousLeagueIndexRef.current = getLeagueIndexFromXp(parsed.totalXP || 0);
             } else {
                 // New user default state
                 const defaultState: XPState = {
@@ -198,6 +201,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 };
                 setState(defaultState);
                 localStorage.setItem(userKey, JSON.stringify(defaultState));
+                previousLeagueIndexRef.current = getLeagueIndexFromXp(defaultState.totalXP);
             }
         }
     }, [user]);
@@ -205,8 +209,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     const [whisper, setWhisper] = useState<string | null>(null);
     const [levelUpEvent, setLevelUpEvent] = useState<LeagueInfo | null>(null);
     const [levelUpQueue, setLevelUpQueue] = useState<LeagueInfo[]>([]);
-    const previousLeagueIndexRef = useRef(0);
-    const didHydrateLeagueRef = useRef(false);
+    const previousLeagueIndexRef = useRef(getLeagueIndexFromXp(state.totalXP));
 
     const getToday = () => new Date().toISOString().split('T')[0];
 
@@ -304,20 +307,12 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     // --- EFFECT: Global Level Up Detection ---
     // Collect all crossed leagues in a queue so transitions are not skipped.
     useEffect(() => {
-        const currentLeagueIndex = Math.min(
-            Math.floor(state.totalXP / LEVEL_THRESHOLD),
-            LEAGUE_NAMES.length - 1
-        );
+        const currentLeagueIndex = getLeagueIndexFromXp(state.totalXP);
+        const previousLeagueIndex = previousLeagueIndexRef.current;
 
-        if (!didHydrateLeagueRef.current) {
-            previousLeagueIndexRef.current = currentLeagueIndex;
-            didHydrateLeagueRef.current = true;
-            return;
-        }
-
-        if (currentLeagueIndex > previousLeagueIndexRef.current) {
+        if (currentLeagueIndex > previousLeagueIndex) {
             const crossed: LeagueInfo[] = [];
-            for (let i = previousLeagueIndexRef.current + 1; i <= currentLeagueIndex; i += 1) {
+            for (let i = previousLeagueIndex + 1; i <= currentLeagueIndex; i += 1) {
                 const leagueName = LEAGUE_NAMES[i];
                 crossed.push(LEAGUES_DATA[leagueName]);
             }
@@ -329,9 +324,9 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     }, [state.totalXP]);
 
     useEffect(() => {
-        didHydrateLeagueRef.current = false;
         setLevelUpEvent(null);
         setLevelUpQueue([]);
+        previousLeagueIndexRef.current = getLeagueIndexFromXp(state.totalXP);
     }, [user?.email]);
 
     // Display one queued transition at a time.
@@ -544,7 +539,13 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
     // Debug Tools
     const debugAddXP = (amount: number) => {
-        updateState({ totalXP: state.totalXP + amount });
+        setState(prev => {
+            const updated = { ...prev, totalXP: prev.totalXP + amount };
+            if (user) {
+                localStorage.setItem(`180_xp_data_${user.email}`, JSON.stringify(updated));
+            }
+            return updated;
+        });
     };
 
     const debugUnlockMark = (markId: string) => {
@@ -557,7 +558,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         triggerWhisper("Identity shifted.");
     };
 
-    const leagueIndex = Math.min(Math.floor(state.totalXP / LEVEL_THRESHOLD), LEAGUE_NAMES.length - 1);
+    const leagueIndex = getLeagueIndexFromXp(state.totalXP);
     const leagueName = LEAGUE_NAMES[leagueIndex];
     const leagueInfo = LEAGUES_DATA[leagueName];
     const currentLevelStart = leagueIndex * LEVEL_THRESHOLD;
