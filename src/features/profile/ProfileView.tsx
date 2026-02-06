@@ -1,11 +1,59 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useXP, LEAGUES_DATA, LEAGUE_NAMES } from '../../context/XPContext';
 import { MAJOR_MARKS } from '../../data/marksData';
 import { SettingsModal } from './SettingsModal';
+import { resolvePosterCandidates } from '../../lib/posterCandidates';
 
 interface ProfileViewProps {
     onClose: () => void;
 }
+
+type FilmCommentSummary = {
+    movieId: number;
+    title: string;
+    count: number;
+    lastDate: string;
+    lastText: string;
+    genre?: string;
+    posterPath?: string;
+};
+
+const CommentFilmPoster: React.FC<{ movieId: number; posterPath?: string; title: string }> = ({ movieId, posterPath, title }) => {
+    const [candidateIndex, setCandidateIndex] = useState(0);
+    const candidates = useMemo(
+        () => resolvePosterCandidates(movieId, posterPath, 'w200'),
+        [movieId, posterPath]
+    );
+
+    useEffect(() => {
+        setCandidateIndex(0);
+    }, [movieId, posterPath]);
+
+    const currentSrc = candidates[candidateIndex] ?? null;
+
+    if (!currentSrc) {
+        return (
+            <div className="w-16 h-24 bg-white/5 border border-white/10 rounded-md flex items-center justify-center text-[9px] uppercase tracking-[0.18em] text-sage/60">
+                {title.slice(0, 2)}
+            </div>
+        );
+    }
+
+    return (
+        <img
+            src={currentSrc}
+            alt={title}
+            referrerPolicy="origin"
+            className="w-16 h-24 object-cover rounded-md border border-white/10 bg-[#0f0f0f]"
+            onError={() => {
+                const next = candidateIndex + 1;
+                if (next < candidates.length) {
+                    setCandidateIndex(next);
+                }
+            }}
+        />
+    );
+};
 
 export const ProfileView: React.FC<ProfileViewProps> = ({ onClose }) => {
     const { xp, league, progressPercentage, marks, daysPresent, streak, featuredMarks, toggleFeaturedMark, dailyRituals, nextLevelXP, bio, avatarId, updateIdentity, user, logout, updateAvatar, avatarUrl } = useXP();
@@ -44,6 +92,40 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose }) => {
     const topGenres = Object.entries(genreCounts)
         .sort(([, a], [, b]) => b - a)
         .slice(0, 3);
+
+    const commentedFilms = useMemo<FilmCommentSummary[]>(() => {
+        const filmMap = new Map<number, FilmCommentSummary>();
+        for (const ritual of dailyRituals) {
+            const existing = filmMap.get(ritual.movieId);
+            if (!existing) {
+                filmMap.set(ritual.movieId, {
+                    movieId: ritual.movieId,
+                    title: ritual.movieTitle || `Film #${ritual.movieId}`,
+                    count: 1,
+                    lastDate: ritual.date,
+                    lastText: ritual.text,
+                    genre: ritual.genre,
+                    posterPath: ritual.posterPath
+                });
+                continue;
+            }
+            existing.count += 1;
+            if (ritual.date >= existing.lastDate) {
+                existing.lastDate = ritual.date;
+                existing.lastText = ritual.text;
+                existing.genre = ritual.genre || existing.genre;
+                existing.posterPath = ritual.posterPath || existing.posterPath;
+                existing.title = ritual.movieTitle || existing.title;
+            }
+        }
+
+        return Array.from(filmMap.values()).sort((a, b) => {
+            if (b.count !== a.count) return b.count - a.count;
+            return b.lastDate.localeCompare(a.lastDate);
+        });
+    }, [dailyRituals]);
+
+    const mostWrittenFilm = commentedFilms[0];
 
 
     useEffect(() => {
@@ -279,8 +361,82 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose }) => {
                         </div>
                     </div>
 
-                    {/* RIGHT COLUMN - The Vault & Memory Log */}
+                    {/* RIGHT COLUMN - Activity & Vault */}
                     <div className="space-y-6">
+                        {/* Activity Pulse */}
+                        <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
+                            <div className="flex justify-between items-end mb-6 border-b border-gray-100/10 pb-4">
+                                <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase">Activity Pulse</h3>
+                                <span className="text-[9px] tracking-wider text-gray-500 uppercase">
+                                    Profile Feed
+                                </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                <div className="bg-white/5 border border-white/10 rounded-lg px-3 py-3">
+                                    <div className="text-[9px] uppercase tracking-[0.18em] text-gray-500 mb-1">Comments</div>
+                                    <div className="text-2xl font-bold text-sage">{dailyRituals.length}</div>
+                                </div>
+                                <div className="bg-white/5 border border-white/10 rounded-lg px-3 py-3">
+                                    <div className="text-[9px] uppercase tracking-[0.18em] text-gray-500 mb-1">Films</div>
+                                    <div className="text-2xl font-bold text-sage">{commentedFilms.length}</div>
+                                </div>
+                                <div className="bg-white/5 border border-white/10 rounded-lg px-3 py-3">
+                                    <div className="text-[9px] uppercase tracking-[0.18em] text-gray-500 mb-1">Top Genre</div>
+                                    <div className="text-sm font-bold text-[#E5E4E2] uppercase">
+                                        {topGenres[0]?.[0] || 'None'}
+                                    </div>
+                                </div>
+                                <div className="bg-white/5 border border-white/10 rounded-lg px-3 py-3">
+                                    <div className="text-[9px] uppercase tracking-[0.18em] text-gray-500 mb-1">Most Written</div>
+                                    <div className="text-sm font-bold text-[#E5E4E2] line-clamp-1">
+                                        {mostWrittenFilm?.title || 'No records'}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Commented Films Card */}
+                        <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
+                            <div className="flex justify-between items-end mb-6 border-b border-gray-100/10 pb-4">
+                                <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase">Commented Films</h3>
+                                <span className="text-[9px] tracking-wider text-gray-500">
+                                    {commentedFilms.length} Titles
+                                </span>
+                            </div>
+
+                            {commentedFilms.length > 0 ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {commentedFilms.slice(0, 6).map((film) => (
+                                        <article key={film.movieId} className="bg-white/5 border border-white/10 rounded-lg p-3 flex gap-3 hover:border-sage/20 transition-colors">
+                                            <CommentFilmPoster movieId={film.movieId} posterPath={film.posterPath} title={film.title} />
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-start justify-between gap-2 mb-1">
+                                                    <h4 className="text-xs font-bold tracking-wide text-[#E5E4E2] uppercase line-clamp-2">
+                                                        {film.title}
+                                                    </h4>
+                                                    <span className="text-[10px] font-mono text-sage whitespace-nowrap">
+                                                        x{film.count}
+                                                    </span>
+                                                </div>
+                                                <p className="text-[11px] font-serif italic text-gray-400 line-clamp-2 leading-relaxed">
+                                                    "{film.lastText}"
+                                                </p>
+                                                <div className="mt-2 flex items-center gap-2 text-[9px] uppercase tracking-widest text-gray-500">
+                                                    <span>{film.lastDate}</span>
+                                                    {film.genre && <span className="text-sage/70">{film.genre}</span>}
+                                                </div>
+                                            </div>
+                                        </article>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="text-center py-8 text-[10px] text-gray-600 font-serif italic border border-dashed border-gray-800 rounded">
+                                    No commented films yet. Your next ritual will start this archive.
+                                </div>
+                            )}
+                        </div>
+
                         {/* The Vault Card */}
                         <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
                             <div className="flex justify-between items-end mb-6 border-b border-gray-100/10 pb-4">
@@ -355,12 +511,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose }) => {
                             <div className="flex justify-between items-end mb-6 border-b border-gray-100/10 pb-4">
                                 <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase">Memory Log</h3>
                                 <span className="text-[9px] tracking-wider text-gray-500">
-                                    {dailyRituals ? dailyRituals.length : 0} Records
+                                    {dailyRituals.length} Records
                                 </span>
                             </div>
 
                             <div className="flex flex-col gap-4 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
-                                {dailyRituals && dailyRituals.length > 0 ? (
+                                {dailyRituals.length > 0 ? (
                                     dailyRituals.map((ritual) => (
                                         <div key={ritual.id} className="group relative bg-white/5 border border-white/5 p-4 rounded hover:border-sage/20 transition-colors">
                                             <div className="flex justify-between items-start mb-2">

@@ -17,7 +17,7 @@ export const WriteOverlay: React.FC<WriteOverlayProps> = ({ movie, onClose }) =>
 
     const handleSubmit = () => {
         if (text.length === 0) return;
-        submitRitual(movie.id, text, rating, movie.genre);
+        submitRitual(movie.id, text, rating, movie.genre, movie.title, movie.posterPath);
         onClose();
     };
 

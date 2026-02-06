@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { MAJOR_MARKS } from '../data/marksData';
+import { TMDB_SEEDS } from '../data/tmdbSeeds';
 
 // Types
 interface EchoLog {
@@ -17,6 +18,7 @@ interface RitualLog {
     text: string;
     genre?: string;
     rating?: number;
+    posterPath?: string;
 }
 
 interface XPState {
@@ -85,7 +87,7 @@ interface XPContextType {
     avatarId: string;
     updateIdentity: (bio: string, avatarId: string) => void;
     toggleFollowUser: (username: string) => void;
-    submitRitual: (movieId: number, text: string, rating: number, genre: string, title?: string) => void;
+    submitRitual: (movieId: number, text: string, rating: number, genre: string, title?: string, posterPath?: string) => void;
     echoRitual: (ritualId: string) => void;
     receiveEcho: (movieTitle?: string) => void;
     debugAddXP: (amount: number) => void;
@@ -101,6 +103,19 @@ interface XPContextType {
 const MAX_DAILY_DWELL_XP = 20;
 const LEVEL_THRESHOLD = 500;
 export const LEAGUE_NAMES = Object.keys(LEAGUES_DATA);
+const KNOWN_MOVIES_BY_ID = new Map(
+    TMDB_SEEDS.map((movie) => [movie.id, { title: movie.title, posterPath: movie.posterPath }])
+);
+
+const normalizeRitualLog = (ritual: RitualLog): RitualLog => {
+    const knownMovie = KNOWN_MOVIES_BY_ID.get(ritual.movieId);
+    const invalidTitle = !ritual.movieTitle || ritual.movieTitle === 'Unknown Title';
+    return {
+        ...ritual,
+        movieTitle: invalidTitle ? knownMovie?.title || ritual.movieTitle || `Film #${ritual.movieId}` : ritual.movieTitle,
+        posterPath: ritual.posterPath || knownMovie?.posterPath
+    };
+};
 
 const XPContext = createContext<XPContextType | undefined>(undefined);
 
@@ -141,7 +156,9 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 const parsed = JSON.parse(stored);
                 setState({
                     ...parsed,
-                    dailyRituals: parsed.dailyRituals || [],
+                    dailyRituals: Array.isArray(parsed.dailyRituals)
+                        ? parsed.dailyRituals.map((ritual: RitualLog) => normalizeRitualLog(ritual))
+                        : [],
                     marks: parsed.marks || [],
                     featuredMarks: parsed.featuredMarks || [],
                     activeDays: parsed.activeDays || [],
@@ -346,7 +363,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     }, [state.dailyDwellXP, state.lastDwellDate]);
 
     // 3. Ritual Submission
-    const submitRitual = (movieId: number, text: string, _rating: number, genre: string, title?: string) => {
+    const submitRitual = (movieId: number, text: string, _rating: number, genre: string, title?: string, posterPath?: string) => {
         const today = getToday();
         if (state.dailyRituals.some(r => r.date === today && r.movieId === movieId)) {
             triggerWhisper("Memory stored.");
@@ -397,10 +414,11 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             id: Date.now().toString(),
             date: today,
             movieId,
-            movieTitle: title || 'Unknown Title',
+            movieTitle: title || KNOWN_MOVIES_BY_ID.get(movieId)?.title || 'Unknown Title',
             text,
             genre,
-            rating: _rating
+            rating: _rating,
+            posterPath: posterPath || KNOWN_MOVIES_BY_ID.get(movieId)?.posterPath
         };
 
         if (!newUniqueGenres.includes(genre)) {
