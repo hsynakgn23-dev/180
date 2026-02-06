@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useDailyMovies } from '../../hooks/useDailyMovies';
 import { useXP } from '../../context/XPContext';
 import { MovieCard } from './MovieCard';
@@ -12,16 +12,47 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
     const { movies, loading } = useDailyMovies();
     const { dailyRitualsCount } = useXP();
     const scrollerRef = useRef<HTMLDivElement | null>(null);
+    const [canScrollLeft, setCanScrollLeft] = useState(false);
+    const [canScrollRight, setCanScrollRight] = useState(true);
+
+    const syncScrollState = () => {
+        const container = scrollerRef.current;
+        if (!container) return;
+        const maxScrollLeft = container.scrollWidth - container.clientWidth;
+        setCanScrollLeft(container.scrollLeft > 6);
+        setCanScrollRight(container.scrollLeft < maxScrollLeft - 6);
+    };
 
     const scrollMovies = (direction: 'left' | 'right') => {
         const container = scrollerRef.current;
         if (!container) return;
-        const amount = Math.round(container.clientWidth * 0.82);
+        const firstCard = container.querySelector<HTMLElement>('[data-movie-card="true"]');
+        const styles = getComputedStyle(container);
+        const gapValue = parseFloat(styles.columnGap || styles.gap || '0');
+        const amount = firstCard
+            ? Math.round(firstCard.clientWidth + gapValue)
+            : Math.round(container.clientWidth * 0.82);
         container.scrollBy({
             left: direction === 'right' ? amount : -amount,
             behavior: 'smooth'
         });
+        window.setTimeout(syncScrollState, 260);
     };
+
+    useEffect(() => {
+        syncScrollState();
+        const container = scrollerRef.current;
+        if (!container) return;
+
+        const onScroll = () => syncScrollState();
+        container.addEventListener('scroll', onScroll, { passive: true });
+        window.addEventListener('resize', syncScrollState);
+
+        return () => {
+            container.removeEventListener('scroll', onScroll);
+            window.removeEventListener('resize', syncScrollState);
+        };
+    }, [movies.length]);
 
     if (loading) {
         return (
@@ -47,7 +78,8 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
                         <button
                             type="button"
                             onClick={() => scrollMovies('left')}
-                            className="h-6 w-6 rounded-full border border-clay/30 bg-[#171717] text-clay/80 hover:text-clay hover:border-clay/60 transition-colors"
+                            disabled={!canScrollLeft}
+                            className="h-6 w-6 rounded-full border border-clay/30 bg-[#171717] text-clay/80 hover:text-clay hover:border-clay/60 transition-colors disabled:opacity-35 disabled:hover:border-clay/30 disabled:hover:text-clay/80"
                             aria-label="Scroll movies left"
                         >
                             &lt;
@@ -55,7 +87,8 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
                         <button
                             type="button"
                             onClick={() => scrollMovies('right')}
-                            className="h-6 w-6 rounded-full border border-clay/30 bg-[#171717] text-clay/80 hover:text-clay hover:border-clay/60 transition-colors"
+                            disabled={!canScrollRight}
+                            className="h-6 w-6 rounded-full border border-clay/30 bg-[#171717] text-clay/80 hover:text-clay hover:border-clay/60 transition-colors disabled:opacity-35 disabled:hover:border-clay/30 disabled:hover:text-clay/80"
                             aria-label="Scroll movies right"
                         >
                             &gt;
@@ -75,7 +108,7 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
                     const isLocked = isMysterySlot && dailyRitualsCount === 0;
 
                     return (
-                        <div key={movie.id} className="relative h-full min-w-[74vw] sm:min-w-[46vw] md:min-w-0 snap-start">
+                        <div key={movie.id} data-movie-card="true" className="relative h-full min-w-[74vw] sm:min-w-[46vw] md:min-w-0 snap-start">
                             {/* Wrapper for Blur Transition */}
                             <div className={`h-full transition-all duration-1000 ease-in-out ${isLocked ? 'blur-sm grayscale opacity-50' : 'blur-0 grayscale-0 opacity-100'}`}>
                                 <MovieCard

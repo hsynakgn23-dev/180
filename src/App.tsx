@@ -108,11 +108,11 @@ const AppContent = () => {
       )}
 
       <div className={`min-h-screen font-sans selection:bg-sage selection:text-white transition-opacity duration-500 ${activeMovie || showProfile || detailMovie ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-        <div className="h-[92px] sm:h-[160px] w-full bg-transparent flex items-end justify-center pb-3 sm:pb-8 pointer-events-none" />
+        <div className="h-[72px] sm:h-[160px] w-full bg-transparent flex items-end justify-center pb-2 sm:pb-8 pointer-events-none" />
 
         <main className="container mx-auto px-4 sm:px-6 relative z-10">
-          <header className="mb-10 sm:mb-16 text-center animate-fade-in">
-            <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold tracking-tighter text-sage mb-3 sm:mb-4 drop-shadow-sm">180</h1>
+          <header className="mb-8 sm:mb-16 text-center animate-fade-in">
+            <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold tracking-tighter text-sage mb-2 sm:mb-4 drop-shadow-sm">180</h1>
             <p className="text-clay font-medium tracking-[0.2em] text-sm md:text-base uppercase">Absolute Cinema</p>
           </header>
 

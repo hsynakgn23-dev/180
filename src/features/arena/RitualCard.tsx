@@ -152,8 +152,8 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
 
     return (
         <div
-            className={`group relative pt-4 sm:pt-6 pb-4 sm:pb-6 border border-white/8 sm:border-transparent sm:border-b sm:border-gray-100/5 flex flex-col sm:flex-row gap-3 sm:gap-4 md:gap-6 animate-fade-in hover:bg-transparent transition-all duration-500 px-3 sm:px-4 mx-0 sm:-mx-4 rounded-2xl sm:rounded-xl
-            ${isFollowing ? 'shadow-[0_0_20px_rgba(138,154,91,0.05)] border-sage/10 bg-gradient-to-r from-sage/5 to-transparent' : 'bg-white/[0.03] sm:bg-transparent hover:border-gray-100/5 hover:shadow-sm'}
+            className={`group relative pt-4 sm:pt-6 pb-4 sm:pb-6 border-b border-gray-100/5 flex flex-col sm:flex-row gap-3 sm:gap-4 md:gap-6 animate-fade-in hover:bg-transparent transition-all duration-500 px-4 sm:px-4 mx-0 sm:-mx-4
+            ${isFollowing ? 'bg-gradient-to-r from-sage/5 to-transparent' : ''}
         `}
         >
             <div className="shrink-0 pt-0 sm:pt-1 self-start group-hover:scale-105 transition-transform duration-500">
@@ -232,11 +232,11 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
                     </button>
                 )}
 
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-6">
                     <button
                         onClick={handleEcho}
                         disabled={echoed}
-                        className={`w-full sm:w-auto justify-center sm:justify-start px-3 py-2 sm:px-0 sm:py-0 rounded-lg sm:rounded-none border border-white/10 sm:border-0 flex items-center gap-2 group/btn transition-colors ${echoed ? 'text-clay cursor-default' : 'text-gray-300 hover:text-clay'}`}
+                        className={`w-full sm:w-auto justify-start px-0 py-1 sm:px-0 sm:py-0 rounded-none border-0 flex items-center gap-2 group/btn transition-colors ${echoed ? 'text-clay cursor-default' : 'text-gray-300 hover:text-clay'}`}
                     >
                         <div className={`transition-transform duration-500 ${echoed ? 'scale-110' : 'group-hover/btn:scale-110'}`}>
                             <MarkIcons.Echo size={16} />
@@ -248,7 +248,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
 
                     <button
                         onClick={() => setShowReply(!showReply)}
-                        className="w-full sm:w-auto justify-center sm:justify-start px-3 py-2 sm:px-0 sm:py-0 rounded-lg sm:rounded-none border border-white/10 sm:border-0 flex items-center gap-2 group/btn transition-colors text-gray-300 hover:text-clay"
+                        className="w-full sm:w-auto justify-start px-0 py-1 sm:px-0 sm:py-0 rounded-none border-0 flex items-center gap-2 group/btn transition-colors text-gray-300 hover:text-clay"
                     >
                         <span className="text-[10px] tracking-widest font-medium group-hover/btn:underline decoration-clay/50 underline-offset-4">
                             WHISPER BACK ({replies.length})

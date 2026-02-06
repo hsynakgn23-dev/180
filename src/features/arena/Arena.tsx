@@ -86,8 +86,8 @@ export const Arena: React.FC = () => {
     }, [filter, query, rituals, sortMode]);
 
     return (
-        <section className="max-w-4xl mx-auto px-4 sm:px-6 mb-32 animate-slide-up">
-            <div className="flex flex-col items-center mb-10 opacity-70">
+        <section className="max-w-4xl mx-auto px-0 sm:px-6 mb-32 animate-slide-up">
+            <div className="flex flex-col items-center mb-10 opacity-70 px-4 sm:px-0">
                 <div className="w-px h-12 bg-sage/20 mb-4" />
                 <h2 className="text-xs font-bold tracking-[0.3em] text-sage uppercase">
                     Ritual Feed
@@ -97,7 +97,7 @@ export const Arena: React.FC = () => {
                 </p>
             </div>
 
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6 border-b border-sage/10 pb-3">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6 border-b border-sage/10 pb-3 px-4 sm:px-0">
                 <div className="flex gap-4 sm:gap-6">
                     <button
                         onClick={() => setFilter('all')}
