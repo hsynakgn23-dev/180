@@ -1,4 +1,3 @@
-import { createClient } from '@supabase/supabase-js';
 import { TMDB_SEEDS } from '../../src/data/tmdbSeeds';
 import { DAILY_SLOTS, FALLBACK_GRADIENTS } from '../../src/data/dailyConfig';
 
@@ -38,7 +37,7 @@ const getBucketName = (): string => {
     return process.env.SUPABASE_STORAGE_BUCKET || 'posters';
 };
 
-const ensureBucket = async (supabase: ReturnType<typeof createClient>, bucket: string) => {
+const ensureBucket = async (supabase: any, bucket: string) => {
     const { data, error } = await supabase.storage.getBucket(bucket);
     if (data && !error) return;
 
@@ -70,7 +69,7 @@ const extFromContentType = (contentType: string | null): string => {
 };
 
 const uploadPoster = async (
-    supabase: ReturnType<typeof createClient>,
+    supabase: any,
     bucket: string,
     movieId: number,
     posterPath: string,
@@ -100,7 +99,7 @@ const uploadPoster = async (
 };
 
 const ensurePosters = async (
-    supabase: ReturnType<typeof createClient>,
+    supabase: any,
     bucket: string,
     movie: Movie
 ): Promise<Movie> => {
@@ -160,6 +159,7 @@ export default async function handler(req: any, res: any) {
         const supabaseUrl = getEnv('SUPABASE_URL');
         const supabaseServiceKey = getEnv('SUPABASE_SERVICE_ROLE_KEY');
         console.log('[daily-cron] env ok');
+        const { createClient } = await import('@supabase/supabase-js');
         const supabase = createClient(supabaseUrl, supabaseServiceKey, {
             auth: { persistSession: false }
         });
