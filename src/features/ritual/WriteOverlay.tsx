@@ -22,17 +22,17 @@ export const WriteOverlay: React.FC<WriteOverlayProps> = ({ movie, onClose }) =>
     };
 
     return (
-        <div className="fixed inset-0 z-50 bg-[#121212] flex items-center justify-center animate-fade-in p-6">
-            <div className="max-w-xl w-full">
+        <div className="fixed inset-0 z-50 bg-[#121212] flex items-center justify-center animate-fade-in p-4 sm:p-6">
+            <div className="max-w-xl w-full rounded-2xl border border-white/10 bg-[#121212]/95 px-4 sm:px-8 py-6 sm:py-8">
 
                 {/* Header (Minimal) */}
-                <div className="mb-12 text-center opacity-80">
-                    <h3 className="text-sm font-serif italic text-sage/60 mb-2">The Ritual</h3>
-                    <h2 className="text-3xl font-serif text-[#E5E4E2]">{movie.title}</h2>
+                <div className="mb-7 sm:mb-12 text-center opacity-80">
+                    <h3 className="text-sm italic text-sage/60 mb-2">The Ritual</h3>
+                    <h2 className="text-2xl sm:text-3xl text-[#E5E4E2]">{movie.title}</h2>
                 </div>
 
                 {/* Input Area */}
-                <div className="relative mb-8">
+                <div className="relative mb-6 sm:mb-8">
                     <textarea
                         autoFocus
                         value={text}
@@ -42,7 +42,7 @@ export const WriteOverlay: React.FC<WriteOverlayProps> = ({ movie, onClose }) =>
                             }
                         }}
                         placeholder="Log your thoughts..."
-                        className="w-full h-48 bg-transparent text-xl md:text-2xl font-serif text-[#E5E4E2] placeholder:text-gray-600 resize-none outline-none border-b border-white/10 focus:border-sage/50 transition-colors text-center"
+                        className="w-full h-40 sm:h-48 bg-transparent text-lg sm:text-xl md:text-2xl text-[#E5E4E2] placeholder:text-gray-600 resize-none outline-none border-b border-white/10 focus:border-sage/50 transition-colors text-left sm:text-center px-1"
                     />
 
                     {/* Char Counter (The Ritual Counter) */}
@@ -61,13 +61,13 @@ export const WriteOverlay: React.FC<WriteOverlayProps> = ({ movie, onClose }) =>
                 </div>
 
                 {/* Rating Scale (1-10) */}
-                <div className="flex justify-center gap-2 mb-12">
+                <div className="grid grid-cols-5 sm:flex sm:justify-center gap-2 mb-8 sm:mb-12">
                     {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
                         <button
                             key={num}
                             onClick={() => setRating(num)}
-                            className={`w-8 h-8 rounded-full text-xs font-bold transition-all ${rating >= num
-                                ? 'bg-sage text-[#121212] scale-110'
+                            className={`w-full sm:w-8 h-8 rounded-lg sm:rounded-full text-xs font-bold transition-all ${rating >= num
+                                ? 'bg-sage text-[#121212] sm:scale-110'
                                 : 'bg-white/5 text-gray-500 hover:bg-white/10'
                                 }`}
                         >
@@ -77,10 +77,10 @@ export const WriteOverlay: React.FC<WriteOverlayProps> = ({ movie, onClose }) =>
                 </div>
 
                 {/* Actions */}
-                <div className="flex justify-center gap-6">
+                <div className="flex flex-col-reverse sm:flex-row justify-center gap-3 sm:gap-6">
                     <button
                         onClick={onClose}
-                        className="px-6 py-2 text-gray-400 hover:text-gray-600 text-sm tracking-widest uppercase transition-colors"
+                        className="w-full sm:w-auto px-6 py-2 text-gray-400 hover:text-gray-600 text-sm tracking-widest uppercase transition-colors"
                     >
                         Abandon
                     </button>
@@ -88,7 +88,7 @@ export const WriteOverlay: React.FC<WriteOverlayProps> = ({ movie, onClose }) =>
                     <button
                         onClick={handleSubmit}
                         disabled={text.length === 0}
-                        className="px-8 py-2 bg-[#2C2C2C] text-white text-sm tracking-widest uppercase rounded-full hover:bg-sage disabled:opacity-20 disabled:hover:bg-[#2C2C2C] transition-all shadow-lg hover:shadow-xl hover:-translate-y-1"
+                        className="w-full sm:w-auto px-8 py-2 bg-[#2C2C2C] text-white text-sm tracking-widest uppercase rounded-full hover:bg-sage disabled:opacity-20 disabled:hover:bg-[#2C2C2C] transition-all shadow-lg hover:shadow-xl sm:hover:-translate-y-1"
                     >
                         Record
                     </button>

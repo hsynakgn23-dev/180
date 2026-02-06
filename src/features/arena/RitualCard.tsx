@@ -152,11 +152,11 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
 
     return (
         <div
-            className={`group relative pt-6 pb-6 border-b border-gray-100/5 flex gap-3 sm:gap-4 md:gap-6 animate-fade-in hover:bg-transparent transition-all duration-500 px-4 -mx-4 rounded-xl border border-transparent
-            ${isFollowing ? 'shadow-[0_0_20px_rgba(138,154,91,0.05)] border-sage/10 bg-gradient-to-r from-sage/5 to-transparent' : 'hover:border-gray-100/5 hover:shadow-sm'}
+            className={`group relative pt-4 sm:pt-6 pb-4 sm:pb-6 border border-white/8 sm:border-transparent sm:border-b sm:border-gray-100/5 flex flex-col sm:flex-row gap-3 sm:gap-4 md:gap-6 animate-fade-in hover:bg-transparent transition-all duration-500 px-3 sm:px-4 mx-0 sm:-mx-4 rounded-2xl sm:rounded-xl
+            ${isFollowing ? 'shadow-[0_0_20px_rgba(138,154,91,0.05)] border-sage/10 bg-gradient-to-r from-sage/5 to-transparent' : 'bg-white/[0.03] sm:bg-transparent hover:border-gray-100/5 hover:shadow-sm'}
         `}
         >
-            <div className="shrink-0 pt-1 group-hover:scale-105 transition-transform duration-500">
+            <div className="shrink-0 pt-0 sm:pt-1 self-start group-hover:scale-105 transition-transform duration-500">
                 {(!hasError && imgSrc) || !ritual.movieTitle ? (
                     <div className="w-10 h-14 bg-gray-800 rounded shadow-sm overflow-hidden border border-white/10 opacity-80 group-hover:opacity-100 transition-opacity relative">
                         {!imageLoaded && <div className="absolute inset-0 bg-white/10 animate-pulse" />}
@@ -182,19 +182,19 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
                 )}
             </div>
 
-            <div className="grow">
-                <div className="flex items-center gap-3 mb-3">
+            <div className="grow min-w-0">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-3">
                     <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-2">
-                            <span className="text-xs tracking-wider text-sage font-bold hover:text-white cursor-pointer transition-colors">
+                        <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-[11px] sm:text-xs tracking-wider text-sage font-bold hover:text-white cursor-pointer transition-colors line-clamp-1">
                                 {ritual.movieTitle}
                             </span>
-                            <span className="text-[10px] text-sage/40 font-mono">
+                            <span className="text-[10px] text-sage/40 font-mono shrink-0">
                                 ({ritual.year || '-'})
                             </span>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-[10px] tracking-widest uppercase text-[#E5E4E2]/70 font-bold relative group/author cursor-pointer">
                                 {ritual.author ? ritual.author : 'ANONYMOUS'}
 
@@ -211,7 +211,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
                         </div>
                     </div>
 
-                    <div className="flex gap-1.5 ml-2 border-l border-white/5 pl-2 opacity-60">
+                    <div className="flex gap-1.5 sm:ml-2 sm:border-l border-white/5 sm:pl-2 opacity-60 self-start">
                         {ritual.featuredMarks?.map((MarkIcon, i) => (
                             <div key={i} className="text-[#E5E4E2]/50 hover:text-sage transition-colors">
                                 <MarkIcon size={10} />
@@ -220,7 +220,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
                     </div>
                 </div>
 
-                <p className="text-sm md:text-base font-sans text-[#E5E4E2] leading-relaxed mb-2 opacity-90">
+                <p className="text-[13px] sm:text-sm md:text-base font-sans text-[#E5E4E2] leading-relaxed mb-2 opacity-90">
                     {visibleMainText}
                 </p>
                 {isMainTextLong && (
@@ -232,11 +232,11 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
                     </button>
                 )}
 
-                <div className="flex items-center gap-6">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6">
                     <button
                         onClick={handleEcho}
                         disabled={echoed}
-                        className={`flex items-center gap-2 group/btn transition-colors ${echoed ? 'text-clay cursor-default' : 'text-gray-300 hover:text-clay'}`}
+                        className={`w-full sm:w-auto justify-center sm:justify-start px-3 py-2 sm:px-0 sm:py-0 rounded-lg sm:rounded-none border border-white/10 sm:border-0 flex items-center gap-2 group/btn transition-colors ${echoed ? 'text-clay cursor-default' : 'text-gray-300 hover:text-clay'}`}
                     >
                         <div className={`transition-transform duration-500 ${echoed ? 'scale-110' : 'group-hover/btn:scale-110'}`}>
                             <MarkIcons.Echo size={16} />
@@ -248,7 +248,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
 
                     <button
                         onClick={() => setShowReply(!showReply)}
-                        className="flex items-center gap-2 group/btn transition-colors text-gray-300 hover:text-clay"
+                        className="w-full sm:w-auto justify-center sm:justify-start px-3 py-2 sm:px-0 sm:py-0 rounded-lg sm:rounded-none border border-white/10 sm:border-0 flex items-center gap-2 group/btn transition-colors text-gray-300 hover:text-clay"
                     >
                         <span className="text-[10px] tracking-widest font-medium group-hover/btn:underline decoration-clay/50 underline-offset-4">
                             WHISPER BACK ({replies.length})
@@ -257,7 +257,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
                 </div>
 
                 {showReply && (
-                    <div className="mt-6 pt-4 border-t border-white/5 animate-fade-in pl-4 border-l border-sage/10 ml-1">
+                    <div className="mt-4 sm:mt-6 pt-3 sm:pt-4 border-t border-white/5 animate-fade-in pl-0 sm:pl-4 border-l-0 sm:border-l border-sage/10 ml-0 sm:ml-1">
                         <div className="flex flex-col gap-3 mb-4">
                             {replies.map((reply) => {
                                 const isReplyExpanded = !!expandedReplies[reply.id];
@@ -278,7 +278,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
                                             </span>
                                         </div>
 
-                                        <p className="text-xs text-[#E5E4E2] font-serif leading-relaxed opacity-90 mb-2">
+                                        <p className="text-xs text-[#E5E4E2] leading-relaxed opacity-90 mb-2">
                                             {visibleReplyText}
                                         </p>
 
@@ -309,7 +309,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
                                 placeholder="Whisper a reply..."
                                 maxLength={MAX_REPLY_CHARS}
                                 rows={2}
-                                className="bg-transparent border border-white/10 rounded w-full text-xs text-sage placeholder-sage/30 focus:border-sage outline-none py-2 px-3 transition-colors font-serif leading-relaxed resize-none"
+                                className="bg-white/[0.02] border border-white/10 rounded w-full text-[13px] sm:text-xs text-sage placeholder-sage/30 focus:border-sage outline-none py-2 px-3 transition-colors leading-relaxed resize-none"
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
                                         e.preventDefault();
@@ -324,7 +324,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
                                 <button
                                     onClick={handleReplySubmit}
                                     disabled={!replyText.trim()}
-                                    className="text-[9px] uppercase tracking-widest text-[#E5E4E2]/60 hover:text-sage transition-colors disabled:opacity-30"
+                                    className="text-[9px] uppercase tracking-widest text-[#E5E4E2]/60 hover:text-clay transition-colors disabled:opacity-30"
                                 >
                                     Send
                                 </button>

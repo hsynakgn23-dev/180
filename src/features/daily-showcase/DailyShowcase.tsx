@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { useDailyMovies } from '../../hooks/useDailyMovies';
 import { useXP } from '../../context/XPContext';
 import { MovieCard } from './MovieCard';
@@ -11,6 +11,17 @@ interface DailyShowcaseProps {
 export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) => {
     const { movies, loading } = useDailyMovies();
     const { dailyRitualsCount } = useXP();
+    const scrollerRef = useRef<HTMLDivElement | null>(null);
+
+    const scrollMovies = (direction: 'left' | 'right') => {
+        const container = scrollerRef.current;
+        if (!container) return;
+        const amount = Math.round(container.clientWidth * 0.82);
+        container.scrollBy({
+            left: direction === 'right' ? amount : -amount,
+            behavior: 'smooth'
+        });
+    };
 
     if (loading) {
         return (
@@ -27,13 +38,37 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end items-start gap-4 px-4 sm:px-6 mb-8 border-b border-gray-200/50 pb-4">
                 <div>
                     <h3 className="text-sm font-bold tracking-widest text-sage uppercase">GÜNÜN FİLMLERİ</h3>
-                    <span className="text-[10px] font-serif italic text-gray-400">Her gün özenle seçilen 5 film</span>
+                    <span className="text-[10px] italic text-gray-400">Her gün özenle seçilen 5 film</span>
                 </div>
-                <CycleTime />
+                <div className="w-full sm:w-auto flex flex-col items-start sm:items-end gap-2">
+                    <CycleTime />
+                    <div className="sm:hidden flex items-center gap-2 text-[9px] tracking-[0.16em] uppercase text-clay/80">
+                        <span>Kartlari kaydir</span>
+                        <button
+                            type="button"
+                            onClick={() => scrollMovies('left')}
+                            className="h-6 w-6 rounded-full border border-clay/30 bg-[#171717] text-clay/80 hover:text-clay hover:border-clay/60 transition-colors"
+                            aria-label="Scroll movies left"
+                        >
+                            &lt;
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => scrollMovies('right')}
+                            className="h-6 w-6 rounded-full border border-clay/30 bg-[#171717] text-clay/80 hover:text-clay hover:border-clay/60 transition-colors"
+                            aria-label="Scroll movies right"
+                        >
+                            &gt;
+                        </button>
+                    </div>
+                </div>
             </div>
 
             {/* Movies */}
-            <div className="flex md:grid md:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6 px-4 sm:px-6 overflow-x-auto md:overflow-visible pb-2 md:pb-0 snap-x snap-mandatory md:snap-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div
+                ref={scrollerRef}
+                className="flex md:grid md:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6 px-4 sm:px-6 overflow-x-auto md:overflow-visible pb-2 md:pb-0 snap-x snap-mandatory md:snap-none scroll-pl-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            >
                 {movies.map((movie, index) => {
                     // Mystery Slot Logic for 5th Movie (index 4)
                     const isMysterySlot = index === 4;
@@ -76,3 +111,5 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
         </section>
     );
 };
+
+
