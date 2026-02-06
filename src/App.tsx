@@ -17,7 +17,7 @@ import { LoginView } from './features/auth/LoginView'
 import { LandingPage } from './features/landing/LandingPage'
 
 const AppContent = () => {
-  const { levelUpEvent, closeLevelUp, user } = useXP();
+  const { levelUpEvent, closeLevelUp, user, avatarUrl } = useXP();
   const [activeMovie, setActiveMovie] = useState<Movie | null>(null);
   const [detailMovie, setDetailMovie] = useState<Movie | null>(null);
   const [showProfile, setShowProfile] = useState(false);
@@ -45,18 +45,38 @@ const AppContent = () => {
       <DebugPanel />
 
       {/* Top Right Controls */}
-      <div className="fixed top-3 right-3 sm:top-6 sm:right-6 z-40 flex items-start sm:items-center gap-2 sm:gap-4 max-w-[calc(100vw-1.5rem)]">
+      <div className="fixed top-3 right-3 sm:top-6 sm:right-6 z-40 flex items-start sm:items-center gap-2 sm:gap-4">
         <NotificationCenter />
-        <ProfileWidget
+        <button
+          type="button"
           onClick={() => {
             setStartProfileInSettings(false);
             setShowProfile(true);
           }}
-          onOpenSettings={() => {
-            setStartProfileInSettings(true);
-            setShowProfile(true);
-          }}
-        />
+          className="sm:hidden relative p-0.5 w-9 h-9 rounded-full border border-sage/35 bg-[#121212]/95 text-sage/70 hover:text-sage transition-colors overflow-hidden"
+          title="Profile"
+          aria-label="Open profile"
+        >
+          {avatarUrl ? (
+            <img src={avatarUrl} alt="Profile" className="w-full h-full object-cover rounded-full" />
+          ) : (
+            <span className="flex h-full w-full items-center justify-center text-[10px] font-bold tracking-wide">
+              {user?.name?.slice(0, 2).toUpperCase() || 'OB'}
+            </span>
+          )}
+        </button>
+        <div className="hidden sm:block">
+          <ProfileWidget
+            onClick={() => {
+              setStartProfileInSettings(false);
+              setShowProfile(true);
+            }}
+            onOpenSettings={() => {
+              setStartProfileInSettings(true);
+              setShowProfile(true);
+            }}
+          />
+        </div>
       </div>
 
       {detailMovie && (

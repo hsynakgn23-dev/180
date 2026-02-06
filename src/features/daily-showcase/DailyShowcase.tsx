@@ -32,15 +32,15 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
                 <CycleTime />
             </div>
 
-            {/* Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6 px-4 sm:px-6">
+            {/* Movies */}
+            <div className="flex md:grid md:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6 px-4 sm:px-6 overflow-x-auto md:overflow-visible pb-2 md:pb-0 snap-x snap-mandatory md:snap-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {movies.map((movie, index) => {
                     // Mystery Slot Logic for 5th Movie (index 4)
                     const isMysterySlot = index === 4;
                     const isLocked = isMysterySlot && dailyRitualsCount === 0;
 
                     return (
-                        <div key={movie.id} className="relative h-full">
+                        <div key={movie.id} className="relative h-full min-w-[74vw] sm:min-w-[46vw] md:min-w-0 snap-start">
                             {/* Wrapper for Blur Transition */}
                             <div className={`h-full transition-all duration-1000 ease-in-out ${isLocked ? 'blur-sm grayscale opacity-50' : 'blur-0 grayscale-0 opacity-100'}`}>
                                 <MovieCard
