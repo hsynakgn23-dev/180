@@ -117,7 +117,9 @@ const DEFAULT_SEED_MOVIES: Movie[] = [
 ];
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
+const TMDB_API_BASE = 'https://api.themoviedb.org/3';
 const IMAGE_SOURCE_PROXIES = ['https://images.weserv.nl/?url=', 'https://wsrv.nl/?url='];
+const tmdbPosterCache = new Map<number, string | null>();
 
 const getEnv = (key: string, required = true): string => {
     const value = process.env[key];
@@ -139,6 +141,10 @@ const getSupabaseUrl = (): string => {
 
 const getSupabaseServiceRoleKey = (): string => {
     return process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+};
+
+const getTmdbApiKey = (): string => {
+    return process.env.TMDB_API_KEY || process.env.VITE_TMDB_API_KEY || '';
 };
 
 const decodeJwtRole = (jwt: string): string | null => {
@@ -248,6 +254,52 @@ const buildSourceCandidates = (posterPath: string, size: 'w200' | 'w500'): strin
     return Array.from(new Set(candidates));
 };
 
+const fetchLatestPosterPath = async (movie: Movie): Promise<string | null> => {
+    if (tmdbPosterCache.has(movie.id)) {
+        return tmdbPosterCache.get(movie.id) || null;
+    }
+
+    const apiKey = getTmdbApiKey();
+    if (!apiKey) {
+        tmdbPosterCache.set(movie.id, null);
+        return null;
+    }
+
+    try {
+        const detailUrl = `${TMDB_API_BASE}/movie/${movie.id}?api_key=${apiKey}&language=en-US`;
+        const detailRes = await fetch(detailUrl);
+        if (detailRes.ok) {
+            const detail = await detailRes.json();
+            if (typeof detail?.poster_path === 'string' && detail.poster_path) {
+                tmdbPosterCache.set(movie.id, detail.poster_path);
+                return detail.poster_path;
+            }
+        }
+    } catch {
+        // noop: search fallback below
+    }
+
+    if (movie.title) {
+        try {
+            const searchUrl = `${TMDB_API_BASE}/search/movie?api_key=${apiKey}&query=${encodeURIComponent(movie.title)}`;
+            const searchRes = await fetch(searchUrl);
+            if (searchRes.ok) {
+                const searchData = await searchRes.json();
+                const firstPath = searchData?.results?.[0]?.poster_path;
+                if (typeof firstPath === 'string' && firstPath) {
+                    tmdbPosterCache.set(movie.id, firstPath);
+                    return firstPath;
+                }
+            }
+        } catch {
+            // noop
+        }
+    }
+
+    tmdbPosterCache.set(movie.id, null);
+    return null;
+};
+
 const extFromContentType = (contentType: string | null): string => {
     if (!contentType) return 'jpg';
     if (contentType.includes('png')) return 'png';
@@ -266,11 +318,13 @@ const uploadPoster = async (
     if (!sources.length) return { url: null, error: 'no_source_candidates' };
 
     let selectedSource: string | null = null;
+    let lastTriedSource: string | null = null;
     let contentType: string | null = null;
     let bytes: Uint8Array | null = null;
     let fetchError = 'fetch_failed';
 
     for (const sourceUrl of sources) {
+        lastTriedSource = sourceUrl;
         try {
             const res = await fetch(sourceUrl);
             if (!res.ok) {
@@ -288,7 +342,7 @@ const uploadPoster = async (
     }
 
     if (!bytes || !selectedSource) {
-        return { url: null, error: fetchError };
+        return { url: null, error: fetchError, sourceUrl: lastTriedSource || undefined };
     }
 
     const ext = extFromContentType(contentType);
@@ -317,10 +371,12 @@ const ensurePosters = async (
     diagnostics: PosterDiagnostic[]
 ): Promise<Movie> => {
     if (!movie.posterPath) return movie;
+    const latestPosterPath = await fetchLatestPosterPath(movie);
+    const effectivePosterPath = latestPosterPath || movie.posterPath;
 
     const [w500Result, w200Result] = await Promise.all([
-        uploadPoster(supabase, bucket, movie.id, movie.posterPath, 'w500'),
-        uploadPoster(supabase, bucket, movie.id, movie.posterPath, 'w200')
+        uploadPoster(supabase, bucket, movie.id, effectivePosterPath, 'w500'),
+        uploadPoster(supabase, bucket, movie.id, effectivePosterPath, 'w200')
     ]);
 
     if (w500Result.error) {
@@ -345,7 +401,7 @@ const ensurePosters = async (
 
     return {
         ...movie,
-        posterPath: w500Result.url || movie.posterPath,
+        posterPath: w500Result.url || effectivePosterPath,
         posterStoragePath: w500Result.url || null,
         posterThumbPath: w200Result.url || null,
         posterSource: w500Result.url ? 'storage' : 'tmdb'
@@ -380,6 +436,7 @@ export default async function handler(req: any, res: any) {
                 hasSupabaseUrl: !!getSupabaseUrl(),
                 hasServiceKey: !!serviceRoleKey,
                 serviceRoleClaim: decodeJwtRole(serviceRoleKey),
+                hasTmdbApiKey: !!getTmdbApiKey(),
                 hasBucket: !!process.env.SUPABASE_STORAGE_BUCKET,
                 hasCronSecret: !!process.env.CRON_SECRET || !!process.env.VERCEL_CRON_SECRET
             });
