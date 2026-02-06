@@ -5,6 +5,7 @@ import { SettingsModal } from './SettingsModal';
 import { resolvePosterCandidates } from '../../lib/posterCandidates';
 import { PROGRESS_EASING, getProgressFill, getProgressTransitionMs } from '../../lib/progressVisuals';
 import { GearIcon } from '../../components/icons/GearIcon';
+import { MarkBadge } from '../marks/MarkBadge';
 
 interface ProfileViewProps {
     onClose: () => void;
@@ -499,7 +500,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                                                             }
                                                         `}
                                                     >
-                                                        <mark.Icon size={18} />
+                                                        <MarkBadge
+                                                            mark={mark}
+                                                            size={18}
+                                                            imageClassName={`w-8 h-8 rounded-lg object-cover ${isUnlocked ? 'opacity-95' : 'opacity-30 grayscale'}`}
+                                                        />
 
                                                         {isFeatured && (
                                                             <div className="absolute -top-1 -right-1 w-2 h-2 bg-sage rounded-full animate-pulse" />

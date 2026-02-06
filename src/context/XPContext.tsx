@@ -106,7 +106,15 @@ export const LEAGUE_NAMES = Object.keys(LEAGUES_DATA);
 const getLeagueIndexFromXp = (xp: number): number =>
     Math.min(Math.floor(xp / LEVEL_THRESHOLD), LEAGUE_NAMES.length - 1);
 const KNOWN_MOVIES_BY_ID = new Map(
-    TMDB_SEEDS.map((movie) => [movie.id, { title: movie.title, posterPath: movie.posterPath }])
+    TMDB_SEEDS.map((movie) => [
+        movie.id,
+        {
+            title: movie.title,
+            posterPath: movie.posterPath,
+            year: movie.year,
+            voteAverage: movie.voteAverage ?? null
+        }
+    ])
 );
 
 const normalizeRitualLog = (ritual: RitualLog): RitualLog => {
@@ -287,14 +295,16 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     // Shadow Follow Logic
     const toggleFollowUser = (username: string) => {
         let currentFollowing = [...(state.following || [])];
+        let currentMarks = [...(state.marks || [])];
         if (currentFollowing.includes(username)) {
             currentFollowing = currentFollowing.filter(u => u !== username);
             triggerWhisper(`Unfollowed ${username}.`);
         } else {
             currentFollowing.push(username);
             triggerWhisper(`Shadowing ${username}.`);
+            if (currentFollowing.length >= 5) currentMarks = tryUnlockMark('quiet_following', currentMarks);
         }
-        updateState({ following: currentFollowing });
+        updateState({ following: currentFollowing, marks: currentMarks });
     };
 
     // Trigger Whisper
@@ -362,6 +372,8 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             const leagueIndex = getLeagueIndexFromXp(prev.totalXP);
             const currentLeague = LEAGUE_NAMES[leagueIndex];
             if (currentLeague === 'Eternal') currentMarks = tryUnlockMark('eternal_mark', currentMarks);
+            if (newActiveDays.length >= 14) currentMarks = tryUnlockMark('daybreaker', currentMarks);
+            if (newActiveDays.length >= 30) currentMarks = tryUnlockMark('legacy', currentMarks);
 
             // Streak Maintenance
             if (prev.lastLoginDate !== today && prev.lastLoginDate) {
@@ -473,6 +485,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             rating: _rating,
             posterPath: posterPath || KNOWN_MOVIES_BY_ID.get(movieId)?.posterPath
         };
+        const knownMovie = KNOWN_MOVIES_BY_ID.get(movieId);
 
         if (!newUniqueGenres.includes(genre)) {
             newUniqueGenres.push(genre);
@@ -482,8 +495,27 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
         // Check for 'One Genre Devotion' (20 in one genre)
         const allRituals = [newRitual, ...(state.dailyRituals || [])];
+        if (allRituals.length >= 20) currentMarks = tryUnlockMark('ritual_marathon', currentMarks);
+        if (allRituals.length >= 50) currentMarks = tryUnlockMark('archive_keeper', currentMarks);
+
+        const exact180Count = allRituals.filter((ritual) => ritual.text.length === 180).length;
+        if (exact180Count >= 3) currentMarks = tryUnlockMark('precision_loop', currentMarks);
+
         const genreCount = allRituals.filter(r => r.genre === genre).length;
         if (genreCount >= 20) currentMarks = tryUnlockMark('one_genre_devotion', currentMarks);
+
+        const latestFiveGenres = allRituals
+            .slice(0, 5)
+            .map((ritual) => ritual.genre?.trim().toLowerCase())
+            .filter((value): value is string => Boolean(value));
+        if (latestFiveGenres.length === 5 && new Set(latestFiveGenres).size === 5) {
+            currentMarks = tryUnlockMark('genre_nomad', currentMarks);
+        }
+
+        if (knownMovie?.year && knownMovie.year < 1990) currentMarks = tryUnlockMark('classic_soul', currentMarks);
+        if (typeof knownMovie?.voteAverage === 'number' && knownMovie.voteAverage <= 7.9) {
+            currentMarks = tryUnlockMark('hidden_gem', currentMarks);
+        }
 
         const hour = new Date().getHours();
         if (hour >= 0 && hour < 1) currentMarks = tryUnlockMark('midnight_ritual', currentMarks);
@@ -507,9 +539,11 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     // 4. Social
     const echoRitual = (_ritualId: string) => {
         const newXP = state.totalXP + 1;
+        const newGiven = (state.echoesGiven || 0) + 1;
         let currentMarks = [...(state.marks || [])];
         if (state.echoesGiven === 0) currentMarks = tryUnlockMark('echo_initiate', currentMarks);
-        updateState({ totalXP: newXP, marks: currentMarks, echoesGiven: state.echoesGiven + 1 });
+        if (newGiven >= 10) currentMarks = tryUnlockMark('echo_chamber', currentMarks);
+        updateState({ totalXP: newXP, marks: currentMarks, echoesGiven: newGiven });
     };
 
     const receiveEcho = (movieTitle = "Unknown Ritual") => {
@@ -518,7 +552,9 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         let currentMarks = [...(state.marks || [])];
 
         if (newReceived >= 1) currentMarks = tryUnlockMark('first_echo', currentMarks);
+        if (newReceived >= 1) currentMarks = tryUnlockMark('echo_receiver', currentMarks);
         if (newReceived >= 5) currentMarks = tryUnlockMark('influencer', currentMarks);
+        if (newReceived >= 5) currentMarks = tryUnlockMark('resonator', currentMarks);
 
         // Add to history
         const newLog: EchoLog = {

@@ -4,6 +4,7 @@ import { MinorMarks } from '../features/marks/MinorMarks';
 import { MAJOR_MARKS } from '../data/marksData';
 import { PROGRESS_EASING, getProgressFill, getProgressTransitionMs } from '../lib/progressVisuals';
 import { GearIcon } from './icons/GearIcon';
+import { MarkBadge } from '../features/marks/MarkBadge';
 
 interface ProfileWidgetProps {
     onClick?: () => void;
@@ -127,7 +128,7 @@ export const ProfileWidget: React.FC<ProfileWidgetProps> = ({ onClick, onOpenSet
                         <div className="flex items-center gap-2 overflow-hidden">
                             {featuredMarkDefs.slice(0, 3).map((mark) => (
                                 <div key={mark.id} className="flex items-center gap-2 bg-white/5 border border-sage/20 rounded-full px-2 py-1 min-w-0">
-                                    <mark.Icon size={10} />
+                                    <MarkBadge mark={mark} size={10} imageClassName="w-3 h-3 rounded-sm object-cover" />
                                     <span className="text-[8px] uppercase tracking-[0.18em] text-[#E5E4E2]/80 truncate">
                                         {mark.title}
                                     </span>
