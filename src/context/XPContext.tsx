@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { MAJOR_MARKS } from '../data/marksData';
 import { TMDB_SEEDS } from '../data/tmdbSeeds';
 
@@ -204,6 +204,8 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
     const [whisper, setWhisper] = useState<string | null>(null);
     const [levelUpEvent, setLevelUpEvent] = useState<LeagueInfo | null>(null);
+    const previousLeagueIndexRef = useRef(0);
+    const didHydrateLeagueRef = useRef(false);
 
     const getToday = () => new Date().toISOString().split('T')[0];
 
@@ -298,11 +300,32 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         return currentMarks;
     };
 
-    // --- EFFECT: Level Up Check ---
-    // Level Up detection moved to submitRitual and debugAddXP for more direct control.
+    // --- EFFECT: Global Level Up Detection ---
+    // Triggers transition for every XP source: login, dwell, ritual, social, debug.
     useEffect(() => {
-        // Keeps hook clean
+        const currentLeagueIndex = Math.min(
+            Math.floor(state.totalXP / LEVEL_THRESHOLD),
+            LEAGUE_NAMES.length - 1
+        );
+
+        if (!didHydrateLeagueRef.current) {
+            previousLeagueIndexRef.current = currentLeagueIndex;
+            didHydrateLeagueRef.current = true;
+            return;
+        }
+
+        if (currentLeagueIndex > previousLeagueIndexRef.current) {
+            const leagueName = LEAGUE_NAMES[currentLeagueIndex];
+            setLevelUpEvent(LEAGUES_DATA[leagueName]);
+            triggerWhisper("The orbit is changing.");
+        }
+
+        previousLeagueIndexRef.current = currentLeagueIndex;
     }, [state.totalXP]);
+
+    useEffect(() => {
+        didHydrateLeagueRef.current = false;
+    }, [user?.email]);
 
     // 1. Daily Login & Persistence
     useEffect(() => {
@@ -438,17 +461,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
         if (state.dailyRituals.length === 0) currentMarks = tryUnlockMark('mystery_solver', currentMarks);
 
-        // Level Up Check
-        const currentXP = state.totalXP;
-        const newTotalXP = Math.floor(currentXP + earnedXP);
-        const oldLeagueIndex = Math.min(Math.floor(currentXP / LEVEL_THRESHOLD), LEAGUE_NAMES.length - 1);
-        const newLeagueIndex = Math.min(Math.floor(newTotalXP / LEVEL_THRESHOLD), LEAGUE_NAMES.length - 1);
-
-        if (newLeagueIndex > oldLeagueIndex) {
-            const newLeagueName = LEAGUE_NAMES[newLeagueIndex];
-            setLevelUpEvent(LEAGUES_DATA[newLeagueName]);
-            triggerWhisper("The orbit is changing.");
-        }
+        const newTotalXP = Math.floor(state.totalXP + earnedXP);
 
         updateState({
             totalXP: newTotalXP,
@@ -516,19 +529,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
     // Debug Tools
     const debugAddXP = (amount: number) => {
-        const currentXP = state.totalXP;
-        const newTotalXP = currentXP + amount;
-
-        const oldLeagueIndex = Math.min(Math.floor(currentXP / LEVEL_THRESHOLD), LEAGUE_NAMES.length - 1);
-        const newLeagueIndex = Math.min(Math.floor(newTotalXP / LEVEL_THRESHOLD), LEAGUE_NAMES.length - 1);
-
-        if (newLeagueIndex > oldLeagueIndex) {
-            const newLeagueName = LEAGUE_NAMES[newLeagueIndex];
-            setLevelUpEvent(LEAGUES_DATA[newLeagueName]);
-            triggerWhisper("The orbit is changing.");
-        }
-
-        updateState({ totalXP: newTotalXP });
+        updateState({ totalXP: state.totalXP + amount });
     };
 
     const debugUnlockMark = (markId: string) => {
