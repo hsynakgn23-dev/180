@@ -2,7 +2,9 @@ let tmdbApiBlocked = false;
 
 export const searchPosterPath = async (title: string, apiKey: string): Promise<string | null> => {
     if (!apiKey || apiKey === 'YOUR_TMDB_API_KEY') return null;
-    if (import.meta.env.VITE_TMDB_API_DISABLED === '1') return null;
+    // Default is disabled to avoid direct TMDB calls in restricted regions.
+    // Set VITE_TMDB_API_DISABLED=0 only if you explicitly want client-side TMDB fallback.
+    if (import.meta.env.VITE_TMDB_API_DISABLED !== '0') return null;
     if (tmdbApiBlocked) return null;
 
     try {
