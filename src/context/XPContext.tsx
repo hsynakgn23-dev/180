@@ -210,6 +210,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     const [levelUpEvent, setLevelUpEvent] = useState<LeagueInfo | null>(null);
     const [levelUpQueue, setLevelUpQueue] = useState<LeagueInfo[]>([]);
     const previousLeagueIndexRef = useRef(getLeagueIndexFromXp(state.totalXP));
+    const pendingWelcomeWhisperRef = useRef(false);
 
     const getToday = () => new Date().toISOString().split('T')[0];
 
@@ -339,43 +340,57 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
     // 1. Daily Login & Persistence
     useEffect(() => {
+        if (!user) return;
+
         const today = getToday();
 
-        let newActiveDays = state.activeDays || [];
-        if (!newActiveDays.includes(today)) {
-            newActiveDays = [...newActiveDays, today];
-        }
+        setState((prev) => {
+            let newActiveDays = prev.activeDays || [];
+            if (!newActiveDays.includes(today)) {
+                newActiveDays = [...newActiveDays, today];
+            }
 
-        let currentMarks = [...(state.marks || [])];
-        let newStreak = state.streak;
+            let currentMarks = [...(prev.marks || [])];
+            let newStreak = prev.streak;
 
-        // Mark: Eternal
-        const leagueIndex = Math.min(Math.floor(state.totalXP / LEVEL_THRESHOLD), LEAGUE_NAMES.length - 1);
-        const currentLeague = LEAGUE_NAMES[leagueIndex];
-        if (currentLeague === 'Eternal') currentMarks = tryUnlockMark('eternal_mark', currentMarks);
+            // Mark: Eternal
+            const leagueIndex = getLeagueIndexFromXp(prev.totalXP);
+            const currentLeague = LEAGUE_NAMES[leagueIndex];
+            if (currentLeague === 'Eternal') currentMarks = tryUnlockMark('eternal_mark', currentMarks);
 
-        // Streak Maintenance
-        if (state.lastLoginDate !== today && state.lastLoginDate) {
-            const gap = checkStreakMaintenance(state.lastLoginDate, today);
-            if (gap === 0) newStreak = 0;
-        }
+            // Streak Maintenance
+            if (prev.lastLoginDate !== today && prev.lastLoginDate) {
+                const gap = checkStreakMaintenance(prev.lastLoginDate, today);
+                if (gap === 0) newStreak = 0;
+            }
 
-        // Check updates
-        if (state.lastLoginDate !== today) {
-            updateState({
-                totalXP: state.totalXP + 5,
-                lastLoginDate: today,
-                dailyDwellXP: 0,
-                lastDwellDate: today,
-                activeDays: newActiveDays,
-                marks: currentMarks,
-                streak: newStreak
-            });
-            triggerWhisper("Welcome back.");
-        } else if (JSON.stringify(currentMarks) !== JSON.stringify(state.marks)) {
-            updateState({ marks: currentMarks });
-        }
-    }, []);
+            let updated = prev;
+            if (prev.lastLoginDate !== today) {
+                pendingWelcomeWhisperRef.current = true;
+                updated = {
+                    ...prev,
+                    totalXP: prev.totalXP + 5,
+                    lastLoginDate: today,
+                    dailyDwellXP: 0,
+                    lastDwellDate: today,
+                    activeDays: newActiveDays,
+                    marks: currentMarks,
+                    streak: newStreak
+                };
+            } else if (JSON.stringify(currentMarks) !== JSON.stringify(prev.marks)) {
+                updated = { ...prev, marks: currentMarks };
+            }
+
+            localStorage.setItem(`180_xp_data_${user.email}`, JSON.stringify(updated));
+            return updated;
+        });
+    }, [user?.email]);
+
+    useEffect(() => {
+        if (!pendingWelcomeWhisperRef.current) return;
+        pendingWelcomeWhisperRef.current = false;
+        triggerWhisper("Welcome back.");
+    }, [state.lastLoginDate]);
 
     // 2. Dwell Time
     useEffect(() => {
