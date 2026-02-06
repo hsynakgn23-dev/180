@@ -169,7 +169,15 @@ const sendJson = (res: any, status: number, payload: Record<string, unknown>) =>
 
 const ensureBucket = async (supabase: any, bucket: string) => {
     const { data, error } = await supabase.storage.getBucket(bucket);
-    if (data && !error) return;
+    if (data && !error) {
+        if (data.public !== true) {
+            const { error: updateError } = await supabase.storage.updateBucket(bucket, { public: true });
+            if (updateError) {
+                throw new Error(`Bucket update failed: ${updateError.message}`);
+            }
+        }
+        return;
+    }
 
     const { error: createError } = await supabase.storage.createBucket(bucket, {
         public: true
@@ -323,6 +331,11 @@ export default async function handler(req: any, res: any) {
         }
 
         movies = await Promise.all(movies.map((movie) => ensurePosters(supabase, bucket, movie)));
+        const storageBackedCount = movies.filter(
+            (movie) =>
+                typeof movie.posterPath === 'string' &&
+                movie.posterPath.includes('/storage/v1/object/public/')
+        ).length;
 
         const { error: upsertError } = await supabase
             .from('daily_showcase')
@@ -332,7 +345,14 @@ export default async function handler(req: any, res: any) {
             return sendJson(res, 500, { error: upsertError.message });
         }
 
-        return sendJson(res, 200, { ok: true, updated: true, date: todayKey, count: movies.length });
+        return sendJson(res, 200, {
+            ok: true,
+            updated: true,
+            date: todayKey,
+            count: movies.length,
+            storageBackedCount,
+            allStorageBacked: storageBackedCount === movies.length
+        });
     } catch (error: any) {
         console.error('[daily-cron] error', error);
         return sendJson(res, 500, { error: error.message || 'Unexpected error' });

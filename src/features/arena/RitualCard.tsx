@@ -91,6 +91,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
 
         const apiKey = import.meta.env.VITE_TMDB_API_KEY;
         if (!apiKey || apiKey === 'YOUR_TMDB_API_KEY') {
+            setIsRetrying(false);
             setHasError(true);
             return;
         }
@@ -101,12 +102,15 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual }) => {
                 const nextCandidates = resolveImageCandidates(posterPath, 'w200');
                 if (nextCandidates.length) {
                     applyCandidates(nextCandidates);
+                    setIsRetrying(false);
                     return;
                 }
             }
             setHasError(true);
         } catch (e) {
             setHasError(true);
+        } finally {
+            setIsRetrying(false);
         }
     };
 
