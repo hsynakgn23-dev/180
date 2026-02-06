@@ -204,6 +204,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
     const [whisper, setWhisper] = useState<string | null>(null);
     const [levelUpEvent, setLevelUpEvent] = useState<LeagueInfo | null>(null);
+    const [levelUpQueue, setLevelUpQueue] = useState<LeagueInfo[]>([]);
     const previousLeagueIndexRef = useRef(0);
     const didHydrateLeagueRef = useRef(false);
 
@@ -301,7 +302,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     };
 
     // --- EFFECT: Global Level Up Detection ---
-    // Triggers transition for every XP source: login, dwell, ritual, social, debug.
+    // Collect all crossed leagues in a queue so transitions are not skipped.
     useEffect(() => {
         const currentLeagueIndex = Math.min(
             Math.floor(state.totalXP / LEVEL_THRESHOLD),
@@ -315,8 +316,12 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         }
 
         if (currentLeagueIndex > previousLeagueIndexRef.current) {
-            const leagueName = LEAGUE_NAMES[currentLeagueIndex];
-            setLevelUpEvent(LEAGUES_DATA[leagueName]);
+            const crossed: LeagueInfo[] = [];
+            for (let i = previousLeagueIndexRef.current + 1; i <= currentLeagueIndex; i += 1) {
+                const leagueName = LEAGUE_NAMES[i];
+                crossed.push(LEAGUES_DATA[leagueName]);
+            }
+            setLevelUpQueue((prev) => [...prev, ...crossed]);
             triggerWhisper("The orbit is changing.");
         }
 
@@ -325,7 +330,17 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
     useEffect(() => {
         didHydrateLeagueRef.current = false;
+        setLevelUpEvent(null);
+        setLevelUpQueue([]);
     }, [user?.email]);
+
+    // Display one queued transition at a time.
+    useEffect(() => {
+        if (levelUpEvent || levelUpQueue.length === 0) return;
+        const [next, ...rest] = levelUpQueue;
+        setLevelUpEvent(next);
+        setLevelUpQueue(rest);
+    }, [levelUpEvent, levelUpQueue]);
 
     // 1. Daily Login & Persistence
     useEffect(() => {
