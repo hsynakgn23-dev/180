@@ -72,7 +72,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
     const handleDeleteRitual = (ritualId: string) => {
-        deleteRitual(ritualId);
+        deleteRitual(String(ritualId));
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {

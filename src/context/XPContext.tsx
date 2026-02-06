@@ -539,10 +539,19 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
     const deleteRitual = (ritualId: string) => {
         if (!ritualId) return;
-        const currentRituals = state.dailyRituals || [];
-        const remaining = currentRituals.filter((ritual) => ritual.id !== ritualId);
-        if (remaining.length === currentRituals.length) return;
-        updateState({ dailyRituals: remaining });
+        const normalizedId = String(ritualId);
+        const exists = (state.dailyRituals || []).some((ritual) => String(ritual.id) === normalizedId);
+        if (!exists) return;
+
+        setState((prev) => {
+            const currentRituals = prev.dailyRituals || [];
+            const remaining = currentRituals.filter((ritual) => String(ritual.id) !== normalizedId);
+            const updated = { ...prev, dailyRituals: remaining };
+            if (user) {
+                localStorage.setItem(`180_xp_data_${user.email}`, JSON.stringify(updated));
+            }
+            return updated;
+        });
         triggerWhisper("Ritual erased.");
     };
 

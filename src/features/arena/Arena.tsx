@@ -46,7 +46,7 @@ export const Arena: React.FC = () => {
 
     const handleDelete = (ritualId: string) => {
         const normalized = ritualId.startsWith('log-') ? ritualId.slice(4) : ritualId;
-        deleteRitual(normalized);
+        deleteRitual(String(normalized));
     };
 
     const rituals = useMemo<Ritual[]>(() => {
