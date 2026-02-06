@@ -135,6 +135,18 @@ const buildSeedMovies = (): Movie[] => {
 export default async function handler(req: any, res: any) {
     try {
         console.log('[daily-cron] start');
+        if (req.query?.ping === '1') {
+            return res.status(200).json({ ok: true, runtime: 'node', time: new Date().toISOString() });
+        }
+        if (req.query?.env === '1') {
+            return res.status(200).json({
+                ok: true,
+                hasSupabaseUrl: !!process.env.SUPABASE_URL,
+                hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+                hasBucket: !!process.env.SUPABASE_STORAGE_BUCKET,
+                hasCronSecret: !!process.env.CRON_SECRET || !!process.env.VERCEL_CRON_SECRET
+            });
+        }
         const secret = getCronSecret();
         const querySecret = typeof req.query?.secret === 'string' ? req.query.secret : null;
         if (secret) {
