@@ -127,6 +127,7 @@ interface XPContextType {
     bio: string;
     avatarId: string;
     updateIdentity: (bio: string, avatarId: string) => void;
+    updatePersonalInfo: (profile: RegistrationProfileInput) => Promise<AuthResult>;
     toggleFollowUser: (username: string) => void;
     submitRitual: (movieId: number, text: string, rating: number, genre: string, title?: string, posterPath?: string) => void;
     deleteRitual: (ritualId: string) => void;
@@ -1044,6 +1045,78 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         triggerWhisper("Identity shifted.");
     };
 
+    const updatePersonalInfo = async (profile: RegistrationProfileInput): Promise<AuthResult> => {
+        if (!user) {
+            return { ok: false, message: 'Oturum bulunamadi.' };
+        }
+
+        const normalizedProfile: RegistrationProfileInput = {
+            fullName: (profile.fullName || '').trim(),
+            username: (profile.username || '').trim(),
+            gender: profile.gender,
+            birthDate: (profile.birthDate || '').trim()
+        };
+
+        if (!normalizedProfile.fullName || normalizedProfile.fullName.length < 2) {
+            return { ok: false, message: 'Isim en az 2 karakter olmali.' };
+        }
+        if (!USERNAME_REGEX.test(normalizedProfile.username)) {
+            return { ok: false, message: 'Kullanici adi 3-20 karakter olmali (harf, rakam, _).' };
+        }
+        if (!REGISTRATION_GENDERS.includes(normalizedProfile.gender)) {
+            return { ok: false, message: 'Cinsiyet secimi gecersiz.' };
+        }
+        if (!normalizedProfile.birthDate) {
+            return { ok: false, message: 'Dogum tarihi gerekli.' };
+        }
+
+        const birthDate = new Date(`${normalizedProfile.birthDate}T00:00:00`);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (Number.isNaN(birthDate.getTime()) || birthDate > today) {
+            return { ok: false, message: 'Dogum tarihi gecersiz.' };
+        }
+
+        updateState({
+            fullName: normalizedProfile.fullName,
+            username: normalizedProfile.username,
+            gender: normalizedProfile.gender,
+            birthDate: normalizedProfile.birthDate
+        });
+
+        const displayName = normalizedProfile.fullName || normalizedProfile.username || user.name;
+        setSessionUser({
+            ...user,
+            name: displayName,
+            fullName: normalizedProfile.fullName,
+            username: normalizedProfile.username,
+            gender: normalizedProfile.gender,
+            birthDate: normalizedProfile.birthDate
+        });
+
+        if (isSupabaseLive() && supabase) {
+            const { error } = await supabase.auth.updateUser({
+                data: {
+                    full_name: normalizedProfile.fullName,
+                    name: normalizedProfile.fullName,
+                    username: normalizedProfile.username,
+                    gender: normalizedProfile.gender,
+                    birth_date: normalizedProfile.birthDate
+                }
+            });
+
+            if (error) {
+                return {
+                    ok: true,
+                    message: `Profil guncellendi fakat cloud metadata senkronu basarisiz: ${normalizeAuthError(error.message)}`
+                };
+            }
+        }
+
+        triggerWhisper("Identity shifted.");
+        return { ok: true, message: 'Profil bilgileri guncellendi.' };
+    };
+
     const leagueIndex = getLeagueIndexFromXp(state.totalXP);
     const leagueName = LEAGUE_NAMES[leagueIndex];
     const leagueInfo = LEAGUES_DATA[leagueName];
@@ -1079,6 +1152,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             bio: state.bio,
             avatarId: state.avatarId,
             updateIdentity,
+            updatePersonalInfo,
             toggleFollowUser,
             submitRitual,
             deleteRitual,

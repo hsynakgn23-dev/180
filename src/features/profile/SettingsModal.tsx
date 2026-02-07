@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useXP } from '../../context/XPContext';
+import { useXP, type RegistrationGender } from '../../context/XPContext';
 
 interface SettingsModalProps {
     isOpen: boolean;
@@ -14,22 +14,17 @@ const THEME_STORAGE_KEY = '180_theme_pref';
 const LANGUAGE_STORAGE_KEY = '180_lang_pref';
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
-    const { user, updateIdentity, logout, bio, avatarUrl, updateAvatar, avatarId, fullName, username, gender, birthDate } = useXP();
+    const { user, updateIdentity, updatePersonalInfo, logout, bio, avatarUrl, updateAvatar, avatarId, fullName, username, gender, birthDate } = useXP();
     const [activeTab, setActiveTab] = useState<SettingsTab>('identity');
     const [bioDraft, setBioDraft] = useState(bio);
+    const [fullNameDraft, setFullNameDraft] = useState(fullName);
+    const [usernameDraft, setUsernameDraft] = useState(username);
+    const [genderDraft, setGenderDraft] = useState<RegistrationGender | ''>(gender || '');
+    const [birthDateDraft, setBirthDateDraft] = useState(birthDate);
     const [theme, setTheme] = useState<ThemeMode>('midnight');
     const [language, setLanguage] = useState<LanguageMode>('tr');
     const [statusMessage, setStatusMessage] = useState('');
     const [confirmLogout, setConfirmLogout] = useState(false);
-    const genderLabel = gender === 'female'
-        ? 'Kadin'
-        : gender === 'male'
-            ? 'Erkek'
-            : gender === 'non_binary'
-                ? 'Non-binary'
-                : gender === 'prefer_not_to_say'
-                    ? 'Belirtmek istemiyor'
-                    : '';
 
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -37,6 +32,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         if (!isOpen) return;
 
         setBioDraft(bio);
+        setFullNameDraft(fullName);
+        setUsernameDraft(username);
+        setGenderDraft(gender || '');
+        setBirthDateDraft(birthDate);
         setStatusMessage('');
         setConfirmLogout(false);
 
@@ -51,7 +50,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         if (storedLanguage === 'tr' || storedLanguage === 'en') {
             setLanguage(storedLanguage);
         }
-    }, [isOpen, bio]);
+    }, [isOpen, bio, fullName, username, gender, birthDate]);
 
     useEffect(() => {
         if (!statusMessage) return;
@@ -76,9 +75,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         setStatusMessage('Language preference saved');
     };
 
-    const handleSaveIdentity = () => {
+    const handleSaveIdentity = async () => {
+        const profileResult = await updatePersonalInfo({
+            fullName: fullNameDraft,
+            username: usernameDraft,
+            gender: (genderDraft || 'prefer_not_to_say') as RegistrationGender,
+            birthDate: birthDateDraft
+        });
+        if (!profileResult.ok) {
+            setStatusMessage(profileResult.message || 'Identity save failed');
+            return;
+        }
         updateIdentity(bioDraft, avatarId);
-        setStatusMessage('Identity saved');
+        setStatusMessage(profileResult.message || 'Identity saved');
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -195,24 +204,51 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                             </div>
 
                             <div className="bg-white/5 border border-white/10 rounded-xl p-5">
-                                <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-2">Display Name</p>
-                                <div className="text-sm text-[#E5E4E2] font-bold tracking-wide">
-                                    {user?.name || 'Observer'}
+                                <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-3">Personal Info</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <label className="text-[10px] uppercase tracking-[0.12em] text-gray-500">
+                                        Isim
+                                        <input
+                                            value={fullNameDraft}
+                                            onChange={(e) => setFullNameDraft(e.target.value)}
+                                            className="mt-1 w-full bg-[#141414] border border-white/10 rounded px-3 py-2 text-sm normal-case tracking-normal text-[#E5E4E2] placeholder:text-gray-600 focus:border-sage/40 outline-none"
+                                            placeholder="Ad Soyad"
+                                        />
+                                    </label>
+                                    <label className="text-[10px] uppercase tracking-[0.12em] text-gray-500">
+                                        Kullanici
+                                        <input
+                                            value={usernameDraft}
+                                            onChange={(e) => setUsernameDraft(e.target.value.trim())}
+                                            className="mt-1 w-full bg-[#141414] border border-white/10 rounded px-3 py-2 text-sm normal-case tracking-normal text-[#E5E4E2] placeholder:text-gray-600 focus:border-sage/40 outline-none"
+                                            placeholder="kullanici_adi"
+                                        />
+                                    </label>
+                                    <label className="text-[10px] uppercase tracking-[0.12em] text-gray-500">
+                                        Cinsiyet
+                                        <select
+                                            value={genderDraft}
+                                            onChange={(e) => setGenderDraft(e.target.value as RegistrationGender | '')}
+                                            className="mt-1 w-full bg-[#141414] border border-white/10 rounded px-3 py-2 text-sm normal-case tracking-normal text-[#E5E4E2] focus:border-sage/40 outline-none"
+                                        >
+                                            <option value="">Seciniz</option>
+                                            <option value="female">Kadin</option>
+                                            <option value="male">Erkek</option>
+                                            <option value="non_binary">Non-binary</option>
+                                            <option value="prefer_not_to_say">Belirtmek istemiyorum</option>
+                                        </select>
+                                    </label>
+                                    <label className="text-[10px] uppercase tracking-[0.12em] text-gray-500">
+                                        Dogum
+                                        <input
+                                            type="date"
+                                            value={birthDateDraft}
+                                            onChange={(e) => setBirthDateDraft(e.target.value)}
+                                            className="mt-1 w-full bg-[#141414] border border-white/10 rounded px-3 py-2 text-sm normal-case tracking-normal text-[#E5E4E2] focus:border-sage/40 outline-none"
+                                        />
+                                    </label>
                                 </div>
-                                <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-gray-400">
-                                    <div>
-                                        <span className="uppercase tracking-[0.12em] text-gray-500">Isim:</span> {fullName || '-'}
-                                    </div>
-                                    <div>
-                                        <span className="uppercase tracking-[0.12em] text-gray-500">Kullanici:</span> @{username || '-'}
-                                    </div>
-                                    <div>
-                                        <span className="uppercase tracking-[0.12em] text-gray-500">Cinsiyet:</span> {genderLabel || '-'}
-                                    </div>
-                                    <div>
-                                        <span className="uppercase tracking-[0.12em] text-gray-500">Dogum:</span> {birthDate || '-'}
-                                    </div>
-                                </div>
+                                <p className="mt-3 text-[10px] text-gray-500">Kullanici adi: 3-20 karakter, harf/rakam/_</p>
                             </div>
 
                             <div className="bg-white/5 border border-white/10 rounded-xl p-5">
