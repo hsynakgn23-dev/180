@@ -114,6 +114,7 @@ interface XPContextType {
     authMode: 'supabase' | 'local';
     login: (email: string, password: string, isRegistering?: boolean) => Promise<AuthResult>;
     loginAsControl: (pin: string) => Promise<AuthResult>;
+    loginAsControlGuest: () => Promise<AuthResult>;
     loginWithGoogle: () => Promise<AuthResult>;
     logout: () => Promise<void>;
     avatarUrl?: string; // Custom uploaded avatar
@@ -242,6 +243,13 @@ const toSessionUser = (authUser: SupabaseUser | null): SessionUser | null => {
 };
 
 const getControlPin = (): string => (import.meta.env.VITE_CONTROL_ADMIN_PIN || '').trim();
+const shouldAllowGuestControl = (): boolean => {
+    if (import.meta.env.VITE_CONTROL_ALLOW_GUEST === '1') return true;
+    if (!import.meta.env.DEV) return false;
+    if (typeof window === 'undefined') return true;
+    const host = window.location.hostname;
+    return host === 'localhost' || host === '127.0.0.1';
+};
 
 const XPContext = createContext<XPContextType | undefined>(undefined);
 
@@ -280,10 +288,10 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         let active = true;
         const applyAuthUser = (authUser: SupabaseUser | null) => {
             if (!active) return;
-            const mapped = toSessionUser(authUser);
-            if (!mapped && userRef.current?.role === 'admin_control') {
+            if (userRef.current?.role === 'admin_control') {
                 return;
             }
+            const mapped = toSessionUser(authUser);
             setSessionUser(mapped);
         };
 
@@ -473,7 +481,10 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         }
 
         if (isSupabaseLive() && supabase) {
-            await supabase.auth.signOut();
+            const { error } = await supabase.auth.signOut();
+            if (error) {
+                console.warn('[Auth] failed to clear supabase session before control login', error);
+            }
         }
 
         const controlUser: SessionUser = {
@@ -484,6 +495,28 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         setSessionUser(controlUser);
         triggerWhisper("Control access granted.");
         return { ok: true, message: 'Kontrol oturumu acildi.' };
+    };
+
+    const loginAsControlGuest = async (): Promise<AuthResult> => {
+        if (!shouldAllowGuestControl()) {
+            return { ok: false, message: 'Misafir kontrol erisimi kapali.' };
+        }
+
+        if (isSupabaseLive() && supabase) {
+            const { error } = await supabase.auth.signOut();
+            if (error) {
+                console.warn('[Auth] failed to clear supabase session before guest control login', error);
+            }
+        }
+
+        const controlUser: SessionUser = {
+            email: CONTROL_ADMIN_EMAIL,
+            name: CONTROL_ADMIN_NAME,
+            role: 'admin_control'
+        };
+        setSessionUser(controlUser);
+        triggerWhisper("Guest control access granted.");
+        return { ok: true, message: 'Misafir kontrol oturumu acildi.' };
     };
 
     const logout = async () => {
@@ -950,6 +983,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             authMode,
             login,
             loginAsControl,
+            loginAsControlGuest,
             loginWithGoogle,
             logout,
             avatarUrl: state.avatarUrl,

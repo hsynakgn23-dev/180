@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useXP } from '../../context/XPContext';
 
 export const LoginView: React.FC = () => {
-    const { login, loginWithGoogle, loginAsControl, authMode } = useXP();
+    const { login, loginWithGoogle, loginAsControl, loginAsControlGuest, authMode } = useXP();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [controlPin, setControlPin] = useState('');
@@ -14,6 +14,7 @@ export const LoginView: React.FC = () => {
     const [errorMessage, setErrorMessage] = useState('');
     const configuredControlPin = (import.meta.env.VITE_CONTROL_ADMIN_PIN || '').trim();
     const hasConfiguredControlPin = configuredControlPin.length > 0;
+    const canUseGuestControl = import.meta.env.DEV || import.meta.env.VITE_CONTROL_ALLOW_GUEST === '1';
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -74,6 +75,26 @@ export const LoginView: React.FC = () => {
                 setStatusMessage(result.message);
             }
             setControlPin('');
+        } finally {
+            setIsControlLoading(false);
+        }
+    };
+
+    const handleGuestControlLogin = async () => {
+        if (isControlLoading) return;
+        setIsControlLoading(true);
+        setErrorMessage('');
+        setStatusMessage('');
+
+        try {
+            const result = await loginAsControlGuest();
+            if (!result.ok) {
+                setErrorMessage(result.message || 'Misafir kontrol girisi basarisiz.');
+                return;
+            }
+            if (result.message) {
+                setStatusMessage(result.message);
+            }
         } finally {
             setIsControlLoading(false);
         }
@@ -189,6 +210,16 @@ export const LoginView: React.FC = () => {
                             >
                                 {isControlLoading ? 'Please wait...' : 'Admin Girisi'}
                             </button>
+                            {canUseGuestControl && (
+                                <button
+                                    type="button"
+                                    onClick={handleGuestControlLogin}
+                                    disabled={isControlLoading}
+                                    className="w-full border border-[#8A9A5B]/40 text-[#8A9A5B] font-bold py-2.5 uppercase tracking-[0.2em] text-[10px] rounded-md hover:bg-[#8A9A5B]/10 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                >
+                                    {isControlLoading ? 'Please wait...' : 'Misafir Kontrol Girisi'}
+                                </button>
+                            )}
                         </div>
                         <p className="text-[9px] text-[#E5E4E2]/45 mt-2">
                             Uyelik gerektirmeyen kontrol oturumu.
