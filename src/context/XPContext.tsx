@@ -636,6 +636,11 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
     // 3. Ritual Submission
     const submitRitual = (movieId: number, text: string, _rating: number, genre: string, title?: string, posterPath?: string) => {
+        if (isControlMode) {
+            triggerWhisper("Control mode is read-only.");
+            return;
+        }
+
         const today = getToday();
         if (state.dailyRituals.some(r => r.date === today && r.movieId === movieId)) {
             triggerWhisper("Memory stored.");
@@ -768,6 +773,11 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     };
 
     const deleteRitual = (ritualId: string) => {
+        if (isControlMode) {
+            triggerWhisper("Control mode is read-only.");
+            return;
+        }
+
         if (!ritualId) return;
         const normalizedId = String(ritualId);
         const exists = (state.dailyRituals || []).some((ritual) => String(ritual.id) === normalizedId);
@@ -787,6 +797,11 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
     // 4. Social
     const echoRitual = (ritualId: string) => {
+        if (isControlMode) {
+            triggerWhisper("Control mode is read-only.");
+            return;
+        }
+
         void ritualId;
         const newXP = state.totalXP + 1;
         const newGiven = (state.echoesGiven || 0) + 1;

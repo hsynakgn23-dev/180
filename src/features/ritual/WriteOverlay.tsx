@@ -8,15 +8,20 @@ interface WriteOverlayProps {
 }
 
 export const WriteOverlay: React.FC<WriteOverlayProps> = ({ movie, onClose }) => {
-    const { submitRitual } = useXP();
+    const { submitRitual, isControlMode } = useXP();
     const [text, setText] = useState('');
     const [rating, setRating] = useState(0);
+    const [errorMessage, setErrorMessage] = useState('');
 
     const MAX_CHARS = 180;
     const charsLeft = MAX_CHARS - text.length;
 
     const handleSubmit = () => {
         if (text.length === 0) return;
+        if (isControlMode) {
+            setErrorMessage('Control mode salt-okunur. Ritual kaydi gonderemezsin.');
+            return;
+        }
         submitRitual(movie.id, text, rating, movie.genre, movie.title, movie.posterPath);
         onClose();
     };
@@ -37,6 +42,9 @@ export const WriteOverlay: React.FC<WriteOverlayProps> = ({ movie, onClose }) =>
                         autoFocus
                         value={text}
                         onChange={(e) => {
+                            if (errorMessage) {
+                                setErrorMessage('');
+                            }
                             if (e.target.value.length <= MAX_CHARS) {
                                 setText(e.target.value);
                             }
@@ -87,12 +95,17 @@ export const WriteOverlay: React.FC<WriteOverlayProps> = ({ movie, onClose }) =>
 
                     <button
                         onClick={handleSubmit}
-                        disabled={text.length === 0}
+                        disabled={text.length === 0 || isControlMode}
                         className="w-full sm:w-auto px-8 py-2 bg-[#2C2C2C] text-white text-sm tracking-widest uppercase rounded-full hover:bg-sage disabled:opacity-20 disabled:hover:bg-[#2C2C2C] transition-all shadow-lg hover:shadow-xl sm:hover:-translate-y-1"
                     >
                         Record
                     </button>
                 </div>
+                {errorMessage && (
+                    <p className="mt-4 text-[10px] uppercase tracking-[0.16em] text-red-300/85 text-center">
+                        {errorMessage}
+                    </p>
+                )}
 
             </div>
         </div>

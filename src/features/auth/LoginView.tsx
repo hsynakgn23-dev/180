@@ -12,7 +12,8 @@ export const LoginView: React.FC = () => {
     const [isControlLoading, setIsControlLoading] = useState(false);
     const [statusMessage, setStatusMessage] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
-    const hasConfiguredControlPin = Boolean(import.meta.env.VITE_CONTROL_ADMIN_PIN);
+    const configuredControlPin = (import.meta.env.VITE_CONTROL_ADMIN_PIN || '').trim();
+    const hasConfiguredControlPin = configuredControlPin.length > 0;
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -54,6 +55,11 @@ export const LoginView: React.FC = () => {
 
     const handleControlLogin = async () => {
         if (isControlLoading) return;
+        if (!hasConfiguredControlPin) {
+            setErrorMessage('Kontrol girisi devre disi. VITE_CONTROL_ADMIN_PIN gerekli.');
+            setStatusMessage('');
+            return;
+        }
         setIsControlLoading(true);
         setErrorMessage('');
         setStatusMessage('');
@@ -67,6 +73,7 @@ export const LoginView: React.FC = () => {
             if (result.message) {
                 setStatusMessage(result.message);
             }
+            setControlPin('');
         } finally {
             setIsControlLoading(false);
         }
@@ -165,6 +172,12 @@ export const LoginView: React.FC = () => {
                                 type="password"
                                 value={controlPin}
                                 onChange={(e) => setControlPin(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        void handleControlLogin();
+                                    }
+                                }}
                                 placeholder="Admin control PIN"
                                 className="w-full bg-[#121212] border border-[#E5E4E2]/10 p-2.5 text-xs text-[#E5E4E2] focus:border-sage outline-none rounded-md placeholder-sage/30 transition-colors"
                             />
