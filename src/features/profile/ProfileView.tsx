@@ -6,6 +6,7 @@ import { resolvePosterCandidates } from '../../lib/posterCandidates';
 import { PROGRESS_EASING, getProgressFill, getProgressTransitionMs } from '../../lib/progressVisuals';
 import { GearIcon } from '../../components/icons/GearIcon';
 import { MarkBadge } from '../marks/MarkBadge';
+import { supabase, isSupabaseLive } from '../../lib/supabase';
 
 interface ProfileViewProps {
     onClose: () => void;
@@ -68,6 +69,47 @@ type FilmCommentEntry = {
     posterPath?: string;
 };
 
+type RitualRow = {
+    id: string;
+    movie_title: string | null;
+    text: string | null;
+    timestamp: string | null;
+};
+
+type ReplyRow = {
+    id: string;
+    ritual_id: string;
+    author: string | null;
+    text: string | null;
+    created_at: string | null;
+};
+
+type FilmReplyEntry = {
+    id: string;
+    author: string;
+    text: string;
+    timestamp: string;
+};
+
+const buildCommentKey = (movieTitle: string, text: string, date: string): string => {
+    return `${movieTitle.trim()}::${text.trim()}::${date.trim()}`;
+};
+
+const toRelativeTimestamp = (rawTimestamp: string): string => {
+    const parsed = Date.parse(rawTimestamp);
+    if (Number.isNaN(parsed)) return rawTimestamp;
+
+    const diffMs = Date.now() - parsed;
+    if (diffMs < 0) return 'Today';
+
+    const hourMs = 60 * 60 * 1000;
+    const dayMs = 24 * hourMs;
+    const diffHours = Math.floor(diffMs / hourMs);
+    if (diffHours < 1) return 'Just Now';
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return `${Math.floor(diffMs / dayMs)}d ago`;
+};
+
 export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettings = false }) => {
     const {
         xp,
@@ -99,6 +141,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
     const [tempAvatar, setTempAvatar] = useState(avatarId);
     const [showSettings, setShowSettings] = useState(false);
     const [selectedMovieId, setSelectedMovieId] = useState<number | null>(null);
+    const [repliesByCommentKey, setRepliesByCommentKey] = useState<Record<string, FilmReplyEntry[]>>({});
+    const [isRepliesLoading, setIsRepliesLoading] = useState(false);
     const progressFill = getProgressFill(progressPercentage);
     const progressTransitionMs = getProgressTransitionMs(progressPercentage);
     const genderLabel = gender === 'female'
@@ -198,6 +242,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
         return byMovie;
     }, [dailyRituals]);
 
+    const selectedFilm = useMemo(
+        () => commentedFilms.find((film) => film.movieId === selectedMovieId) || null,
+        [commentedFilms, selectedMovieId]
+    );
+
+    const selectedFilmComments = useMemo(
+        () => (selectedMovieId ? ritualEntriesByMovie.get(selectedMovieId) || [] : []),
+        [ritualEntriesByMovie, selectedMovieId]
+    );
+
     useEffect(() => {
         setIsVisible(true);
         setTempBio(bio);
@@ -217,6 +271,150 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
             setSelectedMovieId(null);
         }
     }, [commentedFilms, selectedMovieId]);
+
+    useEffect(() => {
+        if (!selectedMovieId) return;
+
+        const handleEscape = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                setSelectedMovieId(null);
+            }
+        };
+
+        window.addEventListener('keydown', handleEscape);
+        return () => window.removeEventListener('keydown', handleEscape);
+    }, [selectedMovieId]);
+
+    useEffect(() => {
+        const originalOverflow = document.body.style.overflow;
+        if (selectedMovieId) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = originalOverflow;
+        }
+        return () => {
+            document.body.style.overflow = originalOverflow;
+        };
+    }, [selectedMovieId]);
+
+    useEffect(() => {
+        if (!selectedMovieId) {
+            setRepliesByCommentKey({});
+            setIsRepliesLoading(false);
+            return;
+        }
+
+        const client = supabase;
+        if (!isSupabaseLive() || !client || !user?.id || selectedFilmComments.length === 0) {
+            setRepliesByCommentKey({});
+            setIsRepliesLoading(false);
+            return;
+        }
+
+        const commentKeySet = new Set(
+            selectedFilmComments.map((entry) => buildCommentKey(entry.movieTitle, entry.text, entry.date))
+        );
+
+        const movieTitles = Array.from(
+            new Set(selectedFilmComments.map((entry) => entry.movieTitle.trim()).filter(Boolean))
+        );
+
+        if (movieTitles.length === 0) {
+            setRepliesByCommentKey({});
+            setIsRepliesLoading(false);
+            return;
+        }
+
+        let canceled = false;
+        setIsRepliesLoading(true);
+
+        const loadReplies = async () => {
+            try {
+                const { data: ritualsData, error: ritualsError } = await client
+                    .from('rituals')
+                    .select('id, movie_title, text, timestamp')
+                    .eq('user_id', user.id)
+                    .in('movie_title', movieTitles);
+
+                if (canceled) return;
+
+                if (ritualsError || !Array.isArray(ritualsData)) {
+                    setRepliesByCommentKey({});
+                    setIsRepliesLoading(false);
+                    return;
+                }
+
+                const ritualIdsByCommentKey = new Map<string, string[]>();
+                for (const row of ritualsData as RitualRow[]) {
+                    if (!row.id || !row.movie_title || !row.text || !row.timestamp) continue;
+
+                    const dateKey = row.timestamp.slice(0, 10);
+                    const commentKey = buildCommentKey(row.movie_title, row.text, dateKey);
+                    if (!commentKeySet.has(commentKey)) continue;
+
+                    const current = ritualIdsByCommentKey.get(commentKey) || [];
+                    current.push(row.id);
+                    ritualIdsByCommentKey.set(commentKey, current);
+                }
+
+                const ritualIds = Array.from(
+                    new Set(Array.from(ritualIdsByCommentKey.values()).flat().filter(Boolean))
+                );
+
+                if (ritualIds.length === 0) {
+                    setRepliesByCommentKey({});
+                    setIsRepliesLoading(false);
+                    return;
+                }
+
+                const { data: repliesData, error: repliesError } = await client
+                    .from('ritual_replies')
+                    .select('id, ritual_id, author, text, created_at')
+                    .in('ritual_id', ritualIds)
+                    .order('created_at', { ascending: true });
+
+                if (canceled) return;
+
+                if (repliesError || !Array.isArray(repliesData)) {
+                    setRepliesByCommentKey({});
+                    setIsRepliesLoading(false);
+                    return;
+                }
+
+                const repliesByRitual = new Map<string, FilmReplyEntry[]>();
+                for (const row of repliesData as ReplyRow[]) {
+                    if (!row.id || !row.ritual_id || !row.text) continue;
+                    const normalized: FilmReplyEntry = {
+                        id: row.id,
+                        author: row.author || 'Observer',
+                        text: row.text,
+                        timestamp: row.created_at ? toRelativeTimestamp(row.created_at) : 'Just Now'
+                    };
+                    const current = repliesByRitual.get(row.ritual_id) || [];
+                    current.push(normalized);
+                    repliesByRitual.set(row.ritual_id, current);
+                }
+
+                const next: Record<string, FilmReplyEntry[]> = {};
+                for (const [commentKey, ids] of ritualIdsByCommentKey.entries()) {
+                    next[commentKey] = ids.flatMap((ritualId) => repliesByRitual.get(ritualId) || []);
+                }
+
+                setRepliesByCommentKey(next);
+                setIsRepliesLoading(false);
+            } catch {
+                if (canceled) return;
+                setRepliesByCommentKey({});
+                setIsRepliesLoading(false);
+            }
+        };
+
+        void loadReplies();
+
+        return () => {
+            canceled = true;
+        };
+    }, [selectedMovieId, selectedFilmComments, user?.id]);
 
     const handleClose = () => {
         setIsVisible(false);
@@ -520,25 +718,24 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
                                         {commentedFilms.map((film) => {
                                             const selected = selectedMovieId === film.movieId;
-                                            const filmComments = ritualEntriesByMovie.get(film.movieId) || [];
                                             return (
                                                 <article
                                                     key={film.movieId}
-                                                    onClick={() => setSelectedMovieId((prev) => (prev === film.movieId ? null : film.movieId))}
+                                                    onClick={() => setSelectedMovieId(film.movieId)}
                                                     onKeyDown={(e) => {
                                                         if (e.key === 'Enter' || e.key === ' ') {
                                                             e.preventDefault();
-                                                            setSelectedMovieId((prev) => (prev === film.movieId ? null : film.movieId));
+                                                            setSelectedMovieId(film.movieId);
                                                         }
                                                     }}
                                                     role="button"
                                                     tabIndex={0}
                                                     className={`group relative rounded-lg overflow-hidden border transition-all ${selected
-                                                        ? 'border-sage/70 ring-1 ring-sage/40'
+                                                        ? 'border-sage/70 ring-1 ring-sage/40 shadow-[0_0_24px_rgba(138,154,91,0.15)]'
                                                         : 'border-white/10 hover:border-sage/40'
                                                         }`}
-                                                    title={`${film.title} yorumlarini goster`}
-                                                    aria-label={`${film.title} yorumlarini goster`}
+                                                    title={`${film.title} yorum ve cevaplarini ac`}
+                                                    aria-label={`${film.title} yorum ve cevaplarini ac`}
                                                 >
                                                     <CommentFilmPoster
                                                         movieId={film.movieId}
@@ -550,57 +747,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                                                         <p className="text-[9px] font-bold tracking-wide uppercase text-white/90 line-clamp-2">
                                                             {film.title}
                                                         </p>
-                                                        <p className="text-[9px] font-mono text-sage/90 mt-1">x{film.count}</p>
+                                                        <p className="text-[9px] font-mono text-sage/90 mt-1">x{film.count} yorum</p>
                                                     </div>
-
-                                                    {selected && (
-                                                        <div className="absolute inset-0 z-20 bg-black/90 p-2 flex flex-col">
-                                                            <div className="flex items-center justify-between gap-2 mb-2">
-                                                                <span className="text-[9px] uppercase tracking-widest text-sage/80">
-                                                                    {filmComments.length} yorum
-                                                                </span>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setSelectedMovieId(null);
-                                                                    }}
-                                                                    className="text-[9px] uppercase tracking-widest text-gray-400 hover:text-white transition-colors"
-                                                                >
-                                                                    Kapat
-                                                                </button>
-                                                            </div>
-
-                                                            <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 space-y-2">
-                                                                {filmComments.map((entry) => (
-                                                                    <div key={entry.id} className="rounded border border-white/10 bg-white/5 p-2">
-                                                                        <div className="flex items-center justify-between gap-2 mb-1">
-                                                                            <span className="text-[9px] font-mono text-gray-400">{entry.date}</span>
-                                                                            <div className="flex items-center gap-2">
-                                                                                {entry.genre && (
-                                                                                    <span className="text-[8px] uppercase tracking-widest text-sage/80">{entry.genre}</span>
-                                                                                )}
-                                                                                <button
-                                                                                    type="button"
-                                                                                    onClick={(e) => {
-                                                                                        e.stopPropagation();
-                                                                                        handleDeleteRitual(entry.id);
-                                                                                    }}
-                                                                                    className="text-[8px] uppercase tracking-widest text-gray-500 hover:text-clay transition-colors"
-                                                                                    title="Delete this ritual"
-                                                                                >
-                                                                                    Erase
-                                                                                </button>
-                                                                            </div>
-                                                                        </div>
-                                                                        <p className="text-[10px] font-serif italic text-[#E5E4E2]/90 leading-relaxed">
-                                                                            "{entry.text}"
-                                                                        </p>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-                                                    )}
                                                 </article>
                                             );
                                         })}
@@ -686,6 +834,107 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                     </div>
                 </div>
             </div>
+
+            {selectedMovieId && selectedFilm && (
+                <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6 animate-fade-in">
+                    <button
+                        type="button"
+                        onClick={() => setSelectedMovieId(null)}
+                        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+                        aria-label="Film modalini kapat"
+                    />
+
+                    <div className="relative w-full max-w-5xl max-h-[92vh] overflow-hidden rounded-xl border border-white/10 bg-[#121212] shadow-2xl flex flex-col md:flex-row">
+                        <div className="md:w-[280px] lg:w-[320px] shrink-0 bg-[#1A1A1A] relative">
+                            <CommentFilmPoster
+                                movieId={selectedFilm.movieId}
+                                posterPath={selectedFilm.posterPath}
+                                title={selectedFilm.title}
+                                className="w-full h-64 md:h-full rounded-none border-0"
+                            />
+                            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-4 py-4">
+                                <p className="text-xs tracking-[0.18em] uppercase text-sage/80">{selectedFilm.genre || 'Unknown Genre'}</p>
+                                <h4 className="text-lg font-bold text-[#E5E4E2] leading-tight">{selectedFilm.title}</h4>
+                                <p className="text-[10px] text-gray-400 mt-1">{selectedFilm.count} yorum</p>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 min-h-0 flex flex-col">
+                            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-white/10">
+                                <div>
+                                    <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase">Yorumlar ve Cevaplar</h3>
+                                    <p className="text-[10px] text-gray-500 mt-1">{selectedFilmComments.length} yorum kaydi</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedMovieId(null)}
+                                    className="text-[10px] uppercase tracking-[0.16em] text-gray-400 hover:text-white transition-colors"
+                                >
+                                    Kapat
+                                </button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-6 space-y-4">
+                                {isRepliesLoading && (
+                                    <div className="text-[10px] uppercase tracking-[0.16em] text-sage/70">
+                                        Cevaplar yukleniyor...
+                                    </div>
+                                )}
+
+                                {selectedFilmComments.map((entry) => {
+                                    const commentKey = buildCommentKey(entry.movieTitle, entry.text, entry.date);
+                                    const replies = repliesByCommentKey[commentKey] || [];
+                                    return (
+                                        <article key={entry.id} className="rounded-lg border border-white/10 bg-white/5 p-3 sm:p-4">
+                                            <div className="flex items-center justify-between gap-3 mb-2">
+                                                <span className="text-[9px] font-mono text-gray-400">{entry.date}</span>
+                                                <div className="flex items-center gap-2">
+                                                    {entry.genre && (
+                                                        <span className="text-[8px] uppercase tracking-widest text-sage/80">{entry.genre}</span>
+                                                    )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDeleteRitual(entry.id)}
+                                                        className="text-[8px] uppercase tracking-widest text-gray-500 hover:text-clay transition-colors"
+                                                        title="Delete this ritual"
+                                                    >
+                                                        Erase
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <p className="text-[11px] sm:text-xs font-serif italic text-[#E5E4E2]/90 leading-relaxed">
+                                                "{entry.text}"
+                                            </p>
+
+                                            <div className="mt-3 pt-3 border-t border-white/10">
+                                                <div className="text-[9px] uppercase tracking-[0.16em] text-sage/75 mb-2">
+                                                    Cevaplar ({replies.length})
+                                                </div>
+                                                {replies.length > 0 ? (
+                                                    <div className="space-y-2">
+                                                        {replies.map((reply) => (
+                                                            <div key={reply.id} className="rounded border border-white/10 bg-black/25 px-3 py-2">
+                                                                <div className="flex items-center justify-between gap-2 mb-1">
+                                                                    <span className="text-[9px] uppercase tracking-widest text-[#E5E4E2]/80">{reply.author}</span>
+                                                                    <span className="text-[9px] text-gray-500">{reply.timestamp}</span>
+                                                                </div>
+                                                                <p className="text-[10px] text-[#E5E4E2]/85 leading-relaxed">{reply.text}</p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-[10px] italic text-gray-500">Bu yoruma henuz cevap yok.</p>
+                                                )}
+                                            </div>
+                                        </article>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Settings Modal */}
             <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
