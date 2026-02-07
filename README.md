@@ -34,6 +34,7 @@ Client:
 - `VITE_SUPABASE_ANON_KEY`
 - `VITE_SUPABASE_STORAGE_BUCKET` (optional, default `posters`)
 - `VITE_AUTH_REDIRECT_TO` (optional, OAuth redirect override)
+- `VITE_CONTROL_ADMIN_PIN` (optional, enables non-member control login on LoginView)
 - `VITE_TMDB_API_KEY` (optional fallback path)
 - `VITE_TMDB_API_DISABLED` (`0` enables client TMDB fallback, default disabled)
 - `VITE_IMAGE_MODE` (optional image proxy mode)
@@ -59,3 +60,4 @@ Server/cron (`api/cron/daily.ts`):
 - Social interactions use relational tables (`ritual_echoes`, `ritual_replies`).
 - Client-side Daily 5 writes are restricted to dev mode; production writer should be cron/service role.
 - Debug panel is dynamically imported only in dev mode.
+- `VITE_CONTROL_ADMIN_PIN` is client-side only; use it for temporary control access, not high-security auth.

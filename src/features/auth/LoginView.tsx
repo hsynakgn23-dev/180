@@ -2,14 +2,17 @@ import React, { useState } from 'react';
 import { useXP } from '../../context/XPContext';
 
 export const LoginView: React.FC = () => {
-    const { login, loginWithGoogle, authMode } = useXP();
+    const { login, loginWithGoogle, loginAsControl, authMode } = useXP();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [controlPin, setControlPin] = useState('');
     const [isRegistering, setIsRegistering] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+    const [isControlLoading, setIsControlLoading] = useState(false);
     const [statusMessage, setStatusMessage] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
+    const isControlLoginEnabled = Boolean(import.meta.env.VITE_CONTROL_ADMIN_PIN);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -46,6 +49,26 @@ export const LoginView: React.FC = () => {
             }
         } finally {
             setIsGoogleLoading(false);
+        }
+    };
+
+    const handleControlLogin = async () => {
+        if (isControlLoading) return;
+        setIsControlLoading(true);
+        setErrorMessage('');
+        setStatusMessage('');
+
+        try {
+            const result = await loginAsControl(controlPin);
+            if (!result.ok) {
+                setErrorMessage(result.message || 'Kontrol girisi basarisiz.');
+                return;
+            }
+            if (result.message) {
+                setStatusMessage(result.message);
+            }
+        } finally {
+            setIsControlLoading(false);
         }
     };
 
@@ -130,6 +153,34 @@ export const LoginView: React.FC = () => {
                     ) : (
                         <div className="text-[10px] text-gray-500 text-center border border-white/10 rounded px-3 py-2">
                             Supabase auth tanimli degil, local login modu aktif.
+                        </div>
+                    )}
+
+                    {isControlLoginEnabled && (
+                        <div className="mt-1 border border-[#8A9A5B]/20 bg-[#8A9A5B]/5 rounded-md p-4">
+                            <p className="text-[9px] uppercase tracking-[0.18em] text-sage/80 mb-2">
+                                Control Access
+                            </p>
+                            <div className="flex flex-col gap-2">
+                                <input
+                                    type="password"
+                                    value={controlPin}
+                                    onChange={(e) => setControlPin(e.target.value)}
+                                    placeholder="Admin control PIN"
+                                    className="w-full bg-[#121212] border border-[#E5E4E2]/10 p-2.5 text-xs text-[#E5E4E2] focus:border-sage outline-none rounded-md placeholder-sage/30 transition-colors"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={handleControlLogin}
+                                    disabled={isControlLoading}
+                                    className="w-full bg-[#8A9A5B] text-[#121212] font-bold py-2.5 uppercase tracking-[0.2em] text-[10px] rounded-md hover:bg-[#9AB06B] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                >
+                                    {isControlLoading ? 'Please wait...' : 'Admin Girisi'}
+                                </button>
+                            </div>
+                            <p className="text-[9px] text-[#E5E4E2]/45 mt-2">
+                                Uyelik gerektirmeyen kontrol oturumu.
+                            </p>
                         </div>
                     )}
 

@@ -51,10 +51,13 @@ interface AuthResult {
     message?: string;
 }
 
+type SessionRole = 'user' | 'admin_control';
+
 interface SessionUser {
     id?: string;
     email: string;
     name: string;
+    role?: SessionRole;
 }
 
 export interface LeagueInfo {
@@ -107,8 +110,10 @@ interface XPContextType {
     debugAddXP: (amount: number) => void;
     debugUnlockMark: (markId: string) => void;
     user: SessionUser | null;
+    isControlMode: boolean;
     authMode: 'supabase' | 'local';
     login: (email: string, password: string, isRegistering?: boolean) => Promise<AuthResult>;
+    loginAsControl: (pin: string) => Promise<AuthResult>;
     loginWithGoogle: () => Promise<AuthResult>;
     logout: () => Promise<void>;
     avatarUrl?: string; // Custom uploaded avatar
@@ -118,6 +123,8 @@ interface XPContextType {
 
 const MAX_DAILY_DWELL_XP = 20;
 const LEVEL_THRESHOLD = 500;
+const CONTROL_ADMIN_EMAIL = 'admin.control@absolutecinema.local';
+const CONTROL_ADMIN_NAME = 'Control Admin';
 export const LEAGUE_NAMES = Object.keys(LEAGUES_DATA);
 const getLeagueIndexFromXp = (xp: number): number =>
     Math.min(Math.floor(xp / LEVEL_THRESHOLD), LEAGUE_NAMES.length - 1);
@@ -202,7 +209,8 @@ const getLegacyStoredUser = (): SessionUser | null => {
         return {
             id: typeof parsed.id === 'string' && parsed.id.trim() ? parsed.id : undefined,
             email: parsed.email,
-            name: typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name : fallbackName
+            name: typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name : fallbackName,
+            role: parsed.role === 'admin_control' ? 'admin_control' : 'user'
         };
     } catch {
         return null;
@@ -228,14 +236,18 @@ const toSessionUser = (authUser: SupabaseUser | null): SessionUser | null => {
     return {
         id: authUser.id,
         email: authUser.email,
-        name: metadataName.trim() || fallbackName
+        name: metadataName.trim() || fallbackName,
+        role: 'user'
     };
 };
+
+const getControlPin = (): string => (import.meta.env.VITE_CONTROL_ADMIN_PIN || '').trim();
 
 const XPContext = createContext<XPContextType | undefined>(undefined);
 
 export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [user, setUser] = useState<SessionUser | null>(() => getLegacyStoredUser());
+    const userRef = useRef<SessionUser | null>(user);
 
     const [state, setState] = useState<XPState>(buildInitialXPState());
     const [whisper, setWhisper] = useState<string | null>(null);
@@ -244,7 +256,21 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     const previousLeagueIndexRef = useRef(getLeagueIndexFromXp(state.totalXP));
     const pendingWelcomeWhisperRef = useRef(false);
     const [isXpHydrated, setIsXpHydrated] = useState(false);
+    const isControlMode = user?.role === 'admin_control';
     const authMode: 'supabase' | 'local' = isSupabaseLive() && supabase ? 'supabase' : 'local';
+
+    const setSessionUser = (nextUser: SessionUser | null) => {
+        setUser(nextUser);
+        if (nextUser) {
+            localStorage.setItem('180_user_session', JSON.stringify(nextUser));
+        } else {
+            localStorage.removeItem('180_user_session');
+        }
+    };
+
+    useEffect(() => {
+        userRef.current = user;
+    }, [user]);
 
     useEffect(() => {
         if (!isSupabaseLive() || !supabase) {
@@ -255,12 +281,10 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         const applyAuthUser = (authUser: SupabaseUser | null) => {
             if (!active) return;
             const mapped = toSessionUser(authUser);
-            setUser(mapped);
-            if (mapped) {
-                localStorage.setItem('180_user_session', JSON.stringify(mapped));
-            } else {
-                localStorage.removeItem('180_user_session');
+            if (!mapped && userRef.current?.role === 'admin_control') {
+                return;
             }
+            setSessionUser(mapped);
         };
 
         void supabase.auth.getSession().then(({ data }) => {
@@ -382,10 +406,10 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         if (!isSupabaseLive() || !supabase) {
             const fallbackUser = {
                 email: normalizedEmail,
-                name: normalizedEmail.split('@')[0] || 'observer'
+                name: normalizedEmail.split('@')[0] || 'observer',
+                role: 'user' as const
             };
-            setUser(fallbackUser);
-            localStorage.setItem('180_user_session', JSON.stringify(fallbackUser));
+            setSessionUser(fallbackUser);
             triggerWhisper("Welcome to the Ritual.");
             return { ok: true, message: 'Supabase kapali oldugu icin local session acildi.' };
         }
@@ -439,13 +463,34 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         }
     };
 
+    const loginAsControl = async (pin: string): Promise<AuthResult> => {
+        const expectedPin = getControlPin();
+        if (!expectedPin) {
+            return { ok: false, message: 'Kontrol girisi devre disi. VITE_CONTROL_ADMIN_PIN gerekli.' };
+        }
+        if ((pin || '').trim() !== expectedPin) {
+            return { ok: false, message: 'Kontrol PIN hatali.' };
+        }
+
+        if (isSupabaseLive() && supabase) {
+            await supabase.auth.signOut();
+        }
+
+        const controlUser: SessionUser = {
+            email: CONTROL_ADMIN_EMAIL,
+            name: CONTROL_ADMIN_NAME,
+            role: 'admin_control'
+        };
+        setSessionUser(controlUser);
+        triggerWhisper("Control access granted.");
+        return { ok: true, message: 'Kontrol oturumu acildi.' };
+    };
+
     const logout = async () => {
         if (isSupabaseLive() && supabase) {
             await supabase.auth.signOut();
         }
-        localStorage.removeItem('180_user_session');
-
-        setUser(null);
+        setSessionUser(null);
         setState(buildInitialXPState("Orbiting nearby..."));
     };
 
@@ -886,8 +931,10 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             debugAddXP,
             debugUnlockMark,
             user,
+            isControlMode,
             authMode,
             login,
+            loginAsControl,
             loginWithGoogle,
             logout,
             avatarUrl: state.avatarUrl,

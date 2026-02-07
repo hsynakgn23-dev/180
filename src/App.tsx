@@ -16,7 +16,7 @@ import { LoginView } from './features/auth/LoginView'
 import { LandingPage } from './features/landing/LandingPage'
 
 const AppContent = () => {
-  const { levelUpEvent, closeLevelUp, user, avatarUrl } = useXP();
+  const { levelUpEvent, closeLevelUp, user, avatarUrl, isControlMode } = useXP();
   const [activeMovie, setActiveMovie] = useState<Movie | null>(null);
   const [detailMovie, setDetailMovie] = useState<Movie | null>(null);
   const [showProfile, setShowProfile] = useState(false);
@@ -58,6 +58,12 @@ const AppContent = () => {
       )}
 
       {showDebugPanel && DebugPanelComponent ? <DebugPanelComponent /> : null}
+
+      {isControlMode && (
+        <div className="fixed top-3 left-3 sm:top-6 sm:left-6 z-40 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] border border-[#8A9A5B]/35 bg-[#121212]/95 text-[#8A9A5B] rounded">
+          Admin Control
+        </div>
+      )}
 
       {/* Top Right Controls */}
       <div className="fixed top-3 right-3 sm:top-6 sm:right-6 z-40 flex items-start sm:items-center gap-2 sm:gap-4">
