@@ -200,34 +200,39 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
         <div
             className={`fixed inset-0 z-50 bg-[var(--color-bg)] text-[var(--color-text)] flex flex-col items-center overflow-y-auto transition-opacity duration-500 ${isVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         >
-                        {/* Home Button (Top Left) */}
-            <button
-                onClick={handleClose}
-                className="absolute top-3 left-3 sm:top-8 sm:left-8 z-50 h-9 w-9 rounded-full border border-sage/30 hover:border-clay/60 text-clay/80 hover:text-clay transition-colors flex items-center justify-center bg-[#1A1A1A]/80"
-                aria-label="Ana sayfaya don"
-                title="Ana sayfaya don"
-            >
-                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" aria-hidden="true">
-                    <path d="M3 11.5L12 4L21 11.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                    <path d="M6.5 10.5V20H17.5V10.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                    <path d="M10 20V14H14V20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-            </button>
-
-            <div className="absolute top-3 right-3 sm:top-8 sm:right-8 z-50 flex items-center gap-1.5 sm:gap-2">
+            {/* Top Right Controls */}
+            <div className="absolute top-3 right-3 sm:top-8 sm:right-8 z-50 flex items-center gap-2 sm:gap-2.5">
+                <button
+                    onClick={handleClose}
+                    className="h-10 w-10 sm:h-11 sm:w-11 rounded-full border border-sage/30 hover:border-clay/60 text-clay/80 hover:text-clay transition-colors flex items-center justify-center bg-[#1A1A1A]/85"
+                    aria-label="Ana sayfaya don"
+                    title="Ana sayfaya don"
+                >
+                    <svg viewBox="0 0 24 24" fill="none" className="w-[18px] h-[18px]" aria-hidden="true">
+                        <path d="M3 11.5L12 4L21 11.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d="M6.5 10.5V20H17.5V10.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d="M10 20V14H14V20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                </button>
                 <button
                     onClick={() => setShowSettings(true)}
-                    className="h-9 w-9 rounded-full border border-sage/30 hover:border-clay/60 text-clay/80 hover:text-clay transition-colors flex items-center justify-center bg-[#1A1A1A]/80"
+                    className="h-10 w-10 sm:h-11 sm:w-11 rounded-full border border-sage/30 hover:border-clay/60 text-clay/80 hover:text-clay transition-colors flex items-center justify-center bg-[#1A1A1A]/85"
                     title="Settings"
                     aria-label="Open settings"
                 >
-                    <GearIcon className="w-4 h-4" />
+                    <GearIcon className="w-[18px] h-[18px]" />
                 </button>
                 <button
                     onClick={logout}
-                    className="text-[9px] sm:text-[10px] tracking-widest uppercase text-red-400/60 hover:text-red-400 transition-colors p-2 sm:p-3 font-bold"
+                    className="h-10 w-10 sm:h-11 sm:w-11 rounded-full border border-red-500/35 hover:border-red-400/70 text-red-400/75 hover:text-red-300 transition-colors flex items-center justify-center bg-[#1A1A1A]/85"
+                    aria-label="Cikis yap"
+                    title="Cikis yap"
                 >
-                    Sign Out
+                    <svg viewBox="0 0 24 24" fill="none" className="w-[18px] h-[18px]" aria-hidden="true">
+                        <path d="M10 4H6C4.89543 4 4 4.89543 4 6V18C4 19.1046 4.89543 20 6 20H10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d="M14 16L20 12L14 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d="M20 12H9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
                 </button>
             </div>
 
