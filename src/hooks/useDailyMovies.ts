@@ -22,6 +22,14 @@ const CLASSIC_YEAR_THRESHOLD = 2000;
 const MODERN_YEAR_THRESHOLD = 2010;
 const DAILY_MAX_MOVIES_PER_DIRECTOR = 1;
 
+const getLocalDateKey = (): string => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
 const hashString = (value: string): number => {
     let hash = 2166136261;
     for (let i = 0; i < value.length; i += 1) {
@@ -251,10 +259,51 @@ const buildPersonalizedDailyMovies = (
 export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'guest' }: UseDailyMoviesOptions = {}) => {
     const [baseMovies, setBaseMovies] = useState<Movie[]>([]);
     const [loading, setLoading] = useState(true);
+    const [dateKey, setDateKey] = useState<string>(getLocalDateKey);
+
+    useEffect(() => {
+        let midnightTimer: number | null = null;
+
+        const syncDateKey = () => {
+            const nextDateKey = getLocalDateKey();
+            setDateKey((prev) => (prev === nextDateKey ? prev : nextDateKey));
+        };
+
+        const scheduleMidnightTick = () => {
+            const now = new Date();
+            const nextMidnight = new Date(now);
+            nextMidnight.setHours(24, 0, 0, 120);
+            const waitMs = Math.max(100, nextMidnight.getTime() - now.getTime());
+            midnightTimer = window.setTimeout(() => {
+                syncDateKey();
+                scheduleMidnightTick();
+            }, waitMs);
+        };
+
+        const handleVisibility = () => {
+            if (document.visibilityState === 'visible') {
+                syncDateKey();
+            }
+        };
+
+        syncDateKey();
+        scheduleMidnightTick();
+        window.addEventListener('focus', syncDateKey);
+        document.addEventListener('visibilitychange', handleVisibility);
+
+        return () => {
+            if (midnightTimer !== null) {
+                window.clearTimeout(midnightTimer);
+            }
+            window.removeEventListener('focus', syncDateKey);
+            document.removeEventListener('visibilitychange', handleVisibility);
+        };
+    }, []);
 
     useEffect(() => {
         const fetchDaily5 = async () => {
-            const todayKey = new Date().toISOString().split('T')[0];
+            setLoading(true);
+            const todayKey = dateKey;
             const isDev = import.meta.env.DEV;
             // Client write path is restricted to local/dev. Production write source should be cron/service role.
             const allowClientDailyWrite =
@@ -364,14 +413,13 @@ export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'g
         };
 
         fetchDaily5();
-    }, []);
+    }, [dateKey]);
 
     const exclusionKey = normalizeMovieIds(excludedMovieIds).sort((a, b) => a - b).join(',');
 
     const movies = useMemo(() => {
-        const todayKey = new Date().toISOString().split('T')[0];
-        return buildPersonalizedDailyMovies(baseMovies, excludedMovieIds, todayKey, personalizationSeed);
-    }, [baseMovies, exclusionKey, excludedMovieIds, personalizationSeed]);
+        return buildPersonalizedDailyMovies(baseMovies, excludedMovieIds, dateKey, personalizationSeed);
+    }, [baseMovies, dateKey, exclusionKey, excludedMovieIds, personalizationSeed]);
 
-    return { movies, loading };
+    return { movies, loading, dateKey };
 };

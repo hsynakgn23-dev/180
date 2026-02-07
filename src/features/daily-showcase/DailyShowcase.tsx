@@ -9,9 +9,48 @@ interface DailyShowcaseProps {
     onMovieSelect: (movie: Movie) => void;
 }
 
+const getLocalDateKey = (): string => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
 export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) => {
     const { dailyRituals, dailyRitualsCount, user } = useXP();
-    const todayKey = useMemo(() => new Date().toISOString().split('T')[0], []);
+    const [todayKey, setTodayKey] = useState<string>(getLocalDateKey);
+
+    useEffect(() => {
+        let midnightTimer: number | null = null;
+
+        const syncTodayKey = () => {
+            const next = getLocalDateKey();
+            setTodayKey((prev) => (prev === next ? prev : next));
+        };
+
+        const scheduleMidnightTick = () => {
+            const now = new Date();
+            const nextMidnight = new Date(now);
+            nextMidnight.setHours(24, 0, 0, 120);
+            const waitMs = Math.max(100, nextMidnight.getTime() - now.getTime());
+            midnightTimer = window.setTimeout(() => {
+                syncTodayKey();
+                scheduleMidnightTick();
+            }, waitMs);
+        };
+
+        syncTodayKey();
+        scheduleMidnightTick();
+        window.addEventListener('focus', syncTodayKey);
+
+        return () => {
+            if (midnightTimer !== null) {
+                window.clearTimeout(midnightTimer);
+            }
+            window.removeEventListener('focus', syncTodayKey);
+        };
+    }, []);
     const todaysCommentedMovieIds = useMemo(
         () =>
             Array.from(
