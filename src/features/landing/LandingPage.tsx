@@ -2,7 +2,6 @@
 /* 
  * DESIGN LOCKED - DO NOT MODIFY WITHOUT EXPLICIT PERMISSION
  * This layout has been approved and locked by the user.
- * See LandingPage.locked.tsx for the backup.
  */
 import React from 'react';
 import { SparkMark } from '../../components/icons/SparkMark';

@@ -1,73 +1,61 @@
-# React + TypeScript + Vite
+# 180 Absolute Cinema
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Single-page film ritual app built with React + TypeScript + Vite.
 
-Currently, two official plugins are available:
+## Stack
+- React 19
+- TypeScript 5
+- Vite 7
+- Supabase (Auth, Postgres, Storage)
+- Tailwind CSS
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Local Setup
+1. Install dependencies:
+```bash
+npm install
+```
+2. Create/update `.env` with required values (see Environment section).
+  Use `.env.example` as the baseline template.
+3. Run dev server:
+```bash
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Scripts
+- `npm run dev` - start Vite dev server
+- `npm run lint` - run ESLint
+- `npm run build` - run TypeScript build + Vite production build
+- `npm run preview` - preview production build locally
+- `node test-supabase-connection.js` - quick Supabase read/write capability check
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Environment
+Client:
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+- `VITE_SUPABASE_STORAGE_BUCKET` (optional, default `posters`)
+- `VITE_AUTH_REDIRECT_TO` (optional, OAuth redirect override)
+- `VITE_TMDB_API_KEY` (optional fallback path)
+- `VITE_TMDB_API_DISABLED` (`0` enables client TMDB fallback, default disabled)
+- `VITE_IMAGE_MODE` (optional image proxy mode)
+- `VITE_IMAGE_PROXIES` (optional comma-separated proxy templates)
+- `VITE_ENABLE_DEBUG_PANEL` (`0` disables debug panel in dev)
+- `VITE_ENABLE_MOCK_NOTIFICATIONS` (`1` enables seeded notifications in dev)
+- `VITE_ALLOW_CLIENT_DAILY_WRITE` (`1` enables client write path in dev only)
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+Server/cron (`api/cron/daily.ts`):
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_STORAGE_BUCKET` (optional, default `posters`)
+- `TMDB_API_KEY`
+
+## Supabase Rollout
+- Base setup SQL: `supabase_setup.sql`
+- Social migration SQL: `sql/migrations/20260207_social_model_v2.sql`
+- Rollout checklist: `docs/ROLLOUT_SOCIAL_MODEL.md`
+- Test checklist: `docs/TEST_PLAN_SOCIAL_SYNC.md`
+- Integration plan: `PLAN_SUPABASE_INTEGRATION.md`
+
+## Notes
+- Social interactions use relational tables (`ritual_echoes`, `ritual_replies`).
+- Client-side Daily 5 writes are restricted to dev mode; production writer should be cron/service role.
+- Debug panel is dynamically imported only in dev mode.

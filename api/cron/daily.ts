@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export const config = {
     runtime: 'nodejs'
 };
@@ -133,12 +134,6 @@ const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
 const TMDB_API_BASE = 'https://api.themoviedb.org/3';
 const IMAGE_SOURCE_PROXIES = ['https://images.weserv.nl/?url=', 'https://wsrv.nl/?url='];
 const tmdbPosterCache = new Map<number, string | null>();
-
-const getEnv = (key: string, required = true): string => {
-    const value = process.env[key];
-    if (!value && required) throw new Error(`Missing env: ${key}`);
-    return value || '';
-};
 
 const getCronSecret = (): string | null => {
     return process.env.CRON_SECRET || process.env.VERCEL_CRON_SECRET || null;

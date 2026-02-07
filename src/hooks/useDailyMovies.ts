@@ -2,11 +2,21 @@ import { useState, useEffect } from 'react';
 import { TMDB_SEEDS } from '../data/tmdbSeeds';
 import { DAILY_SLOTS, FALLBACK_GRADIENTS } from '../data/dailyConfig';
 import type { Movie } from '../data/mockMovies';
+import { supabase, isSupabaseLive } from '../lib/supabase';
 
-const normalizeMovie = (movie: any): Movie => {
-    if (!movie) return movie;
+type LooseMovie = Partial<Movie> & {
+    poster_path?: string;
+    posterURL?: string;
+    poster_url?: string;
+};
+
+const normalizeMovie = (input: unknown): Movie => {
+    if (!input || typeof input !== 'object') {
+        return input as Movie;
+    }
+    const movie = input as LooseMovie;
     const posterPath = movie.posterPath ?? movie.poster_path ?? movie.posterURL ?? movie.poster_url;
-    return { ...movie, posterPath };
+    return { ...(movie as Movie), posterPath };
 };
 
 export const useDailyMovies = () => {
@@ -16,11 +26,16 @@ export const useDailyMovies = () => {
     useEffect(() => {
         const fetchDaily5 = async () => {
             const todayKey = new Date().toISOString().split('T')[0];
-            const { supabase, isSupabaseLive } = await import('../lib/supabase');
+            const isDev = import.meta.env.DEV;
+            // Client write path is restricted to local/dev. Production write source should be cron/service role.
+            const allowClientDailyWrite =
+                isDev && import.meta.env.VITE_ALLOW_CLIENT_DAILY_WRITE === '1';
 
             // 1. SUPABASE STRATEGY (The Absolute Source)
             if (isSupabaseLive() && supabase) {
-                console.log('[Daily5] Checking Supabase for global sync...');
+                if (isDev) {
+                    console.log('[Daily5] Checking Supabase for global sync...');
+                }
 
                 try {
                     // a) READ from DB
@@ -31,8 +46,11 @@ export const useDailyMovies = () => {
                         .single();
 
                     if (data && data.movies) {
-                        console.log('[Daily5] Sync successful. Using global daily selection.');
-                        const normalized = data.movies.map((m: any) => normalizeMovie(m));
+                        if (isDev) {
+                            console.log('[Daily5] Sync successful. Using global daily selection.');
+                        }
+                        const fromDb = Array.isArray(data.movies) ? (data.movies as unknown[]) : [];
+                        const normalized = fromDb.map((m: unknown) => normalizeMovie(m));
                         setMovies(normalized);
                         setLoading(false);
                         return;
@@ -44,7 +62,9 @@ export const useDailyMovies = () => {
 
                     // b) WRITE to DB (First user of the day)
                     // If we are here, DB is empty for today. We must generate the list using our existing logic.
-                    console.log('[Daily5] No entry for today. Generating Global Daily 5...');
+                    if (isDev) {
+                        console.log('[Daily5] No entry for today. Generating Global Daily 5...');
+                    }
                 } catch (err) {
                     console.error('[Daily5] DB Connection failed, falling back to local.', err);
                 }
@@ -55,12 +75,18 @@ export const useDailyMovies = () => {
             // 2. Check Local Cache (Fallback for offline/no-db)
             const cachedData = localStorage.getItem('DAILY_SELECTION_V14');
             if (cachedData) {
-                const { date, movies: cachedMovies } = JSON.parse(cachedData);
-                if (date === todayKey && cachedMovies.length === 5) {
-                    const normalized = cachedMovies.map((m: any) => normalizeMovie(m));
-                    setMovies(normalized);
-                    setLoading(false);
-                    return;
+                try {
+                    const parsed = JSON.parse(cachedData) as { date?: string; movies?: unknown[] };
+                    const date = parsed?.date;
+                    const cachedMovies = Array.isArray(parsed?.movies) ? parsed.movies : [];
+                    if (date === todayKey && cachedMovies.length === 5) {
+                        const normalized = cachedMovies.map((m) => normalizeMovie(m));
+                        setMovies(normalized);
+                        setLoading(false);
+                        return;
+                    }
+                } catch {
+                    localStorage.removeItem('DAILY_SELECTION_V14');
                 }
             }
 
@@ -94,12 +120,17 @@ export const useDailyMovies = () => {
                 finalMovies = getSeeds();
             }
 
-            // c) SAVE TO DB (If we are the generator)
-            if (isSupabaseLive() && supabase && finalMovies.length === 5) {
-                console.log('[Daily5] Writing generated list to Supabase...');
+            // c) SAVE TO DB (Only when explicitly enabled; cron should be the default writer)
+            if (allowClientDailyWrite && isSupabaseLive() && supabase && finalMovies.length === 5) {
+                if (isDev) {
+                    console.log('[Daily5] Writing generated list to Supabase...');
+                }
                 const { error: insertError } = await supabase
                     .from('daily_showcase')
-                    .insert([{ date: todayKey, movies: finalMovies }]);
+                    .upsert([{ date: todayKey, movies: finalMovies }], {
+                        onConflict: 'date',
+                        ignoreDuplicates: true
+                    });
 
                 if (insertError) console.error('[Daily5] Failed to write to DB:', insertError);
             }

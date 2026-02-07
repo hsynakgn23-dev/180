@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { useXP } from '../../context/XPContext';
 
 export const DebugPanel: React.FC = () => {
@@ -20,7 +20,7 @@ export const DebugPanel: React.FC = () => {
         <div className="fixed bottom-4 right-4 bg-black/90 border border-white/20 p-4 rounded-lg z-50 w-64 text-xs font-mono">
             <div className="flex justify-between items-center mb-4">
                 <span className="text-sage">DEBUG CONTROL</span>
-                <button onClick={() => setIsOpen(false)} className="text-white/50 hover:text-white">✕</button>
+                <button onClick={() => setIsOpen(false)} className="text-white/50 hover:text-white">X</button>
             </div>
 
             <div className="space-y-2">
@@ -47,3 +47,4 @@ export const DebugPanel: React.FC = () => {
         </div>
     );
 };
+

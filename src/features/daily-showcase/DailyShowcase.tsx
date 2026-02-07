@@ -3,9 +3,10 @@ import { useDailyMovies } from '../../hooks/useDailyMovies';
 import { useXP } from '../../context/XPContext';
 import { MovieCard } from './MovieCard';
 import { CycleTime } from './CycleTime';
+import type { Movie } from '../../data/mockMovies';
 
 interface DailyShowcaseProps {
-    onMovieSelect: (movie: any) => void;
+    onMovieSelect: (movie: Movie) => void;
 }
 
 export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) => {

@@ -1,8 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState, type ComponentType } from 'react'
 import './App.css'
 import { XPProvider, useXP } from './context/XPContext'
 import { NotificationProvider } from './context/NotificationContext'
-import { DebugPanel } from './components/debug/DebugPanel'
 import { ProfileWidget } from './components/ProfileWidget'
 import { NotificationCenter } from './features/notifications/NotificationCenter'
 import { DailyShowcase } from './features/daily-showcase/DailyShowcase'
@@ -22,8 +21,24 @@ const AppContent = () => {
   const [detailMovie, setDetailMovie] = useState<Movie | null>(null);
   const [showProfile, setShowProfile] = useState(false);
   const [startProfileInSettings, setStartProfileInSettings] = useState(false);
+  const [DebugPanelComponent, setDebugPanelComponent] = useState<ComponentType | null>(null);
 
   const [showLanding, setShowLanding] = useState(true);
+  const showDebugPanel = import.meta.env.DEV && import.meta.env.VITE_ENABLE_DEBUG_PANEL !== '0';
+
+  useEffect(() => {
+    if (!showDebugPanel) return;
+
+    let active = true;
+    void import('./components/debug/DebugPanel').then((mod) => {
+      if (!active) return;
+      setDebugPanelComponent(() => mod.DebugPanel);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [showDebugPanel]);
 
   if (!user) {
     if (showLanding) {
@@ -42,7 +57,7 @@ const AppContent = () => {
         />
       )}
 
-      <DebugPanel />
+      {showDebugPanel && DebugPanelComponent ? <DebugPanelComponent /> : null}
 
       {/* Top Right Controls */}
       <div className="fixed top-3 right-3 sm:top-6 sm:right-6 z-40 flex items-start sm:items-center gap-2 sm:gap-4">

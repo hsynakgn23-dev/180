@@ -86,12 +86,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         reader.readAsDataURL(file);
     };
 
-    const handleLogout = () => {
+    const handleLogout = async () => {
         if (!confirmLogout) {
             setConfirmLogout(true);
             return;
         }
-        logout();
+        await logout();
         onClose();
     };
 

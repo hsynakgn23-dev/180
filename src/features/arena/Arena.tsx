@@ -1,7 +1,109 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MOCK_ARENA_RITUALS, type Ritual } from '../../data/mockArena';
 import { RitualCard } from './RitualCard';
 import { useXP } from '../../context/XPContext';
+import { useNotifications } from '../../context/NotificationContext';
+import { supabase, isSupabaseLive } from '../../lib/supabase';
+import { TMDB_SEEDS } from '../../data/tmdbSeeds';
+
+interface RitualRow {
+    id: string;
+    user_id: string | null;
+    author: string | null;
+    movie_title: string | null;
+    poster_path: string | null;
+    text: string | null;
+    timestamp: string | null;
+    league: string | null;
+    year: string | null;
+}
+
+interface EchoRow {
+    ritual_id: string;
+    user_id: string;
+}
+
+interface ReplyRow {
+    id: string;
+    ritual_id: string;
+    author: string | null;
+    text: string | null;
+    created_at: string | null;
+}
+
+const MOVIE_ID_BY_TITLE = new Map(
+    TMDB_SEEDS.map((movie) => [movie.title.trim().toLowerCase(), movie.id] as const)
+);
+
+const getMovieIdByTitle = (title: string): number => {
+    const normalized = title.trim().toLowerCase();
+    return MOVIE_ID_BY_TITLE.get(normalized) || 0;
+};
+
+const parseYear = (yearRaw: string | null): number | undefined => {
+    if (!yearRaw) return undefined;
+    const parsed = Number(yearRaw);
+    if (Number.isNaN(parsed)) return undefined;
+    return parsed;
+};
+
+const toRelativeTimestamp = (rawTimestamp: string): string => {
+    const parsed = Date.parse(rawTimestamp);
+    if (Number.isNaN(parsed)) return rawTimestamp;
+
+    const now = Date.now();
+    const diffMs = now - parsed;
+    if (diffMs < 0) return 'Today';
+
+    const hourMs = 60 * 60 * 1000;
+    const dayMs = 24 * hourMs;
+    const diffHours = Math.floor(diffMs / hourMs);
+    if (diffHours < 1) return 'Just Now';
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return `${Math.floor(diffMs / dayMs)}d ago`;
+};
+
+type RitualReply = NonNullable<Ritual['replies']>[number];
+
+const normalizeReplyRow = (row: ReplyRow): RitualReply | null => {
+    if (!row.id || typeof row.id !== 'string') return null;
+    if (!row.author || !row.text) return null;
+    return {
+        id: row.id,
+        author: row.author,
+        text: row.text,
+        timestamp: row.created_at ? toRelativeTimestamp(row.created_at) : 'Just Now'
+    };
+};
+
+const mapDbRitual = (
+    row: RitualRow,
+    options: {
+        currentUserId?: string;
+        echoes: number;
+        isEchoedByMe: boolean;
+        replies: RitualReply[];
+    }
+): Ritual => {
+    const movieTitle = row.movie_title || 'Unknown Title';
+    const rawTimestamp = row.timestamp || new Date().toISOString();
+    return {
+        id: row.id,
+        movieId: getMovieIdByTitle(movieTitle),
+        movieTitle,
+        year: parseYear(row.year),
+        posterPath: row.poster_path || undefined,
+        author: row.author || 'Observer',
+        text: row.text || '',
+        echoes: options.echoes,
+        isEchoedByMe: options.isEchoedByMe,
+        timestamp: toRelativeTimestamp(rawTimestamp),
+        league: row.league || 'Bronze',
+        createdAt: Date.parse(rawTimestamp),
+        isCustom: Boolean(options.currentUserId && row.user_id && row.user_id === options.currentUserId),
+        replies: options.replies
+    };
+};
 
 const getRitualTimeScore = (ritual: Ritual): number => {
     if (typeof ritual.createdAt === 'number' && Number.isFinite(ritual.createdAt)) {
@@ -40,16 +142,171 @@ const formatDateAsRitualTimestamp = (dateStr: string): string => {
 
 export const Arena: React.FC = () => {
     const { dailyRituals, user, league, deleteRitual } = useXP();
+    const { addNotification } = useNotifications();
     const [filter, setFilter] = useState<'all' | 'today'>('all');
     const [sortMode, setSortMode] = useState<'latest' | 'echoes'>('latest');
     const [query, setQuery] = useState('');
+    const supabaseEnabled = isSupabaseLive() && !!supabase;
+    const [remoteRituals, setRemoteRituals] = useState<Ritual[]>(() => (supabaseEnabled ? [] : MOCK_ARENA_RITUALS));
+    const [isRemoteLoading, setIsRemoteLoading] = useState(supabaseEnabled);
+    const [feedError, setFeedError] = useState<string | null>(null);
+    const lastNotifiedErrorRef = useRef<string | null>(null);
+
+    const reportFeedError = useCallback((message: string) => {
+        setFeedError(message);
+        if (lastNotifiedErrorRef.current === message) return;
+        lastNotifiedErrorRef.current = message;
+        addNotification({
+            type: 'system',
+            message
+        });
+    }, [addNotification]);
+
+    useEffect(() => {
+        const client = supabase;
+        if (!supabaseEnabled || !client) return;
+
+        let active = true;
+        const fetchRituals = async () => {
+            const { data, error } = await client
+                .from('rituals')
+                .select('id, user_id, author, movie_title, poster_path, text, timestamp, league, year')
+                .order('timestamp', { ascending: false })
+                .limit(120);
+
+            if (!active) return;
+
+            if (error) {
+                console.error('[Arena] failed to fetch rituals', error);
+                reportFeedError('Ritual feed su anda yuklenemiyor. Baglantiyi kontrol edip tekrar dene.');
+                setRemoteRituals([]);
+                setIsRemoteLoading(false);
+                return;
+            }
+
+            const rows = Array.isArray(data) ? (data as RitualRow[]) : [];
+            const ritualIds = rows.map((row) => row.id);
+            let echoRows: EchoRow[] = [];
+            let replyRows: ReplyRow[] = [];
+            let hasSubFetchError = false;
+
+            if (ritualIds.length > 0) {
+                const [{ data: echoesData, error: echoesError }, { data: repliesData, error: repliesError }] = await Promise.all([
+                    client
+                        .from('ritual_echoes')
+                        .select('ritual_id, user_id')
+                        .in('ritual_id', ritualIds),
+                    client
+                        .from('ritual_replies')
+                        .select('id, ritual_id, author, text, created_at')
+                        .in('ritual_id', ritualIds)
+                        .order('created_at', { ascending: true })
+                ]);
+
+                if (echoesError) {
+                    console.error('[Arena] failed to fetch ritual echoes', echoesError);
+                    reportFeedError('Echo verileri senkronize edilemedi. Akisi yenileyip tekrar dene.');
+                    hasSubFetchError = true;
+                } else {
+                    echoRows = Array.isArray(echoesData) ? (echoesData as EchoRow[]) : [];
+                }
+
+                if (repliesError) {
+                    console.error('[Arena] failed to fetch ritual replies', repliesError);
+                    reportFeedError('Yanit verileri senkronize edilemedi. Akisi yenileyip tekrar dene.');
+                    hasSubFetchError = true;
+                } else {
+                    replyRows = Array.isArray(repliesData) ? (repliesData as ReplyRow[]) : [];
+                }
+            }
+
+            const echoCountByRitual = new Map<string, number>();
+            const echoedByMe = new Set<string>();
+            for (const row of echoRows) {
+                echoCountByRitual.set(row.ritual_id, (echoCountByRitual.get(row.ritual_id) || 0) + 1);
+                if (user?.id && row.user_id === user.id) {
+                    echoedByMe.add(row.ritual_id);
+                }
+            }
+
+            const repliesByRitual = new Map<string, RitualReply[]>();
+            for (const row of replyRows) {
+                const normalized = normalizeReplyRow(row);
+                if (!normalized) continue;
+                const current = repliesByRitual.get(row.ritual_id) || [];
+                current.push(normalized);
+                repliesByRitual.set(row.ritual_id, current);
+            }
+
+            setRemoteRituals(
+                rows.map((row) =>
+                    mapDbRitual(row, {
+                        currentUserId: user?.id,
+                        echoes: echoCountByRitual.get(row.id) || 0,
+                        isEchoedByMe: echoedByMe.has(row.id),
+                        replies: repliesByRitual.get(row.id) || []
+                    })
+                )
+            );
+            if (!hasSubFetchError) {
+                setFeedError(null);
+                lastNotifiedErrorRef.current = null;
+            }
+            setIsRemoteLoading(false);
+        };
+
+        void fetchRituals();
+
+        const channel = client
+            .channel('rituals-feed')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'rituals' }, () => {
+                void fetchRituals();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'ritual_echoes' }, () => {
+                void fetchRituals();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'ritual_replies' }, () => {
+                void fetchRituals();
+            })
+            .subscribe();
+
+        const pollId = window.setInterval(() => {
+            void fetchRituals();
+        }, 30000);
+
+        return () => {
+            active = false;
+            window.clearInterval(pollId);
+            void client.removeChannel(channel);
+        };
+    }, [reportFeedError, supabaseEnabled, user?.id]);
 
     const handleDelete = (ritualId: string) => {
+        if (supabaseEnabled && supabase) {
+            void supabase
+                .from('rituals')
+                .delete()
+                .eq('id', ritualId)
+                .then(({ error }) => {
+                    if (error) {
+                        console.error('[Arena] failed to delete ritual', error);
+                        reportFeedError('Ritual silinemedi. Tekrar dene.');
+                        return;
+                    }
+                    setRemoteRituals((prev) => prev.filter((ritual) => ritual.id !== ritualId));
+                });
+            return;
+        }
+
         const normalized = ritualId.startsWith('log-') ? ritualId.slice(4) : ritualId;
         deleteRitual(String(normalized));
     };
 
     const rituals = useMemo<Ritual[]>(() => {
+        if (supabaseEnabled) {
+            return remoteRituals;
+        }
+
         const mine: Ritual[] = dailyRituals.map((ritual) => ({
             id: `log-${ritual.id}`,
             movieId: ritual.movieId,
@@ -67,12 +324,14 @@ export const Arena: React.FC = () => {
         }));
 
         return [...mine, ...MOCK_ARENA_RITUALS];
-    }, [dailyRituals, league, user?.name]);
+    }, [dailyRituals, league, remoteRituals, supabaseEnabled, user?.name]);
 
     const filteredRituals = useMemo(() => {
         const queryText = query.trim().toLowerCase();
+        const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
         let items = rituals.filter((ritual) => {
-            if (filter === 'today' && ritual.timestamp.includes('d ago')) return false;
+            if (filter === 'today' && getRitualTimeScore(ritual) < todayStart) return false;
             if (!queryText) return true;
 
             return (
@@ -137,7 +396,16 @@ export const Arena: React.FC = () => {
             </div>
 
             <div className="flex flex-col">
-                {filteredRituals.length > 0 ? (
+                {feedError && (
+                    <div className="mb-3 text-center py-3 px-3 text-[10px] text-red-300 uppercase tracking-[0.14em] border border-red-400/30 rounded bg-red-500/5">
+                        {feedError}
+                    </div>
+                )}
+                {isRemoteLoading && supabaseEnabled ? (
+                    <div className="text-center py-10 text-[10px] text-gray-500 uppercase tracking-[0.18em] border border-white/5 rounded">
+                        Loading global ritual feed...
+                    </div>
+                ) : filteredRituals.length > 0 ? (
                     filteredRituals.map((ritual) => (
                         <RitualCard
                             key={ritual.id}

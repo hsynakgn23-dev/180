@@ -69,3 +69,8 @@ We need three core tables to handle the application state.
 ## Action Plan for User
 1. **Approve Schema:** Confirm if you want to proceed with these tables.
 2. **Connect:** I will need the Supabase URL and Anon Key after you create the project.
+
+## Current Rollout Artifacts (2026-02-07)
+- Migration SQL: `sql/migrations/20260207_social_model_v2.sql`
+- Rollout guide: `docs/ROLLOUT_SOCIAL_MODEL.md`
+- Test checklist: `docs/TEST_PLAN_SOCIAL_SYNC.md`

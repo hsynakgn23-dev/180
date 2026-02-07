@@ -1,60 +1,86 @@
-
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = 'https://aziamkechdrirrukhmgm.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF6aWFta2VjaGRyaXJydWtobWdtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyMzkxMjIsImV4cCI6MjA4NTgxNTEyMn0.IK7EpSthZyP3mGkjXefF7nFjKXJY3tsPSNfs1Ki7j7M';
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    console.error('Missing SUPABASE_URL/VITE_SUPABASE_URL or SUPABASE_ANON_KEY/VITE_SUPABASE_ANON_KEY env vars.');
+    process.exit(1);
+}
 
-async function testConnection() {
-    console.log('🔌 Testing Supabase Connection...');
+const anonClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const serviceClient = SUPABASE_SERVICE_ROLE_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    : null;
 
-    // 1. Test Read (Daily Showcase)
+const section = (title) => {
+    console.log(`\n=== ${title} ===`);
+};
+
+const checkRead = async (client, table, queryBuilder) => {
+    const query = queryBuilder ? queryBuilder(client.from(table)) : client.from(table).select('*').limit(1);
+    const { data, error } = await query;
+    if (error) {
+        console.error(`[${table}] read failed:`, error.message);
+        return false;
+    }
+    console.log(`[${table}] read ok (${Array.isArray(data) ? data.length : 0} row sample).`);
+    return true;
+};
+
+const testAnonRead = async () => {
+    section('Anon Read Checks');
     const today = new Date().toISOString().split('T')[0];
-    console.log(`📅 Checking Daily Showcase for: ${today}`);
 
-    const { data: readData, error: readError } = await supabase
-        .from('daily_showcase')
-        .select('*')
-        .eq('date', today);
+    await checkRead(anonClient, 'daily_showcase', (q) => q.select('*').eq('date', today).limit(1));
+    await checkRead(anonClient, 'rituals');
+    await checkRead(anonClient, 'ritual_echoes');
+    await checkRead(anonClient, 'ritual_replies');
+};
 
-    if (readError) {
-        console.error('❌ Read Failed:', readError.message);
-    } else {
-        console.log('✅ Read Successful!');
-        if (readData.length === 0) {
-            console.log('   -> Database is currently empty for today (Expected for fresh setup).');
-        } else {
-            console.log(`   -> Found ${readData.length} entry/entries.`);
-        }
+const testServiceWrite = async () => {
+    section('Service Role Write Check');
+    if (!serviceClient) {
+        console.log('Skipped (SUPABASE_SERVICE_ROLE_KEY not set).');
+        return;
     }
 
-    // 2. Test Write (Dummy Ritual)
-    // We'll try to insert a dummy ritual since that table is also open
-    console.log('📝 Testing Write Permission (Rituals Table)...');
-    const { data: writeData, error: writeError } = await supabase
+    const { data, error } = await serviceClient
         .from('rituals')
         .insert([
             {
                 author: 'System Test',
                 movie_title: 'Inception',
-                text: 'Connection verification echo.',
-                poster_path: '/test.jpg'
+                text: 'Connection verification entry.',
+                poster_path: '/test.jpg',
+                timestamp: new Date().toISOString()
             }
         ])
-        .select();
+        .select('id')
+        .single();
 
-    if (writeError) {
-        console.error('❌ Write Failed:', writeError.message);
-        console.log('   (Did you run the SQL setup script in Supabase Dashboard?)');
-    } else {
-        console.log('✅ Write Successful! Ritual ID:', writeData[0].id);
-
-        // Cleanup
-        console.log('🧹 Cleaning up test data...');
-        await supabase.from('rituals').delete().eq('id', writeData[0].id);
-        console.log('✅ Cleanup Done.');
+    if (error) {
+        console.error('Write failed with service role:', error.message);
+        return;
     }
-}
 
-testConnection();
+    console.log('Write succeeded with service role. Ritual ID:', data.id);
+    const { error: deleteError } = await serviceClient.from('rituals').delete().eq('id', data.id);
+    if (deleteError) {
+        console.error('Cleanup failed:', deleteError.message);
+        return;
+    }
+    console.log('Cleanup succeeded.');
+};
+
+const run = async () => {
+    section('Supabase Connection Test');
+    await testAnonRead();
+    await testServiceWrite();
+};
+
+run().catch((error) => {
+    console.error('Unexpected test error:', error);
+    process.exit(1);
+});

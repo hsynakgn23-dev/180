@@ -22,7 +22,7 @@ export interface MarkDef {
     title: string;
     description: string;
     category: 'Ritual' | 'Discovery' | 'Social' | 'Presence' | 'Writing' | 'Rhythm' | 'Legacy';
-    Icon: React.FC<any>;
+    Icon: React.ComponentType<{ color?: string; size?: number; className?: string; opacity?: number }>;
     whisper: string;
     badgeAsset?: string;
 }

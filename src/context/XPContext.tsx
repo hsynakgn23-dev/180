@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { MAJOR_MARKS } from '../data/marksData';
 import { TMDB_SEEDS } from '../data/tmdbSeeds';
+import { supabase, isSupabaseLive } from '../lib/supabase';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 // Types
 interface EchoLog {
@@ -42,6 +44,17 @@ interface XPState {
     bio: string; // Max 180 chars
     avatarId: string; // e.g. 'geo_1', 'geo_2'
     avatarUrl?: string; // Custom uploaded image (Data URL)
+}
+
+interface AuthResult {
+    ok: boolean;
+    message?: string;
+}
+
+interface SessionUser {
+    id?: string;
+    email: string;
+    name: string;
 }
 
 export interface LeagueInfo {
@@ -93,9 +106,11 @@ interface XPContextType {
     receiveEcho: (movieTitle?: string) => void;
     debugAddXP: (amount: number) => void;
     debugUnlockMark: (markId: string) => void;
-    user: { email: string; name: string } | null;
-    login: (email: string) => void;
-    logout: () => void;
+    user: SessionUser | null;
+    authMode: 'supabase' | 'local';
+    login: (email: string, password: string, isRegistering?: boolean) => Promise<AuthResult>;
+    loginWithGoogle: () => Promise<AuthResult>;
+    logout: () => Promise<void>;
     avatarUrl?: string; // Custom uploaded avatar
     updateAvatar: (url: string) => void;
 }
@@ -128,41 +143,139 @@ const normalizeRitualLog = (ritual: RitualLog): RitualLog => {
     };
 };
 
+const buildInitialXPState = (bio = "A silent observer."): XPState => ({
+    totalXP: 0,
+    lastLoginDate: null,
+    dailyDwellXP: 0,
+    lastDwellDate: null,
+    dailyRituals: [],
+    marks: [],
+    featuredMarks: [],
+    activeDays: [],
+    uniqueGenres: [],
+    streak: 0,
+    lastStreakDate: null,
+    echoesReceived: 0,
+    echoesGiven: 0,
+    echoHistory: [],
+    followers: 0,
+    following: [],
+    nonConsecutiveCount: 0,
+    bio,
+    avatarId: "geo_1"
+});
+
+const normalizeXPState = (input: Partial<XPState> | null | undefined): XPState => {
+    const fallback = buildInitialXPState();
+    if (!input) return fallback;
+
+    return {
+        ...fallback,
+        ...input,
+        dailyRituals: Array.isArray(input.dailyRituals)
+            ? input.dailyRituals.map((ritual: RitualLog) => normalizeRitualLog(ritual))
+            : [],
+        marks: Array.isArray(input.marks) ? input.marks : [],
+        featuredMarks: Array.isArray(input.featuredMarks) ? input.featuredMarks : [],
+        activeDays: Array.isArray(input.activeDays) ? input.activeDays : [],
+        uniqueGenres: Array.isArray(input.uniqueGenres) ? input.uniqueGenres : [],
+        echoHistory: Array.isArray(input.echoHistory) ? input.echoHistory : [],
+        following: Array.isArray(input.following) ? input.following : [],
+        streak: input.streak || 0,
+        lastStreakDate: input.lastStreakDate || null,
+        echoesReceived: input.echoesReceived || 0,
+        echoesGiven: input.echoesGiven || 0,
+        followers: input.followers || 0,
+        nonConsecutiveCount: input.nonConsecutiveCount || 0,
+        bio: input.bio || fallback.bio,
+        avatarId: input.avatarId || fallback.avatarId
+    };
+};
+
+const getLegacyStoredUser = (): SessionUser | null => {
+    const stored = localStorage.getItem('180_user_session');
+    if (!stored) return null;
+    try {
+        const parsed = JSON.parse(stored) as Partial<SessionUser>;
+        if (!parsed.email || typeof parsed.email !== 'string') return null;
+        const fallbackName = parsed.email.split('@')[0] || 'observer';
+        return {
+            id: typeof parsed.id === 'string' && parsed.id.trim() ? parsed.id : undefined,
+            email: parsed.email,
+            name: typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name : fallbackName
+        };
+    } catch {
+        return null;
+    }
+};
+
+const normalizeAuthError = (message: string): string => {
+    const lowered = message.toLowerCase();
+    if (lowered.includes('invalid login credentials')) return 'Email veya sifre hatali.';
+    if (lowered.includes('email not confirmed')) return 'E-posta onayi gerekli.';
+    if (lowered.includes('user already registered')) return 'Bu e-posta zaten kayitli.';
+    return message;
+};
+
+const toSessionUser = (authUser: SupabaseUser | null): SessionUser | null => {
+    if (!authUser?.email) return null;
+    const metadataName = typeof authUser.user_metadata?.full_name === 'string'
+        ? authUser.user_metadata.full_name
+        : typeof authUser.user_metadata?.name === 'string'
+            ? authUser.user_metadata.name
+            : '';
+    const fallbackName = authUser.email.split('@')[0] || 'observer';
+    return {
+        id: authUser.id,
+        email: authUser.email,
+        name: metadataName.trim() || fallbackName
+    };
+};
+
 const XPContext = createContext<XPContextType | undefined>(undefined);
 
 export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [user, setUser] = useState<{ email: string; name: string } | null>(() => {
-        const storedUser = localStorage.getItem('180_user_session');
-        return storedUser ? JSON.parse(storedUser) : null;
-    });
+    const [user, setUser] = useState<SessionUser | null>(() => getLegacyStoredUser());
 
-    const [state, setState] = useState<XPState>({
-        totalXP: 0,
-        lastLoginDate: null,
-        dailyDwellXP: 0,
-        lastDwellDate: null,
-        dailyRituals: [],
-        marks: [],
-        featuredMarks: [],
-        activeDays: [],
-        uniqueGenres: [],
-        streak: 0,
-        lastStreakDate: null,
-        echoesReceived: 0,
-        echoesGiven: 0,
-        echoHistory: [],
-        followers: 0,
-        following: [],
-        nonConsecutiveCount: 0,
-        bio: "A silent observer.",
-        avatarId: "geo_1"
-    });
+    const [state, setState] = useState<XPState>(buildInitialXPState());
     const [whisper, setWhisper] = useState<string | null>(null);
     const [levelUpEvent, setLevelUpEvent] = useState<LeagueInfo | null>(null);
     const [levelUpQueue, setLevelUpQueue] = useState<LeagueInfo[]>([]);
     const previousLeagueIndexRef = useRef(getLeagueIndexFromXp(state.totalXP));
     const pendingWelcomeWhisperRef = useRef(false);
     const [isXpHydrated, setIsXpHydrated] = useState(false);
+    const authMode: 'supabase' | 'local' = isSupabaseLive() && supabase ? 'supabase' : 'local';
+
+    useEffect(() => {
+        if (!isSupabaseLive() || !supabase) {
+            return;
+        }
+
+        let active = true;
+        const applyAuthUser = (authUser: SupabaseUser | null) => {
+            if (!active) return;
+            const mapped = toSessionUser(authUser);
+            setUser(mapped);
+            if (mapped) {
+                localStorage.setItem('180_user_session', JSON.stringify(mapped));
+            } else {
+                localStorage.removeItem('180_user_session');
+            }
+        };
+
+        void supabase.auth.getSession().then(({ data }) => {
+            applyAuthUser(data.session?.user ?? null);
+        });
+
+        const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+            applyAuthUser(session?.user ?? null);
+        });
+
+        return () => {
+            active = false;
+            data.subscription.unsubscribe();
+        };
+    }, []);
 
     // Load data when user changes
     useEffect(() => {
@@ -171,64 +284,66 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         setLevelUpQueue([]);
 
         if (!user) {
+            setState(buildInitialXPState("Orbiting nearby..."));
+            setIsXpHydrated(true);
             previousLeagueIndexRef.current = getLeagueIndexFromXp(0);
             return;
         }
 
+        setState(buildInitialXPState());
         const userKey = `180_xp_data_${user.email}`;
-        const stored = localStorage.getItem(userKey);
-        if (stored) {
-            const parsed = JSON.parse(stored);
-            setState({
-                ...parsed,
-                dailyRituals: Array.isArray(parsed.dailyRituals)
-                    ? parsed.dailyRituals.map((ritual: RitualLog) => normalizeRitualLog(ritual))
-                    : [],
-                marks: parsed.marks || [],
-                featuredMarks: parsed.featuredMarks || [],
-                activeDays: parsed.activeDays || [],
-                uniqueGenres: parsed.uniqueGenres || [],
-                streak: parsed.streak || 0,
-                lastStreakDate: parsed.lastStreakDate || null,
-                echoesReceived: parsed.echoesReceived || 0,
-                echoesGiven: parsed.echoesGiven || 0,
-                echoHistory: parsed.echoHistory || [],
-                followers: parsed.followers || 0,
-                nonConsecutiveCount: parsed.nonConsecutiveCount || 0,
-                bio: parsed.bio || "A silent observer.",
-                avatarId: parsed.avatarId || "geo_1"
-            });
-            previousLeagueIndexRef.current = getLeagueIndexFromXp(parsed.totalXP || 0);
-        } else {
-            // New user default state
-            const defaultState: XPState = {
-                totalXP: 0,
-                lastLoginDate: null,
-                dailyDwellXP: 0,
-                lastDwellDate: null,
-                dailyRituals: [],
-                marks: [],
-                featuredMarks: [],
-                activeDays: [],
-                uniqueGenres: [],
-                streak: 0,
-                lastStreakDate: null,
-                echoesReceived: 0,
-                echoesGiven: 0,
-                echoHistory: [],
-                followers: 0,
-                following: [],
-                nonConsecutiveCount: 0,
-                bio: "A silent observer.",
-                avatarId: "geo_1"
-            };
-            setState(defaultState);
-            localStorage.setItem(userKey, JSON.stringify(defaultState));
-            previousLeagueIndexRef.current = getLeagueIndexFromXp(defaultState.totalXP);
-        }
+        let active = true;
 
-        setIsXpHydrated(true);
-    }, [user?.email]);
+        const hydrateState = async () => {
+            let resolvedState: XPState | null = null;
+
+            if (isSupabaseLive() && supabase && user.id) {
+                const { data, error } = await supabase
+                    .from('profiles')
+                    .select('xp_state')
+                    .eq('user_id', user.id)
+                    .maybeSingle();
+
+                if (!error && data?.xp_state && typeof data.xp_state === 'object') {
+                    resolvedState = normalizeXPState(data.xp_state as Partial<XPState>);
+                } else if (
+                    error &&
+                    !error.message.toLowerCase().includes('relation "profiles"') &&
+                    !error.message.toLowerCase().includes('does not exist')
+                ) {
+                    console.error('[XP] failed to read profile state', error);
+                }
+            }
+
+            if (!resolvedState) {
+                const stored = localStorage.getItem(userKey);
+                if (stored) {
+                    try {
+                        resolvedState = normalizeXPState(JSON.parse(stored) as Partial<XPState>);
+                    } catch {
+                        resolvedState = null;
+                    }
+                }
+            }
+
+            if (!resolvedState) {
+                resolvedState = buildInitialXPState();
+            }
+
+            if (!active) return;
+
+            setState(resolvedState);
+            previousLeagueIndexRef.current = getLeagueIndexFromXp(resolvedState.totalXP || 0);
+            localStorage.setItem(userKey, JSON.stringify(resolvedState));
+            setIsXpHydrated(true);
+        };
+
+        void hydrateState();
+
+        return () => {
+            active = false;
+        };
+    }, [user?.email, user?.id]);
 
     const getToday = () => new Date().toISOString().split('T')[0];
 
@@ -255,37 +370,83 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         });
     };
 
-    const login = (email: string) => {
-        const newUser = { email, name: email.split('@')[0] };
-        setUser(newUser);
-        localStorage.setItem('180_user_session', JSON.stringify(newUser));
-        triggerWhisper("Welcome to the Ritual.");
+    const login = async (email: string, password: string, isRegistering = false): Promise<AuthResult> => {
+        const normalizedEmail = (email || '').trim().toLowerCase();
+        if (!normalizedEmail.includes('@')) {
+            return { ok: false, message: 'Gecerli bir e-posta gir.' };
+        }
+        if ((password || '').length < 6) {
+            return { ok: false, message: 'Sifre en az 6 karakter olmali.' };
+        }
+
+        if (!isSupabaseLive() || !supabase) {
+            const fallbackUser = {
+                email: normalizedEmail,
+                name: normalizedEmail.split('@')[0] || 'observer'
+            };
+            setUser(fallbackUser);
+            localStorage.setItem('180_user_session', JSON.stringify(fallbackUser));
+            triggerWhisper("Welcome to the Ritual.");
+            return { ok: true, message: 'Supabase kapali oldugu icin local session acildi.' };
+        }
+
+        try {
+            if (isRegistering) {
+                const { error } = await supabase.auth.signUp({
+                    email: normalizedEmail,
+                    password
+                });
+
+                if (error) return { ok: false, message: normalizeAuthError(error.message) };
+                triggerWhisper("Account created.");
+                return {
+                    ok: true,
+                    message: 'Kayit tamamlandi. Onay maili gerekebilir.'
+                };
+            }
+
+            const { error } = await supabase.auth.signInWithPassword({
+                email: normalizedEmail,
+                password
+            });
+
+            if (error) return { ok: false, message: normalizeAuthError(error.message) };
+            triggerWhisper("Welcome to the Ritual.");
+            return { ok: true };
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Login failed.';
+            return { ok: false, message: normalizeAuthError(message) };
+        }
     };
 
-    const logout = () => {
-        setUser(null);
+    const loginWithGoogle = async (): Promise<AuthResult> => {
+        if (!isSupabaseLive() || !supabase) {
+            return { ok: false, message: 'Google login icin Supabase gerekli.' };
+        }
+
+        try {
+            const redirectTo = import.meta.env.VITE_AUTH_REDIRECT_TO || `${window.location.origin}/`;
+            const { error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: { redirectTo }
+            });
+
+            if (error) return { ok: false, message: normalizeAuthError(error.message) };
+            return { ok: true };
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Google login failed.';
+            return { ok: false, message: normalizeAuthError(message) };
+        }
+    };
+
+    const logout = async () => {
+        if (isSupabaseLive() && supabase) {
+            await supabase.auth.signOut();
+        }
         localStorage.removeItem('180_user_session');
-        setState({ // Reset to empty/guest state
-            totalXP: 0,
-            lastLoginDate: null,
-            dailyDwellXP: 0,
-            lastDwellDate: null,
-            dailyRituals: [],
-            marks: [],
-            featuredMarks: [],
-            activeDays: [],
-            uniqueGenres: [],
-            streak: 0,
-            lastStreakDate: null,
-            echoesReceived: 0,
-            echoesGiven: 0,
-            echoHistory: [],
-            followers: 0,
-            following: [],
-            nonConsecutiveCount: 0,
-            bio: "Orbiting nearby...",
-            avatarId: "geo_1"
-        });
+
+        setUser(null);
+        setState(buildInitialXPState("Orbiting nearby..."));
     };
 
     const updateAvatar = (url: string) => {
@@ -462,7 +623,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         if (newStreak >= 7) earnedXP *= 1.5;
 
         let currentMarks = [...(state.marks || [])];
-        let newUniqueGenres = [...(state.uniqueGenres || [])];
+        const newUniqueGenres = [...(state.uniqueGenres || [])];
 
         // --- MARK CHECKS ---
         if (state.dailyRituals.length === 0) currentMarks = tryUnlockMark('first_mark', currentMarks);
@@ -535,6 +696,30 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             lastStreakDate: today,
             nonConsecutiveCount: nonConsecutive
         });
+
+        if (isSupabaseLive() && supabase && user?.id) {
+            const leagueForInsert = LEAGUE_NAMES[getLeagueIndexFromXp(newTotalXP)];
+            void supabase
+                .from('rituals')
+                .insert([
+                    {
+                        user_id: user.id,
+                        author: user.name || 'Observer',
+                        movie_title: newRitual.movieTitle,
+                        poster_path: newRitual.posterPath || null,
+                        text: newRitual.text,
+                        timestamp: new Date().toISOString(),
+                        league: leagueForInsert,
+                        year: knownMovie?.year ? String(knownMovie.year) : null
+                    }
+                ])
+                .then(({ error }) => {
+                    if (error) {
+                        console.error('[Ritual] Failed to sync ritual:', error);
+                        triggerWhisper("Ritual kaydedildi ama cloud senkronu basarisiz oldu.");
+                    }
+                });
+        }
     };
 
     const deleteRitual = (ritualId: string) => {
@@ -556,7 +741,8 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     };
 
     // 4. Social
-    const echoRitual = (_ritualId: string) => {
+    const echoRitual = (ritualId: string) => {
+        void ritualId;
         const newXP = state.totalXP + 1;
         const newGiven = (state.echoesGiven || 0) + 1;
         let currentMarks = [...(state.marks || [])];
@@ -623,6 +809,36 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         });
     };
 
+    useEffect(() => {
+        if (!user || !isXpHydrated) return;
+
+        const userKey = `180_xp_data_${user.email}`;
+        localStorage.setItem(userKey, JSON.stringify(state));
+
+        if (!isSupabaseLive() || !supabase || !user.id) return;
+
+        void supabase
+            .from('profiles')
+            .upsert(
+                {
+                    user_id: user.id,
+                    email: user.email,
+                    display_name: user.name,
+                    xp_state: state,
+                    updated_at: new Date().toISOString()
+                },
+                { onConflict: 'user_id' }
+            )
+            .then(({ error }) => {
+                if (error) {
+                    const msg = error.message.toLowerCase();
+                    if (!msg.includes('relation "profiles"') && !msg.includes('does not exist')) {
+                        console.error('[XP] failed to upsert profile state', error);
+                    }
+                }
+            });
+    }, [isXpHydrated, state, user]);
+
     const debugUnlockMark = (markId: string) => {
         const updated = tryUnlockMark(markId, state.marks);
         updateState({ marks: updated });
@@ -670,7 +886,9 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             debugAddXP,
             debugUnlockMark,
             user,
+            authMode,
             login,
+            loginWithGoogle,
             logout,
             avatarUrl: state.avatarUrl,
             updateAvatar

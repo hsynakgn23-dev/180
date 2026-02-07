@@ -1,10 +1,11 @@
-import React, { useMemo, useState } from 'react';
+﻿import React, { useMemo, useState } from 'react';
 import type { Ritual } from '../../data/mockArena';
 import { MarkIcons } from '../marks/MarkIcons';
 import { useXP } from '../../context/XPContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { resolvePosterCandidates } from '../../lib/posterCandidates';
 import { searchPosterPath } from '../../lib/tmdbApi';
+import { supabase, isSupabaseLive } from '../../lib/supabase';
 
 interface RitualCardProps {
     ritual: Ritual;
@@ -14,6 +15,13 @@ interface RitualCardProps {
 const MAIN_TEXT_PREVIEW_LIMIT = 220;
 const REPLY_TEXT_PREVIEW_LIMIT = 140;
 const MAX_REPLY_CHARS = 180;
+type ReplyRecord = NonNullable<Ritual['replies']>[number];
+type ReplyInsertRow = {
+    id: string;
+    author: string | null;
+    text: string | null;
+    created_at: string | null;
+};
 
 const formatRitualTimestamp = (timestamp: string): string => {
     if (timestamp === '2h ago') return 'At Dusk';
@@ -21,14 +29,35 @@ const formatRitualTimestamp = (timestamp: string): string => {
     return timestamp;
 };
 
+const toRelativeTimestamp = (rawTimestamp: string): string => {
+    const parsed = Date.parse(rawTimestamp);
+    if (Number.isNaN(parsed)) return rawTimestamp;
+
+    const now = Date.now();
+    const diffMs = now - parsed;
+    if (diffMs < 0) return 'Today';
+
+    const hourMs = 60 * 60 * 1000;
+    const dayMs = 24 * hourMs;
+    const diffHours = Math.floor(diffMs / hourMs);
+    if (diffHours < 1) return 'Just Now';
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return `${Math.floor(diffMs / dayMs)}d ago`;
+};
+
 export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete }) => {
-    const { echoRitual, following } = useXP();
+    const { echoRitual, following, user } = useXP();
     const { addNotification } = useNotifications();
     const [echoed, setEchoed] = useState(ritual.isEchoedByMe);
     const [echoCount, setEchoCount] = useState(ritual.echoes);
+    const canSyncRitual =
+        isSupabaseLive() &&
+        !!supabase &&
+        !!user?.id &&
+        !ritual.id.startsWith('log-');
 
     const [showReply, setShowReply] = useState(false);
-    const [replies, setReplies] = useState(ritual.replies || []);
+    const [replies, setReplies] = useState<ReplyRecord[]>(ritual.replies || []);
     const [replyText, setReplyText] = useState('');
     const [isMainExpanded, setIsMainExpanded] = useState(false);
     const [expandedReplies, setExpandedReplies] = useState<Record<string, boolean>>({});
@@ -46,6 +75,12 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete }) => {
     const [imageLoaded, setImageLoaded] = useState(false);
     const [candidates, setCandidates] = useState<string[]>([]);
     const [candidateIndex, setCandidateIndex] = useState(0);
+
+    React.useEffect(() => {
+        setEchoed(ritual.isEchoedByMe);
+        setEchoCount(ritual.echoes);
+        setReplies(ritual.replies || []);
+    }, [ritual.id, ritual.echoes, ritual.isEchoedByMe, ritual.replies]);
 
     const applyCandidates = (nextCandidates: string[]) => {
         setCandidates(nextCandidates);
@@ -100,7 +135,6 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete }) => {
         if (!nextCandidates.length && ritual.movieTitle) {
             handleRetry();
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [ritual.id, ritual.movieId, ritual.posterPath, ritual.movieTitle]);
 
     const handleImageError = () => {
@@ -117,9 +151,30 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete }) => {
 
     const handleEcho = () => {
         if (echoed) return;
+        const nextEchoCount = echoCount + 1;
         setEchoed(true);
-        setEchoCount((prev) => prev + 1);
+        setEchoCount(nextEchoCount);
         echoRitual(ritual.id);
+
+        if (canSyncRitual && supabase && user?.id) {
+            void supabase
+                .from('ritual_echoes')
+                .upsert([{ ritual_id: ritual.id, user_id: user.id }], {
+                    onConflict: 'ritual_id,user_id',
+                    ignoreDuplicates: true
+                })
+                .then(({ error }) => {
+                    if (error) {
+                        console.error('[Ritual] failed to sync echo count', error);
+                        setEchoed(false);
+                        setEchoCount((prev) => Math.max(0, prev - 1));
+                        addNotification({
+                            type: 'system',
+                            message: 'Echo senkronize edilemedi. Akisi yenileyip tekrar dene.'
+                        });
+                    }
+                });
+        }
     };
 
     const handleDelete = () => {
@@ -131,8 +186,9 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete }) => {
         const text = replyText.trim();
         if (!text) return;
 
-        const newReply = {
-            id: Date.now().toString(),
+        const tempId = `tmp-${Date.now()}`;
+        const newReply: ReplyRecord = {
+            id: tempId,
             author: 'You',
             text,
             timestamp: 'Just Now'
@@ -140,6 +196,57 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete }) => {
 
         setReplies((prev) => [...prev, newReply]);
         setReplyText('');
+
+        if (canSyncRitual && supabase && user?.id) {
+            const authorName = user.name || 'You';
+            void (async () => {
+                try {
+                    const { data, error } = await supabase
+                        .from('ritual_replies')
+                        .insert([
+                            {
+                                ritual_id: ritual.id,
+                                user_id: user.id,
+                                author: authorName,
+                                text
+                            }
+                        ])
+                        .select('id, author, text, created_at')
+                        .single();
+
+                    if (error) {
+                        console.error('[Ritual] failed to sync replies', error);
+                        setReplies((prev) => prev.filter((reply) => reply.id !== tempId));
+                        addNotification({
+                            type: 'system',
+                            message: 'Yanit senkronize edilemedi. Akisi yenileyip tekrar dene.'
+                        });
+                        return;
+                    }
+
+                    const row = data as ReplyInsertRow | null;
+                    if (!row?.id) return;
+
+                    const syncedReply: ReplyRecord = {
+                        id: row.id,
+                        author: row.author || authorName,
+                        text: row.text || text,
+                        timestamp: row.created_at ? toRelativeTimestamp(row.created_at) : 'Just Now'
+                    };
+
+                    setReplies((prev) => prev.map((reply) => (reply.id === tempId ? syncedReply : reply)));
+                } catch (error: unknown) {
+                    console.error('[Ritual] failed to sync replies', error);
+                    setReplies((prev) => prev.filter((reply) => reply.id !== tempId));
+                    addNotification({
+                        type: 'system',
+                        message: 'Yanit senkronize edilemedi. Akisi yenileyip tekrar dene.'
+                    });
+                }
+            })();
+        } else {
+            setReplies((prev) => prev.map((reply) => (reply.id === tempId ? { ...reply, id: Date.now().toString() } : reply)));
+        }
 
         addNotification({
             type: 'reply',
@@ -354,3 +461,4 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete }) => {
         </div>
     );
 };
+

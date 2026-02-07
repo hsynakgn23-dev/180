@@ -1,8 +1,8 @@
-import React, { createContext, useContext, useState, type ReactNode } from 'react';
+import React, { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 
 export interface Notification {
     id: string;
-    type: 'echo' | 'follow' | 'daily' | 'reply'; // Added 'reply' type
+    type: 'echo' | 'follow' | 'daily' | 'reply' | 'system';
     message: string;
     timestamp: string;
     read: boolean;
@@ -25,31 +25,46 @@ const MOCK_NOTIFICATIONS: Notification[] = [
     { id: '3', type: 'follow', message: 'Silent_Walker is now shadow following you.', timestamp: '5h ago', read: true },
 ];
 
+const getInitialNotifications = (): Notification[] => {
+    const allowSeed =
+        import.meta.env.DEV &&
+        import.meta.env.VITE_ENABLE_MOCK_NOTIFICATIONS === '1';
+    return allowSeed ? MOCK_NOTIFICATIONS : [];
+};
+
 export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    const [notifications, setNotifications] = useState<Notification[]>(MOCK_NOTIFICATIONS);
+    const [notifications, setNotifications] = useState<Notification[]>(() => getInitialNotifications());
 
-    const unreadCount = notifications.filter(n => !n.read).length;
+    const unreadCount = useMemo(() => notifications.filter((n) => !n.read).length, [notifications]);
 
-    const addNotification = (input: Omit<Notification, 'id' | 'timestamp' | 'read'>) => {
+    const addNotification = useCallback((input: Omit<Notification, 'id' | 'timestamp' | 'read'>) => {
         const newNotification: Notification = {
             ...input,
             id: Date.now().toString(),
             timestamp: 'Just Now',
             read: false,
         };
-        setNotifications(prev => [newNotification, ...prev]);
-    };
+        setNotifications((prev) => [newNotification, ...prev]);
+    }, []);
 
-    const markAsRead = (id: string) => {
-        setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-    };
+    const markAsRead = useCallback((id: string) => {
+        setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    }, []);
 
-    const markAllAsRead = () => {
-        setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-    };
+    const markAllAsRead = useCallback(() => {
+        setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    }, []);
+
+    const value = useMemo(() => ({
+        notifications,
+        unreadCount,
+        addNotification,
+        markAsRead,
+        markAllAsRead
+    }), [addNotification, markAllAsRead, markAsRead, notifications, unreadCount]);
 
     return (
-        <NotificationContext.Provider value={{ notifications, unreadCount, addNotification, markAsRead, markAllAsRead }}>
+        <NotificationContext.Provider value={value}>
             {children}
         </NotificationContext.Provider>
     );

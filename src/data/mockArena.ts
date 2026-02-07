@@ -1,3 +1,5 @@
+import type { ComponentType } from 'react';
+
 export interface Ritual {
     id: string;
     movieId: number;
@@ -12,7 +14,7 @@ export interface Ritual {
     league: string;
     createdAt?: number;
     isCustom?: boolean;
-    featuredMarks?: React.FC<any>[]; // Array of Icon components
+    featuredMarks?: ComponentType<{ color?: string; size?: number; className?: string; opacity?: number }>[]; // Array of Icon components
     replies?: {
         id: string;
         author: string;

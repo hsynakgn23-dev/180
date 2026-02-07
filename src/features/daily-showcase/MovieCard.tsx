@@ -10,6 +10,7 @@ interface MovieCardProps {
 }
 
 export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, onClick }) => {
+    const isDev = import.meta.env.DEV;
     const [imgSrc, setImgSrc] = useState<string | null>(null);
     const [hasError, setHasError] = useState(false);
     const [isRetrying, setIsRetrying] = useState(false);
@@ -45,7 +46,9 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, onClick }) =
 
         setIsRetrying(true);
         setHasError(false);
-        console.log(`[Image Recovery] Attempting to fetch fresh poster for: ${movie.title}`);
+        if (isDev) {
+            console.log(`[Image Recovery] Attempting to fetch fresh poster for: ${movie.title}`);
+        }
 
         const apiKey = import.meta.env.VITE_TMDB_API_KEY;
         if (!apiKey || apiKey === 'YOUR_TMDB_API_KEY') {
@@ -57,7 +60,9 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, onClick }) =
         try {
             const posterPath = await searchPosterPath(movie.title, apiKey);
             if (posterPath) {
-                console.log(`[Image Recovery] Found new poster: ${posterPath}`);
+                if (isDev) {
+                    console.log(`[Image Recovery] Found new poster: ${posterPath}`);
+                }
                 const nextCandidates = resolvePosterCandidates(movie.id, posterPath, 'w500');
                 if (nextCandidates.length) {
                     applyCandidates(nextCandidates);
@@ -172,7 +177,7 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, onClick }) =
 
                     <div className="flex items-center gap-2 text-xs font-light text-white/70 overflow-hidden h-0 group-hover:h-auto group-hover:mt-2 transition-all duration-500 opacity-0 group-hover:opacity-100 delay-200">
                         <span>{movie.year}</span>
-                        <span>•</span>
+                        <span>|</span>
                         <span>{movie.genre}</span>
                     </div>
                 </div>
