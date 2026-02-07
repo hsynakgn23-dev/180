@@ -46,7 +46,7 @@ const toRelativeTimestamp = (rawTimestamp: string): string => {
 };
 
 export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete }) => {
-    const { echoRitual, following, user, isControlMode } = useXP();
+    const { echoRitual, following, user } = useXP();
     const { addNotification } = useNotifications();
     const [echoed, setEchoed] = useState(ritual.isEchoedByMe);
     const [echoCount, setEchoCount] = useState(ritual.echoes);
@@ -150,13 +150,6 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete }) => {
     };
 
     const handleEcho = () => {
-        if (isControlMode) {
-            addNotification({
-                type: 'system',
-                message: 'Control mode salt-okunur. Echo gonderemezsin.'
-            });
-            return;
-        }
         if (echoed) return;
         const nextEchoCount = echoCount + 1;
         setEchoed(true);
@@ -190,14 +183,6 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete }) => {
     };
 
     const handleReplySubmit = () => {
-        if (isControlMode) {
-            addNotification({
-                type: 'system',
-                message: 'Control mode salt-okunur. Yanit gonderemezsin.'
-            });
-            return;
-        }
-
         const text = replyText.trim();
         if (!text) return;
 
@@ -363,8 +348,8 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete }) => {
                 <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-6">
                     <button
                         onClick={handleEcho}
-                        disabled={echoed || isControlMode}
-                        className={`w-full sm:w-auto justify-start px-0 py-1 sm:px-0 sm:py-0 rounded-none border-0 flex items-center gap-2 group/btn transition-colors ${echoed || isControlMode ? 'text-clay/70 cursor-default' : 'text-gray-300 hover:text-clay'}`}
+                        disabled={echoed}
+                        className={`w-full sm:w-auto justify-start px-0 py-1 sm:px-0 sm:py-0 rounded-none border-0 flex items-center gap-2 group/btn transition-colors ${echoed ? 'text-clay cursor-default' : 'text-gray-300 hover:text-clay'}`}
                     >
                         <div className={`transition-transform duration-500 ${echoed ? 'scale-110' : 'group-hover/btn:scale-110'}`}>
                             <MarkIcons.Echo size={16} />
@@ -446,10 +431,9 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete }) => {
                             <textarea
                                 value={replyText}
                                 onChange={(e) => setReplyText(e.target.value)}
-                                placeholder={isControlMode ? 'Control mode salt-okunur.' : 'Whisper a reply...'}
+                                placeholder="Whisper a reply..."
                                 maxLength={MAX_REPLY_CHARS}
                                 rows={2}
-                                disabled={isControlMode}
                                 className="bg-white/[0.02] border border-white/10 rounded w-full text-[13px] sm:text-xs text-sage placeholder-sage/30 focus:border-sage outline-none py-2 px-3 transition-colors leading-relaxed resize-none"
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -464,17 +448,12 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete }) => {
                                 </span>
                                 <button
                                     onClick={handleReplySubmit}
-                                    disabled={!replyText.trim() || isControlMode}
+                                    disabled={!replyText.trim()}
                                     className="text-[9px] uppercase tracking-widest text-[#E5E4E2]/60 hover:text-clay transition-colors disabled:opacity-30"
                                 >
                                     Send
                                 </button>
                             </div>
-                            {isControlMode && (
-                                <p className="mt-2 text-[9px] text-sage/70 tracking-[0.14em] uppercase">
-                                    Control mode: read only
-                                </p>
-                            )}
                         </div>
                     </div>
                 )}

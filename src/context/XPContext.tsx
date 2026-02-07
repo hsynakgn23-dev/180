@@ -51,13 +51,10 @@ interface AuthResult {
     message?: string;
 }
 
-type SessionRole = 'user' | 'admin_control';
-
 interface SessionUser {
     id?: string;
     email: string;
     name: string;
-    role?: SessionRole;
 }
 
 export interface LeagueInfo {
@@ -110,11 +107,8 @@ interface XPContextType {
     debugAddXP: (amount: number) => void;
     debugUnlockMark: (markId: string) => void;
     user: SessionUser | null;
-    isControlMode: boolean;
     authMode: 'supabase' | 'local';
     login: (email: string, password: string, isRegistering?: boolean) => Promise<AuthResult>;
-    loginAsControl: (pin: string) => Promise<AuthResult>;
-    loginAsControlGuest: () => Promise<AuthResult>;
     loginWithGoogle: () => Promise<AuthResult>;
     logout: () => Promise<void>;
     avatarUrl?: string; // Custom uploaded avatar
@@ -124,8 +118,6 @@ interface XPContextType {
 
 const MAX_DAILY_DWELL_XP = 20;
 const LEVEL_THRESHOLD = 500;
-const CONTROL_ADMIN_EMAIL = 'admin.control@absolutecinema.local';
-const CONTROL_ADMIN_NAME = 'Control Admin';
 export const LEAGUE_NAMES = Object.keys(LEAGUES_DATA);
 const getLeagueIndexFromXp = (xp: number): number =>
     Math.min(Math.floor(xp / LEVEL_THRESHOLD), LEAGUE_NAMES.length - 1);
@@ -210,8 +202,7 @@ const getLegacyStoredUser = (): SessionUser | null => {
         return {
             id: typeof parsed.id === 'string' && parsed.id.trim() ? parsed.id : undefined,
             email: parsed.email,
-            name: typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name : fallbackName,
-            role: parsed.role === 'admin_control' ? 'admin_control' : 'user'
+            name: typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name : fallbackName
         };
     } catch {
         return null;
@@ -223,6 +214,9 @@ const normalizeAuthError = (message: string): string => {
     if (lowered.includes('invalid login credentials')) return 'Email veya sifre hatali.';
     if (lowered.includes('email not confirmed')) return 'E-posta onayi gerekli.';
     if (lowered.includes('user already registered')) return 'Bu e-posta zaten kayitli.';
+    if (lowered.includes('email rate limit exceeded') || lowered.includes('rate limit')) {
+        return 'Cok fazla deneme yapildi. Biraz bekleyip tekrar dene.';
+    }
     return message;
 };
 
@@ -237,25 +231,14 @@ const toSessionUser = (authUser: SupabaseUser | null): SessionUser | null => {
     return {
         id: authUser.id,
         email: authUser.email,
-        name: metadataName.trim() || fallbackName,
-        role: 'user'
+        name: metadataName.trim() || fallbackName
     };
-};
-
-const getControlPin = (): string => (import.meta.env.VITE_CONTROL_ADMIN_PIN || '').trim();
-const shouldAllowGuestControl = (): boolean => {
-    if (import.meta.env.VITE_CONTROL_ALLOW_GUEST === '1') return true;
-    if (!import.meta.env.DEV) return false;
-    if (typeof window === 'undefined') return true;
-    const host = window.location.hostname;
-    return host === 'localhost' || host === '127.0.0.1';
 };
 
 const XPContext = createContext<XPContextType | undefined>(undefined);
 
 export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [user, setUser] = useState<SessionUser | null>(() => getLegacyStoredUser());
-    const userRef = useRef<SessionUser | null>(user);
 
     const [state, setState] = useState<XPState>(buildInitialXPState());
     const [whisper, setWhisper] = useState<string | null>(null);
@@ -264,7 +247,6 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     const previousLeagueIndexRef = useRef(getLeagueIndexFromXp(state.totalXP));
     const pendingWelcomeWhisperRef = useRef(false);
     const [isXpHydrated, setIsXpHydrated] = useState(false);
-    const isControlMode = user?.role === 'admin_control';
     const authMode: 'supabase' | 'local' = isSupabaseLive() && supabase ? 'supabase' : 'local';
 
     const setSessionUser = (nextUser: SessionUser | null) => {
@@ -277,10 +259,6 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     };
 
     useEffect(() => {
-        userRef.current = user;
-    }, [user]);
-
-    useEffect(() => {
         if (!isSupabaseLive() || !supabase) {
             return;
         }
@@ -288,9 +266,6 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         let active = true;
         const applyAuthUser = (authUser: SupabaseUser | null) => {
             if (!active) return;
-            if (userRef.current?.role === 'admin_control') {
-                return;
-            }
             const mapped = toSessionUser(authUser);
             setSessionUser(mapped);
         };
@@ -414,8 +389,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         if (!isSupabaseLive() || !supabase) {
             const fallbackUser = {
                 email: normalizedEmail,
-                name: normalizedEmail.split('@')[0] || 'observer',
-                role: 'user' as const
+                name: normalizedEmail.split('@')[0] || 'observer'
             };
             setSessionUser(fallbackUser);
             triggerWhisper("Welcome to the Ritual.");
@@ -424,25 +398,35 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
         try {
             if (isRegistering) {
-                const { error } = await supabase.auth.signUp({
+                const { data, error } = await supabase.auth.signUp({
                     email: normalizedEmail,
                     password
                 });
 
                 if (error) return { ok: false, message: normalizeAuthError(error.message) };
+                const mapped = toSessionUser(data.user ?? data.session?.user ?? null);
+                if (mapped) {
+                    setSessionUser(mapped);
+                }
                 triggerWhisper("Account created.");
                 return {
                     ok: true,
-                    message: 'Kayit tamamlandi. Onay maili gerekebilir.'
+                    message: data.session
+                        ? 'Kayit tamamlandi. Oturum acildi.'
+                        : 'Kayit tamamlandi. Onay maili gerekebilir.'
                 };
             }
 
-            const { error } = await supabase.auth.signInWithPassword({
+            const { data, error } = await supabase.auth.signInWithPassword({
                 email: normalizedEmail,
                 password
             });
 
             if (error) return { ok: false, message: normalizeAuthError(error.message) };
+            const mapped = toSessionUser(data.user ?? data.session?.user ?? null);
+            if (mapped) {
+                setSessionUser(mapped);
+            }
             triggerWhisper("Welcome to the Ritual.");
             return { ok: true };
         } catch (error) {
@@ -469,54 +453,6 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             const message = error instanceof Error ? error.message : 'Google login failed.';
             return { ok: false, message: normalizeAuthError(message) };
         }
-    };
-
-    const loginAsControl = async (pin: string): Promise<AuthResult> => {
-        const expectedPin = getControlPin();
-        if (!expectedPin) {
-            return { ok: false, message: 'Kontrol girisi devre disi. VITE_CONTROL_ADMIN_PIN gerekli.' };
-        }
-        if ((pin || '').trim() !== expectedPin) {
-            return { ok: false, message: 'Kontrol PIN hatali.' };
-        }
-
-        if (isSupabaseLive() && supabase) {
-            const { error } = await supabase.auth.signOut();
-            if (error) {
-                console.warn('[Auth] failed to clear supabase session before control login', error);
-            }
-        }
-
-        const controlUser: SessionUser = {
-            email: CONTROL_ADMIN_EMAIL,
-            name: CONTROL_ADMIN_NAME,
-            role: 'admin_control'
-        };
-        setSessionUser(controlUser);
-        triggerWhisper("Control access granted.");
-        return { ok: true, message: 'Kontrol oturumu acildi.' };
-    };
-
-    const loginAsControlGuest = async (): Promise<AuthResult> => {
-        if (!shouldAllowGuestControl()) {
-            return { ok: false, message: 'Misafir kontrol erisimi kapali.' };
-        }
-
-        if (isSupabaseLive() && supabase) {
-            const { error } = await supabase.auth.signOut();
-            if (error) {
-                console.warn('[Auth] failed to clear supabase session before guest control login', error);
-            }
-        }
-
-        const controlUser: SessionUser = {
-            email: CONTROL_ADMIN_EMAIL,
-            name: CONTROL_ADMIN_NAME,
-            role: 'admin_control'
-        };
-        setSessionUser(controlUser);
-        triggerWhisper("Guest control access granted.");
-        return { ok: true, message: 'Misafir kontrol oturumu acildi.' };
     };
 
     const logout = async () => {
@@ -669,11 +605,6 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
     // 3. Ritual Submission
     const submitRitual = (movieId: number, text: string, _rating: number, genre: string, title?: string, posterPath?: string) => {
-        if (isControlMode) {
-            triggerWhisper("Control mode is read-only.");
-            return;
-        }
-
         const today = getToday();
         if (state.dailyRituals.some(r => r.date === today && r.movieId === movieId)) {
             triggerWhisper("Memory stored.");
@@ -806,11 +737,6 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     };
 
     const deleteRitual = (ritualId: string) => {
-        if (isControlMode) {
-            triggerWhisper("Control mode is read-only.");
-            return;
-        }
-
         if (!ritualId) return;
         const normalizedId = String(ritualId);
         const exists = (state.dailyRituals || []).some((ritual) => String(ritual.id) === normalizedId);
@@ -830,11 +756,6 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
     // 4. Social
     const echoRitual = (ritualId: string) => {
-        if (isControlMode) {
-            triggerWhisper("Control mode is read-only.");
-            return;
-        }
-
         void ritualId;
         const newXP = state.totalXP + 1;
         const newGiven = (state.echoesGiven || 0) + 1;
@@ -979,11 +900,8 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             debugAddXP,
             debugUnlockMark,
             user,
-            isControlMode,
             authMode,
             login,
-            loginAsControl,
-            loginAsControlGuest,
             loginWithGoogle,
             logout,
             avatarUrl: state.avatarUrl,

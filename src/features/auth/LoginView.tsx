@@ -2,19 +2,14 @@ import React, { useState } from 'react';
 import { useXP } from '../../context/XPContext';
 
 export const LoginView: React.FC = () => {
-    const { login, loginWithGoogle, loginAsControl, loginAsControlGuest, authMode } = useXP();
+    const { login, loginWithGoogle, authMode } = useXP();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [controlPin, setControlPin] = useState('');
     const [isRegistering, setIsRegistering] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-    const [isControlLoading, setIsControlLoading] = useState(false);
     const [statusMessage, setStatusMessage] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
-    const configuredControlPin = (import.meta.env.VITE_CONTROL_ADMIN_PIN || '').trim();
-    const hasConfiguredControlPin = configuredControlPin.length > 0;
-    const canUseGuestControl = import.meta.env.DEV || import.meta.env.VITE_CONTROL_ALLOW_GUEST === '1';
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -51,52 +46,6 @@ export const LoginView: React.FC = () => {
             }
         } finally {
             setIsGoogleLoading(false);
-        }
-    };
-
-    const handleControlLogin = async () => {
-        if (isControlLoading) return;
-        if (!hasConfiguredControlPin) {
-            setErrorMessage('Kontrol girisi devre disi. VITE_CONTROL_ADMIN_PIN gerekli.');
-            setStatusMessage('');
-            return;
-        }
-        setIsControlLoading(true);
-        setErrorMessage('');
-        setStatusMessage('');
-
-        try {
-            const result = await loginAsControl(controlPin);
-            if (!result.ok) {
-                setErrorMessage(result.message || 'Kontrol girisi basarisiz.');
-                return;
-            }
-            if (result.message) {
-                setStatusMessage(result.message);
-            }
-            setControlPin('');
-        } finally {
-            setIsControlLoading(false);
-        }
-    };
-
-    const handleGuestControlLogin = async () => {
-        if (isControlLoading) return;
-        setIsControlLoading(true);
-        setErrorMessage('');
-        setStatusMessage('');
-
-        try {
-            const result = await loginAsControlGuest();
-            if (!result.ok) {
-                setErrorMessage(result.message || 'Misafir kontrol girisi basarisiz.');
-                return;
-            }
-            if (result.message) {
-                setStatusMessage(result.message);
-            }
-        } finally {
-            setIsControlLoading(false);
         }
     };
 
@@ -183,53 +132,6 @@ export const LoginView: React.FC = () => {
                             Supabase auth tanimli degil, local login modu aktif.
                         </div>
                     )}
-
-                    <div className="mt-1 border border-[#8A9A5B]/20 bg-[#8A9A5B]/5 rounded-md p-4">
-                        <p className="text-[9px] uppercase tracking-[0.18em] text-sage/80 mb-2">
-                            Control Access
-                        </p>
-                        <div className="flex flex-col gap-2">
-                            <input
-                                type="password"
-                                value={controlPin}
-                                onChange={(e) => setControlPin(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                        e.preventDefault();
-                                        void handleControlLogin();
-                                    }
-                                }}
-                                placeholder="Admin control PIN"
-                                className="w-full bg-[#121212] border border-[#E5E4E2]/10 p-2.5 text-xs text-[#E5E4E2] focus:border-sage outline-none rounded-md placeholder-sage/30 transition-colors"
-                            />
-                            <button
-                                type="button"
-                                onClick={handleControlLogin}
-                                disabled={isControlLoading || !hasConfiguredControlPin}
-                                className="w-full bg-[#8A9A5B] text-[#121212] font-bold py-2.5 uppercase tracking-[0.2em] text-[10px] rounded-md hover:bg-[#9AB06B] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                            >
-                                {isControlLoading ? 'Please wait...' : 'Admin Girisi'}
-                            </button>
-                            {canUseGuestControl && (
-                                <button
-                                    type="button"
-                                    onClick={handleGuestControlLogin}
-                                    disabled={isControlLoading}
-                                    className="w-full border border-[#8A9A5B]/40 text-[#8A9A5B] font-bold py-2.5 uppercase tracking-[0.2em] text-[10px] rounded-md hover:bg-[#8A9A5B]/10 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                                >
-                                    {isControlLoading ? 'Please wait...' : 'Misafir Kontrol Girisi'}
-                                </button>
-                            )}
-                        </div>
-                        <p className="text-[9px] text-[#E5E4E2]/45 mt-2">
-                            Uyelik gerektirmeyen kontrol oturumu.
-                        </p>
-                        {!hasConfiguredControlPin && (
-                            <p className="text-[9px] text-red-300/85 mt-1">
-                                PIN tanimli degil. `.env` icine `VITE_CONTROL_ADMIN_PIN` ekleyip dev server'i yeniden baslat.
-                            </p>
-                        )}
-                    </div>
 
                     <div className="text-center mt-4">
                         <p className="text-[10px] text-gray-500 cursor-pointer hover:text-sage transition-colors" onClick={() => setIsRegistering(!isRegistering)}>

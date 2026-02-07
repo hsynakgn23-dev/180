@@ -48,6 +48,7 @@ const DEFAULT_GRADIENTS = [
     'from-pink-300 to-purple-400',
     'from-green-700 to-green-900'
 ];
+const DAILY_MOVIE_COUNT = 5;
 
 const DEFAULT_SEED_MOVIES: Movie[] = [
     {
@@ -129,6 +130,23 @@ const EXTRA_POSTER_CACHE_MOVIES: Movie[] = [
         posterPath: '/inVq3FRqcYIRl2la8iZikYYxFNR.jpg'
     }
 ];
+
+const hashString = (value: string): number => {
+    let hash = 2166136261;
+    for (let i = 0; i < value.length; i += 1) {
+        hash ^= value.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+};
+
+const createSeededRandom = (seed: number) => {
+    let state = seed >>> 0;
+    return () => {
+        state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+        return state / 4294967296;
+    };
+};
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
 const TMDB_API_BASE = 'https://api.themoviedb.org/3';
@@ -420,8 +438,21 @@ const ensurePosters = async (
     };
 };
 
-const buildSeedMovies = (): Movie[] => {
-    return DEFAULT_SEED_MOVIES.slice(0, 5).map((movie, index) => ({
+const buildSeedMovies = (dateKey: string): Movie[] => {
+    const pool = [...DEFAULT_SEED_MOVIES];
+    for (const extraMovie of EXTRA_POSTER_CACHE_MOVIES) {
+        if (!pool.some((movie) => movie.id === extraMovie.id)) {
+            pool.push(extraMovie);
+        }
+    }
+
+    const random = createSeededRandom(hashString(`daily:${dateKey}`));
+    for (let i = pool.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+
+    return pool.slice(0, Math.min(DAILY_MOVIE_COUNT, pool.length)).map((movie, index) => ({
         ...movie,
         slotLabel: DEFAULT_SLOT_LABELS[index] || movie.slotLabel,
         color: DEFAULT_GRADIENTS[index] || movie.color
@@ -490,7 +521,7 @@ export default async function handler(req: any, res: any) {
             return sendJson(res, 500, { error: readError.message });
         }
 
-        let movies: Movie[] = Array.isArray(existing?.movies) ? existing.movies : buildSeedMovies();
+        let movies: Movie[] = Array.isArray(existing?.movies) ? existing.movies : buildSeedMovies(todayKey);
         const diagnostics: PosterDiagnostic[] = [];
 
         const isStorageBacked = movies.every((m: any) => typeof m.posterPath === 'string' && m.posterPath.includes('/storage/v1/object/public/'));

@@ -10,6 +10,45 @@ type LooseMovie = Partial<Movie> & {
     poster_url?: string;
 };
 
+const DAILY_CACHE_KEY = 'DAILY_SELECTION_V15';
+const DAILY_MOVIE_COUNT = 5;
+
+const hashString = (value: string): number => {
+    let hash = 2166136261;
+    for (let i = 0; i < value.length; i += 1) {
+        hash ^= value.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+};
+
+const createSeededRandom = (seed: number) => {
+    let state = seed >>> 0;
+    return () => {
+        state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+        return state / 4294967296;
+    };
+};
+
+const buildDailySeedMovies = (dateKey: string): Movie[] => {
+    const pool = [...TMDB_SEEDS];
+    if (pool.length === 0) return [];
+
+    const random = createSeededRandom(hashString(`daily:${dateKey}`));
+    for (let i = pool.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+
+    return pool
+        .slice(0, Math.min(DAILY_MOVIE_COUNT, pool.length))
+        .map((movie, index) => ({
+            ...movie,
+            slotLabel: DAILY_SLOTS[index]?.label,
+            color: FALLBACK_GRADIENTS[index] || movie.color
+        }));
+};
+
 const normalizeMovie = (input: unknown): Movie => {
     if (!input || typeof input !== 'object') {
         return input as Movie;
@@ -73,7 +112,7 @@ export const useDailyMovies = () => {
             // --- EXISTING LOGIC STARTS HERE (As Fallback or Generator) ---
 
             // 2. Check Local Cache (Fallback for offline/no-db)
-            const cachedData = localStorage.getItem('DAILY_SELECTION_V14');
+            const cachedData = localStorage.getItem(DAILY_CACHE_KEY);
             if (cachedData) {
                 try {
                     const parsed = JSON.parse(cachedData) as { date?: string; movies?: unknown[] };
@@ -86,7 +125,7 @@ export const useDailyMovies = () => {
                         return;
                     }
                 } catch {
-                    localStorage.removeItem('DAILY_SELECTION_V14');
+                    localStorage.removeItem(DAILY_CACHE_KEY);
                 }
             }
 
@@ -97,13 +136,6 @@ export const useDailyMovies = () => {
             // For now, to ensure stability, we will stick to the working SEED logic or existing API logic, 
             // but if we had the DB, we would save the result there.
 
-            // Helper to get raw movie list
-            const getSeeds = () => TMDB_SEEDS.slice(0, 5).map((m, i) => ({
-                ...m,
-                slotLabel: DAILY_SLOTS[i].label,
-                color: FALLBACK_GRADIENTS[i]
-            }));
-
             // For this phase, we keep FORCE_SEEDS = true to ensure the "Generator" produces good data.
             // Once the DB is live, we can relax this to allow API generation.
             const FORCE_SEEDS = true;
@@ -111,13 +143,13 @@ export const useDailyMovies = () => {
             let finalMovies: Movie[] = [];
 
             if (FORCE_SEEDS) {
-                finalMovies = getSeeds();
+                finalMovies = buildDailySeedMovies(todayKey);
             } else if (apiKey && apiKey !== 'YOUR_TMDB_API_KEY') {
                 // ... (Original API logic would go here if we disabled force seeds) ...
                 // Keeping it short for now as per instructions to rely on seeds.
-                finalMovies = getSeeds();
+                finalMovies = buildDailySeedMovies(todayKey);
             } else {
-                finalMovies = getSeeds();
+                finalMovies = buildDailySeedMovies(todayKey);
             }
 
             // c) SAVE TO DB (Only when explicitly enabled; cron should be the default writer)
@@ -136,7 +168,7 @@ export const useDailyMovies = () => {
             }
 
             // Local Cache & Set State
-            localStorage.setItem('DAILY_SELECTION_V14', JSON.stringify({ date: todayKey, movies: finalMovies }));
+            localStorage.setItem(DAILY_CACHE_KEY, JSON.stringify({ date: todayKey, movies: finalMovies }));
             setMovies(finalMovies);
             setLoading(false);
         };
