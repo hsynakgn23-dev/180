@@ -60,7 +60,30 @@ const CommentFilmPoster: React.FC<{ movieId: number; posterPath?: string; title:
 };
 
 export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettings = false }) => {
-    const { xp, league, progressPercentage, marks, daysPresent, streak, featuredMarks, toggleFeaturedMark, dailyRituals, nextLevelXP, bio, avatarId, updateIdentity, deleteRitual, user, logout, updateAvatar, avatarUrl } = useXP();
+    const {
+        xp,
+        league,
+        progressPercentage,
+        marks,
+        daysPresent,
+        streak,
+        featuredMarks,
+        toggleFeaturedMark,
+        dailyRituals,
+        nextLevelXP,
+        fullName,
+        username,
+        gender,
+        birthDate,
+        bio,
+        avatarId,
+        updateIdentity,
+        deleteRitual,
+        user,
+        logout,
+        updateAvatar,
+        avatarUrl
+    } = useXP();
     const [isVisible, setIsVisible] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [tempBio, setTempBio] = useState(bio);
@@ -68,6 +91,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
     const [showSettings, setShowSettings] = useState(false);
     const progressFill = getProgressFill(progressPercentage);
     const progressTransitionMs = getProgressTransitionMs(progressPercentage);
+    const genderLabel = gender === 'female'
+        ? 'Kadin'
+        : gender === 'male'
+            ? 'Erkek'
+            : gender === 'non_binary'
+                ? 'Non-binary'
+                : gender === 'prefer_not_to_say'
+                    ? 'Belirtmek istemiyor'
+                    : '';
 
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -256,6 +288,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                                 <h2 className="text-xl tracking-widest font-bold text-[#E5E4E2]/90 mb-2">
                                     {user?.name ? user.name.toUpperCase() : 'KÜRATÖR'}
                                 </h2>
+                                <p className="text-[10px] tracking-[0.2em] uppercase text-gray-400 mb-1">
+                                    @{username || 'observer'}
+                                </p>
+                                <p className="text-[10px] text-gray-500 mb-4 text-center">
+                                    {fullName || 'Isim belirtilmedi'} | {genderLabel || 'Cinsiyet belirtilmedi'} | {birthDate || 'Dogum tarihi yok'}
+                                </p>
 
                                 {isEditing ? (
                                     <div className="flex flex-col items-center gap-2 w-full mb-4">

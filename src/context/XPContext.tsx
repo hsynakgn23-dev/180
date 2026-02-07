@@ -41,6 +41,10 @@ interface XPState {
     followers: number;
     following: string[]; // List of usernames
     nonConsecutiveCount: number; // For "No Rush"
+    fullName: string;
+    username: string;
+    gender: RegistrationGender | '';
+    birthDate: string; // YYYY-MM-DD
     bio: string; // Max 180 chars
     avatarId: string; // e.g. 'geo_1', 'geo_2'
     avatarUrl?: string; // Custom uploaded image (Data URL)
@@ -55,6 +59,10 @@ interface SessionUser {
     id?: string;
     email: string;
     name: string;
+    fullName?: string;
+    username?: string;
+    gender?: RegistrationGender | '';
+    birthDate?: string;
 }
 
 export interface LeagueInfo {
@@ -66,6 +74,15 @@ export interface LeagueInfo {
 export interface StreakCelebrationEvent {
     day: number;
     isMilestone: boolean;
+}
+
+export type RegistrationGender = 'female' | 'male' | 'non_binary' | 'prefer_not_to_say';
+
+export interface RegistrationProfileInput {
+    fullName: string;
+    username: string;
+    gender: RegistrationGender;
+    birthDate: string; // YYYY-MM-DD
 }
 
 export const LEAGUES_DATA: Record<string, LeagueInfo> = {
@@ -103,6 +120,10 @@ interface XPContextType {
     streak: number;
     echoHistory: EchoLog[];
     following: string[];
+    fullName: string;
+    username: string;
+    gender: RegistrationGender | '';
+    birthDate: string;
     bio: string;
     avatarId: string;
     updateIdentity: (bio: string, avatarId: string) => void;
@@ -115,7 +136,7 @@ interface XPContextType {
     debugUnlockMark: (markId: string) => void;
     user: SessionUser | null;
     authMode: 'supabase' | 'local';
-    login: (email: string, password: string, isRegistering?: boolean) => Promise<AuthResult>;
+    login: (email: string, password: string, isRegistering?: boolean, registrationProfile?: RegistrationProfileInput) => Promise<AuthResult>;
     loginWithGoogle: () => Promise<AuthResult>;
     logout: () => Promise<void>;
     avatarUrl?: string; // Custom uploaded avatar
@@ -126,7 +147,10 @@ interface XPContextType {
 const MAX_DAILY_DWELL_XP = 20;
 const LEVEL_THRESHOLD = 500;
 const STREAK_MILESTONES = new Set([5, 7, 10, 20, 40, 50, 100, 200, 250, 300, 350]);
+const REGISTRATION_GENDERS: RegistrationGender[] = ['female', 'male', 'non_binary', 'prefer_not_to_say'];
+const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
 export const LEAGUE_NAMES = Object.keys(LEAGUES_DATA);
+type PendingRegistrationProfile = RegistrationProfileInput & { email: string };
 const getLeagueIndexFromXp = (xp: number): number =>
     Math.min(Math.floor(xp / LEVEL_THRESHOLD), LEAGUE_NAMES.length - 1);
 const KNOWN_MOVIES_BY_ID = new Map(
@@ -169,6 +193,10 @@ const buildInitialXPState = (bio = "A silent observer."): XPState => ({
     followers: 0,
     following: [],
     nonConsecutiveCount: 0,
+    fullName: '',
+    username: '',
+    gender: '',
+    birthDate: '',
     bio,
     avatarId: "geo_1"
 });
@@ -195,6 +223,10 @@ const normalizeXPState = (input: Partial<XPState> | null | undefined): XPState =
         echoesGiven: input.echoesGiven || 0,
         followers: input.followers || 0,
         nonConsecutiveCount: input.nonConsecutiveCount || 0,
+        fullName: input.fullName || '',
+        username: input.username || '',
+        gender: (input.gender as RegistrationGender) || '',
+        birthDate: input.birthDate || '',
         bio: input.bio || fallback.bio,
         avatarId: input.avatarId || fallback.avatarId
     };
@@ -207,10 +239,18 @@ const getLegacyStoredUser = (): SessionUser | null => {
         const parsed = JSON.parse(stored) as Partial<SessionUser>;
         if (!parsed.email || typeof parsed.email !== 'string') return null;
         const fallbackName = parsed.email.split('@')[0] || 'observer';
+        const rawGender = typeof parsed.gender === 'string' ? parsed.gender : '';
+        const normalizedGender = REGISTRATION_GENDERS.includes(rawGender as RegistrationGender)
+            ? (rawGender as RegistrationGender)
+            : '';
         return {
             id: typeof parsed.id === 'string' && parsed.id.trim() ? parsed.id : undefined,
             email: parsed.email,
-            name: typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name : fallbackName
+            name: typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name : fallbackName,
+            fullName: typeof parsed.fullName === 'string' ? parsed.fullName : '',
+            username: typeof parsed.username === 'string' ? parsed.username : '',
+            gender: normalizedGender,
+            birthDate: typeof parsed.birthDate === 'string' ? parsed.birthDate : ''
         };
     } catch {
         return null;
@@ -235,11 +275,28 @@ const toSessionUser = (authUser: SupabaseUser | null): SessionUser | null => {
         : typeof authUser.user_metadata?.name === 'string'
             ? authUser.user_metadata.name
             : '';
+    const metadataUsername = typeof authUser.user_metadata?.username === 'string'
+        ? authUser.user_metadata.username
+        : '';
+    const metadataGenderRaw = typeof authUser.user_metadata?.gender === 'string'
+        ? authUser.user_metadata.gender
+        : '';
+    const metadataGender = REGISTRATION_GENDERS.includes(metadataGenderRaw as RegistrationGender)
+        ? (metadataGenderRaw as RegistrationGender)
+        : '';
+    const metadataBirthDate = typeof authUser.user_metadata?.birth_date === 'string'
+        ? authUser.user_metadata.birth_date
+        : '';
     const fallbackName = authUser.email.split('@')[0] || 'observer';
+    const resolvedName = metadataName.trim() || metadataUsername.trim() || fallbackName;
     return {
         id: authUser.id,
         email: authUser.email,
-        name: metadataName.trim() || fallbackName
+        name: resolvedName,
+        fullName: metadataName.trim(),
+        username: metadataUsername.trim(),
+        gender: metadataGender,
+        birthDate: metadataBirthDate
     };
 };
 
@@ -255,6 +312,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     const [streakCelebrationEvent, setStreakCelebrationEvent] = useState<StreakCelebrationEvent | null>(null);
     const previousLeagueIndexRef = useRef(getLeagueIndexFromXp(state.totalXP));
     const pendingWelcomeWhisperRef = useRef(false);
+    const pendingRegistrationProfileRef = useRef<PendingRegistrationProfile | null>(null);
     const [isXpHydrated, setIsXpHydrated] = useState(false);
     const authMode: 'supabase' | 'local' = isSupabaseLive() && supabase ? 'supabase' : 'local';
 
@@ -347,6 +405,26 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 resolvedState = buildInitialXPState();
             }
 
+            const pendingRegistration = pendingRegistrationProfileRef.current;
+            if (pendingRegistration && pendingRegistration.email === user.email) {
+                resolvedState = {
+                    ...resolvedState,
+                    fullName: pendingRegistration.fullName,
+                    username: pendingRegistration.username,
+                    gender: pendingRegistration.gender,
+                    birthDate: pendingRegistration.birthDate
+                };
+                pendingRegistrationProfileRef.current = null;
+            }
+
+            resolvedState = {
+                ...resolvedState,
+                fullName: resolvedState.fullName || user.fullName || '',
+                username: resolvedState.username || user.username || '',
+                gender: resolvedState.gender || user.gender || '',
+                birthDate: resolvedState.birthDate || user.birthDate || ''
+            };
+
             if (!active) return;
 
             setState(resolvedState);
@@ -395,7 +473,12 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         });
     };
 
-    const login = async (email: string, password: string, isRegistering = false): Promise<AuthResult> => {
+    const login = async (
+        email: string,
+        password: string,
+        isRegistering = false,
+        registrationProfile?: RegistrationProfileInput
+    ): Promise<AuthResult> => {
         const normalizedEmail = (email || '').trim().toLowerCase();
         if (!normalizedEmail.includes('@')) {
             return { ok: false, message: 'Gecerli bir e-posta gir.' };
@@ -404,10 +487,52 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             return { ok: false, message: 'Sifre en az 6 karakter olmali.' };
         }
 
+        const normalizedRegistration: RegistrationProfileInput | null = isRegistering
+            ? {
+                fullName: (registrationProfile?.fullName || '').trim(),
+                username: (registrationProfile?.username || '').trim(),
+                gender: registrationProfile?.gender || 'prefer_not_to_say',
+                birthDate: (registrationProfile?.birthDate || '').trim()
+            }
+            : null;
+
+        if (isRegistering) {
+            if (!normalizedRegistration?.fullName || normalizedRegistration.fullName.length < 2) {
+                return { ok: false, message: 'Isim en az 2 karakter olmali.' };
+            }
+            if (!USERNAME_REGEX.test(normalizedRegistration.username)) {
+                return { ok: false, message: 'Kullanici adi 3-20 karakter olmali (harf, rakam, _).' };
+            }
+            if (!REGISTRATION_GENDERS.includes(normalizedRegistration.gender)) {
+                return { ok: false, message: 'Cinsiyet secimi gecersiz.' };
+            }
+            if (!normalizedRegistration.birthDate) {
+                return { ok: false, message: 'Dogum tarihi gerekli.' };
+            }
+
+            const birthDate = new Date(`${normalizedRegistration.birthDate}T00:00:00`);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            if (Number.isNaN(birthDate.getTime()) || birthDate > today) {
+                return { ok: false, message: 'Dogum tarihi gecersiz.' };
+            }
+        }
+
         if (!isSupabaseLive() || !supabase) {
-            const fallbackUser = {
+            if (normalizedRegistration) {
+                pendingRegistrationProfileRef.current = {
+                    email: normalizedEmail,
+                    ...normalizedRegistration
+                };
+            }
+
+            const fallbackUser: SessionUser = {
                 email: normalizedEmail,
-                name: normalizedEmail.split('@')[0] || 'observer'
+                name: normalizedRegistration?.fullName || normalizedEmail.split('@')[0] || 'observer',
+                fullName: normalizedRegistration?.fullName || '',
+                username: normalizedRegistration?.username || '',
+                gender: normalizedRegistration ? normalizedRegistration.gender : '',
+                birthDate: normalizedRegistration?.birthDate || ''
             };
             setSessionUser(fallbackUser);
             triggerWhisper("Welcome to the Ritual.");
@@ -416,9 +541,27 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
         try {
             if (isRegistering) {
+                if (!normalizedRegistration) {
+                    return { ok: false, message: 'Kayit bilgileri eksik.' };
+                }
+
+                pendingRegistrationProfileRef.current = {
+                    email: normalizedEmail,
+                    ...normalizedRegistration
+                };
+
                 const { data, error } = await supabase.auth.signUp({
                     email: normalizedEmail,
-                    password
+                    password,
+                    options: {
+                        data: {
+                            full_name: normalizedRegistration.fullName,
+                            name: normalizedRegistration.fullName,
+                            username: normalizedRegistration.username,
+                            gender: normalizedRegistration.gender,
+                            birth_date: normalizedRegistration.birthDate
+                        }
+                    }
                 });
 
                 if (error) return { ok: false, message: normalizeAuthError(error.message) };
@@ -873,7 +1016,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 {
                     user_id: user.id,
                     email: user.email,
-                    display_name: user.name,
+                    display_name: state.username || state.fullName || user.name,
                     xp_state: state,
                     updated_at: new Date().toISOString()
                 },
@@ -927,6 +1070,10 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             streak: state.streak || 0,
             echoHistory: state.echoHistory || [],
             following: state.following || [],
+            fullName: state.fullName || '',
+            username: state.username || '',
+            gender: state.gender || '',
+            birthDate: state.birthDate || '',
             bio: state.bio,
             avatarId: state.avatarId,
             updateIdentity,

@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import type { StreakCelebrationEvent } from '../context/XPContext';
 
 interface StreakCelebrationProps {
@@ -132,6 +132,19 @@ const hexToRgba = (hex: string, alpha: number): string => {
 };
 
 export const StreakCelebration: React.FC<StreakCelebrationProps> = ({ event, onComplete }) => {
+    const [dismissed, setDismissed] = useState(false);
+
+    useEffect(() => {
+        setDismissed(false);
+    }, [event.day]);
+
+    if (dismissed) return null;
+
+    const handleClose = () => {
+        setDismissed(true);
+        onComplete();
+    };
+
     const theme = MILESTONE_THEMES[event.day] || DEFAULT_THEME;
 
     const cardStyle: CSSProperties = {
@@ -150,10 +163,10 @@ export const StreakCelebration: React.FC<StreakCelebrationProps> = ({ event, onC
 
     return (
         <div className="fixed inset-0 z-[110] flex items-center justify-center pointer-events-auto overflow-hidden">
-            <div className={`absolute inset-0 ${theme.shellClass}`} />
+            <div className={`absolute inset-0 pointer-events-none ${theme.shellClass}`} />
 
             <div
-                className={`relative mx-4 w-[min(92vw,560px)] rounded-[28px] border px-8 py-8 text-center backdrop-blur-md ${theme.cardClass}`}
+                className={`relative z-10 mx-4 w-[min(92vw,560px)] rounded-[28px] border px-8 py-8 text-center backdrop-blur-md ${theme.cardClass}`}
                 style={cardStyle}
             >
                 <div className="mx-auto mb-5 h-[2px] w-28" style={accentLineStyle} />
@@ -183,8 +196,8 @@ export const StreakCelebration: React.FC<StreakCelebrationProps> = ({ event, onC
 
                 <button
                     type="button"
-                    onClick={onComplete}
-                    className="mt-7 inline-flex items-center justify-center rounded-full border border-white/25 bg-white/10 px-6 py-2 text-[11px] font-semibold tracking-[0.2em] uppercase text-white hover:bg-white/15 transition-colors"
+                    onClick={handleClose}
+                    className="relative z-20 mt-7 inline-flex items-center justify-center rounded-full border border-white/25 bg-white/10 px-6 py-2 text-[11px] font-semibold tracking-[0.2em] uppercase text-white hover:bg-white/15 transition-colors"
                 >
                     Tamam
                 </button>

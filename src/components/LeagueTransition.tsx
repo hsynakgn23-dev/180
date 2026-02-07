@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 
 interface LeagueTransitionProps {
     color: string;
@@ -7,6 +7,14 @@ interface LeagueTransitionProps {
 }
 
 export const LeagueTransition: React.FC<LeagueTransitionProps> = ({ color, leagueName, onComplete }) => {
+    const [dismissed, setDismissed] = useState(false);
+    if (dismissed) return null;
+
+    const handleClose = () => {
+        setDismissed(true);
+        onComplete();
+    };
+
     const hexToRgb = (hex: string): string => {
         const normalized = hex.trim().replace('#', '');
         const expanded = normalized.length === 3
@@ -38,10 +46,10 @@ export const LeagueTransition: React.FC<LeagueTransitionProps> = ({ color, leagu
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-auto overflow-hidden">
-            <div className="absolute inset-0" style={overlayStyle} />
+            <div className="absolute inset-0 pointer-events-none" style={overlayStyle} />
 
             <div
-                className="relative mx-4 w-[min(92vw,560px)] rounded-2xl border bg-[#111111]/90 px-8 py-8 text-center backdrop-blur-md"
+                className="relative z-10 mx-4 w-[min(92vw,560px)] rounded-2xl border bg-[#111111]/90 px-8 py-8 text-center backdrop-blur-md"
                 style={cardStyle}
             >
                 <div className="mx-auto mb-5 h-[1px] w-24" style={accentLineStyle} />
@@ -64,8 +72,8 @@ export const LeagueTransition: React.FC<LeagueTransitionProps> = ({ color, leagu
 
                 <button
                     type="button"
-                    onClick={onComplete}
-                    className="mt-7 inline-flex items-center justify-center rounded-full border border-white/20 bg-white/10 px-6 py-2 text-[11px] font-semibold tracking-[0.2em] uppercase text-white hover:bg-white/15 transition-colors"
+                    onClick={handleClose}
+                    className="relative z-20 mt-7 inline-flex items-center justify-center rounded-full border border-white/20 bg-white/10 px-6 py-2 text-[11px] font-semibold tracking-[0.2em] uppercase text-white hover:bg-white/15 transition-colors"
                 >
                     Tamam
                 </button>

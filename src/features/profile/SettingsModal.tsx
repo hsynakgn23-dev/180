@@ -14,13 +14,22 @@ const THEME_STORAGE_KEY = '180_theme_pref';
 const LANGUAGE_STORAGE_KEY = '180_lang_pref';
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
-    const { user, updateIdentity, logout, bio, avatarUrl, updateAvatar, avatarId } = useXP();
+    const { user, updateIdentity, logout, bio, avatarUrl, updateAvatar, avatarId, fullName, username, gender, birthDate } = useXP();
     const [activeTab, setActiveTab] = useState<SettingsTab>('identity');
     const [bioDraft, setBioDraft] = useState(bio);
     const [theme, setTheme] = useState<ThemeMode>('midnight');
     const [language, setLanguage] = useState<LanguageMode>('tr');
     const [statusMessage, setStatusMessage] = useState('');
     const [confirmLogout, setConfirmLogout] = useState(false);
+    const genderLabel = gender === 'female'
+        ? 'Kadin'
+        : gender === 'male'
+            ? 'Erkek'
+            : gender === 'non_binary'
+                ? 'Non-binary'
+                : gender === 'prefer_not_to_say'
+                    ? 'Belirtmek istemiyor'
+                    : '';
 
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -190,9 +199,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                 <div className="text-sm text-[#E5E4E2] font-bold tracking-wide">
                                     {user?.name || 'Observer'}
                                 </div>
-                                <p className="text-[10px] text-gray-500 mt-2">
-                                    Name edits are not wired to backend yet.
-                                </p>
+                                <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-gray-400">
+                                    <div>
+                                        <span className="uppercase tracking-[0.12em] text-gray-500">Isim:</span> {fullName || '-'}
+                                    </div>
+                                    <div>
+                                        <span className="uppercase tracking-[0.12em] text-gray-500">Kullanici:</span> @{username || '-'}
+                                    </div>
+                                    <div>
+                                        <span className="uppercase tracking-[0.12em] text-gray-500">Cinsiyet:</span> {genderLabel || '-'}
+                                    </div>
+                                    <div>
+                                        <span className="uppercase tracking-[0.12em] text-gray-500">Dogum:</span> {birthDate || '-'}
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="bg-white/5 border border-white/10 rounded-xl p-5">
