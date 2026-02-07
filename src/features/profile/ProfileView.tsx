@@ -200,15 +200,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
         <div
             className={`fixed inset-0 z-50 bg-[var(--color-bg)] text-[var(--color-text)] flex flex-col items-center overflow-y-auto transition-opacity duration-500 ${isVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         >
-            {/* Home Button (Top Left) */}
+                        {/* Home Button (Top Left) */}
             <button
                 onClick={handleClose}
-                className="absolute top-3 left-3 sm:top-8 sm:left-8 text-[10px] sm:text-xs tracking-widest uppercase transition-colors z-50 p-2 sm:p-3 font-bold hover:scale-105"
-                style={{ color: 'var(--color-highlight)' }}
+                className="absolute top-3 left-3 sm:top-8 sm:left-8 z-50 h-9 w-9 rounded-full border border-sage/30 hover:border-clay/60 text-clay/80 hover:text-clay transition-colors flex items-center justify-center bg-[#1A1A1A]/80"
                 aria-label="Ana sayfaya don"
                 title="Ana sayfaya don"
             >
-                🏠
+                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" aria-hidden="true">
+                    <path d="M3 11.5L12 4L21 11.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M6.5 10.5V20H17.5V10.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M10 20V14H14V20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
             </button>
 
             <div className="absolute top-3 right-3 sm:top-8 sm:right-8 z-50 flex items-center gap-1.5 sm:gap-2">
@@ -632,3 +635,4 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
         </div>
     );
 };
+
