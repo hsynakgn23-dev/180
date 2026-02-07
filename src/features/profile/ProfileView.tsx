@@ -198,16 +198,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
         return byMovie;
     }, [dailyRituals]);
 
-    const selectedFilm = useMemo(
-        () => commentedFilms.find((film) => film.movieId === selectedMovieId) || null,
-        [commentedFilms, selectedMovieId]
-    );
-    const selectedFilmComments = useMemo(() => {
-        if (!selectedMovieId) return [];
-        return ritualEntriesByMovie.get(selectedMovieId) || [];
-    }, [ritualEntriesByMovie, selectedMovieId]);
-
-
     useEffect(() => {
         setIsVisible(true);
         setTempBio(bio);
@@ -222,12 +212,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
     }, [startInSettings]);
 
     useEffect(() => {
-        if (commentedFilms.length === 0) {
+        if (!selectedMovieId) return;
+        if (!commentedFilms.some((film) => film.movieId === selectedMovieId)) {
             setSelectedMovieId(null);
-            return;
-        }
-        if (!selectedMovieId || !commentedFilms.some((film) => film.movieId === selectedMovieId)) {
-            setSelectedMovieId(commentedFilms[0].movieId);
         }
     }, [commentedFilms, selectedMovieId]);
 
@@ -533,11 +520,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
                                         {commentedFilms.map((film) => {
                                             const selected = selectedMovieId === film.movieId;
+                                            const filmComments = ritualEntriesByMovie.get(film.movieId) || [];
                                             return (
-                                                <button
+                                                <article
                                                     key={film.movieId}
-                                                    type="button"
-                                                    onClick={() => setSelectedMovieId(film.movieId)}
+                                                    onClick={() => setSelectedMovieId((prev) => (prev === film.movieId ? null : film.movieId))}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter' || e.key === ' ') {
+                                                            e.preventDefault();
+                                                            setSelectedMovieId((prev) => (prev === film.movieId ? null : film.movieId));
+                                                        }
+                                                    }}
+                                                    role="button"
+                                                    tabIndex={0}
                                                     className={`group relative rounded-lg overflow-hidden border transition-all ${selected
                                                         ? 'border-sage/70 ring-1 ring-sage/40'
                                                         : 'border-white/10 hover:border-sage/40'
@@ -557,58 +552,59 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                                                         </p>
                                                         <p className="text-[9px] font-mono text-sage/90 mt-1">x{film.count}</p>
                                                     </div>
-                                                </button>
+
+                                                    {selected && (
+                                                        <div className="absolute inset-0 z-20 bg-black/90 p-2 flex flex-col">
+                                                            <div className="flex items-center justify-between gap-2 mb-2">
+                                                                <span className="text-[9px] uppercase tracking-widest text-sage/80">
+                                                                    {filmComments.length} yorum
+                                                                </span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setSelectedMovieId(null);
+                                                                    }}
+                                                                    className="text-[9px] uppercase tracking-widest text-gray-400 hover:text-white transition-colors"
+                                                                >
+                                                                    Kapat
+                                                                </button>
+                                                            </div>
+
+                                                            <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 space-y-2">
+                                                                {filmComments.map((entry) => (
+                                                                    <div key={entry.id} className="rounded border border-white/10 bg-white/5 p-2">
+                                                                        <div className="flex items-center justify-between gap-2 mb-1">
+                                                                            <span className="text-[9px] font-mono text-gray-400">{entry.date}</span>
+                                                                            <div className="flex items-center gap-2">
+                                                                                {entry.genre && (
+                                                                                    <span className="text-[8px] uppercase tracking-widest text-sage/80">{entry.genre}</span>
+                                                                                )}
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        handleDeleteRitual(entry.id);
+                                                                                    }}
+                                                                                    className="text-[8px] uppercase tracking-widest text-gray-500 hover:text-clay transition-colors"
+                                                                                    title="Delete this ritual"
+                                                                                >
+                                                                                    Erase
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                        <p className="text-[10px] font-serif italic text-[#E5E4E2]/90 leading-relaxed">
+                                                                            "{entry.text}"
+                                                                        </p>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </article>
                                             );
                                         })}
                                     </div>
-
-                                    {selectedFilm && (
-                                        <div className="mt-5 rounded-xl border border-white/10 bg-white/[0.03] p-4">
-                                            <div className="flex items-start gap-3 mb-4">
-                                                <CommentFilmPoster
-                                                    movieId={selectedFilm.movieId}
-                                                    posterPath={selectedFilm.posterPath}
-                                                    title={selectedFilm.title}
-                                                />
-                                                <div className="min-w-0">
-                                                    <h4 className="text-xs sm:text-sm font-bold tracking-[0.12em] uppercase text-[#E5E4E2] line-clamp-2">
-                                                        {selectedFilm.title}
-                                                    </h4>
-                                                    <p className="text-[10px] text-gray-400 mt-1">
-                                                        Bu filme ait {selectedFilmComments.length} yorumun var.
-                                                    </p>
-                                                </div>
-                                            </div>
-
-                                            <div className="flex flex-col gap-3 max-h-72 overflow-y-auto pr-1 custom-scrollbar">
-                                                {selectedFilmComments.map((entry) => (
-                                                    <div key={entry.id} className="rounded-lg border border-white/10 bg-white/5 p-3">
-                                                        <div className="flex items-center justify-between gap-3 mb-2">
-                                                            <span className="text-[10px] font-mono text-gray-500">{entry.date}</span>
-                                                            <div className="flex items-center gap-2">
-                                                                {entry.genre && (
-                                                                    <span className="text-[9px] tracking-widest uppercase text-sage/80">
-                                                                        {entry.genre}
-                                                                    </span>
-                                                                )}
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => handleDeleteRitual(entry.id)}
-                                                                    className="text-[9px] tracking-widest uppercase text-gray-500 hover:text-clay transition-colors"
-                                                                    title="Delete this ritual"
-                                                                >
-                                                                    Erase
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                        <p className="text-xs font-serif italic text-gray-300 leading-relaxed">
-                                                            "{entry.text}"
-                                                        </p>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
                                 </>
                             ) : (
                                 <div className="text-center py-8 text-[10px] text-gray-600 font-serif italic border border-dashed border-gray-800 rounded">

@@ -24,8 +24,20 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
             ),
         [dailyRituals, todayKey]
     );
+    const previouslyCommentedMovieIds = useMemo(
+        () =>
+            Array.from(
+                new Set(
+                    dailyRituals
+                        .filter((ritual) => ritual.date < todayKey)
+                        .map((ritual) => ritual.movieId)
+                        .filter((movieId) => Number.isInteger(movieId) && movieId > 0)
+                )
+            ),
+        [dailyRituals, todayKey]
+    );
     const { movies, loading } = useDailyMovies({
-        excludedMovieIds: todaysCommentedMovieIds,
+        excludedMovieIds: previouslyCommentedMovieIds,
         personalizationSeed: user?.id || user?.email || 'guest'
     });
     const scrollerRef = useRef<HTMLDivElement | null>(null);
@@ -123,6 +135,7 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
                     // Mystery Slot Logic for 5th Movie (index 4)
                     const isMysterySlot = index === 4;
                     const isLocked = isMysterySlot && dailyRitualsCount === 0;
+                    const isWatchedToday = todaysCommentedMovieIds.includes(movie.id);
 
                     return (
                         <div key={movie.id} data-movie-card="true" className="relative h-full min-w-[74vw] sm:min-w-[46vw] md:min-w-0 snap-start">
@@ -131,6 +144,7 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
                                 <MovieCard
                                     movie={movie}
                                     index={index}
+                                    isWatchedToday={isWatchedToday}
                                     onClick={() => {
                                         if (isLocked) return;
                                         onMovieSelect(movie);

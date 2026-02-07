@@ -784,7 +784,9 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         let nonConsecutive = state.nonConsecutiveCount;
 
         const hasdoneRitualToday = state.dailyRituals.some(r => r.date === today);
-        if (!hasdoneRitualToday) {
+        // Streak is day-based, not comment-count based: only first ritual of the day can increase streak.
+        const shouldIncreaseStreakToday = !hasdoneRitualToday;
+        if (shouldIncreaseStreakToday) {
             if (state.lastStreakDate) {
                 const gap = checkStreakMaintenance(state.lastStreakDate, today);
                 if (gap === undefined) newStreak += 1;

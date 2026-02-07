@@ -6,10 +6,11 @@ import { searchPosterPath } from '../../lib/tmdbApi';
 interface MovieCardProps {
     movie: Movie;
     index: number;
+    isWatchedToday?: boolean;
     onClick: () => void;
 }
 
-export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, onClick }) => {
+export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, isWatchedToday = false, onClick }) => {
     const isDev = import.meta.env.DEV;
     const [imgSrc, setImgSrc] = useState<string | null>(null);
     const [hasError, setHasError] = useState(false);
@@ -162,6 +163,12 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, onClick }) =
                             </span>
                         )}
                     </div>
+                    {isWatchedToday && (
+                        <div className="inline-flex items-center gap-1 rounded-full border border-emerald-300/60 bg-emerald-500/15 px-2 py-1 text-[9px] font-bold uppercase tracking-[0.16em] text-emerald-200 shadow-[0_0_12px_rgba(16,185,129,0.25)]">
+                            <span>✓</span>
+                            <span>Izlendi</span>
+                        </div>
+                    )}
                 </div>
 
                 {/* Bottom: Info */}
