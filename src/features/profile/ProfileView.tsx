@@ -200,12 +200,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
         <div
             className={`fixed inset-0 z-50 bg-[var(--color-bg)] text-[var(--color-text)] flex flex-col items-center overflow-y-auto transition-opacity duration-500 ${isVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         >
-            {/* Sign Out Button (Top Left) */}
+            {/* Home Button (Top Left) */}
             <button
-                onClick={logout}
-                className="absolute top-3 left-3 sm:top-8 sm:left-8 text-[9px] sm:text-[10px] tracking-widest uppercase text-red-400/60 hover:text-red-400 transition-colors z-50 p-2 sm:p-4 font-bold"
+                onClick={handleClose}
+                className="absolute top-3 left-3 sm:top-8 sm:left-8 text-[10px] sm:text-xs tracking-widest uppercase transition-colors z-50 p-2 sm:p-3 font-bold hover:scale-105"
+                style={{ color: 'var(--color-highlight)' }}
+                aria-label="Ana sayfaya don"
+                title="Ana sayfaya don"
             >
-                Sign Out
+                🏠
             </button>
 
             <div className="absolute top-3 right-3 sm:top-8 sm:right-8 z-50 flex items-center gap-1.5 sm:gap-2">
@@ -218,11 +221,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                     <GearIcon className="w-4 h-4" />
                 </button>
                 <button
-                    onClick={handleClose}
-                    className="text-[10px] sm:text-xs tracking-widest uppercase transition-colors p-2 sm:p-3 font-bold hover:scale-105"
-                    style={{ color: 'var(--color-highlight)' }}
+                    onClick={logout}
+                    className="text-[9px] sm:text-[10px] tracking-widest uppercase text-red-400/60 hover:text-red-400 transition-colors p-2 sm:p-3 font-bold"
                 >
-                    Close
+                    Sign Out
                 </button>
             </div>
 
