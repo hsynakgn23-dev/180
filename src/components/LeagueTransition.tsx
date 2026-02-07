@@ -1,4 +1,4 @@
-import { useEffect, type CSSProperties } from 'react';
+import type { CSSProperties } from 'react';
 
 interface LeagueTransitionProps {
     color: string;
@@ -7,11 +7,6 @@ interface LeagueTransitionProps {
 }
 
 export const LeagueTransition: React.FC<LeagueTransitionProps> = ({ color, leagueName, onComplete }) => {
-    useEffect(() => {
-        const timer = setTimeout(onComplete, 1900);
-        return () => clearTimeout(timer);
-    }, [onComplete]);
-
     const hexToRgb = (hex: string): string => {
         const normalized = hex.trim().replace('#', '');
         const expanded = normalized.length === 3
@@ -42,14 +37,14 @@ export const LeagueTransition: React.FC<LeagueTransitionProps> = ({ color, leagu
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none overflow-hidden">
-            <div className="absolute inset-0 animate-league-overlay" style={overlayStyle} />
+        <div className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-auto overflow-hidden">
+            <div className="absolute inset-0" style={overlayStyle} />
 
             <div
-                className="relative mx-4 w-[min(92vw,540px)] rounded-2xl border bg-[#111111]/80 px-8 py-8 text-center backdrop-blur-md animate-league-card"
+                className="relative mx-4 w-[min(92vw,560px)] rounded-2xl border bg-[#111111]/90 px-8 py-8 text-center backdrop-blur-md"
                 style={cardStyle}
             >
-                <div className="mx-auto mb-5 h-[1px] w-24 animate-league-line" style={accentLineStyle} />
+                <div className="mx-auto mb-5 h-[1px] w-24" style={accentLineStyle} />
 
                 <p className="mb-3 text-[10px] font-medium tracking-[0.34em] uppercase text-[#E5E4E2]/55">
                     League Advanced
@@ -59,9 +54,21 @@ export const LeagueTransition: React.FC<LeagueTransitionProps> = ({ color, leagu
                     {leagueName}
                 </h2>
 
-                <p className="mt-4 text-[10px] tracking-[0.28em] uppercase text-[#E5E4E2]/40">
-                    Orbit Updated
+                <p className="mt-4 text-xs md:text-sm text-[#E5E4E2]/75">
+                    Tebrikler. Toplam XP seviyen bu lige yukseldigi icin bu ekrani goruyorsun.
                 </p>
+
+                <p className="mt-2 text-[10px] tracking-[0.28em] uppercase text-[#E5E4E2]/40">
+                    Lig atlandi
+                </p>
+
+                <button
+                    type="button"
+                    onClick={onComplete}
+                    className="mt-7 inline-flex items-center justify-center rounded-full border border-white/20 bg-white/10 px-6 py-2 text-[11px] font-semibold tracking-[0.2em] uppercase text-white hover:bg-white/15 transition-colors"
+                >
+                    Tamam
+                </button>
             </div>
         </div>
     );

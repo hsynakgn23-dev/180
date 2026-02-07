@@ -1,4 +1,4 @@
-import { useEffect, type CSSProperties } from 'react';
+import type { CSSProperties } from 'react';
 import type { StreakCelebrationEvent } from '../context/XPContext';
 
 interface StreakCelebrationProps {
@@ -132,11 +132,6 @@ const hexToRgba = (hex: string, alpha: number): string => {
 };
 
 export const StreakCelebration: React.FC<StreakCelebrationProps> = ({ event, onComplete }) => {
-    useEffect(() => {
-        const timer = window.setTimeout(onComplete, 2800);
-        return () => window.clearTimeout(timer);
-    }, [onComplete]);
-
     const theme = MILESTONE_THEMES[event.day] || DEFAULT_THEME;
 
     const cardStyle: CSSProperties = {
@@ -154,14 +149,14 @@ export const StreakCelebration: React.FC<StreakCelebrationProps> = ({ event, onC
     };
 
     return (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center pointer-events-none overflow-hidden">
-            <div className={`absolute inset-0 animate-streak-overlay ${theme.shellClass}`} />
+        <div className="fixed inset-0 z-[110] flex items-center justify-center pointer-events-auto overflow-hidden">
+            <div className={`absolute inset-0 ${theme.shellClass}`} />
 
             <div
-                className={`relative mx-4 w-[min(92vw,560px)] rounded-[28px] border px-8 py-8 text-center backdrop-blur-md animate-streak-card ${theme.cardClass}`}
+                className={`relative mx-4 w-[min(92vw,560px)] rounded-[28px] border px-8 py-8 text-center backdrop-blur-md ${theme.cardClass}`}
                 style={cardStyle}
             >
-                <div className="mx-auto mb-5 h-[2px] w-28 animate-streak-line" style={accentLineStyle} />
+                <div className="mx-auto mb-5 h-[2px] w-28" style={accentLineStyle} />
 
                 <p className="mb-2 text-[10px] font-semibold tracking-[0.34em] uppercase text-[#f5f5f4]/65">
                     {theme.badge}
@@ -183,10 +178,18 @@ export const StreakCelebration: React.FC<StreakCelebrationProps> = ({ event, onC
                 </p>
 
                 <p className="mt-2 text-[11px] tracking-[0.26em] uppercase text-[#f8fafc]/60">
-                    Tebrikler. Devam et.
+                    Tebrikler. Streak artisi tamamlandi.
                 </p>
 
-                <div className="pointer-events-none absolute -inset-5 rounded-[34px] animate-streak-pulse" style={pulseStyle} />
+                <button
+                    type="button"
+                    onClick={onComplete}
+                    className="mt-7 inline-flex items-center justify-center rounded-full border border-white/25 bg-white/10 px-6 py-2 text-[11px] font-semibold tracking-[0.2em] uppercase text-white hover:bg-white/15 transition-colors"
+                >
+                    Tamam
+                </button>
+
+                <div className="pointer-events-none absolute -inset-5 rounded-[34px]" style={pulseStyle} />
             </div>
         </div>
     );
