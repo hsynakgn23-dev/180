@@ -10,13 +10,21 @@ import { Arena } from './features/arena/Arena'
 import { WriteOverlay } from './features/ritual/WriteOverlay'
 import { ProfileView } from './features/profile/ProfileView'
 import { LeagueTransition } from './components/LeagueTransition'
+import { StreakCelebration } from './components/StreakCelebration'
 import type { Movie } from './data/mockMovies'
 
 import { LoginView } from './features/auth/LoginView'
 import { LandingPage } from './features/landing/LandingPage'
 
 const AppContent = () => {
-  const { levelUpEvent, closeLevelUp, user, avatarUrl } = useXP();
+  const {
+    levelUpEvent,
+    closeLevelUp,
+    streakCelebrationEvent,
+    closeStreakCelebration,
+    user,
+    avatarUrl
+  } = useXP();
   const [activeMovie, setActiveMovie] = useState<Movie | null>(null);
   const [detailMovie, setDetailMovie] = useState<Movie | null>(null);
   const [showProfile, setShowProfile] = useState(false);
@@ -54,6 +62,13 @@ const AppContent = () => {
           color={levelUpEvent.color}
           leagueName={levelUpEvent.name}
           onComplete={closeLevelUp}
+        />
+      )}
+
+      {streakCelebrationEvent && (
+        <StreakCelebration
+          event={streakCelebrationEvent}
+          onComplete={closeStreakCelebration}
         />
       )}
 

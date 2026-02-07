@@ -49,6 +49,10 @@ const DEFAULT_GRADIENTS = [
     'from-green-700 to-green-900'
 ];
 const DAILY_MOVIE_COUNT = 5;
+const DAILY_MIN_UNIQUE_GENRES = 4;
+const CLASSIC_YEAR_THRESHOLD = 2000;
+const MODERN_YEAR_THRESHOLD = 2010;
+const DAILY_MAX_MOVIES_PER_DIRECTOR = 1;
 
 const DEFAULT_SEED_MOVIES: Movie[] = [
     {
@@ -146,6 +150,115 @@ const createSeededRandom = (seed: number) => {
         state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
         return state / 4294967296;
     };
+};
+
+const normalizeGenre = (movie: Movie): string => {
+    return (movie.genre || '').split('/')[0].trim().toLowerCase();
+};
+
+const countUniqueGenres = (movies: Movie[]): number => {
+    return new Set(movies.map((movie) => normalizeGenre(movie))).size;
+};
+
+const countByGenre = (movies: Movie[]): Map<string, number> => {
+    const counts = new Map<string, number>();
+    for (const movie of movies) {
+        const genre = normalizeGenre(movie);
+        counts.set(genre, (counts.get(genre) || 0) + 1);
+    }
+    return counts;
+};
+
+const applySlotStyles = (movies: Movie[]): Movie[] => {
+    return movies.map((movie, index) => ({
+        ...movie,
+        slotLabel: DEFAULT_SLOT_LABELS[index] || movie.slotLabel,
+        color: DEFAULT_GRADIENTS[index] || movie.color
+    }));
+};
+
+const pickWithDirectorLimit = (pool: Movie[]): Movie[] => {
+    const selected: Movie[] = [];
+    const directorCounts = new Map<string, number>();
+
+    for (const movie of pool) {
+        const directorKey = (movie.director || '').trim().toLowerCase();
+        const count = directorCounts.get(directorKey) || 0;
+        if (directorKey && count >= DAILY_MAX_MOVIES_PER_DIRECTOR) continue;
+
+        selected.push(movie);
+        if (directorKey) {
+            directorCounts.set(directorKey, count + 1);
+        }
+        if (selected.length >= DAILY_MOVIE_COUNT) break;
+    }
+
+    if (selected.length < DAILY_MOVIE_COUNT) {
+        for (const movie of pool) {
+            if (selected.some((selectedMovie) => selectedMovie.id === movie.id)) continue;
+            selected.push(movie);
+            if (selected.length >= DAILY_MOVIE_COUNT) break;
+        }
+    }
+
+    return selected.slice(0, DAILY_MOVIE_COUNT);
+};
+
+const replaceMovie = (
+    selected: Movie[],
+    pool: Movie[],
+    predicate: (movie: Movie) => boolean,
+    canReplace: (movie: Movie, snapshot: Movie[]) => boolean
+): Movie[] => {
+    if (selected.some(predicate)) return selected;
+    const candidate = pool.find((movie) => predicate(movie) && !selected.some((s) => s.id === movie.id));
+    if (!candidate) return selected;
+
+    for (let index = selected.length - 1; index >= 0; index -= 1) {
+        if (!canReplace(selected[index], selected)) continue;
+        const next = [...selected];
+        next[index] = candidate;
+        return next;
+    }
+
+    return selected;
+};
+
+const enforceGenreDiversity = (selected: Movie[], pool: Movie[]): Movie[] => {
+    const next = [...selected];
+    let attempts = 0;
+
+    while (countUniqueGenres(next) < DAILY_MIN_UNIQUE_GENRES && attempts < 10) {
+        const currentGenres = new Set(next.map((movie) => normalizeGenre(movie)));
+        const candidate = pool.find(
+            (movie) =>
+                !next.some((selectedMovie) => selectedMovie.id === movie.id) &&
+                !currentGenres.has(normalizeGenre(movie))
+        );
+        if (!candidate) break;
+
+        const genreCounts = countByGenre(next);
+        const classics = next.filter((movie) => movie.year < CLASSIC_YEAR_THRESHOLD).length;
+        const moderns = next.filter((movie) => movie.year >= MODERN_YEAR_THRESHOLD).length;
+
+        let replaceIndex = -1;
+        for (let i = next.length - 1; i >= 0; i -= 1) {
+            const movie = next[i];
+            const genre = normalizeGenre(movie);
+            const canDropGenre = (genreCounts.get(genre) || 0) > 1;
+            if (!canDropGenre) continue;
+            if (movie.year < CLASSIC_YEAR_THRESHOLD && classics <= 1) continue;
+            if (movie.year >= MODERN_YEAR_THRESHOLD && moderns <= 1) continue;
+            replaceIndex = i;
+            break;
+        }
+
+        if (replaceIndex < 0) break;
+        next[replaceIndex] = candidate;
+        attempts += 1;
+    }
+
+    return next;
 };
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
@@ -452,11 +565,25 @@ const buildSeedMovies = (dateKey: string): Movie[] => {
         [pool[i], pool[j]] = [pool[j], pool[i]];
     }
 
-    return pool.slice(0, Math.min(DAILY_MOVIE_COUNT, pool.length)).map((movie, index) => ({
-        ...movie,
-        slotLabel: DEFAULT_SLOT_LABELS[index] || movie.slotLabel,
-        color: DEFAULT_GRADIENTS[index] || movie.color
-    }));
+    let selected = pickWithDirectorLimit(pool);
+    selected = replaceMovie(
+        selected,
+        pool,
+        (movie) => movie.year < CLASSIC_YEAR_THRESHOLD,
+        (movie) => movie.year >= CLASSIC_YEAR_THRESHOLD
+    );
+    selected = replaceMovie(
+        selected,
+        pool,
+        (movie) => movie.year >= MODERN_YEAR_THRESHOLD,
+        (movie, snapshot) => {
+            if (movie.year >= CLASSIC_YEAR_THRESHOLD) return true;
+            return snapshot.filter((item) => item.year < CLASSIC_YEAR_THRESHOLD).length > 1;
+        }
+    );
+    selected = enforceGenreDiversity(selected, pool);
+
+    return applySlotStyles(selected);
 };
 
 export default async function handler(req: any, res: any) {

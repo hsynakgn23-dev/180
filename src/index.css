@@ -183,3 +183,94 @@ body.light-mode {
   transform-origin: center;
   animation: league-line 1.9s ease-out forwards;
 }
+
+@keyframes streak-overlay {
+  0% {
+    opacity: 0;
+  }
+
+  12% {
+    opacity: 1;
+  }
+
+  84% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+.animate-streak-overlay {
+  animation: streak-overlay 2.8s ease-out forwards;
+}
+
+@keyframes streak-card {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.96);
+  }
+
+  16% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  80% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.985);
+  }
+}
+
+.animate-streak-card {
+  animation: streak-card 2.8s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
+@keyframes streak-line {
+  0% {
+    opacity: 0;
+    transform: scaleX(0.2);
+  }
+
+  28% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+
+  100% {
+    opacity: 0.65;
+    transform: scaleX(1);
+  }
+}
+
+.animate-streak-line {
+  transform-origin: center;
+  animation: streak-line 2.8s ease-out forwards;
+}
+
+@keyframes streak-pulse {
+  0% {
+    opacity: 0.15;
+    transform: scale(0.95);
+  }
+
+  38% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.06);
+  }
+}
+
+.animate-streak-pulse {
+  animation: streak-pulse 2.8s ease-out forwards;
+}

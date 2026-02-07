@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useDailyMovies } from '../../hooks/useDailyMovies';
 import { useXP } from '../../context/XPContext';
 import { MovieCard } from './MovieCard';
@@ -10,8 +10,24 @@ interface DailyShowcaseProps {
 }
 
 export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) => {
-    const { movies, loading } = useDailyMovies();
-    const { dailyRitualsCount } = useXP();
+    const { dailyRituals, dailyRitualsCount, user } = useXP();
+    const todayKey = useMemo(() => new Date().toISOString().split('T')[0], []);
+    const todaysCommentedMovieIds = useMemo(
+        () =>
+            Array.from(
+                new Set(
+                    dailyRituals
+                        .filter((ritual) => ritual.date === todayKey)
+                        .map((ritual) => ritual.movieId)
+                        .filter((movieId) => Number.isInteger(movieId) && movieId > 0)
+                )
+            ),
+        [dailyRituals, todayKey]
+    );
+    const { movies, loading } = useDailyMovies({
+        excludedMovieIds: todaysCommentedMovieIds,
+        personalizationSeed: user?.id || user?.email || 'guest'
+    });
     const scrollerRef = useRef<HTMLDivElement | null>(null);
     const [canScrollLeft, setCanScrollLeft] = useState(false);
     const [canScrollRight, setCanScrollRight] = useState(true);

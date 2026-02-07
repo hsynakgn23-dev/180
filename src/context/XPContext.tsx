@@ -63,6 +63,11 @@ export interface LeagueInfo {
     description: string;
 }
 
+export interface StreakCelebrationEvent {
+    day: number;
+    isMilestone: boolean;
+}
+
 export const LEAGUES_DATA: Record<string, LeagueInfo> = {
     'Bronze': { name: 'Figüran', color: '#CD7F32', description: 'Sahneye ilk adım.' },
     'Silver': { name: 'İzleyici', color: '#C0C0C0', description: 'Gözlemlemeye başladın.' },
@@ -84,6 +89,8 @@ interface XPContextType {
     leagueInfo: LeagueInfo;
     levelUpEvent: LeagueInfo | null;
     closeLevelUp: () => void;
+    streakCelebrationEvent: StreakCelebrationEvent | null;
+    closeStreakCelebration: () => void;
     progressPercentage: number;
     nextLevelXP: number;
     whisper: string | null;
@@ -118,6 +125,7 @@ interface XPContextType {
 
 const MAX_DAILY_DWELL_XP = 20;
 const LEVEL_THRESHOLD = 500;
+const STREAK_MILESTONES = new Set([5, 7, 10, 20, 40, 50, 100, 200, 250, 300, 350]);
 export const LEAGUE_NAMES = Object.keys(LEAGUES_DATA);
 const getLeagueIndexFromXp = (xp: number): number =>
     Math.min(Math.floor(xp / LEVEL_THRESHOLD), LEAGUE_NAMES.length - 1);
@@ -244,6 +252,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     const [whisper, setWhisper] = useState<string | null>(null);
     const [levelUpEvent, setLevelUpEvent] = useState<LeagueInfo | null>(null);
     const [levelUpQueue, setLevelUpQueue] = useState<LeagueInfo[]>([]);
+    const [streakCelebrationEvent, setStreakCelebrationEvent] = useState<StreakCelebrationEvent | null>(null);
     const previousLeagueIndexRef = useRef(getLeagueIndexFromXp(state.totalXP));
     const pendingWelcomeWhisperRef = useRef(false);
     const [isXpHydrated, setIsXpHydrated] = useState(false);
@@ -289,6 +298,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         setIsXpHydrated(false);
         setLevelUpEvent(null);
         setLevelUpQueue([]);
+        setStreakCelebrationEvent(null);
 
         if (!user) {
             setState(buildInitialXPState("Orbiting nearby..."));
@@ -377,6 +387,14 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         });
     };
 
+    const triggerStreakCelebration = (day: number) => {
+        if (!Number.isFinite(day) || day <= 0) return;
+        setStreakCelebrationEvent({
+            day,
+            isMilestone: STREAK_MILESTONES.has(day)
+        });
+    };
+
     const login = async (email: string, password: string, isRegistering = false): Promise<AuthResult> => {
         const normalizedEmail = (email || '').trim().toLowerCase();
         if (!normalizedEmail.includes('@')) {
@@ -404,16 +422,19 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 });
 
                 if (error) return { ok: false, message: normalizeAuthError(error.message) };
-                const mapped = toSessionUser(data.user ?? data.session?.user ?? null);
-                if (mapped) {
-                    setSessionUser(mapped);
+                if (data.session?.user) {
+                    const mapped = toSessionUser(data.session.user);
+                    if (mapped) {
+                        setSessionUser(mapped);
+                    }
+                    triggerWhisper("Account created.");
+                    return { ok: true, message: 'Kayit tamamlandi. Oturum acildi.' };
                 }
-                triggerWhisper("Account created.");
+
+                setSessionUser(null);
                 return {
                     ok: true,
-                    message: data.session
-                        ? 'Kayit tamamlandi. Oturum acildi.'
-                        : 'Kayit tamamlandi. Onay maili gerekebilir.'
+                    message: 'Kayit tamamlandi. E-posta onayi sonrasi giris yap.'
                 };
             }
 
@@ -632,6 +653,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 newStreak = 1;
                 nonConsecutive += 1;
             }
+            triggerStreakCelebration(newStreak);
         }
 
         if (newStreak >= 7) earnedXP *= 1.5;
@@ -713,26 +735,40 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
         if (isSupabaseLive() && supabase && user?.id) {
             const leagueForInsert = LEAGUE_NAMES[getLeagueIndexFromXp(newTotalXP)];
-            void supabase
-                .from('rituals')
-                .insert([
-                    {
-                        user_id: user.id,
-                        author: user.name || 'Observer',
-                        movie_title: newRitual.movieTitle,
-                        poster_path: newRitual.posterPath || null,
-                        text: newRitual.text,
-                        timestamp: new Date().toISOString(),
-                        league: leagueForInsert,
-                        year: knownMovie?.year ? String(knownMovie.year) : null
-                    }
-                ])
-                .then(({ error }) => {
-                    if (error) {
-                        console.error('[Ritual] Failed to sync ritual:', error);
+            void (async () => {
+                const { data: sessionData } = await supabase.auth.getSession();
+                const sessionUser = sessionData.session?.user;
+
+                if (!sessionUser?.id) {
+                    triggerWhisper("Ritual yerelde kaydedildi. Cloud icin tekrar giris yap.");
+                    return;
+                }
+
+                const { error } = await supabase
+                    .from('rituals')
+                    .insert([
+                        {
+                            user_id: sessionUser.id,
+                            author: user.name || sessionUser.email?.split('@')[0] || 'Observer',
+                            movie_title: newRitual.movieTitle,
+                            poster_path: newRitual.posterPath || null,
+                            text: newRitual.text,
+                            timestamp: new Date().toISOString(),
+                            league: leagueForInsert,
+                            year: knownMovie?.year ? String(knownMovie.year) : null
+                        }
+                    ]);
+
+                if (error) {
+                    console.error('[Ritual] Failed to sync ritual:', error);
+                    const lowered = (error.message || '').toLowerCase();
+                    if (lowered.includes('permission') || lowered.includes('policy') || lowered.includes('jwt')) {
+                        triggerWhisper("Cloud izni reddedildi. Cikis-giris yapip tekrar dene.");
+                    } else {
                         triggerWhisper("Ritual kaydedildi ama cloud senkronu basarisiz oldu.");
                     }
-                });
+                }
+            })();
         }
     };
 
@@ -877,6 +913,8 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             leagueInfo,
             levelUpEvent,
             closeLevelUp: () => setLevelUpEvent(null),
+            streakCelebrationEvent,
+            closeStreakCelebration: () => setStreakCelebrationEvent(null),
             progressPercentage,
             nextLevelXP,
             whisper,

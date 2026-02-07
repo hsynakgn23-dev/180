@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { TMDB_SEEDS } from '../data/tmdbSeeds';
 import { DAILY_SLOTS, FALLBACK_GRADIENTS } from '../data/dailyConfig';
 import type { Movie } from '../data/mockMovies';
@@ -10,8 +10,17 @@ type LooseMovie = Partial<Movie> & {
     poster_url?: string;
 };
 
-const DAILY_CACHE_KEY = 'DAILY_SELECTION_V15';
+interface UseDailyMoviesOptions {
+    excludedMovieIds?: number[];
+    personalizationSeed?: string;
+}
+
+const DAILY_CACHE_KEY = 'DAILY_SELECTION_V16';
 const DAILY_MOVIE_COUNT = 5;
+const DAILY_MIN_UNIQUE_GENRES = 4;
+const CLASSIC_YEAR_THRESHOLD = 2000;
+const MODERN_YEAR_THRESHOLD = 2010;
+const DAILY_MAX_MOVIES_PER_DIRECTOR = 1;
 
 const hashString = (value: string): number => {
     let hash = 2166136261;
@@ -30,8 +39,120 @@ const createSeededRandom = (seed: number) => {
     };
 };
 
+const normalizeGenre = (movie: Movie): string => {
+    return (movie.genre || '').split('/')[0].trim().toLowerCase();
+};
+
+const countUniqueGenres = (movies: Movie[]): number => {
+    return new Set(movies.map((movie) => normalizeGenre(movie))).size;
+};
+
+const countByGenre = (movies: Movie[]): Map<string, number> => {
+    const counts = new Map<string, number>();
+    for (const movie of movies) {
+        const genre = normalizeGenre(movie);
+        counts.set(genre, (counts.get(genre) || 0) + 1);
+    }
+    return counts;
+};
+
+const applySlotStyles = (movies: Movie[]): Movie[] => {
+    return movies.map((movie, index) => ({
+        ...movie,
+        slotLabel: DAILY_SLOTS[index]?.label,
+        color: FALLBACK_GRADIENTS[index] || movie.color
+    }));
+};
+
+const pickWithDirectorLimit = (pool: Movie[]): Movie[] => {
+    const selected: Movie[] = [];
+    const directorCounts = new Map<string, number>();
+
+    for (const movie of pool) {
+        const directorKey = (movie.director || '').trim().toLowerCase();
+        const count = directorCounts.get(directorKey) || 0;
+        if (directorKey && count >= DAILY_MAX_MOVIES_PER_DIRECTOR) {
+            continue;
+        }
+        selected.push(movie);
+        if (directorKey) {
+            directorCounts.set(directorKey, count + 1);
+        }
+        if (selected.length >= DAILY_MOVIE_COUNT) break;
+    }
+
+    if (selected.length < DAILY_MOVIE_COUNT) {
+        for (const movie of pool) {
+            if (selected.some((selectedMovie) => selectedMovie.id === movie.id)) continue;
+            selected.push(movie);
+            if (selected.length >= DAILY_MOVIE_COUNT) break;
+        }
+    }
+
+    return selected.slice(0, DAILY_MOVIE_COUNT);
+};
+
+const replaceMovie = (
+    selected: Movie[],
+    pool: Movie[],
+    predicate: (movie: Movie) => boolean,
+    canReplace: (movie: Movie, snapshot: Movie[]) => boolean
+): Movie[] => {
+    if (selected.some(predicate)) return selected;
+    const candidate = pool.find((movie) => predicate(movie) && !selected.some((s) => s.id === movie.id));
+    if (!candidate) return selected;
+
+    for (let index = selected.length - 1; index >= 0; index -= 1) {
+        if (!canReplace(selected[index], selected)) continue;
+        const next = [...selected];
+        next[index] = candidate;
+        return next;
+    }
+
+    return selected;
+};
+
+const enforceGenreDiversity = (selected: Movie[], pool: Movie[]): Movie[] => {
+    const next = [...selected];
+    let attempts = 0;
+
+    while (countUniqueGenres(next) < DAILY_MIN_UNIQUE_GENRES && attempts < 10) {
+        const currentGenres = new Set(next.map((movie) => normalizeGenre(movie)));
+        const candidate = pool.find(
+            (movie) =>
+                !next.some((selectedMovie) => selectedMovie.id === movie.id) &&
+                !currentGenres.has(normalizeGenre(movie))
+        );
+        if (!candidate) break;
+
+        const genreCounts = countByGenre(next);
+        const classics = next.filter((movie) => movie.year < CLASSIC_YEAR_THRESHOLD).length;
+        const moderns = next.filter((movie) => movie.year >= MODERN_YEAR_THRESHOLD).length;
+
+        let replaceIndex = -1;
+        for (let i = next.length - 1; i >= 0; i -= 1) {
+            const movie = next[i];
+            const genre = normalizeGenre(movie);
+            const canDropGenre = (genreCounts.get(genre) || 0) > 1;
+            if (!canDropGenre) continue;
+            if (movie.year < CLASSIC_YEAR_THRESHOLD && classics <= 1) continue;
+            if (movie.year >= MODERN_YEAR_THRESHOLD && moderns <= 1) continue;
+            replaceIndex = i;
+            break;
+        }
+
+        if (replaceIndex < 0) break;
+        next[replaceIndex] = candidate;
+        attempts += 1;
+    }
+
+    return next;
+};
+
 const buildDailySeedMovies = (dateKey: string): Movie[] => {
-    const pool = [...TMDB_SEEDS];
+    const pool = Array.from(
+        new Map(TMDB_SEEDS.map((movie) => [movie.id, movie])).values()
+    );
     if (pool.length === 0) return [];
 
     const random = createSeededRandom(hashString(`daily:${dateKey}`));
@@ -40,13 +161,25 @@ const buildDailySeedMovies = (dateKey: string): Movie[] => {
         [pool[i], pool[j]] = [pool[j], pool[i]];
     }
 
-    return pool
-        .slice(0, Math.min(DAILY_MOVIE_COUNT, pool.length))
-        .map((movie, index) => ({
-            ...movie,
-            slotLabel: DAILY_SLOTS[index]?.label,
-            color: FALLBACK_GRADIENTS[index] || movie.color
-        }));
+    let selected = pickWithDirectorLimit(pool);
+    selected = replaceMovie(
+        selected,
+        pool,
+        (movie) => movie.year < CLASSIC_YEAR_THRESHOLD,
+        (movie) => movie.year >= CLASSIC_YEAR_THRESHOLD
+    );
+    selected = replaceMovie(
+        selected,
+        pool,
+        (movie) => movie.year >= MODERN_YEAR_THRESHOLD,
+        (movie, snapshot) => {
+            if (movie.year >= CLASSIC_YEAR_THRESHOLD) return true;
+            return snapshot.filter((item) => item.year < CLASSIC_YEAR_THRESHOLD).length > 1;
+        }
+    );
+    selected = enforceGenreDiversity(selected, pool);
+
+    return applySlotStyles(selected);
 };
 
 const normalizeMovie = (input: unknown): Movie => {
@@ -58,8 +191,65 @@ const normalizeMovie = (input: unknown): Movie => {
     return { ...(movie as Movie), posterPath };
 };
 
-export const useDailyMovies = () => {
-    const [movies, setMovies] = useState<Movie[]>([]);
+const normalizeMovieIds = (movieIds: number[] = []): number[] => {
+    return Array.from(
+        new Set(
+            movieIds
+                .map((value) => Number(value))
+                .filter((value) => Number.isInteger(value) && value > 0)
+        )
+    );
+};
+
+const buildPersonalizedDailyMovies = (
+    baseMovies: Movie[],
+    excludedMovieIds: number[],
+    dateKey: string,
+    personalizationSeed: string
+): Movie[] => {
+    const base = baseMovies.slice(0, DAILY_MOVIE_COUNT);
+    if (base.length === 0) return [];
+
+    const excludedSet = new Set(normalizeMovieIds(excludedMovieIds));
+    if (excludedSet.size === 0) return applySlotStyles(base);
+
+    const replacementPool = Array.from(
+        new Map(TMDB_SEEDS.map((movie) => [movie.id, movie])).values()
+    );
+    const baseMovieIds = new Set(base.map((movie) => movie.id));
+    const random = createSeededRandom(hashString(`daily-user:${dateKey}:${personalizationSeed}`));
+
+    for (let i = replacementPool.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(random() * (i + 1));
+        [replacementPool[i], replacementPool[j]] = [replacementPool[j], replacementPool[i]];
+    }
+
+    const usedMovieIds = new Set<number>();
+    const availableReplacements = replacementPool.filter(
+        (movie) => !excludedSet.has(movie.id) && !baseMovieIds.has(movie.id)
+    );
+
+    const personalized = base.map((movie) => {
+        if (!excludedSet.has(movie.id) && !usedMovieIds.has(movie.id)) {
+            usedMovieIds.add(movie.id);
+            return movie;
+        }
+
+        const replacement = availableReplacements.find((candidate) => !usedMovieIds.has(candidate.id));
+        if (!replacement) {
+            usedMovieIds.add(movie.id);
+            return movie;
+        }
+
+        usedMovieIds.add(replacement.id);
+        return replacement;
+    });
+
+    return applySlotStyles(personalized);
+};
+
+export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'guest' }: UseDailyMoviesOptions = {}) => {
+    const [baseMovies, setBaseMovies] = useState<Movie[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -90,7 +280,7 @@ export const useDailyMovies = () => {
                         }
                         const fromDb = Array.isArray(data.movies) ? (data.movies as unknown[]) : [];
                         const normalized = fromDb.map((m: unknown) => normalizeMovie(m));
-                        setMovies(normalized);
+                        setBaseMovies(normalized);
                         setLoading(false);
                         return;
                     }
@@ -118,9 +308,9 @@ export const useDailyMovies = () => {
                     const parsed = JSON.parse(cachedData) as { date?: string; movies?: unknown[] };
                     const date = parsed?.date;
                     const cachedMovies = Array.isArray(parsed?.movies) ? parsed.movies : [];
-                    if (date === todayKey && cachedMovies.length === 5) {
+                    if (date === todayKey && cachedMovies.length === DAILY_MOVIE_COUNT) {
                         const normalized = cachedMovies.map((m) => normalizeMovie(m));
-                        setMovies(normalized);
+                        setBaseMovies(normalized);
                         setLoading(false);
                         return;
                     }
@@ -169,12 +359,19 @@ export const useDailyMovies = () => {
 
             // Local Cache & Set State
             localStorage.setItem(DAILY_CACHE_KEY, JSON.stringify({ date: todayKey, movies: finalMovies }));
-            setMovies(finalMovies);
+            setBaseMovies(finalMovies);
             setLoading(false);
         };
 
         fetchDaily5();
     }, []);
+
+    const exclusionKey = normalizeMovieIds(excludedMovieIds).sort((a, b) => a - b).join(',');
+
+    const movies = useMemo(() => {
+        const todayKey = new Date().toISOString().split('T')[0];
+        return buildPersonalizedDailyMovies(baseMovies, excludedMovieIds, todayKey, personalizationSeed);
+    }, [baseMovies, exclusionKey, excludedMovieIds, personalizationSeed]);
 
     return { movies, loading };
 };
