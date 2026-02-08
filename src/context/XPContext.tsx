@@ -58,7 +58,6 @@ interface AuthResult {
 interface SessionUser {
     id?: string;
     email: string;
-    phone?: string;
     name: string;
     fullName?: string;
     username?: string;
@@ -140,8 +139,6 @@ interface XPContextType {
     authMode: 'supabase' | 'local';
     login: (email: string, password: string, isRegistering?: boolean, registrationProfile?: RegistrationProfileInput) => Promise<AuthResult>;
     loginWithGoogle: () => Promise<AuthResult>;
-    requestPhoneOtp: (phone: string) => Promise<AuthResult>;
-    verifyPhoneOtp: (phone: string, code: string) => Promise<AuthResult>;
     logout: () => Promise<void>;
     avatarUrl?: string; // Custom uploaded avatar
     updateAvatar: (url: string) => void;
@@ -155,8 +152,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const STREAK_MILESTONES = new Set([5, 7, 10, 20, 40, 50, 100, 200, 250, 300, 350]);
 const REGISTRATION_GENDERS: RegistrationGender[] = ['female', 'male', 'non_binary', 'prefer_not_to_say'];
 const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
-const PHONE_E164_REGEX = /^\+[1-9]\d{7,14}$/;
-const OTP_CODE_REGEX = /^\d{6}$/;
 export const LEAGUE_NAMES = Object.keys(LEAGUES_DATA);
 type PendingRegistrationProfile = RegistrationProfileInput & { email: string };
 const getLeagueIndexFromXp = (xp: number): number =>
@@ -178,14 +173,6 @@ const getLocalDateKey = (value = new Date()): string => {
     const month = String(value.getMonth() + 1).padStart(2, '0');
     const day = String(value.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
-};
-
-const normalizePhoneInput = (value: string): string => {
-    const compact = (value || '').trim().replace(/[\s()-]/g, '');
-    if (compact.startsWith('00')) {
-        return `+${compact.slice(2)}`;
-    }
-    return compact;
 };
 
 const parseDateKeyToDayIndex = (dateKey: string): number | null => {
@@ -296,7 +283,6 @@ const getLegacyStoredUser = (): SessionUser | null => {
         return {
             id: typeof parsed.id === 'string' && parsed.id.trim() ? parsed.id : undefined,
             email: parsed.email,
-            phone: typeof parsed.phone === 'string' ? parsed.phone : undefined,
             name: typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name : fallbackName,
             fullName: typeof parsed.fullName === 'string' ? parsed.fullName : '',
             username: typeof parsed.username === 'string' ? parsed.username : '',
@@ -313,13 +299,6 @@ const normalizeAuthError = (message: string): string => {
     if (lowered.includes('invalid login credentials')) return 'Email veya sifre hatali.';
     if (lowered.includes('email not confirmed')) return 'E-posta onayi gerekli.';
     if (lowered.includes('user already registered')) return 'Bu e-posta zaten kayitli.';
-    if (lowered.includes('invalid phone number')) return 'Telefon numarasi gecersiz. +905... formatinda gir.';
-    if (lowered.includes('phone provider is not enabled') || lowered.includes('sms provider') || (lowered.includes('sms') && lowered.includes('not enabled'))) {
-        return 'Telefon ile giris aktif degil. Supabase Dashboard > Authentication > Providers > Phone bolumunden etkinlestir.';
-    }
-    if (lowered.includes('otp') || lowered.includes('verification code') || lowered.includes('token has expired') || lowered.includes('token is invalid')) {
-        return 'Dogrulama kodu gecersiz veya suresi dolmus.';
-    }
     if (lowered.includes('unsupported provider') || lowered.includes('provider is not enabled')) {
         return 'Google girisi aktif degil. Supabase Dashboard > Authentication > Providers > Google bolumunden etkinlestir.';
     }
@@ -333,7 +312,7 @@ const normalizeAuthError = (message: string): string => {
 };
 
 const toSessionUser = (authUser: SupabaseUser | null): SessionUser | null => {
-    if (!authUser) return null;
+    if (!authUser?.email) return null;
     const metadataName = typeof authUser.user_metadata?.full_name === 'string'
         ? authUser.user_metadata.full_name
         : typeof authUser.user_metadata?.name === 'string'
@@ -351,17 +330,11 @@ const toSessionUser = (authUser: SupabaseUser | null): SessionUser | null => {
     const metadataBirthDate = typeof authUser.user_metadata?.birth_date === 'string'
         ? authUser.user_metadata.birth_date
         : '';
-    const phone = typeof authUser.phone === 'string' ? authUser.phone : '';
-    const syntheticEmail = phone
-        ? `phone_${phone.replace(/[^\d]/g, '')}@local.invalid`
-        : `${authUser.id}@local.invalid`;
-    const resolvedEmail = authUser.email || syntheticEmail;
-    const fallbackName = authUser.email?.split('@')[0] || (phone ? `user_${phone.slice(-4)}` : 'observer');
+    const fallbackName = authUser.email.split('@')[0] || 'observer';
     const resolvedName = metadataName.trim() || metadataUsername.trim() || fallbackName;
     return {
         id: authUser.id,
-        email: resolvedEmail,
-        phone: phone || undefined,
+        email: authUser.email,
         name: resolvedName,
         fullName: metadataName.trim(),
         username: metadataUsername.trim(),
@@ -690,66 +663,6 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             return { ok: true };
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Google login failed.';
-            return { ok: false, message: normalizeAuthError(message) };
-        }
-    };
-
-    const requestPhoneOtp = async (phone: string): Promise<AuthResult> => {
-        if (!isSupabaseLive() || !supabase) {
-            return { ok: false, message: 'Telefon girisi icin Supabase gerekli.' };
-        }
-
-        const normalizedPhone = normalizePhoneInput(phone);
-        if (!PHONE_E164_REGEX.test(normalizedPhone)) {
-            return { ok: false, message: 'Telefon numarasini +905... formatinda gir.' };
-        }
-
-        try {
-            const { error } = await supabase.auth.signInWithOtp({
-                phone: normalizedPhone,
-                options: { shouldCreateUser: true }
-            });
-
-            if (error) return { ok: false, message: normalizeAuthError(error.message) };
-            return { ok: true, message: 'Dogrulama kodu gonderildi.' };
-        } catch (error) {
-            const message = error instanceof Error ? error.message : 'Phone OTP request failed.';
-            return { ok: false, message: normalizeAuthError(message) };
-        }
-    };
-
-    const verifyPhoneOtp = async (phone: string, code: string): Promise<AuthResult> => {
-        if (!isSupabaseLive() || !supabase) {
-            return { ok: false, message: 'Telefon girisi icin Supabase gerekli.' };
-        }
-
-        const normalizedPhone = normalizePhoneInput(phone);
-        const normalizedCode = (code || '').trim().replace(/\s+/g, '');
-
-        if (!PHONE_E164_REGEX.test(normalizedPhone)) {
-            return { ok: false, message: 'Telefon numarasini +905... formatinda gir.' };
-        }
-        if (!OTP_CODE_REGEX.test(normalizedCode)) {
-            return { ok: false, message: 'Dogrulama kodu 6 haneli olmali.' };
-        }
-
-        try {
-            const { data, error } = await supabase.auth.verifyOtp({
-                phone: normalizedPhone,
-                token: normalizedCode,
-                type: 'sms'
-            });
-
-            if (error) return { ok: false, message: normalizeAuthError(error.message) };
-
-            const mapped = toSessionUser(data.user ?? data.session?.user ?? null);
-            if (mapped) {
-                setSessionUser(mapped);
-            }
-            triggerWhisper("Welcome to the Ritual.");
-            return { ok: true, message: 'Telefon dogrulandi. Oturum acildi.' };
-        } catch (error) {
-            const message = error instanceof Error ? error.message : 'Phone OTP verification failed.';
             return { ok: false, message: normalizeAuthError(message) };
         }
     };
@@ -1304,8 +1217,6 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             authMode,
             login,
             loginWithGoogle,
-            requestPhoneOtp,
-            verifyPhoneOtp,
             logout,
             avatarUrl: state.avatarUrl,
             updateAvatar

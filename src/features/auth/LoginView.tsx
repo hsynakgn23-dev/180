@@ -1,17 +1,13 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useXP, type RegistrationGender } from '../../context/XPContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { getRegistrationGenderOptions } from '../../i18n/localization';
 
 export const LoginView: React.FC = () => {
-    const { login, loginWithGoogle, requestPhoneOtp, verifyPhoneOtp, authMode } = useXP();
+    const { login, loginWithGoogle, authMode } = useXP();
     const { text, language } = useLanguage();
-    const [authMethod, setAuthMethod] = useState<'email' | 'phone'>('email');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [phone, setPhone] = useState('');
-    const [otpCode, setOtpCode] = useState('');
-    const [isPhoneCodeSent, setIsPhoneCodeSent] = useState(false);
     const [isRegistering, setIsRegistering] = useState(false);
     const [fullName, setFullName] = useState('');
     const [username, setUsername] = useState('');
@@ -28,13 +24,6 @@ export const LoginView: React.FC = () => {
         [language]
     );
 
-    useEffect(() => {
-        if (authMode === 'supabase' || authMethod !== 'phone') return;
-        setAuthMethod('email');
-        setIsPhoneCodeSent(false);
-        setOtpCode('');
-    }, [authMode, authMethod]);
-
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (isSubmitting) return;
@@ -44,25 +33,6 @@ export const LoginView: React.FC = () => {
         setStatusMessage('');
 
         try {
-            if (authMethod === 'phone') {
-                const result = isPhoneCodeSent
-                    ? await verifyPhoneOtp(phone, otpCode)
-                    : await requestPhoneOtp(phone);
-                if (!result.ok) {
-                    setErrorMessage(result.message || text.login.phoneFailed);
-                    return;
-                }
-                if (!isPhoneCodeSent) {
-                    setIsPhoneCodeSent(true);
-                    setStatusMessage(result.message || text.login.phoneCodeSent);
-                    return;
-                }
-                if (result.message) {
-                    setStatusMessage(result.message);
-                }
-                return;
-            }
-
             const result = await login(
                 email,
                 password,
@@ -101,32 +71,6 @@ export const LoginView: React.FC = () => {
             }
         } finally {
             setIsGoogleLoading(false);
-        }
-    };
-
-    const switchAuthMethod = (nextMethod: 'email' | 'phone') => {
-        setAuthMethod(nextMethod);
-        setErrorMessage('');
-        setStatusMessage('');
-        setIsPhoneCodeSent(false);
-        setOtpCode('');
-    };
-
-    const handleResendPhoneCode = async () => {
-        if (isSubmitting || !phone.trim()) return;
-        setIsSubmitting(true);
-        setErrorMessage('');
-        setStatusMessage('');
-        try {
-            const result = await requestPhoneOtp(phone);
-            if (!result.ok) {
-                setErrorMessage(result.message || text.login.phoneFailed);
-                return;
-            }
-            setStatusMessage(result.message || text.login.phoneCodeSent);
-            setIsPhoneCodeSent(true);
-        } finally {
-            setIsSubmitting(false);
         }
     };
 
@@ -171,35 +115,16 @@ export const LoginView: React.FC = () => {
                         </button>
                     </div>
 
-                    {authMode === 'supabase' && (
-                        <div className="grid grid-cols-2 gap-2 rounded-lg border border-white/10 p-1 bg-[#141414]">
-                            <button
-                                type="button"
-                                onClick={() => switchAuthMethod('email')}
-                                className={`px-3 py-2 text-[10px] uppercase tracking-[0.18em] rounded transition-colors font-bold ${authMethod === 'email' ? 'bg-sage text-[#121212]' : 'text-gray-400 hover:text-sage'}`}
-                            >
-                                {text.login.methodEmail}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => switchAuthMethod('phone')}
-                                className={`px-3 py-2 text-[10px] uppercase tracking-[0.18em] rounded transition-colors font-bold ${authMethod === 'phone' ? 'bg-clay text-[#121212]' : 'text-gray-400 hover:text-clay'}`}
-                            >
-                                {text.login.methodPhone}
-                            </button>
-                        </div>
-                    )}
-
                     <div className="text-left">
                         <p className="text-[10px] uppercase tracking-[0.2em] text-sage/80 font-bold">
-                            {authMethod === 'phone' ? text.login.phoneForm : isRegistering ? text.login.registerForm : text.login.loginForm}
+                            {isRegistering ? text.login.registerForm : text.login.loginForm}
                         </p>
                         <p className="text-[11px] text-gray-500 mt-1">
-                            {authMethod === 'phone' ? text.login.phoneInfo : isRegistering ? text.login.registerInfo : text.login.loginInfo}
+                            {isRegistering ? text.login.registerInfo : text.login.loginInfo}
                         </p>
                     </div>
 
-                    {isRegistering && authMethod === 'email' && (
+                    {isRegistering && (
                         <>
                             <div className="flex flex-col gap-2">
                                 <label className="text-[10px] uppercase tracking-widest text-[#E5E4E2]/50 font-bold ml-1">{text.login.fullName}</label>
@@ -259,75 +184,31 @@ export const LoginView: React.FC = () => {
                         </>
                     )}
 
-                    {authMethod === 'email' ? (
-                        <>
-                            <div className="flex flex-col gap-2">
-                                <label className="text-[10px] uppercase tracking-widest text-[#E5E4E2]/50 font-bold ml-1">{text.login.email}</label>
-                                <input
-                                    type="email"
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    placeholder={text.login.emailPlaceholder}
-                                    className="w-full bg-[#121212] border border-[#E5E4E2]/10 p-3 text-sm text-[#E5E4E2] focus:border-sage outline-none rounded-md placeholder-sage/30 transition-colors"
-                                    autoFocus
-                                    required
-                                />
-                            </div>
+                    <div className="flex flex-col gap-2">
+                        <label className="text-[10px] uppercase tracking-widest text-[#E5E4E2]/50 font-bold ml-1">{text.login.email}</label>
+                        <input
+                            type="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            placeholder={text.login.emailPlaceholder}
+                            className="w-full bg-[#121212] border border-[#E5E4E2]/10 p-3 text-sm text-[#E5E4E2] focus:border-sage outline-none rounded-md placeholder-sage/30 transition-colors"
+                            autoFocus
+                            required
+                        />
+                    </div>
 
-                            <div className="flex flex-col gap-2">
-                                <label className="text-[10px] uppercase tracking-widest text-[#E5E4E2]/50 font-bold ml-1">{text.login.password}</label>
-                                <input
-                                    type="password"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    placeholder={text.login.passwordPlaceholder}
-                                    className="w-full bg-[#121212] border border-[#E5E4E2]/10 p-3 text-sm text-[#E5E4E2] focus:border-sage outline-none rounded-md placeholder-sage/30 transition-colors"
-                                    minLength={6}
-                                    required
-                                />
-                            </div>
-                        </>
-                    ) : (
-                        <>
-                            <div className="flex flex-col gap-2">
-                                <label className="text-[10px] uppercase tracking-widest text-[#E5E4E2]/50 font-bold ml-1">{text.login.phone}</label>
-                                <input
-                                    type="tel"
-                                    value={phone}
-                                    onChange={(e) => setPhone(e.target.value)}
-                                    placeholder={text.login.phonePlaceholder}
-                                    className="w-full bg-[#121212] border border-[#E5E4E2]/10 p-3 text-sm text-[#E5E4E2] focus:border-sage outline-none rounded-md placeholder-sage/30 transition-colors"
-                                    autoFocus
-                                    required
-                                />
-                            </div>
-
-                            {isPhoneCodeSent && (
-                                <div className="flex flex-col gap-2">
-                                    <label className="text-[10px] uppercase tracking-widest text-[#E5E4E2]/50 font-bold ml-1">{text.login.otpCode}</label>
-                                    <input
-                                        type="text"
-                                        value={otpCode}
-                                        onChange={(e) => setOtpCode(e.target.value.replace(/\D+/g, '').slice(0, 6))}
-                                        inputMode="numeric"
-                                        pattern="\d{6}"
-                                        placeholder={text.login.otpPlaceholder}
-                                        className="w-full bg-[#121212] border border-[#E5E4E2]/10 p-3 text-sm text-[#E5E4E2] focus:border-clay outline-none rounded-md placeholder-sage/30 transition-colors"
-                                        required
-                                    />
-                                    <p className="text-[10px] text-gray-500">{text.login.phoneCodeHint}</p>
-                                    <button
-                                        type="button"
-                                        onClick={handleResendPhoneCode}
-                                        disabled={isSubmitting}
-                                        className="self-start text-[10px] uppercase tracking-[0.12em] text-sage/80 hover:text-sage transition-colors disabled:opacity-60"
-                                    >
-                                        {text.login.phoneResendCode}
-                                    </button>
-                                </div>
-                            )}
-                        </>
-                    )}
+                    <div className="flex flex-col gap-2">
+                        <label className="text-[10px] uppercase tracking-widest text-[#E5E4E2]/50 font-bold ml-1">{text.login.password}</label>
+                        <input
+                            type="password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            placeholder={text.login.passwordPlaceholder}
+                            className="w-full bg-[#121212] border border-[#E5E4E2]/10 p-3 text-sm text-[#E5E4E2] focus:border-sage outline-none rounded-md placeholder-sage/30 transition-colors"
+                            minLength={6}
+                            required
+                        />
+                    </div>
 
                     {errorMessage && (
                         <div className="text-[10px] tracking-[0.16em] uppercase text-red-400/90 border border-red-500/30 bg-red-500/10 rounded px-3 py-2">
@@ -344,15 +225,9 @@ export const LoginView: React.FC = () => {
                     <button
                         type="submit"
                         disabled={isSubmitting}
-                        className={`w-full font-bold py-3 uppercase tracking-[0.2em] rounded-md transition-colors mt-2 disabled:opacity-60 disabled:cursor-not-allowed ${authMethod === 'email' && isRegistering ? 'bg-clay text-[#121212] hover:bg-[#b78374]' : 'bg-sage text-[#121212] hover:bg-[#9AB06B]'}`}
+                        className={`w-full font-bold py-3 uppercase tracking-[0.2em] rounded-md transition-colors mt-2 disabled:opacity-60 disabled:cursor-not-allowed ${isRegistering ? 'bg-clay text-[#121212] hover:bg-[#b78374]' : 'bg-sage text-[#121212] hover:bg-[#9AB06B]'}`}
                     >
-                        {isSubmitting
-                            ? text.login.submitLoading
-                            : authMethod === 'phone'
-                                ? (isPhoneCodeSent ? text.login.phoneVerifyCode : text.login.phoneSendCode)
-                                : isRegistering
-                                    ? text.login.submitRegister
-                                    : text.login.submitLogin}
+                        {isSubmitting ? text.login.submitLoading : isRegistering ? text.login.submitRegister : text.login.submitLogin}
                     </button>
 
                     <div className="flex items-center gap-4 my-2">

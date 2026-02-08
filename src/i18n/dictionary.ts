@@ -44,41 +44,27 @@ export type UiDictionary = {
     login: {
         modeRegister: string;
         modeLogin: string;
-        methodEmail: string;
-        methodPhone: string;
         registerForm: string;
         loginForm: string;
-        phoneForm: string;
         registerInfo: string;
         loginInfo: string;
-        phoneInfo: string;
         fullName: string;
         username: string;
         gender: string;
         birthDate: string;
         email: string;
-        phone: string;
         password: string;
-        otpCode: string;
         fullNamePlaceholder: string;
         usernamePlaceholder: string;
         emailPlaceholder: string;
-        phonePlaceholder: string;
         passwordPlaceholder: string;
-        otpPlaceholder: string;
         submitRegister: string;
         submitLogin: string;
-        phoneSendCode: string;
-        phoneResendCode: string;
-        phoneVerifyCode: string;
         submitLoading: string;
         googleContinue: string;
         googleRedirecting: string;
         localAuthInfo: string;
         loginFailed: string;
-        phoneFailed: string;
-        phoneCodeSent: string;
-        phoneCodeHint: string;
         googleFailed: string;
         or: string;
     };
@@ -285,45 +271,14 @@ export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
             ]
         },
         login: {
-            modeRegister: 'Yeni Uyelik',
-            modeLogin: 'Uye Girisi',
-            methodEmail: 'E-posta',
-            methodPhone: 'Telefon',
-            registerForm: 'Kayit Formu',
-            loginForm: 'Giris Formu',
-            phoneForm: 'Telefon Dogrulama',
-            registerInfo: 'Kullanici adi, cinsiyet ve dogum tarihi profiline kaydedilir.',
-            loginInfo: 'Mevcut hesabinla giris yap.',
-            phoneInfo: 'Telefon numarana SMS kodu gonderilir. Kod ile giris yapabilirsin.',
-            fullName: 'Isim Soyisim',
-            username: 'Kullanici Adi',
-            gender: 'Cinsiyet',
-            birthDate: 'Dogum Tarihi',
-            email: 'E-posta',
-            phone: 'Telefon',
-            password: 'Sifre',
-            otpCode: 'Dogrulama Kodu',
-            fullNamePlaceholder: 'Ad Soyad',
-            usernamePlaceholder: 'ornek_kullanici',
-            emailPlaceholder: 'ornek@email.com',
-            phonePlaceholder: '+905551112233',
-            passwordPlaceholder: 'minimum 6 karakter',
-            otpPlaceholder: '6 haneli kod',
-            submitRegister: 'Kayit Ol',
-            submitLogin: 'Giris Yap',
-            phoneSendCode: 'Kodu Gonder',
-            phoneResendCode: 'Kodu Tekrar Gonder',
-            phoneVerifyCode: 'Kodu Dogrula',
-            submitLoading: 'Bekleyin...',
-            googleContinue: 'Google ile Devam Et',
-            googleRedirecting: 'Yonlendiriliyor...',
-            localAuthInfo: 'Supabase auth tanimli degil, yerel giris modu aktif.',
-            loginFailed: 'Giris basarisiz.',
-            phoneFailed: 'Telefon ile giris basarisiz.',
-            phoneCodeSent: 'SMS kodu gonderildi.',
-            phoneCodeHint: 'Kodu almazsan numarayi kontrol edip tekrar gonder.',
-            googleFailed: 'Google girisi basarisiz.',
-            or: 'VEYA'
+            modeRegister: 'Yeni Uyelik', modeLogin: 'Uye Girisi', registerForm: 'Kayit Formu', loginForm: 'Giris Formu',
+            registerInfo: 'Kullanici adi, cinsiyet ve dogum tarihi profiline kaydedilir.', loginInfo: 'Mevcut hesabinla giris yap.',
+            fullName: 'Isim Soyisim', username: 'Kullanici Adi', gender: 'Cinsiyet', birthDate: 'Dogum Tarihi',
+            email: 'E-posta', password: 'Sifre', fullNamePlaceholder: 'Ad Soyad', usernamePlaceholder: 'ornek_kullanici',
+            emailPlaceholder: 'ornek@email.com', passwordPlaceholder: 'minimum 6 karakter',
+            submitRegister: 'Kayit Ol', submitLogin: 'Giris Yap', submitLoading: 'Bekleyin...',
+            googleContinue: 'Google ile Devam Et', googleRedirecting: 'Yonlendiriliyor...', localAuthInfo: 'Supabase auth tanimli degil, yerel giris modu aktif.',
+            loginFailed: 'Giris basarisiz.', googleFailed: 'Google girisi basarisiz.', or: 'VEYA'
         },
         settings: {
             title: 'Ayarlar', subtitle: 'Hesap ve deneyim ayarlari', close: 'Kapat',
@@ -406,45 +361,14 @@ export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
             ]
         },
         login: {
-            modeRegister: 'New Membership',
-            modeLogin: 'Member Login',
-            methodEmail: 'Email',
-            methodPhone: 'Phone',
-            registerForm: 'Register Form',
-            loginForm: 'Login Form',
-            phoneForm: 'Phone Verification',
-            registerInfo: 'Username, gender and birth date are saved to your profile.',
-            loginInfo: 'Sign in with your existing account.',
-            phoneInfo: 'We send an SMS code to your phone. Use that code to continue.',
-            fullName: 'Full Name',
-            username: 'Username',
-            gender: 'Gender',
-            birthDate: 'Birth Date',
-            email: 'Email',
-            phone: 'Phone',
-            password: 'Password',
-            otpCode: 'Verification Code',
-            fullNamePlaceholder: 'Full name',
-            usernamePlaceholder: 'sample_user',
-            emailPlaceholder: 'sample@email.com',
-            phonePlaceholder: '+15551234567',
-            passwordPlaceholder: 'minimum 6 characters',
-            otpPlaceholder: '6-digit code',
-            submitRegister: 'Sign Up',
-            submitLogin: 'Sign In',
-            phoneSendCode: 'Send Code',
-            phoneResendCode: 'Resend Code',
-            phoneVerifyCode: 'Verify Code',
-            submitLoading: 'Please wait...',
-            googleContinue: 'Continue with Google',
-            googleRedirecting: 'Redirecting...',
-            localAuthInfo: 'Supabase auth is not configured, local login mode is active.',
-            loginFailed: 'Login failed.',
-            phoneFailed: 'Phone sign-in failed.',
-            phoneCodeSent: 'SMS code sent.',
-            phoneCodeHint: 'If you did not receive a code, check your number and resend.',
-            googleFailed: 'Google sign-in failed.',
-            or: 'OR'
+            modeRegister: 'New Membership', modeLogin: 'Member Login', registerForm: 'Register Form', loginForm: 'Login Form',
+            registerInfo: 'Username, gender and birth date are saved to your profile.', loginInfo: 'Sign in with your existing account.',
+            fullName: 'Full Name', username: 'Username', gender: 'Gender', birthDate: 'Birth Date',
+            email: 'Email', password: 'Password', fullNamePlaceholder: 'Full name', usernamePlaceholder: 'sample_user',
+            emailPlaceholder: 'sample@email.com', passwordPlaceholder: 'minimum 6 characters',
+            submitRegister: 'Sign Up', submitLogin: 'Sign In', submitLoading: 'Please wait...',
+            googleContinue: 'Continue with Google', googleRedirecting: 'Redirecting...', localAuthInfo: 'Supabase auth is not configured, local login mode is active.',
+            loginFailed: 'Login failed.', googleFailed: 'Google sign-in failed.', or: 'OR'
         },
         settings: {
             title: 'Settings', subtitle: 'Account and experience settings', close: 'Close',
@@ -532,37 +456,23 @@ UI_DICTIONARY.es = {
         ...EN_UI_BASE.login,
         modeRegister: 'Nuevo registro',
         modeLogin: 'Ingreso',
-        methodEmail: 'Correo',
-        methodPhone: 'Telefono',
         registerForm: 'Formulario de registro',
         loginForm: 'Formulario de ingreso',
-        phoneForm: 'Verificacion por telefono',
         registerInfo: 'Se guardan usuario, genero y fecha de nacimiento.',
         loginInfo: 'Inicia sesion con tu cuenta existente.',
-        phoneInfo: 'Te enviamos un codigo SMS para continuar.',
         fullName: 'Nombre completo',
         username: 'Usuario',
         gender: 'Genero',
         birthDate: 'Fecha de nacimiento',
         email: 'Correo',
-        phone: 'Telefono',
         password: 'Contrasena',
-        otpCode: 'Codigo de verificacion',
         fullNamePlaceholder: 'Nombre completo',
         emailPlaceholder: 'ejemplo@email.com',
-        phonePlaceholder: '+34123456789',
-        otpPlaceholder: 'Codigo de 6 digitos',
         submitRegister: 'Registrarse',
         submitLogin: 'Entrar',
-        phoneSendCode: 'Enviar codigo',
-        phoneResendCode: 'Reenviar codigo',
-        phoneVerifyCode: 'Verificar codigo',
         googleContinue: 'Continuar con Google',
         googleRedirecting: 'Redirigiendo...',
         loginFailed: 'Error de inicio de sesion.',
-        phoneFailed: 'Error con telefono.',
-        phoneCodeSent: 'Codigo SMS enviado.',
-        phoneCodeHint: 'Si no llega el codigo, revisa el numero y reenvia.',
         googleFailed: 'Error con Google.'
     },
     settings: {
@@ -718,37 +628,23 @@ UI_DICTIONARY.fr = {
         ...EN_UI_BASE.login,
         modeRegister: 'Nouvelle inscription',
         modeLogin: 'Connexion membre',
-        methodEmail: 'E-mail',
-        methodPhone: 'Telephone',
         registerForm: 'Formulaire d inscription',
         loginForm: 'Formulaire de connexion',
-        phoneForm: 'Verification telephone',
         registerInfo: 'Nom, genre et date de naissance sont enregistres.',
         loginInfo: 'Connecte-toi avec ton compte existant.',
-        phoneInfo: 'Un code SMS est envoye a ton numero pour continuer.',
         fullName: 'Nom complet',
         username: 'Pseudo',
         gender: 'Genre',
         birthDate: 'Date de naissance',
         email: 'E-mail',
-        phone: 'Telephone',
         password: 'Mot de passe',
-        otpCode: 'Code de verification',
         fullNamePlaceholder: 'Nom complet',
         emailPlaceholder: 'exemple@email.com',
-        phonePlaceholder: '+33123456789',
-        otpPlaceholder: 'Code a 6 chiffres',
         submitRegister: 'S inscrire',
         submitLogin: 'Se connecter',
-        phoneSendCode: 'Envoyer le code',
-        phoneResendCode: 'Renvoyer le code',
-        phoneVerifyCode: 'Verifier le code',
         googleContinue: 'Continuer avec Google',
         googleRedirecting: 'Redirection...',
         loginFailed: 'Echec de connexion.',
-        phoneFailed: 'Echec de connexion telephone.',
-        phoneCodeSent: 'Code SMS envoye.',
-        phoneCodeHint: 'Si tu ne recois pas le code, verifie le numero puis renvoie.',
         googleFailed: 'Echec Google.'
     },
     settings: {
