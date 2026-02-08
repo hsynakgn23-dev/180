@@ -33,6 +33,13 @@ export type UiDictionary = {
         footerManifesto: string;
         footerRules: string;
         footerContact: string;
+        infoPanelClose: string;
+        manifestoTitle: string;
+        manifestoBody: string;
+        manifestoPoints: string[];
+        rulesTitle: string;
+        rulesBody: string;
+        rulesPoints: string[];
     };
     login: {
         modeRegister: string;
@@ -239,11 +246,29 @@ export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
         app: { brandSubtitle: 'Absolute Cinema', profileTitle: 'Profil', profileAria: 'Profili ac' },
         landing: {
             login: 'Giris Yap', refreshInfo: 'Her gun 00:00 yenilenir', titleLine1: 'GUNLUK', titleLine2: 'SINEMA LISTESI',
-            subtitle: 'Her gun 5 film. Bir filme yorum yazarak gunu tamamla.', start: 'Basla',
+            subtitle: 'Her gun ozenle secilen 5 filmden birine 180 karakterlik yorum yaz ve ilerlemeni surdur.', start: 'Basla',
             featureDailyTitle: 'Gunluk 5 Film', featureDailyText: 'Her sabah yenilenen 5 filmlik secim.',
             featureCommentTitle: '180 Karakter', featureCommentText: 'Kisa ve net yorum yaz.',
             featureProgressTitle: 'Seviye Sistemi', featureProgressText: 'Duzenli katilimla seviyeni arttir.',
-            footerManifesto: 'Manifesto', footerRules: 'Kurallar', footerContact: 'Iletisim'
+            footerManifesto: 'Manifesto', footerRules: 'Kurallar', footerContact: 'Iletisim',
+            infoPanelClose: 'Kapat',
+            manifestoTitle: '180 Manifestosu',
+            manifestoBody: '180, sinemayi kisa ama oz bir yorum disipliniyle takip etmek icin kuruldu.',
+            manifestoPoints: [
+                'Her gun sinema ile bag kurmak, sureklilik yaratmak ve bakisi derinlestirmek.',
+                'Az ama net yazarak dusunceyi berraklastirmak: 180 karakterlik odakli yorumlar.',
+                'Rekabet yerine ritim, gosteris yerine tutarlilik ve ogrenme odakli bir topluluk.'
+            ],
+            rulesTitle: 'Site Ici Kurallar',
+            rulesBody: 'Akisin temiz, adil ve kaliteli kalmasi icin temel kurallar:',
+            rulesPoints: [
+                'Saygili ol: hakaret, hedef gosteren veya asagilayici dil kullanma.',
+                'Spoiler verirken acikca belirt; ana deneyimi bozacak paylasim yapma.',
+                'Yorumlarin filmi merkezde tutsun; alakasiz spam ve tekrar icerik girme.',
+                'Tek hesap, dogru profil: taklit veya yonlendirici sahte kimlik kullanma.',
+                'Nefret soylemi, ayrimcilik, taciz ve tehdit kesinlikle yasaktir.',
+                'Kurallari ihlal eden icerikler kaldirilabilir; tekrarinda hesap kisitlanabilir.'
+            ]
         },
         login: {
             modeRegister: 'Yeni Uyelik', modeLogin: 'Uye Girisi', registerForm: 'Kayit Formu', loginForm: 'Giris Formu',
@@ -311,11 +336,29 @@ export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
         app: { brandSubtitle: 'Absolute Cinema', profileTitle: 'Profile', profileAria: 'Open profile' },
         landing: {
             login: 'Login', refreshInfo: 'Refreshes every day at 00:00', titleLine1: 'DAILY', titleLine2: 'CINEMA LIST',
-            subtitle: '5 films every day. Complete the day by posting one comment.', start: 'Start',
+            subtitle: 'Write one focused 180-character comment on one of 5 curated daily films and keep your streak moving.', start: 'Start',
             featureDailyTitle: 'Daily 5', featureDailyText: 'A fresh selection of 5 films every morning.',
             featureCommentTitle: '180 Characters', featureCommentText: 'Write short and clear comments.',
             featureProgressTitle: 'Level System', featureProgressText: 'Grow your level with consistent activity.',
-            footerManifesto: 'Manifesto', footerRules: 'Rules', footerContact: 'Contact'
+            footerManifesto: 'Manifesto', footerRules: 'Rules', footerContact: 'Contact',
+            infoPanelClose: 'Close',
+            manifestoTitle: '180 Manifesto',
+            manifestoBody: '180 is built to turn daily film watching into a focused writing ritual.',
+            manifestoPoints: [
+                'Build consistency by connecting with cinema every day.',
+                'Think clearly in limited space with 180-character precision.',
+                'Prioritize rhythm, craft, and meaningful discussion over noise.'
+            ],
+            rulesTitle: 'Platform Rules',
+            rulesBody: 'To keep the space clean and fair, follow these rules:',
+            rulesPoints: [
+                'Be respectful; no harassment, insults, or targeted abuse.',
+                'Mark spoilers clearly; do not ruin core viewing experiences.',
+                'Keep comments film-focused; no spam or repetitive off-topic content.',
+                'Use one authentic account; no impersonation or deceptive identity.',
+                'Hate speech, discrimination, threats, and violent language are prohibited.',
+                'Rule-breaking content may be removed; repeated abuse may trigger account restrictions.'
+            ]
         },
         login: {
             modeRegister: 'New Membership', modeLogin: 'Member Login', registerForm: 'Register Form', loginForm: 'Login Form',
