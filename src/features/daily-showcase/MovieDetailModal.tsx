@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Movie } from '../../data/mockMovies';
 import { resolvePosterCandidates } from '../../lib/posterCandidates';
+import { useLanguage } from '../../context/LanguageContext';
 
 interface MovieDetailModalProps {
     movie: Movie;
@@ -9,7 +10,7 @@ interface MovieDetailModalProps {
 }
 
 export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({ movie, onClose, onStartRitual }) => {
-
+    const { text } = useLanguage();
     const [candidates, setCandidates] = React.useState<string[]>(() =>
         resolvePosterCandidates(movie.id, movie.posterPath, 'w500')
     );
@@ -38,16 +39,12 @@ export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({ movie, onClo
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
-            {/* Backdrop Blur */}
             <div
                 className="absolute inset-0 bg-black/70 backdrop-blur-xl transition-opacity"
                 onClick={onClose}
             />
 
-            {/* Modal Content */}
             <div className="relative w-full max-w-2xl bg-[#121212] border border-white/5 shadow-2xl overflow-hidden flex flex-col md:flex-row max-h-[90vh] md:max-h-[600px] animate-slide-up">
-
-                {/* Visual Side (Poster) - Hidden on very small screens or top on mobile */}
                 <div className="md:w-2/5 h-64 md:h-auto relative bg-[#1A1A1A] shrink-0">
                     {imgSrc ? (
                         <img
@@ -59,7 +56,6 @@ export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({ movie, onClo
                         />
                     ) : null}
 
-                    {/* Fallback UI (Hidden by default unless error/no poster) */}
                     <div className={`${imgSrc ? 'hidden' : ''} absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-[#8A9A5B]/10`}>
                         <div className="w-12 h-px bg-[#8A9A5B] mb-4 opacity-50"></div>
                         <span className="text-[10px] uppercase tracking-widest text-[#8A9A5B]/60">
@@ -67,7 +63,6 @@ export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({ movie, onClo
                         </span>
                     </div>
 
-                    {/* Rating Badge */}
                     <div className="absolute top-4 left-4 bg-black/80 backdrop-blur px-3 py-1 text-xs font-bold text-[#8A9A5B] tracking-widest uppercase border border-white/5">
                         {movie.voteAverage?.toFixed(1) || 'N/A'}
                     </div>
@@ -75,14 +70,13 @@ export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({ movie, onClo
                     <button
                         onClick={onClose}
                         className="absolute top-4 right-4 md:hidden text-white drop-shadow-md text-xl"
+                        aria-label={text.movieDetail.close}
                     >
-                        ✕
+                        ×
                     </button>
                 </div>
 
-                {/* Info Side */}
                 <div className="flex-1 p-8 md:p-10 flex flex-col overflow-y-auto bg-[#121212]">
-                    {/* Header */}
                     <div className="mb-8">
                         <div className="flex justify-between items-start">
                             <div>
@@ -93,48 +87,46 @@ export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({ movie, onClo
                                     {movie.title}
                                 </h2>
                                 <p className="text-xs font-serif italic text-[#8A9A5B]/60">
-                                    Directed by {movie.director}
+                                    {text.movieDetail.directedBy} {movie.director}
                                 </p>
                             </div>
                             <button
                                 onClick={onClose}
                                 className="hidden md:block text-white/20 hover:text-white transition-colors"
+                                aria-label={text.movieDetail.close}
                             >
-                                ✕
+                                ×
                             </button>
                         </div>
                     </div>
 
-                    {/* Overview */}
                     <div className="mb-8 grow">
                         <p className="text-sm font-serif leading-relaxed text-[#E5E4E2]/80">
-                            {movie.overview || "No details available."}
+                            {movie.overview || text.movieDetail.noDetails}
                         </p>
                     </div>
 
-                    {/* Meta Grid */}
                     <div className="grid grid-cols-2 gap-6 mb-10 text-xs border-t border-white/5 pt-6">
                         <div>
-                            <span className="block text-[9px] font-bold tracking-[0.2em] text-[#8A9A5B]/40 uppercase mb-1">Cast</span>
+                            <span className="block text-[9px] font-bold tracking-[0.2em] text-[#8A9A5B]/40 uppercase mb-1">{text.movieDetail.cast}</span>
                             <span className="font-serif text-[#E5E4E2]">
-                                {movie.cast?.join(', ') || 'Unknown'}
+                                {movie.cast?.join(', ') || text.movieDetail.unknown}
                             </span>
                         </div>
                         <div>
-                            <span className="block text-[9px] font-bold tracking-[0.2em] text-[#8A9A5B]/40 uppercase mb-1">Language</span>
+                            <span className="block text-[9px] font-bold tracking-[0.2em] text-[#8A9A5B]/40 uppercase mb-1">{text.movieDetail.language}</span>
                             <span className="font-serif text-[#E5E4E2] uppercase">
                                 {movie.originalLanguage || 'EN'}
                             </span>
                         </div>
                     </div>
 
-                    {/* Action */}
                     <div className="mt-auto">
                         <button
                             onClick={onStartRitual}
                             className="w-full py-4 bg-[#8A9A5B] text-[#121212] text-xs font-bold tracking-[0.2em] uppercase hover:bg-[#9AB06B] transition-colors shadow-lg hover:shadow-xl hover:-translate-y-0.5"
                         >
-                            Start Ritual
+                            {text.movieDetail.startComment}
                         </button>
                     </div>
                 </div>
@@ -142,3 +134,4 @@ export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({ movie, onClo
         </div>
     );
 };
+

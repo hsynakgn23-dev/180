@@ -5,6 +5,7 @@ import { useXP } from '../../context/XPContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { supabase, isSupabaseLive } from '../../lib/supabase';
 import { TMDB_SEEDS } from '../../data/tmdbSeeds';
+import { useLanguage } from '../../context/LanguageContext';
 
 interface RitualRow {
     id: string;
@@ -159,6 +160,7 @@ const formatDateAsRitualTimestamp = (dateStr: string): string => {
 };
 
 export const Arena: React.FC = () => {
+    const { text } = useLanguage();
     const { dailyRituals, user, league, deleteRitual } = useXP();
     const { addNotification } = useNotifications();
     const [filter, setFilter] = useState<'all' | 'today'>('all');
@@ -213,12 +215,12 @@ export const Arena: React.FC = () => {
                 console.error('[Arena] failed to fetch rituals', error);
                 if (isSupabaseCapabilityError(error)) {
                     setForceLocalFeed(true);
-                    reportFeedError('Global ritual feed su an kullanilamiyor. Yerel feed gosteriliyor.');
+                    reportFeedError(text.arena.feedFallback);
                     setRemoteRituals([]);
                     setIsRemoteLoading(false);
                     return;
                 }
-                reportFeedError('Ritual feed su anda yuklenemiyor. Baglantiyi kontrol edip tekrar dene.');
+                reportFeedError(text.arena.feedLoadFailed);
                 setRemoteRituals([]);
                 setIsRemoteLoading(false);
                 return;
@@ -245,7 +247,7 @@ export const Arena: React.FC = () => {
 
                 if (echoesError) {
                     console.error('[Arena] failed to fetch ritual echoes', echoesError);
-                    reportFeedError('Echo verileri senkronize edilemedi. Akisi yenileyip tekrar dene.');
+                    reportFeedError(text.arena.reactionLoadFailed);
                     hasSubFetchError = true;
                 } else {
                     echoRows = Array.isArray(echoesData) ? (echoesData as EchoRow[]) : [];
@@ -253,7 +255,7 @@ export const Arena: React.FC = () => {
 
                 if (repliesError) {
                     console.error('[Arena] failed to fetch ritual replies', repliesError);
-                    reportFeedError('Yanit verileri senkronize edilemedi. Akisi yenileyip tekrar dene.');
+                    reportFeedError(text.arena.replyLoadFailed);
                     hasSubFetchError = true;
                 } else {
                     replyRows = Array.isArray(repliesData) ? (repliesData as ReplyRow[]) : [];
@@ -319,7 +321,7 @@ export const Arena: React.FC = () => {
             window.clearInterval(pollId);
             void client.removeChannel(channel);
         };
-    }, [canUseRemoteFeed, reportFeedError, user?.id]);
+    }, [canUseRemoteFeed, reportFeedError, text, user?.id]);
 
     const handleDelete = (ritualId: string) => {
         if (canUseRemoteFeed && supabase) {
@@ -330,7 +332,7 @@ export const Arena: React.FC = () => {
                 .then(({ error }) => {
                     if (error) {
                         console.error('[Arena] failed to delete ritual', error);
-                        reportFeedError('Ritual silinemedi. Tekrar dene.');
+                        reportFeedError(text.arena.deleteFailed);
                         return;
                     }
                     setRemoteRituals((prev) => prev.filter((ritual) => ritual.id !== ritualId));
@@ -405,10 +407,10 @@ export const Arena: React.FC = () => {
             <div className="flex flex-col items-center mb-10 opacity-70 px-4 sm:px-0">
                 <div className="w-px h-12 bg-sage/20 mb-4" />
                 <h2 className="text-xs font-bold tracking-[0.3em] text-sage uppercase">
-                    Ritual Feed
+                    {text.arena.title}
                 </h2>
                 <p className="mt-2 text-[10px] tracking-[0.18em] uppercase text-[#E5E4E2]/40">
-                    Comments are submitted from film cards only.
+                    {text.arena.subtitle}
                 </p>
             </div>
 
@@ -418,13 +420,13 @@ export const Arena: React.FC = () => {
                         onClick={() => setFilter('all')}
                         className={`text-[10px] uppercase tracking-widest transition-colors ${filter === 'all' ? 'text-sage font-bold' : 'text-gray-500 hover:text-gray-300'}`}
                     >
-                        All
+                        {text.arena.all}
                     </button>
                     <button
                         onClick={() => setFilter('today')}
                         className={`text-[10px] uppercase tracking-widest transition-colors ${filter === 'today' ? 'text-sage font-bold' : 'text-gray-500 hover:text-gray-300'}`}
                     >
-                        Today
+                        {text.arena.today}
                     </button>
                 </div>
 
@@ -432,7 +434,7 @@ export const Arena: React.FC = () => {
                     <input
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
-                        placeholder="Search comments..."
+                        placeholder={text.arena.searchPlaceholder}
                         className="w-full sm:w-56 md:w-44 bg-[#121212] border border-white/10 text-[11px] text-[#E5E4E2] px-3 py-1.5 rounded outline-none focus:border-sage/40"
                     />
                     <select
@@ -440,8 +442,8 @@ export const Arena: React.FC = () => {
                         onChange={(e) => setSortMode(e.target.value as 'latest' | 'echoes')}
                         className="w-full sm:w-auto bg-[#141414] border border-white/10 text-[11px] text-[#E5E4E2] px-2 py-1.5 rounded outline-none focus:border-sage/40"
                     >
-                        <option value="latest">Latest</option>
-                        <option value="echoes">Most Echoed</option>
+                        <option value="latest">{text.arena.sortLatest}</option>
+                        <option value="echoes">{text.arena.sortMostLiked}</option>
                     </select>
                 </div>
             </div>
@@ -454,7 +456,7 @@ export const Arena: React.FC = () => {
                 )}
                 {isRemoteLoading && canUseRemoteFeed ? (
                     <div className="text-center py-10 text-[10px] text-gray-500 uppercase tracking-[0.18em] border border-white/5 rounded">
-                        Loading global ritual feed...
+                        {text.arena.loading}
                     </div>
                 ) : filteredRituals.length > 0 ? (
                     filteredRituals.map((ritual) => (
@@ -475,14 +477,14 @@ export const Arena: React.FC = () => {
                     ))
                 ) : (
                     <div className="text-center py-10 text-[10px] text-gray-500 uppercase tracking-[0.18em] border border-white/5 rounded">
-                        No comments found for this filter.
+                        {text.arena.empty}
                     </div>
                 )}
             </div>
 
             <div className="mt-12 text-center">
                 <span className="text-[10px] tracking-[0.2em] text-[#E5E4E2]/20 uppercase">
-                    End of Ritual Feed
+                    {text.arena.end}
                 </span>
             </div>
         </section>

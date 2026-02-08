@@ -2,10 +2,12 @@ import React, { useState } from 'react';
 
 
 import { useNotifications } from '../../context/NotificationContext';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const NotificationCenter: React.FC = () => {
     const [isOpen, setIsOpen] = useState(false);
     const { notifications, unreadCount, markAllAsRead } = useNotifications();
+    const { text } = useLanguage();
 
     const handleToggle = () => {
         setIsOpen(!isOpen);
@@ -21,7 +23,7 @@ export const NotificationCenter: React.FC = () => {
             <button
                 onClick={handleToggle}
                 className="relative p-2 text-sage/60 hover:text-sage transition-colors"
-                title="Whispers"
+                title={text.notifications.title}
             >
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
@@ -41,7 +43,7 @@ export const NotificationCenter: React.FC = () => {
                     <div className="absolute right-0 mt-2 w-[min(18rem,calc(100vw-1rem))] bg-[#121212] border border-white/10 rounded-lg shadow-2xl z-50 animate-fade-in overflow-hidden">
                         <div className="p-3 border-b border-white/5 bg-white/5">
                             <h3 className="text-[10px] font-bold tracking-[0.2em] text-sage uppercase">
-                                Echo Chamber
+                                {text.notifications.panelTitle}
                             </h3>
                         </div>
                         <div className="max-h-64 overflow-y-auto">
@@ -80,7 +82,7 @@ export const NotificationCenter: React.FC = () => {
                                 ))
                             ) : (
                                 <div className="p-6 text-center text-gray-500 text-xs">
-                                    Silence...
+                                    {text.notifications.empty}
                                 </div>
                             )}
                         </div>

@@ -5,6 +5,7 @@ import { MAJOR_MARKS } from '../data/marksData';
 import { PROGRESS_EASING, getProgressFill, getProgressTransitionMs } from '../lib/progressVisuals';
 import { GearIcon } from './icons/GearIcon';
 import { MarkBadge } from '../features/marks/MarkBadge';
+import { useLanguage } from '../context/LanguageContext';
 
 interface ProfileWidgetProps {
     onClick?: () => void;
@@ -12,6 +13,7 @@ interface ProfileWidgetProps {
 }
 
 export const ProfileWidget: React.FC<ProfileWidgetProps> = ({ onClick, onOpenSettings }) => {
+    const { text, format, markCopy, leagueCopy } = useLanguage();
     const {
         xp,
         league,
@@ -36,6 +38,7 @@ export const ProfileWidget: React.FC<ProfileWidgetProps> = ({ onClick, onOpenSet
     );
 
     const xpToNext = Math.max(0, Math.floor(nextLevelXP - xp));
+    const leagueLabel = leagueCopy(league)?.name || league;
     const progressFill = getProgressFill(progressPercentage);
     const progressTransitionMs = getProgressTransitionMs(progressPercentage);
 
@@ -60,18 +63,18 @@ export const ProfileWidget: React.FC<ProfileWidgetProps> = ({ onClick, onOpenSet
 
                         <div className="min-w-0">
                             <p className="text-xs font-bold text-[#E5E4E2] tracking-wider truncate">
-                                {user?.name || 'Observer'}
+                                {user?.name || text.profileWidget.observer}
                             </p>
                             <p className="text-[9px] text-sage uppercase tracking-[0.25em] font-medium opacity-80">
-                                {league}
+                                {leagueLabel}
                             </p>
                         </div>
                     </div>
 
                     <div className="text-right">
-                        <p className="text-[9px] uppercase tracking-[0.2em] text-gray-500">Profile</p>
+                        <p className="text-[9px] uppercase tracking-[0.2em] text-gray-500">{text.profileWidget.profile}</p>
                         <div className="flex items-center justify-end gap-2 mt-1">
-                            <p className="text-[9px] sm:text-[10px] text-sage/80 uppercase tracking-[0.18em]">Open Archive</p>
+                            <p className="text-[9px] sm:text-[10px] text-sage/80 uppercase tracking-[0.18em]">{text.profileWidget.openArchive}</p>
                             <button
                                 type="button"
                                 onClick={(e) => {
@@ -79,8 +82,8 @@ export const ProfileWidget: React.FC<ProfileWidgetProps> = ({ onClick, onOpenSet
                                     onOpenSettings?.();
                                 }}
                                 className="h-6 w-6 rounded-full border border-sage/25 bg-white/5 text-clay/80 hover:text-clay hover:border-clay/40 transition-colors flex items-center justify-center"
-                                title="Settings"
-                                aria-label="Open settings"
+                                title={text.profileWidget.openSettings}
+                                aria-label={text.profileWidget.openSettings}
                             >
                                 <GearIcon className="w-3.5 h-3.5" />
                             </button>
@@ -103,21 +106,21 @@ export const ProfileWidget: React.FC<ProfileWidgetProps> = ({ onClick, onOpenSet
 
                 <div className="flex items-center justify-between text-[10px] mb-3">
                     <span className="text-[var(--color-text)] opacity-60">{Math.floor(xp)} XP</span>
-                    <span className="text-sage/80 uppercase tracking-[0.16em]">{xpToNext} XP to next</span>
+                    <span className="text-sage/80 uppercase tracking-[0.16em]">{format(text.profileWidget.xpToNext, { xp: xpToNext })}</span>
                 </div>
 
                 <div className="grid grid-cols-3 gap-2 mb-3 text-center">
                     <div className="bg-white/5 border border-white/10 rounded-md py-2">
                         <p className="text-base font-bold text-sage leading-none">{streak}</p>
-                        <p className="text-[8px] tracking-[0.2em] uppercase text-gray-500 mt-1">Streak</p>
+                        <p className="text-[8px] tracking-[0.2em] uppercase text-gray-500 mt-1">{text.profileWidget.streak}</p>
                     </div>
                     <div className="bg-white/5 border border-white/10 rounded-md py-2">
                         <p className="text-base font-bold text-sage leading-none">{dailyRitualsCount}</p>
-                        <p className="text-[8px] tracking-[0.2em] uppercase text-gray-500 mt-1">Rituals</p>
+                        <p className="text-[8px] tracking-[0.2em] uppercase text-gray-500 mt-1">{text.profileWidget.comments}</p>
                     </div>
                     <div className="bg-white/5 border border-white/10 rounded-md py-2">
                         <p className="text-base font-bold text-sage leading-none">{daysPresent}</p>
-                        <p className="text-[8px] tracking-[0.2em] uppercase text-gray-500 mt-1">Days</p>
+                        <p className="text-[8px] tracking-[0.2em] uppercase text-gray-500 mt-1">{text.profileWidget.days}</p>
                     </div>
                 </div>
 
@@ -130,14 +133,14 @@ export const ProfileWidget: React.FC<ProfileWidgetProps> = ({ onClick, onOpenSet
                                 <div key={mark.id} className="flex items-center gap-2 bg-white/5 border border-sage/20 rounded-full px-2 py-1 min-w-0">
                                     <MarkBadge mark={mark} size={10} imageClassName="w-3 h-3 rounded-sm object-cover" />
                                     <span className="text-[8px] uppercase tracking-[0.18em] text-[#E5E4E2]/80 truncate">
-                                        {mark.title}
+                                        {markCopy(mark.id).title}
                                     </span>
                                 </div>
                             ))}
                         </div>
                     ) : (
                         <div className="flex items-center justify-between text-[8px] uppercase tracking-[0.18em] text-gray-500">
-                            <span>Marks unlocked</span>
+                            <span>{text.profileWidget.marksUnlocked}</span>
                             <span className="text-sage/70">{marks.length}</span>
                         </div>
                     )}

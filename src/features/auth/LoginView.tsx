@@ -1,15 +1,10 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useXP, type RegistrationGender } from '../../context/XPContext';
-
-const GENDER_OPTIONS: Array<{ value: RegistrationGender; label: string }> = [
-    { value: 'female', label: 'Kadin' },
-    { value: 'male', label: 'Erkek' },
-    { value: 'non_binary', label: 'Non-binary' },
-    { value: 'prefer_not_to_say', label: 'Belirtmek istemiyorum' }
-];
+import { useLanguage } from '../../context/LanguageContext';
 
 export const LoginView: React.FC = () => {
     const { login, loginWithGoogle, authMode } = useXP();
+    const { text, language } = useLanguage();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [isRegistering, setIsRegistering] = useState(false);
@@ -23,6 +18,23 @@ export const LoginView: React.FC = () => {
     const [errorMessage, setErrorMessage] = useState('');
 
     const todayIso = new Date().toISOString().split('T')[0];
+    const genderOptions = useMemo<Array<{ value: RegistrationGender; label: string }>>(
+        () =>
+            language === 'tr'
+                ? [
+                    { value: 'female', label: 'Kadin' },
+                    { value: 'male', label: 'Erkek' },
+                    { value: 'non_binary', label: 'Non-binary' },
+                    { value: 'prefer_not_to_say', label: 'Belirtmek istemiyorum' }
+                ]
+                : [
+                    { value: 'female', label: 'Female' },
+                    { value: 'male', label: 'Male' },
+                    { value: 'non_binary', label: 'Non-binary' },
+                    { value: 'prefer_not_to_say', label: 'Prefer not to say' }
+                ],
+        [language]
+    );
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -47,7 +59,7 @@ export const LoginView: React.FC = () => {
                     : undefined
             );
             if (!result.ok) {
-                setErrorMessage(result.message || 'Giris basarisiz.');
+                setErrorMessage(result.message || text.login.loginFailed);
                 return;
             }
             if (result.message) {
@@ -67,7 +79,7 @@ export const LoginView: React.FC = () => {
         try {
             const result = await loginWithGoogle();
             if (!result.ok) {
-                setErrorMessage(result.message || 'Google girisi basarisiz.');
+                setErrorMessage(result.message || text.login.googleFailed);
             }
         } finally {
             setIsGoogleLoading(false);
@@ -82,10 +94,10 @@ export const LoginView: React.FC = () => {
                         180
                     </h1>
                     <p className="text-[#E5E4E2] font-medium tracking-[0.4em] text-xs uppercase opacity-60">
-                        Absolute Cinema
+                        {text.app.brandSubtitle}
                     </p>
                     <div className="mt-6 text-[10px] font-bold text-sage/70 tracking-widest border-b border-sage/10 pb-1 inline-block uppercase">
-                        {isRegistering ? 'NEW MEMBER FORM' : 'MEMBER LOGIN'}
+                        {isRegistering ? text.login.modeRegister : text.login.modeLogin}
                     </div>
                 </div>
 
@@ -100,7 +112,7 @@ export const LoginView: React.FC = () => {
                             }}
                             className={`px-3 py-2 text-[10px] uppercase tracking-[0.18em] rounded transition-colors font-bold ${!isRegistering ? 'bg-sage text-[#121212]' : 'text-gray-400 hover:text-sage'}`}
                         >
-                            Uye Girisi
+                            {text.login.modeLogin}
                         </button>
                         <button
                             type="button"
@@ -111,30 +123,28 @@ export const LoginView: React.FC = () => {
                             }}
                             className={`px-3 py-2 text-[10px] uppercase tracking-[0.18em] rounded transition-colors font-bold ${isRegistering ? 'bg-clay text-[#121212]' : 'text-gray-400 hover:text-clay'}`}
                         >
-                            Yeni Uyelik
+                            {text.login.modeRegister}
                         </button>
                     </div>
 
                     <div className="text-left">
                         <p className="text-[10px] uppercase tracking-[0.2em] text-sage/80 font-bold">
-                            {isRegistering ? 'Kayit Formu' : 'Giris Formu'}
+                            {isRegistering ? text.login.registerForm : text.login.loginForm}
                         </p>
                         <p className="text-[11px] text-gray-500 mt-1">
-                            {isRegistering
-                                ? 'Kullanici adi, cinsiyet ve dogum tarihi profiline kaydedilir.'
-                                : 'Mevcut hesabinla giris yap.'}
+                            {isRegistering ? text.login.registerInfo : text.login.loginInfo}
                         </p>
                     </div>
 
                     {isRegistering && (
                         <>
                             <div className="flex flex-col gap-2">
-                                <label className="text-[10px] uppercase tracking-widest text-[#E5E4E2]/50 font-bold ml-1">Isim Soyisim</label>
+                                <label className="text-[10px] uppercase tracking-widest text-[#E5E4E2]/50 font-bold ml-1">{text.login.fullName}</label>
                                 <input
                                     type="text"
                                     value={fullName}
                                     onChange={(e) => setFullName(e.target.value)}
-                                    placeholder="Ad Soyad"
+                                    placeholder={text.login.fullNamePlaceholder}
                                     className="w-full bg-[#121212] border border-[#E5E4E2]/10 p-3 text-sm text-[#E5E4E2] focus:border-clay outline-none rounded-md placeholder-sage/30 transition-colors"
                                     minLength={2}
                                     required={isRegistering}
@@ -142,28 +152,28 @@ export const LoginView: React.FC = () => {
                             </div>
 
                             <div className="flex flex-col gap-2">
-                                <label className="text-[10px] uppercase tracking-widest text-[#E5E4E2]/50 font-bold ml-1">Kullanici Adi</label>
+                                <label className="text-[10px] uppercase tracking-widest text-[#E5E4E2]/50 font-bold ml-1">{text.login.username}</label>
                                 <input
                                     type="text"
                                     value={username}
                                     onChange={(e) => setUsername(e.target.value.replace(/\s+/g, ''))}
-                                    placeholder="ornek_kullanici"
+                                    placeholder={text.login.usernamePlaceholder}
                                     className="w-full bg-[#121212] border border-[#E5E4E2]/10 p-3 text-sm text-[#E5E4E2] focus:border-clay outline-none rounded-md placeholder-sage/30 transition-colors"
                                     pattern="[A-Za-z0-9_]{3,20}"
-                                    title="3-20 karakter: harf, rakam veya alt cizgi"
+                                    title="3-20 chars: letters, numbers, underscore"
                                     required={isRegistering}
                                 />
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div className="flex flex-col gap-2">
-                                    <label className="text-[10px] uppercase tracking-widest text-[#E5E4E2]/50 font-bold ml-1">Cinsiyet</label>
+                                    <label className="text-[10px] uppercase tracking-widest text-[#E5E4E2]/50 font-bold ml-1">{text.login.gender}</label>
                                     <select
                                         value={gender}
                                         onChange={(e) => setGender(e.target.value as RegistrationGender)}
                                         className="w-full bg-[#121212] border border-[#E5E4E2]/10 p-3 text-sm text-[#E5E4E2] focus:border-clay outline-none rounded-md"
                                     >
-                                        {GENDER_OPTIONS.map((option) => (
+                                        {genderOptions.map((option) => (
                                             <option key={option.value} value={option.value}>
                                                 {option.label}
                                             </option>
@@ -172,7 +182,7 @@ export const LoginView: React.FC = () => {
                                 </div>
 
                                 <div className="flex flex-col gap-2">
-                                    <label className="text-[10px] uppercase tracking-widest text-[#E5E4E2]/50 font-bold ml-1">Dogum Tarihi</label>
+                                    <label className="text-[10px] uppercase tracking-widest text-[#E5E4E2]/50 font-bold ml-1">{text.login.birthDate}</label>
                                     <input
                                         type="date"
                                         value={birthDate}
@@ -187,12 +197,12 @@ export const LoginView: React.FC = () => {
                     )}
 
                     <div className="flex flex-col gap-2">
-                        <label className="text-[10px] uppercase tracking-widest text-[#E5E4E2]/50 font-bold ml-1">E-mail</label>
+                        <label className="text-[10px] uppercase tracking-widest text-[#E5E4E2]/50 font-bold ml-1">{text.login.email}</label>
                         <input
                             type="email"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            placeholder="ornek@email.com"
+                            placeholder={text.login.emailPlaceholder}
                             className="w-full bg-[#121212] border border-[#E5E4E2]/10 p-3 text-sm text-[#E5E4E2] focus:border-sage outline-none rounded-md placeholder-sage/30 transition-colors"
                             autoFocus
                             required
@@ -200,12 +210,12 @@ export const LoginView: React.FC = () => {
                     </div>
 
                     <div className="flex flex-col gap-2">
-                        <label className="text-[10px] uppercase tracking-widest text-[#E5E4E2]/50 font-bold ml-1">Password</label>
+                        <label className="text-[10px] uppercase tracking-widest text-[#E5E4E2]/50 font-bold ml-1">{text.login.password}</label>
                         <input
                             type="password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            placeholder="minimum 6 karakter"
+                            placeholder={text.login.passwordPlaceholder}
                             className="w-full bg-[#121212] border border-[#E5E4E2]/10 p-3 text-sm text-[#E5E4E2] focus:border-sage outline-none rounded-md placeholder-sage/30 transition-colors"
                             minLength={6}
                             required
@@ -229,14 +239,14 @@ export const LoginView: React.FC = () => {
                         disabled={isSubmitting}
                         className={`w-full font-bold py-3 uppercase tracking-[0.2em] rounded-md transition-colors mt-2 disabled:opacity-60 disabled:cursor-not-allowed ${isRegistering ? 'bg-clay text-[#121212] hover:bg-[#b78374]' : 'bg-sage text-[#121212] hover:bg-[#9AB06B]'}`}
                     >
-                        {isSubmitting ? 'Please wait...' : isRegistering ? 'Kayit Ol' : 'Giris Yap'}
+                        {isSubmitting ? text.login.submitLoading : isRegistering ? text.login.submitRegister : text.login.submitLogin}
                     </button>
 
                     {!isRegistering && (
                         <>
                             <div className="flex items-center gap-4 my-2">
                                 <div className="h-px bg-white/10 flex-1"></div>
-                                <span className="text-[9px] uppercase tracking-widest text-gray-600">OR</span>
+                                <span className="text-[9px] uppercase tracking-widest text-gray-600">{text.login.or}</span>
                                 <div className="h-px bg-white/10 flex-1"></div>
                             </div>
 
@@ -248,11 +258,11 @@ export const LoginView: React.FC = () => {
                                     className="w-full bg-white/10 text-[#E5E4E2] font-bold py-3 uppercase tracking-[0.15em] text-xs rounded-md hover:bg-white/15 transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                                 >
                                     <div className="w-3 h-3 bg-current rounded-full opacity-50"></div>
-                                    {isGoogleLoading ? 'Yonlendiriliyor...' : 'Google ile Devam Et'}
+                                    {isGoogleLoading ? text.login.googleRedirecting : text.login.googleContinue}
                                 </button>
                             ) : (
                                 <div className="text-[10px] text-gray-500 text-center border border-white/10 rounded px-3 py-2">
-                                    Supabase auth tanimli degil, local login modu aktif.
+                                    {text.login.localAuthInfo}
                                 </div>
                             )}
                         </>
@@ -262,3 +272,4 @@ export const LoginView: React.FC = () => {
         </div>
     );
 };
+

@@ -12,11 +12,13 @@ import { ProfileView } from './features/profile/ProfileView'
 import { LeagueTransition } from './components/LeagueTransition'
 import { StreakCelebration } from './components/StreakCelebration'
 import type { Movie } from './data/mockMovies'
+import { LanguageProvider, useLanguage } from './context/LanguageContext'
 
 import { LoginView } from './features/auth/LoginView'
 import { LandingPage } from './features/landing/LandingPage'
 
 const AppContent = () => {
+  const { text } = useLanguage();
   const {
     levelUpEvent,
     closeLevelUp,
@@ -84,11 +86,11 @@ const AppContent = () => {
             setShowProfile(true);
           }}
           className="sm:hidden relative p-0.5 w-9 h-9 rounded-full border border-sage/35 bg-[#121212]/95 text-sage/70 hover:text-sage transition-colors overflow-hidden"
-          title="Profile"
-          aria-label="Open profile"
+          title={text.app.profileTitle}
+          aria-label={text.app.profileAria}
         >
           {avatarUrl ? (
-            <img src={avatarUrl} alt="Profile" className="w-full h-full object-cover rounded-full" />
+            <img src={avatarUrl} alt={text.app.profileTitle} className="w-full h-full object-cover rounded-full" />
           ) : (
             <span className="flex h-full w-full items-center justify-center text-[10px] font-bold tracking-wide">
               {user?.name?.slice(0, 2).toUpperCase() || 'OB'}
@@ -143,7 +145,7 @@ const AppContent = () => {
         <main className="container mx-auto px-4 sm:px-6 relative z-10">
           <header className="mb-8 sm:mb-16 text-center animate-fade-in">
             <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold tracking-tighter text-sage mb-2 sm:mb-4 drop-shadow-sm">180</h1>
-            <p className="text-clay font-medium tracking-[0.2em] text-sm md:text-base uppercase">Absolute Cinema</p>
+            <p className="text-clay font-medium tracking-[0.2em] text-sm md:text-base uppercase">{text.app.brandSubtitle}</p>
           </header>
 
           <DailyShowcase onMovieSelect={setDetailMovie} />
@@ -156,11 +158,13 @@ const AppContent = () => {
 
 function App() {
   return (
-    <XPProvider>
-      <NotificationProvider>
-        <AppContent />
-      </NotificationProvider>
-    </XPProvider>
+    <LanguageProvider>
+      <XPProvider>
+        <NotificationProvider>
+          <AppContent />
+        </NotificationProvider>
+      </XPProvider>
+    </LanguageProvider>
   )
 }
 

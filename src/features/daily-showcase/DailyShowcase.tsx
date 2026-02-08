@@ -4,6 +4,7 @@ import { useXP } from '../../context/XPContext';
 import { MovieCard } from './MovieCard';
 import { CycleTime } from './CycleTime';
 import type { Movie } from '../../data/mockMovies';
+import { useLanguage } from '../../context/LanguageContext';
 
 interface DailyShowcaseProps {
     onMovieSelect: (movie: Movie) => void;
@@ -18,6 +19,7 @@ const getLocalDateKey = (): string => {
 };
 
 export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) => {
+    const { text } = useLanguage();
     const { dailyRituals, dailyRitualsCount, user } = useXP();
     const [todayKey, setTodayKey] = useState<string>(getLocalDateKey);
 
@@ -51,6 +53,7 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
             window.removeEventListener('focus', syncTodayKey);
         };
     }, []);
+
     const todaysCommentedMovieIds = useMemo(
         () =>
             Array.from(
@@ -63,6 +66,7 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
             ),
         [dailyRituals, todayKey]
     );
+
     const previouslyCommentedMovieIds = useMemo(
         () =>
             Array.from(
@@ -75,10 +79,12 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
             ),
         [dailyRituals, todayKey]
     );
+
     const { movies, loading } = useDailyMovies({
         excludedMovieIds: previouslyCommentedMovieIds,
         personalizationSeed: user?.id || user?.email || 'guest'
     });
+
     const scrollerRef = useRef<HTMLDivElement | null>(null);
     const [canScrollLeft, setCanScrollLeft] = useState(false);
     const [canScrollRight, setCanScrollRight] = useState(true);
@@ -125,30 +131,28 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
     if (loading) {
         return (
             <div className="max-w-6xl mx-auto mb-24 h-96 flex items-center justify-center">
-                <span className="text-sage/50 text-xs tracking-widest animate-pulse">GÜNLÜK 5'Lİ YÜKLENİYOR...</span>
+                <span className="text-sage/50 text-xs tracking-widest animate-pulse">{text.daily.loading}</span>
             </div>
         );
     }
 
     return (
         <section className="max-w-6xl mx-auto mb-24">
-
-            {/* Header */}
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end items-start gap-4 px-4 sm:px-6 mb-8 border-b border-gray-200/50 pb-4">
                 <div>
-                    <h3 className="text-sm font-bold tracking-widest text-sage uppercase">GÜNÜN FİLMLERİ</h3>
-                    <span className="text-[10px] italic text-gray-400">Her gün özenle seçilen 5 film</span>
+                    <h3 className="text-sm font-bold tracking-widest text-sage uppercase">{text.daily.title}</h3>
+                    <span className="text-[10px] italic text-gray-400">{text.daily.subtitle}</span>
                 </div>
                 <div className="w-full sm:w-auto flex flex-col items-start sm:items-end gap-2">
                     <CycleTime />
                     <div className="sm:hidden flex items-center gap-2 text-[9px] tracking-[0.16em] uppercase text-clay/80">
-                        <span>Kartlari kaydir</span>
+                        <span>{text.daily.swipeHint}</span>
                         <button
                             type="button"
                             onClick={() => scrollMovies('left')}
                             disabled={!canScrollLeft}
                             className="h-6 w-6 rounded-full border border-clay/30 bg-[#171717] text-clay/80 hover:text-clay hover:border-clay/60 transition-colors disabled:opacity-35 disabled:hover:border-clay/30 disabled:hover:text-clay/80"
-                            aria-label="Scroll movies left"
+                            aria-label={text.daily.scrollLeftAria}
                         >
                             &lt;
                         </button>
@@ -157,7 +161,7 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
                             onClick={() => scrollMovies('right')}
                             disabled={!canScrollRight}
                             className="h-6 w-6 rounded-full border border-clay/30 bg-[#171717] text-clay/80 hover:text-clay hover:border-clay/60 transition-colors disabled:opacity-35 disabled:hover:border-clay/30 disabled:hover:text-clay/80"
-                            aria-label="Scroll movies right"
+                            aria-label={text.daily.scrollRightAria}
                         >
                             &gt;
                         </button>
@@ -165,20 +169,17 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
                 </div>
             </div>
 
-            {/* Movies */}
             <div
                 ref={scrollerRef}
                 className="flex md:grid md:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6 px-4 sm:px-6 overflow-x-auto md:overflow-visible pb-2 md:pb-0 snap-x snap-mandatory md:snap-none scroll-pl-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             >
                 {movies.map((movie, index) => {
-                    // Mystery Slot Logic for 5th Movie (index 4)
                     const isMysterySlot = index === 4;
                     const isLocked = isMysterySlot && dailyRitualsCount === 0;
                     const isWatchedToday = todaysCommentedMovieIds.includes(movie.id);
 
                     return (
                         <div key={movie.id} data-movie-card="true" className="relative h-full min-w-[74vw] sm:min-w-[46vw] md:min-w-0 snap-start">
-                            {/* Wrapper for Blur Transition */}
                             <div className={`h-full transition-all duration-1000 ease-in-out ${isLocked ? 'blur-sm grayscale opacity-50' : 'blur-0 grayscale-0 opacity-100'}`}>
                                 <MovieCard
                                     movie={movie}
@@ -191,7 +192,6 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
                                 />
                             </div>
 
-                            {/* Lock Overlay with Smooth Fade Out */}
                             <div
                                 className={`absolute inset-0 z-20 flex flex-col items-center justify-center p-4 text-center transition-all duration-1000 ease-in-out
                                     ${isLocked ? 'opacity-100 bg-[#FDFCF8]/10' : 'opacity-0 pointer-events-none'}
@@ -204,7 +204,9 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
                                     </svg>
                                 </div>
                                 <span className="text-[10px] md:text-xs font-bold tracking-[0.2em] text-[#2C2C2C] uppercase drop-shadow-sm">
-                                    Kilidi Açmak İçin<br />1 Yorum Yap
+                                    {text.daily.lockLine1}
+                                    <br />
+                                    {text.daily.lockLine2}
                                 </span>
                             </div>
                         </div>
@@ -214,5 +216,4 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
         </section>
     );
 };
-
 

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { Movie } from '../../data/mockMovies';
 import { resolvePosterCandidates } from '../../lib/posterCandidates';
 import { searchPosterPath } from '../../lib/tmdbApi';
+import { useLanguage } from '../../context/LanguageContext';
 
 interface MovieCardProps {
     movie: Movie;
@@ -11,6 +12,7 @@ interface MovieCardProps {
 }
 
 export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, isWatchedToday = false, onClick }) => {
+    const { text } = useLanguage();
     const isDev = import.meta.env.DEV;
     const [imgSrc, setImgSrc] = useState<string | null>(null);
     const [hasError, setHasError] = useState(false);
@@ -138,7 +140,7 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, isWatchedTod
                         </h3>
 
                         <span className="text-[9px] uppercase tracking-[0.25em] text-[#8A9A5B]/60 font-medium animate-pulse">
-                            {isRetrying ? 'Searching Archive...' : 'Image Unavailable'}
+                            {isRetrying ? text.movieCard.searching : text.movieCard.imageUnavailable}
                         </span>
                     </div>
                 )}
@@ -166,7 +168,7 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, isWatchedTod
                     {isWatchedToday && (
                         <div className="inline-flex items-center gap-1 rounded-full border border-emerald-300/60 bg-emerald-500/15 px-2 py-1 text-[9px] font-bold uppercase tracking-[0.16em] text-emerald-200 shadow-[0_0_12px_rgba(16,185,129,0.25)]">
                             <span>✓</span>
-                            <span>Izlendi</span>
+                            <span>{text.movieCard.watched}</span>
                         </div>
                     )}
                 </div>

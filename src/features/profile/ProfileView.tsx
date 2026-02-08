@@ -7,6 +7,7 @@ import { PROGRESS_EASING, getProgressFill, getProgressTransitionMs } from '../..
 import { GearIcon } from '../../components/icons/GearIcon';
 import { MarkBadge } from '../marks/MarkBadge';
 import { supabase, isSupabaseLive } from '../../lib/supabase';
+import { useLanguage } from '../../context/LanguageContext';
 
 interface ProfileViewProps {
     onClose: () => void;
@@ -111,6 +112,7 @@ const toRelativeTimestamp = (rawTimestamp: string): string => {
 };
 
 export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettings = false }) => {
+    const { text, format, leagueCopy, language } = useLanguage();
     const {
         xp,
         league,
@@ -145,14 +147,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
     const [isRepliesLoading, setIsRepliesLoading] = useState(false);
     const progressFill = getProgressFill(progressPercentage);
     const progressTransitionMs = getProgressTransitionMs(progressPercentage);
+    const currentLeagueLabel = leagueCopy(league)?.name || league;
+    const nextLeagueKey = LEAGUE_NAMES[LEAGUE_NAMES.indexOf(league) + 1];
+    const nextLeagueLabel = nextLeagueKey
+        ? leagueCopy(nextLeagueKey)?.name || LEAGUES_DATA[nextLeagueKey]?.name || 'Max'
+        : 'Max';
     const genderLabel = gender === 'female'
-        ? 'Kadin'
+        ? (language === 'tr' ? 'Kadin' : 'Female')
         : gender === 'male'
-            ? 'Erkek'
+            ? (language === 'tr' ? 'Erkek' : 'Male')
             : gender === 'non_binary'
                 ? 'Non-binary'
                 : gender === 'prefer_not_to_say'
-                    ? 'Belirtmek istemiyor'
+                    ? (language === 'tr' ? 'Belirtmek istemiyor' : 'Prefer not to say')
                     : '';
 
     const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -438,8 +445,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                 <button
                     onClick={handleClose}
                     className="h-10 w-10 sm:h-11 sm:w-11 rounded-full border border-sage/30 hover:border-clay/60 text-clay/80 hover:text-clay transition-colors flex items-center justify-center bg-[#1A1A1A]/85"
-                    aria-label="Ana sayfaya don"
-                    title="Ana sayfaya don"
+                    aria-label={text.profile.backHome}
+                    title={text.profile.backHome}
                 >
                     <svg viewBox="0 0 24 24" fill="none" className="w-[18px] h-[18px]" aria-hidden="true">
                         <path d="M3 11.5L12 4L21 11.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
@@ -450,16 +457,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                 <button
                     onClick={() => setShowSettings(true)}
                     className="h-10 w-10 sm:h-11 sm:w-11 rounded-full border border-sage/30 hover:border-clay/60 text-clay/80 hover:text-clay transition-colors flex items-center justify-center bg-[#1A1A1A]/85"
-                    title="Settings"
-                    aria-label="Open settings"
+                    title={text.profile.openSettings}
+                    aria-label={text.profile.openSettings}
                 >
                     <GearIcon className="w-[18px] h-[18px]" />
                 </button>
                 <button
                     onClick={logout}
                     className="h-10 w-10 sm:h-11 sm:w-11 rounded-full border border-red-500/35 hover:border-red-400/70 text-red-400/75 hover:text-red-300 transition-colors flex items-center justify-center bg-[#1A1A1A]/85"
-                    aria-label="Cikis yap"
-                    title="Cikis yap"
+                    aria-label={text.profile.logout}
+                    title={text.profile.logout}
                 >
                     <svg viewBox="0 0 24 24" fill="none" className="w-[18px] h-[18px]" aria-hidden="true">
                         <path d="M10 4H6C4.89543 4 4 4.89543 4 6V18C4 19.1046 4.89543 20 6 20H10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
@@ -474,7 +481,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                 {/* Header - 180 Absolute Cinema */}
                 <header className="mb-12 text-center animate-fade-in">
                     <h1 className="text-4xl md:text-5xl font-bold tracking-tighter text-sage mb-3 drop-shadow-sm">180</h1>
-                    <p className="text-clay font-medium tracking-[0.2em] text-xs md:text-sm uppercase">Absolute Cinema</p>
+                    <p className="text-clay font-medium tracking-[0.2em] text-xs md:text-sm uppercase">{text.app.brandSubtitle}</p>
                 </header>
 
                 {/* Two Column Grid */}
@@ -500,7 +507,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
 
                                         {isEditing && (
                                             <div className="absolute inset-0 z-20 bg-black/50 flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <span className="text-[9px] uppercase tracking-widest text-white/80 font-bold">Upload</span>
+                                                <span className="text-[9px] uppercase tracking-widest text-white/80 font-bold">{text.profile.upload}</span>
                                             </div>
                                         )}
 
@@ -521,7 +528,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                                     <button
                                         onClick={() => setShowSettings(true)}
                                         className="absolute -bottom-1 -right-1 w-8 h-8 bg-[#1A1A1A] hover:bg-clay/10 rounded-full flex items-center justify-center border border-sage/20 hover:border-clay/30 transition-all hover:scale-110"
-                                        title="Ayarlar"
+                                        title={text.profile.openSettings}
                                     >
                                         <GearIcon className="w-4 h-4 text-clay/80" />
                                     </button>
@@ -529,13 +536,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
 
                                 {/* Username & Bio */}
                                 <h2 className="text-xl tracking-widest font-bold text-[#E5E4E2]/90 mb-2">
-                                    {user?.name ? user.name.toUpperCase() : 'KÜRATÖR'}
+                                    {user?.name ? user.name.toUpperCase() : text.profile.curatorFallback}
                                 </h2>
                                 <p className="text-[10px] tracking-[0.2em] uppercase text-gray-400 mb-1">
-                                    @{username || 'observer'}
+                                    @{username || text.profile.observerHandle}
                                 </p>
                                 <p className="text-[10px] text-gray-500 mb-4 text-center">
-                                    {fullName || 'Isim belirtilmedi'} | {genderLabel || 'Cinsiyet belirtilmedi'} | {birthDate || 'Dogum tarihi yok'}
+                                    {fullName || text.profile.missingName} | {genderLabel || text.profile.missingGender} | {birthDate || text.profile.missingBirthDate}
                                 </p>
 
                                 {isEditing ? (
@@ -549,10 +556,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                                         />
                                         <div className="flex gap-2">
                                             <button onClick={handleSaveIdentity} className="text-[9px] uppercase tracking-widest text-[#121212] bg-sage px-3 py-1 rounded font-bold hover:opacity-90">
-                                                Save
+                                                {text.profile.save}
                                             </button>
                                             <button onClick={() => setIsEditing(false)} className="text-[9px] uppercase tracking-widest text-gray-500 px-3 py-1 hover:text-white">
-                                                Cancel
+                                                {text.profile.cancel}
                                             </button>
                                         </div>
                                     </div>
@@ -562,21 +569,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                                             "{bio}"
                                         </p>
                                         <span className="opacity-0 group-hover:opacity-100 transition-opacity text-[8px] tracking-[0.2em] text-gray-600 uppercase">
-                                            Edit Identity
+                                            {text.profile.editIdentity}
                                         </span>
                                     </div>
                                 )}
 
                                 {/* League & XP */}
                                 <div className="text-xs tracking-[0.2em] text-[#E5E4E2]/60 mb-4 uppercase">
-                                    {league} · {Math.floor(xp)} XP
+                                    {currentLeagueLabel} · {Math.floor(xp)} XP
                                 </div>
 
                                 {/* XP Progress Bar */}
                                 <div className="w-full">
                                     <div className="flex justify-between items-end mb-2 text-[9px]">
                                         <span className="font-bold text-sage tracking-wider uppercase">
-                                            {LEAGUES_DATA[LEAGUE_NAMES[LEAGUE_NAMES.indexOf(league) + 1]]?.name || 'Max'}
+                                            {nextLeagueLabel}
                                         </span>
                                         <span className="font-mono text-sage/60">
                                             {Math.floor(nextLevelXP - xp)} XP
@@ -602,7 +609,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
 
                         {/* Cinematic DNA Card */}
                         <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
-                            <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase mb-4">Cinematic DNA</h3>
+                            <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase mb-4">{text.profile.genreDistribution}</h3>
 
                             <div className="flex justify-center items-end h-32 gap-4 bg-white/5 border border-white/5 rounded p-4 relative overflow-hidden">
                                 {topGenres.length > 0 ? (
@@ -674,31 +681,31 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                         {/* Activity Pulse */}
                         <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
                             <div className="flex justify-between items-end mb-6 border-b border-gray-100/10 pb-4">
-                                <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase">Activity Pulse</h3>
+                                <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase">{text.profile.activity}</h3>
                                 <span className="text-[9px] tracking-wider text-gray-500 uppercase">
-                                    Profile Feed
+                                    {text.profile.profileFeed}
                                 </span>
                             </div>
 
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                 <div className="bg-white/5 border border-white/10 rounded-lg px-3 py-3">
-                                    <div className="text-[9px] uppercase tracking-[0.18em] text-gray-500 mb-1">Comments</div>
+                                    <div className="text-[9px] uppercase tracking-[0.18em] text-gray-500 mb-1">{text.profile.comments}</div>
                                     <div className="text-2xl font-bold text-sage">{dailyRituals.length}</div>
                                 </div>
                                 <div className="bg-white/5 border border-white/10 rounded-lg px-3 py-3">
-                                    <div className="text-[9px] uppercase tracking-[0.18em] text-gray-500 mb-1">Films</div>
+                                    <div className="text-[9px] uppercase tracking-[0.18em] text-gray-500 mb-1">{text.profile.films}</div>
                                     <div className="text-2xl font-bold text-sage">{commentedFilms.length}</div>
                                 </div>
                                 <div className="bg-white/5 border border-white/10 rounded-lg px-3 py-3">
-                                    <div className="text-[9px] uppercase tracking-[0.18em] text-gray-500 mb-1">Top Genre</div>
+                                    <div className="text-[9px] uppercase tracking-[0.18em] text-gray-500 mb-1">{text.profile.topGenre}</div>
                                     <div className="text-sm font-bold text-[#E5E4E2] uppercase">
-                                        {topGenres[0]?.[0] || 'None'}
+                                        {topGenres[0]?.[0] || text.profile.noRecords}
                                     </div>
                                 </div>
                                 <div className="bg-white/5 border border-white/10 rounded-lg px-3 py-3">
-                                    <div className="text-[9px] uppercase tracking-[0.18em] text-gray-500 mb-1">Most Written</div>
+                                    <div className="text-[9px] uppercase tracking-[0.18em] text-gray-500 mb-1">{text.profile.mostCommented}</div>
                                     <div className="text-sm font-bold text-[#E5E4E2] line-clamp-1">
-                                        {mostWrittenFilm?.title || 'No records'}
+                                        {mostWrittenFilm?.title || text.profile.noRecords}
                                     </div>
                                 </div>
                             </div>
@@ -707,9 +714,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                         {/* Film Journal Card */}
                         <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
                             <div className="flex justify-between items-end mb-6 border-b border-gray-100/10 pb-4">
-                                <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase">Film Journal</h3>
+                                <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase">{text.profile.filmArchive}</h3>
                                 <span className="text-[9px] tracking-wider text-gray-500">
-                                    {commentedFilms.length} Film
+                                    {format(text.profile.filmCount, { count: commentedFilms.length })}
                                 </span>
                             </div>
 
@@ -734,8 +741,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                                                         ? 'border-sage/70 ring-1 ring-sage/40 shadow-[0_0_24px_rgba(138,154,91,0.15)]'
                                                         : 'border-white/10 hover:border-sage/40'
                                                         }`}
-                                                    title={`${film.title} yorum ve cevaplarini ac`}
-                                                    aria-label={`${film.title} yorum ve cevaplarini ac`}
+                                                    title={format(text.profile.openFilmDetails, { title: film.title })}
+                                                    aria-label={format(text.profile.openFilmDetails, { title: film.title })}
                                                 >
                                                     <CommentFilmPoster
                                                         movieId={film.movieId}
@@ -747,7 +754,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                                                         <p className="text-[9px] font-bold tracking-wide uppercase text-white/90 line-clamp-2">
                                                             {film.title}
                                                         </p>
-                                                        <p className="text-[9px] font-mono text-sage/90 mt-1">x{film.count} yorum</p>
+                                                        <p className="text-[9px] font-mono text-sage/90 mt-1">{format(text.profile.commentCount, { count: film.count })}</p>
                                                     </div>
                                                 </article>
                                             );
@@ -756,7 +763,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                                 </>
                             ) : (
                                 <div className="text-center py-8 text-[10px] text-gray-600 font-serif italic border border-dashed border-gray-800 rounded">
-                                    Henuz yorumlanan film yok. Bir rituelle arsivi baslat.
+                                    {text.profile.noFilmComments} {text.profile.noFilmCommentsHint}
                                 </div>
                             )}
                         </div>

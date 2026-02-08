@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useXP, type RegistrationGender } from '../../context/XPContext';
+import { useLanguage } from '../../context/LanguageContext';
 
 interface SettingsModalProps {
     isOpen: boolean;
@@ -8,13 +9,12 @@ interface SettingsModalProps {
 
 type SettingsTab = 'identity' | 'appearance' | 'session';
 type ThemeMode = 'midnight' | 'dawn';
-type LanguageMode = 'tr' | 'en';
 
 const THEME_STORAGE_KEY = '180_theme_pref';
-const LANGUAGE_STORAGE_KEY = '180_lang_pref';
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
     const { user, updateIdentity, updatePersonalInfo, logout, bio, avatarUrl, updateAvatar, avatarId, fullName, username, gender, birthDate } = useXP();
+    const { text, language, setLanguage } = useLanguage();
     const [activeTab, setActiveTab] = useState<SettingsTab>('identity');
     const [bioDraft, setBioDraft] = useState(bio);
     const [fullNameDraft, setFullNameDraft] = useState(fullName);
@@ -22,9 +22,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     const [genderDraft, setGenderDraft] = useState<RegistrationGender | ''>(gender || '');
     const [birthDateDraft, setBirthDateDraft] = useState(birthDate);
     const [theme, setTheme] = useState<ThemeMode>('midnight');
-    const [language, setLanguage] = useState<LanguageMode>('tr');
     const [statusMessage, setStatusMessage] = useState('');
     const [confirmLogout, setConfirmLogout] = useState(false);
+    const genderOptions: Array<{ value: RegistrationGender; label: string }> = language === 'tr'
+        ? [
+            { value: 'female', label: 'Kadin' },
+            { value: 'male', label: 'Erkek' },
+            { value: 'non_binary', label: 'Non-binary' },
+            { value: 'prefer_not_to_say', label: 'Belirtmek istemiyorum' }
+        ]
+        : [
+            { value: 'female', label: 'Female' },
+            { value: 'male', label: 'Male' },
+            { value: 'non_binary', label: 'Non-binary' },
+            { value: 'prefer_not_to_say', label: 'Prefer not to say' }
+        ];
 
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -46,10 +58,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             setTheme(document.body.classList.contains('light-mode') ? 'dawn' : 'midnight');
         }
 
-        const storedLanguage = localStorage.getItem(LANGUAGE_STORAGE_KEY);
-        if (storedLanguage === 'tr' || storedLanguage === 'en') {
-            setLanguage(storedLanguage);
-        }
     }, [isOpen, bio, fullName, username, gender, birthDate]);
 
     useEffect(() => {
@@ -66,13 +74,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         } else {
             document.body.classList.remove('light-mode');
         }
-        setStatusMessage('Theme updated');
+        setStatusMessage(text.settings.statusThemeUpdated);
     };
 
-    const applyLanguage = (nextLanguage: LanguageMode) => {
+    const applyLanguage = (nextLanguage: 'tr' | 'en') => {
         setLanguage(nextLanguage);
-        localStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguage);
-        setStatusMessage('Language preference saved');
+        setStatusMessage(text.settings.statusLanguageSaved);
     };
 
     const handleSaveIdentity = async () => {
@@ -83,11 +90,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             birthDate: birthDateDraft
         });
         if (!profileResult.ok) {
-            setStatusMessage(profileResult.message || 'Identity save failed');
+            setStatusMessage(profileResult.message || text.settings.statusIdentitySaveFailed);
             return;
         }
         updateIdentity(bioDraft, avatarId);
-        setStatusMessage(profileResult.message || 'Identity saved');
+        setStatusMessage(profileResult.message || text.settings.statusIdentitySaved);
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -98,7 +105,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         reader.onloadend = () => {
             if (typeof reader.result === 'string') {
                 updateAvatar(reader.result);
-                setStatusMessage('Avatar updated');
+                setStatusMessage(text.settings.statusAvatarUpdated);
             }
         };
         reader.readAsDataURL(file);
@@ -126,9 +133,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 <div className="sticky top-0 bg-[#121212]/95 backdrop-blur-xl border-b border-white/10 p-6 z-10">
                     <div className="flex items-start justify-between gap-4">
                         <div>
-                            <h2 className="text-lg tracking-[0.22em] uppercase font-bold text-sage">Settings</h2>
+                            <h2 className="text-lg tracking-[0.22em] uppercase font-bold text-sage">{text.settings.title}</h2>
                             <p className="text-[10px] uppercase tracking-[0.18em] text-[#E5E4E2]/45 mt-1">
-                                Account and experience controls
+                                {text.settings.subtitle}
                             </p>
                         </div>
                         <button
@@ -136,15 +143,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                             onClick={onClose}
                             className="text-[10px] tracking-[0.18em] uppercase border border-white/15 rounded px-3 py-1.5 text-gray-400 hover:text-sage hover:border-sage/35 transition-colors"
                         >
-                            Close
+                            {text.settings.close}
                         </button>
                     </div>
 
                     <div className="flex gap-2 mt-5">
                         {([
-                            { id: 'identity', label: 'Identity' },
-                            { id: 'appearance', label: 'Appearance' },
-                            { id: 'session', label: 'Session' }
+                            { id: 'identity', label: text.settings.tabIdentity },
+                            { id: 'appearance', label: text.settings.tabAppearance },
+                            { id: 'session', label: text.settings.tabSession }
                         ] as const).map((tab) => (
                             <button
                                 key={tab.id}
@@ -172,7 +179,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     {activeTab === 'identity' && (
                         <div className="space-y-5 animate-fade-in">
                             <div className="bg-white/5 border border-white/10 rounded-xl p-5">
-                                <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-3">Avatar</p>
+                                <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-3">{text.settings.avatar}</p>
                                 <div className="flex items-center gap-4">
                                     <div className="w-16 h-16 rounded-lg overflow-hidden border border-white/10 bg-[#0f0f0f]">
                                         {avatarUrl ? (
@@ -189,9 +196,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                             onClick={() => fileInputRef.current?.click()}
                                             className="text-[10px] uppercase tracking-[0.18em] border border-sage/30 rounded px-3 py-2 text-sage hover:border-sage/60 transition-colors"
                                         >
-                                            Upload Avatar
+                                            {text.settings.uploadAvatar}
                                         </button>
-                                        <p className="text-[10px] text-gray-500 mt-2">Recommended: square image</p>
+                                        <p className="text-[10px] text-gray-500 mt-2">{text.settings.avatarHint}</p>
                                     </div>
                                 </div>
                                 <input
@@ -204,42 +211,43 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                             </div>
 
                             <div className="bg-white/5 border border-white/10 rounded-xl p-5">
-                                <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-3">Personal Info</p>
+                                <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-3">{text.settings.personalInfo}</p>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <label className="text-[10px] uppercase tracking-[0.12em] text-gray-500">
-                                        Isim
+                                        {text.settings.fullName}
                                         <input
                                             value={fullNameDraft}
                                             onChange={(e) => setFullNameDraft(e.target.value)}
                                             className="mt-1 w-full bg-[#141414] border border-white/10 rounded px-3 py-2 text-sm normal-case tracking-normal text-[#E5E4E2] placeholder:text-gray-600 focus:border-sage/40 outline-none"
-                                            placeholder="Ad Soyad"
+                                            placeholder={text.login.fullNamePlaceholder}
                                         />
                                     </label>
                                     <label className="text-[10px] uppercase tracking-[0.12em] text-gray-500">
-                                        Kullanici
+                                        {text.settings.username}
                                         <input
                                             value={usernameDraft}
                                             onChange={(e) => setUsernameDraft(e.target.value.trim())}
                                             className="mt-1 w-full bg-[#141414] border border-white/10 rounded px-3 py-2 text-sm normal-case tracking-normal text-[#E5E4E2] placeholder:text-gray-600 focus:border-sage/40 outline-none"
-                                            placeholder="kullanici_adi"
+                                            placeholder={text.login.usernamePlaceholder}
                                         />
                                     </label>
                                     <label className="text-[10px] uppercase tracking-[0.12em] text-gray-500">
-                                        Cinsiyet
+                                        {text.settings.gender}
                                         <select
                                             value={genderDraft}
                                             onChange={(e) => setGenderDraft(e.target.value as RegistrationGender | '')}
                                             className="mt-1 w-full bg-[#141414] border border-white/10 rounded px-3 py-2 text-sm normal-case tracking-normal text-[#E5E4E2] focus:border-sage/40 outline-none"
                                         >
-                                            <option value="">Seciniz</option>
-                                            <option value="female">Kadin</option>
-                                            <option value="male">Erkek</option>
-                                            <option value="non_binary">Non-binary</option>
-                                            <option value="prefer_not_to_say">Belirtmek istemiyorum</option>
+                                            <option value="">{text.settings.select}</option>
+                                            {genderOptions.map((option) => (
+                                                <option key={option.value} value={option.value}>
+                                                    {option.label}
+                                                </option>
+                                            ))}
                                         </select>
                                     </label>
                                     <label className="text-[10px] uppercase tracking-[0.12em] text-gray-500">
-                                        Dogum
+                                        {text.settings.birthDate}
                                         <input
                                             type="date"
                                             value={birthDateDraft}
@@ -248,26 +256,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                         />
                                     </label>
                                 </div>
-                                <p className="mt-3 text-[10px] text-gray-500">Kullanici adi: 3-20 karakter, harf/rakam/_</p>
+                                <p className="mt-3 text-[10px] text-gray-500">{text.settings.usernameHint}</p>
                             </div>
 
                             <div className="bg-white/5 border border-white/10 rounded-xl p-5">
                                 <label className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-2 block">
-                                    Bio ({bioDraft.length}/180)
+                                    {text.settings.bio} ({bioDraft.length}/180)
                                 </label>
                                 <textarea
                                     value={bioDraft}
                                     onChange={(e) => setBioDraft(e.target.value.slice(0, 180))}
                                     rows={4}
                                     className="w-full bg-[#141414] border border-white/10 rounded px-3 py-2 text-sm text-[#E5E4E2] placeholder:text-gray-600 focus:border-sage/40 outline-none resize-none"
-                                    placeholder="Write a short cinematic identity note..."
+                                    placeholder={text.settings.bioPlaceholder}
                                 />
                                 <button
                                     type="button"
                                     onClick={handleSaveIdentity}
                                     className="mt-4 w-full bg-sage text-[#121212] rounded py-2.5 text-[10px] uppercase tracking-[0.2em] font-bold hover:opacity-90 transition-opacity"
                                 >
-                                    Save Identity
+                                    {text.settings.saveIdentity}
                                 </button>
                             </div>
                         </div>
@@ -276,7 +284,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     {activeTab === 'appearance' && (
                         <div className="space-y-5 animate-fade-in">
                             <div className="bg-white/5 border border-white/10 rounded-xl p-5">
-                                <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-3">Theme</p>
+                                <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-3">{text.settings.theme}</p>
                                 <div className="grid grid-cols-2 gap-3">
                                     <button
                                         type="button"
@@ -288,7 +296,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                         }`}
                                     >
                                         <div className="h-10 rounded bg-[#121212] border border-white/10 mb-2" />
-                                        <p className="text-[10px] uppercase tracking-[0.18em] text-[#E5E4E2]">Midnight</p>
+                                        <p className="text-[10px] uppercase tracking-[0.18em] text-[#E5E4E2]">{text.settings.themeMidnight}</p>
                                     </button>
                                     <button
                                         type="button"
@@ -300,13 +308,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                         }`}
                                     >
                                         <div className="h-10 rounded bg-[#FDFCF8] border border-[#d8d4cc] mb-2" />
-                                        <p className="text-[10px] uppercase tracking-[0.18em] text-[#E5E4E2]">Dawn</p>
+                                        <p className="text-[10px] uppercase tracking-[0.18em] text-[#E5E4E2]">{text.settings.themeDawn}</p>
                                     </button>
                                 </div>
                             </div>
 
                             <div className="bg-white/5 border border-white/10 rounded-xl p-5">
-                                <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-3">Language</p>
+                                <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-3">{text.settings.language}</p>
                                 <div className="flex items-center gap-3">
                                     <button
                                         type="button"
@@ -317,7 +325,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                                 : 'border-white/10 text-gray-400 hover:border-sage/30 hover:text-sage'
                                         }`}
                                     >
-                                        Turkish
+                                        {text.settings.languageTr}
                                     </button>
                                     <button
                                         type="button"
@@ -328,7 +336,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                                 : 'border-white/10 text-gray-400 hover:border-sage/30 hover:text-sage'
                                         }`}
                                     >
-                                        English
+                                        {text.settings.languageEn}
                                     </button>
                                 </div>
                             </div>
@@ -338,21 +346,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     {activeTab === 'session' && (
                         <div className="space-y-5 animate-fade-in">
                             <div className="bg-white/5 border border-white/10 rounded-xl p-5">
-                                <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-2">Active Account</p>
-                                <p className="text-sm font-bold text-[#E5E4E2]">{user?.name || 'Observer'}</p>
-                                <p className="text-xs text-gray-500 mt-1">{user?.email || 'unknown'}</p>
+                                <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-2">{text.settings.activeAccount}</p>
+                                <p className="text-sm font-bold text-[#E5E4E2]">{user?.name || text.profileWidget.observer}</p>
+                                <p className="text-xs text-gray-500 mt-1">{user?.email || text.settings.unknown}</p>
                             </div>
 
                             <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-5">
                                 <p className="text-[10px] uppercase tracking-[0.18em] text-red-400/80 mb-3">
-                                    Session Control
+                                    {text.settings.sessionControl}
                                 </p>
                                 <button
                                     type="button"
                                     onClick={handleLogout}
                                     className="w-full border border-red-500/30 text-red-400 rounded py-2.5 text-[10px] uppercase tracking-[0.2em] font-bold hover:bg-red-500/10 transition-colors"
                                 >
-                                    {confirmLogout ? 'Click Again To Logout' : 'Logout'}
+                                    {confirmLogout ? text.settings.logoutConfirm : text.settings.logout}
                                 </button>
                             </div>
                         </div>

@@ -6,6 +6,7 @@ import { useNotifications } from '../../context/NotificationContext';
 import { resolvePosterCandidates } from '../../lib/posterCandidates';
 import { searchPosterPath } from '../../lib/tmdbApi';
 import { supabase, isSupabaseLive } from '../../lib/supabase';
+import { useLanguage } from '../../context/LanguageContext';
 
 interface RitualCardProps {
     ritual: Ritual;
@@ -25,8 +26,6 @@ type ReplyInsertRow = {
 };
 
 const formatRitualTimestamp = (timestamp: string): string => {
-    if (timestamp === '2h ago') return 'At Dusk';
-    if (timestamp === 'Just Now') return 'At Dawn';
     return timestamp;
 };
 
@@ -49,6 +48,7 @@ const toRelativeTimestamp = (rawTimestamp: string): string => {
 export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLocalRepliesChange }) => {
     const { echoRitual, following, user } = useXP();
     const { addNotification } = useNotifications();
+    const { text: ui, format } = useLanguage();
     const [echoed, setEchoed] = useState(ritual.isEchoedByMe);
     const [echoCount, setEchoCount] = useState(ritual.echoes);
     const canSyncRitual =
@@ -183,7 +183,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
                         setEchoCount((prev) => Math.max(0, prev - 1));
                         addNotification({
                             type: 'system',
-                            message: 'Echo senkronize edilemedi. Akisi yenileyip tekrar dene.'
+                            message: ui.ritualCard.reactionSyncFailed
                         });
                     }
                 });
@@ -232,7 +232,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
                         updateReplies((prev) => prev.filter((reply) => reply.id !== tempId));
                         addNotification({
                             type: 'system',
-                            message: 'Yanit senkronize edilemedi. Akisi yenileyip tekrar dene.'
+                            message: ui.ritualCard.replySyncFailed
                         });
                         return;
                     }
@@ -253,7 +253,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
                     updateReplies((prev) => prev.filter((reply) => reply.id !== tempId));
                     addNotification({
                         type: 'system',
-                        message: 'Yanit senkronize edilemedi. Akisi yenileyip tekrar dene.'
+                        message: ui.ritualCard.replySyncFailed
                     });
                 }
             })();
@@ -263,7 +263,10 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
 
         addNotification({
             type: 'reply',
-            message: `You whispered to ${ritual.author}'s ritual: "${text.substring(0, 20)}..."`
+            message: format(ui.ritualCard.replyNotification, {
+                author: ritual.author,
+                text: `${text.substring(0, 20)}...`
+            })
         });
     };
 
@@ -322,7 +325,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
 
                         <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-[10px] tracking-widest uppercase text-[#E5E4E2]/70 font-bold relative group/author cursor-pointer">
-                                {ritual.author ? ritual.author : 'ANONYMOUS'}
+                                {ritual.author ? ritual.author : ui.ritualCard.anonymous}
 
                                 <div
                                     className="absolute -left-3 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full shadow-[0_0_8px_rgba(255,255,255,0.3)]"
@@ -354,7 +357,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
                         onClick={() => setIsMainExpanded((prev) => !prev)}
                         className="mb-4 text-[10px] tracking-widest uppercase text-sage/80 hover:text-sage transition-colors"
                     >
-                        {isMainExpanded ? 'Read Less' : 'Read More'}
+                        {isMainExpanded ? ui.ritualCard.readLess : ui.ritualCard.readMore}
                     </button>
                 )}
 
@@ -368,7 +371,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
                             <MarkIcons.Echo size={16} />
                         </div>
                         <span className="text-[10px] tracking-widest font-medium">
-                            {echoCount} ECHOES
+                            {format(ui.ritualCard.reactions, { count: echoCount })}
                         </span>
                     </button>
 
@@ -377,7 +380,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
                         className="w-full sm:w-auto justify-start px-0 py-1 sm:px-0 sm:py-0 rounded-none border-0 flex items-center gap-2 group/btn transition-colors text-gray-300 hover:text-clay"
                     >
                         <span className="text-[10px] tracking-widest font-medium group-hover/btn:underline decoration-clay/50 underline-offset-4">
-                            WHISPER BACK ({replies.length})
+                            {format(ui.ritualCard.reply, { count: replies.length })}
                         </span>
                     </button>
 
@@ -385,10 +388,10 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
                         <button
                             onClick={handleDelete}
                             className="w-full sm:w-auto justify-start px-0 py-1 sm:px-0 sm:py-0 rounded-none border-0 flex items-center gap-2 group/btn transition-colors text-gray-400 hover:text-clay"
-                            title="Delete your comment"
+                            title={ui.ritualCard.deleteTitle}
                         >
                             <span className="text-[10px] tracking-widest font-medium">
-                                ERASE
+                                {ui.ritualCard.delete}
                             </span>
                         </button>
                     )}
@@ -425,14 +428,14 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
                                                 onClick={() => toggleReplyExpansion(reply.id)}
                                                 className="mb-2 text-[9px] tracking-widest uppercase text-sage/80 hover:text-sage transition-colors"
                                             >
-                                                {isReplyExpanded ? 'Read Less' : 'Read More'}
+                                                {isReplyExpanded ? ui.ritualCard.readLess : ui.ritualCard.readMore}
                                             </button>
                                         )}
 
                                         <div className="flex justify-end">
                                             <button className="text-[9px] text-gray-500 hover:text-clay flex items-center gap-1 transition-colors group/echo">
                                                 <MarkIcons.Echo size={10} className="group-hover/echo:scale-110 transition-transform" />
-                                                <span className="opacity-0 group-hover/reply:opacity-100 transition-opacity duration-300">ECHO</span>
+                                                <span className="opacity-0 group-hover/reply:opacity-100 transition-opacity duration-300">{ui.ritualCard.reactions.replace('{count}', '').trim()}</span>
                                             </button>
                                         </div>
                                     </div>
@@ -444,7 +447,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
                             <textarea
                                 value={replyText}
                                 onChange={(e) => setReplyText(e.target.value)}
-                                placeholder="Whisper a reply..."
+                                placeholder={ui.ritualCard.replyPlaceholder}
                                 maxLength={MAX_REPLY_CHARS}
                                 rows={2}
                                 className="bg-white/[0.02] border border-white/10 rounded w-full text-[13px] sm:text-xs text-sage placeholder-sage/30 focus:border-sage outline-none py-2 px-3 transition-colors leading-relaxed resize-none"
@@ -464,7 +467,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
                                     disabled={!replyText.trim()}
                                     className="text-[9px] uppercase tracking-widest text-[#E5E4E2]/60 hover:text-clay transition-colors disabled:opacity-30"
                                 >
-                                    Send
+                                    {ui.ritualCard.send}
                                 </button>
                             </div>
                         </div>

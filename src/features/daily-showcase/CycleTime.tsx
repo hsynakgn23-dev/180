@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { PROGRESS_EASING, getProgressFill, getProgressTransitionMs } from '../../lib/progressVisuals';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const CycleTime = () => {
+    const { text } = useLanguage();
     const [status, setStatus] = useState({
         remaining: '',
         progress: 0
@@ -39,7 +41,7 @@ export const CycleTime = () => {
     return (
         <div className="flex flex-col items-start sm:items-end gap-2 animate-fade-in w-full sm:w-auto">
             <div className="text-[10px] uppercase tracking-[0.2em] text-sage font-bold drop-shadow-sm w-full sm:text-right">
-                <span className="opacity-70 mr-2">YENI SECKI</span>
+                <span className="opacity-70 mr-2">{text.daily.newSelection}</span>
                 <span className="font-mono">{status.remaining}</span>
             </div>
 

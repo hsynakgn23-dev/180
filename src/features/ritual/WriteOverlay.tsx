@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { Movie } from '../../data/mockMovies';
 import { useXP } from '../../context/XPContext';
+import { useLanguage } from '../../context/LanguageContext';
 
 interface WriteOverlayProps {
     movie: Movie;
@@ -9,6 +10,7 @@ interface WriteOverlayProps {
 
 export const WriteOverlay: React.FC<WriteOverlayProps> = ({ movie, onClose }) => {
     const { submitRitual } = useXP();
+    const { text: ui } = useLanguage();
     const [text, setText] = useState('');
     const [rating, setRating] = useState(0);
 
@@ -27,7 +29,7 @@ export const WriteOverlay: React.FC<WriteOverlayProps> = ({ movie, onClose }) =>
 
                 {/* Header (Minimal) */}
                 <div className="mb-7 sm:mb-12 text-center opacity-80">
-                    <h3 className="text-sm italic text-sage/60 mb-2">The Ritual</h3>
+                    <h3 className="text-sm italic text-sage/60 mb-2">{ui.writeOverlay.title}</h3>
                     <h2 className="text-2xl sm:text-3xl text-[#E5E4E2]">{movie.title}</h2>
                 </div>
 
@@ -41,7 +43,7 @@ export const WriteOverlay: React.FC<WriteOverlayProps> = ({ movie, onClose }) =>
                                 setText(e.target.value);
                             }
                         }}
-                        placeholder="Log your thoughts..."
+                        placeholder={ui.writeOverlay.placeholder}
                         className="w-full h-40 sm:h-48 bg-transparent text-lg sm:text-xl md:text-2xl text-[#E5E4E2] placeholder:text-gray-600 resize-none outline-none border-b border-white/10 focus:border-sage/50 transition-colors text-left sm:text-center px-1"
                     />
 
@@ -82,7 +84,7 @@ export const WriteOverlay: React.FC<WriteOverlayProps> = ({ movie, onClose }) =>
                         onClick={onClose}
                         className="w-full sm:w-auto px-6 py-2 text-gray-400 hover:text-gray-600 text-sm tracking-widest uppercase transition-colors"
                     >
-                        Abandon
+                        {ui.writeOverlay.cancel}
                     </button>
 
                     <button
@@ -90,7 +92,7 @@ export const WriteOverlay: React.FC<WriteOverlayProps> = ({ movie, onClose }) =>
                         disabled={text.length === 0}
                         className="w-full sm:w-auto px-8 py-2 bg-[#2C2C2C] text-white text-sm tracking-widest uppercase rounded-full hover:bg-sage disabled:opacity-20 disabled:hover:bg-[#2C2C2C] transition-all shadow-lg hover:shadow-xl sm:hover:-translate-y-1"
                     >
-                        Record
+                        {ui.writeOverlay.save}
                     </button>
                 </div>
 
