@@ -381,7 +381,84 @@ export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
     }
 };
 
-export const MARK_DICTIONARY: Record<LanguageCode, Record<string, MarkCopy>> = { tr: {}, en: {} };
+export const MARK_DICTIONARY: Record<LanguageCode, Record<string, MarkCopy>> = {
+    tr: {
+        first_mark: { title: 'Ilk Isaret', description: 'Ilk rituelini tamamla.', whisper: 'Baslangic yapildi.' },
+        daybreaker: { title: 'Gun Acan', description: '14 aktif gun boyunca varlik goster.', whisper: 'Her gun geri geldin.' },
+
+        '180_exact': { title: 'Mimar', description: 'Tam 180 karakter yaz.', whisper: 'Kusursuz cerceve.' },
+        precision_loop: { title: 'Hassas Dongu', description: 'Tam 180 karakteri 3 kez yaz.', whisper: 'Hassasiyet tekrarlandi.' },
+        minimalist: { title: 'Minimalist', description: '40 karakterden kisa bir rituel yaz.', whisper: 'Az soz.' },
+        deep_diver: { title: 'Derin Dalgic', description: 'Uzun bir rituel gonder (160+ karakter).', whisper: 'Derinlere indin.' },
+
+        no_rush: { title: 'Acelesiz', description: 'Ardisik olmadan 10 rituel tamamla.', whisper: 'Tempon sana ait.' },
+        daily_regular: { title: 'Duzenli', description: '3 gunluk seri koru.', whisper: 'Sabit bir ritim.' },
+        seven_quiet_days: { title: 'Sessizlik Koruyucusu', description: '7 gunluk seri koru.', whisper: 'Yedi gunluk sessizlik.' },
+        ritual_marathon: { title: 'Maraton', description: '20 rituel gonder.', whisper: 'Momentum korundu.' },
+
+        wide_lens: { title: 'Genis Aci', description: '10 benzersiz turde yorum yap.', whisper: 'Daha genis bir bakis.' },
+        hidden_gem: { title: 'Gizli Cevher', description: 'Dusuk puanli bir filme yorum yap (<= 7.9).', whisper: 'Ozel bir yorunge.' },
+        genre_discovery: { title: 'Spektrum', description: '3 benzersiz turde yorum yap.', whisper: 'Spektrum acildi.' },
+        one_genre_devotion: { title: 'Adanmis', description: 'Tek bir turde 20 rituel yaz.', whisper: 'Tek odak.' },
+        classic_soul: { title: 'Klasik Ruh', description: '1990 oncesi bir film izle.', whisper: 'Gecmisten bir yanki.' },
+        genre_nomad: { title: 'Tur Gocebesi', description: 'Art arda 5 farkli turde 5 rituel yaz.', whisper: 'Sabit yorunge yok.' },
+
+        watched_on_time: { title: 'Safak Izleyicisi', description: '05:00-07:00 arasinda rituel gonder.', whisper: 'Tam zamaninda.' },
+        held_for_five: { title: 'Koruyucu', description: '5 gunluk aktif seri koru.', whisper: 'Seriyi tuttun.' },
+        mystery_solver: { title: 'Gizem Cozucu', description: 'Gizem slotunu ac.', whisper: 'Bilinmeyen aciga cikti.' },
+        midnight_ritual: { title: 'Gece Yarisi', description: '00:00-01:00 arasinda rituel gonder.', whisper: 'Gecenin saati.' },
+
+        first_echo: { title: 'Ilk Eko', description: 'Ilk eko tepkini al.', whisper: 'Biri seni duydu.' },
+        echo_receiver: { title: 'Eko Alici', description: 'Ilk eko tepkini al.', whisper: 'Duyuluyorsun.' },
+        echo_initiate: { title: 'Eko Baslangici', description: '1 eko ver.', whisper: 'Kucuk bir sinyal.' },
+        influencer: { title: 'Etki Yaratan', description: '5 eko al.', whisper: 'Daha genis bir frekans.' },
+        resonator: { title: 'Rezonans', description: '5 eko al.', whisper: 'Rezonans kuruldu.' },
+        quiet_following: { title: 'Sessiz Takip', description: '5 kullaniciyi takip et.', whisper: 'Kucuk bir yorunge.' },
+        echo_chamber: { title: 'Eko Odasi', description: '10 eko ver.', whisper: 'Sinyal surduruldu.' },
+
+        eternal_mark: { title: 'Eternal', description: 'Eternal ligine ulas.', whisper: 'Hala buradasin.' },
+        legacy: { title: 'Sutun', description: '30+ gun aktif kal.', whisper: 'Zamanda bir sutun.' },
+        archive_keeper: { title: 'Arsiv Bekcisi', description: '50 rituel gonder.', whisper: 'Arsiv hatirlar.' }
+    },
+    en: {
+        first_mark: { title: 'First Mark', description: 'Complete your first ritual.', whisper: 'It begins.' },
+        daybreaker: { title: 'Daybreaker', description: 'Be present for 14 active days.', whisper: 'You kept showing up.' },
+
+        '180_exact': { title: 'The Architect', description: 'Write exactly 180 characters.', whisper: 'Perfectly framed.' },
+        precision_loop: { title: 'Precision Loop', description: 'Write exactly 180 characters 3 times.', whisper: 'Precision repeated.' },
+        minimalist: { title: 'Minimalist', description: 'Write a ritual with < 40 characters.', whisper: 'Less said.' },
+        deep_diver: { title: 'Deep Diver', description: 'Submit a long-form ritual (160+ chars).', whisper: 'The depths explored.' },
+
+        no_rush: { title: 'No Rush', description: 'Complete 10 rituals, none consecutive.', whisper: 'Your pace is yours.' },
+        daily_regular: { title: 'Regular', description: 'Maintain a 3-day streak.', whisper: 'A steady pulse.' },
+        seven_quiet_days: { title: 'Silence Keeper', description: 'Maintain a 7-day streak.', whisper: 'Seven days of silence.' },
+        ritual_marathon: { title: 'Marathon', description: 'Submit 20 rituals.', whisper: 'Momentum held.' },
+
+        wide_lens: { title: 'Wide Lens', description: 'Review 10 unique genres.', whisper: 'A wider lens.' },
+        hidden_gem: { title: 'Hidden Gem', description: 'Review a lower-rated title (<= 7.9).', whisper: 'A private orbit.' },
+        genre_discovery: { title: 'Spectrum', description: 'Review 3 unique genres.', whisper: 'A spectrum revealed.' },
+        one_genre_devotion: { title: 'Devotee', description: '20 rituals in one genre.', whisper: 'A singular focus.' },
+        classic_soul: { title: 'Classic Soul', description: 'Watch a movie from before 1990.', whisper: 'An echo from the past.' },
+        genre_nomad: { title: 'Genre Nomad', description: 'Write 5 rituals in 5 different genres in a row.', whisper: 'No fixed orbit.' },
+
+        watched_on_time: { title: 'Dawn Watcher', description: 'Submit a ritual between 05:00 and 07:00.', whisper: 'Right on time.' },
+        held_for_five: { title: 'The Keeper', description: '5-day active streak.', whisper: 'You held it.' },
+        mystery_solver: { title: 'Mystery Solver', description: 'Unlock the Mystery Slot.', whisper: 'The unknown revealed.' },
+        midnight_ritual: { title: 'Midnight', description: 'Ritual between 00:00-01:00.', whisper: 'The witching hour.' },
+
+        first_echo: { title: 'First Echo', description: 'Receive your first Echo.', whisper: 'Someone heard you.' },
+        echo_receiver: { title: 'Echo Receiver', description: 'Receive your first Echo.', whisper: 'You are heard.' },
+        echo_initiate: { title: 'Echo Initiate', description: 'Give 1 Echo.', whisper: 'A small signal.' },
+        influencer: { title: 'Influencer', description: 'Receive 5 Echoes.', whisper: 'A wider frequency.' },
+        resonator: { title: 'Resonator', description: 'Receive 5 Echoes.', whisper: 'Resonance established.' },
+        quiet_following: { title: 'Quiet Following', description: 'Follow 5 users.', whisper: 'A small orbit.' },
+        echo_chamber: { title: 'Echo Chamber', description: 'Give 10 Echoes.', whisper: 'Signal sustained.' },
+
+        eternal_mark: { title: 'Eternal', description: 'Reach the Eternal League.', whisper: 'Still here.' },
+        legacy: { title: 'The Pillar', description: 'Active for 30+ days.', whisper: 'A pillar in time.' },
+        archive_keeper: { title: 'Archive Keeper', description: 'Submit 50 rituals.', whisper: 'The archive remembers.' }
+    }
+};
 
 export const MARK_CATEGORY_DICTIONARY: Record<LanguageCode, Record<string, string>> = {
     tr: { Presence: 'Katilim', Writing: 'Yazim', Rhythm: 'Ritim', Discovery: 'Kesif', Ritual: 'Yorum', Social: 'Sosyal', Legacy: 'Miras' },

@@ -112,7 +112,7 @@ const toRelativeTimestamp = (rawTimestamp: string): string => {
 };
 
 export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettings = false }) => {
-    const { text, format, leagueCopy, language } = useLanguage();
+    const { text, format, markCopy, markCategory, leagueCopy, language } = useLanguage();
     const {
         xp,
         league,
@@ -771,22 +771,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                         {/* The Vault Card */}
                         <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
                             <div className="flex justify-between items-end mb-6 border-b border-gray-100/10 pb-4">
-                                <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase">The Vault</h3>
+                                <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase">{text.profile.marksArchive}</h3>
                                 <span className="text-[9px] tracking-wider text-gray-500">
-                                    {featuredMarks.length}/3 Featured
+                                    {format(text.profile.featured, { count: featuredMarks.length })}
                                 </span>
                             </div>
 
                             {categories.map(category => (
                                 <div key={category} className="mb-8">
                                     <div className="text-[9px] tracking-[0.2em] text-gray-500 uppercase mb-3 pl-1">
-                                        {category} Marks
+                                        {markCategory(category)} {text.profile.markCategorySuffix}
                                     </div>
                                     <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-7 gap-x-2 sm:gap-x-3 gap-y-4 sm:gap-y-5">
                                         {MAJOR_MARKS.filter(m => m.category === category).map(mark => {
                                             const isUnlocked = marks.includes(mark.id);
                                             const isFeatured = featuredMarks.includes(mark.id);
                                             const isClay = ['180_exact', 'genre_discovery', 'echo_initiate'].includes(mark.id);
+                                            const localizedMark = markCopy(mark.id);
 
                                             return (
                                                 <div
@@ -811,6 +812,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                                                         <MarkBadge
                                                             mark={mark}
                                                             size={18}
+                                                            alt={localizedMark.title}
                                                             imageClassName={`w-8 h-8 rounded-lg object-cover ${isUnlocked ? 'opacity-95' : 'opacity-30 grayscale'}`}
                                                         />
 
@@ -821,13 +823,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
 
                                                     <div className="mt-2 flex flex-col items-center gap-1.5 w-full">
                                                         <span className={`text-[9px] font-sans font-bold tracking-wider uppercase text-center leading-none ${isUnlocked ? 'text-[#E5E4E2]/90' : 'text-[#E5E4E2]/60'}`}>
-                                                            {mark.title}
+                                                            {localizedMark.title}
                                                         </span>
                                                         <span className={`text-[9px] text-center leading-[1.25] max-w-[116px] ${isUnlocked ? 'text-[#E5E4E2]/72' : 'text-[#E5E4E2]/46'}`}>
-                                                            Kazanim: {mark.description}
+                                                            {text.profile.requirement}: {localizedMark.description || mark.description}
                                                         </span>
                                                         <span className={`text-[8px] tracking-[0.14em] uppercase ${isUnlocked ? 'text-clay/70' : 'text-gray-600'}`}>
-                                                            {isUnlocked ? 'Unlocked' : 'Locked'}
+                                                            {isUnlocked ? text.profile.unlocked : text.profile.locked}
                                                         </span>
                                                     </div>
                                                 </div>
