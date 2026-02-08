@@ -7,13 +7,14 @@ import { SparkMark } from '../../components/icons/SparkMark';
 import { GridMark } from '../../components/icons/GridMark';
 import { SunMark } from '../../components/icons/SunMark';
 import { useLanguage } from '../../context/LanguageContext';
+import { SUPPORTED_LANGUAGE_OPTIONS } from '../../i18n/localization';
 
 interface LandingPageProps {
     onStart: () => void;
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onStart }) => {
-    const { text } = useLanguage();
+    const { text, language, setLanguage } = useLanguage();
     const [activeInfoSection, setActiveInfoSection] = useState<'manifesto' | 'rules' | null>(null);
     const activeInfo = useMemo(() => {
         if (activeInfoSection === 'manifesto') {
@@ -55,12 +56,35 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStart }) => {
                         {text.app.brandSubtitle.toUpperCase()}
                     </span>
                 </div>
-                <button
-                    onClick={onStart}
-                    className="text-xs uppercase tracking-widest hover:text-white text-sage transition-colors font-bold"
-                >
-                    {text.landing.login}
-                </button>
+                <div className="flex items-center gap-3">
+                    <div
+                        className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 p-1"
+                        aria-label={text.settings.language}
+                    >
+                        {SUPPORTED_LANGUAGE_OPTIONS.map((option) => (
+                            <button
+                                key={option.code}
+                                type="button"
+                                onClick={() => setLanguage(option.code)}
+                                title={option.label}
+                                aria-label={option.label}
+                                className={`px-2 py-1 text-[9px] uppercase tracking-[0.16em] rounded transition-colors ${
+                                    language === option.code
+                                        ? 'bg-sage/20 text-sage font-bold'
+                                        : 'text-white/55 hover:text-sage'
+                                }`}
+                            >
+                                {option.code}
+                            </button>
+                        ))}
+                    </div>
+                    <button
+                        onClick={onStart}
+                        className="text-xs uppercase tracking-widest hover:text-white text-sage transition-colors font-bold"
+                    >
+                        {text.landing.login}
+                    </button>
+                </div>
             </nav>
 
             <main className="flex-grow flex flex-col items-center justify-center max-w-4xl mx-auto w-full px-6 pt-12 pb-20 text-center">
@@ -138,14 +162,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStart }) => {
                             <p className="text-sm text-[#E5E4E2]/80 leading-relaxed mb-4">
                                 {activeInfo.body}
                             </p>
-                            <ul className="space-y-2">
-                                {activeInfo.points.map((point) => (
-                                    <li key={point} className="text-xs sm:text-sm text-[#E5E4E2]/70 leading-relaxed flex items-start gap-2">
-                                        <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-sage/80 shrink-0" />
-                                        <span>{point}</span>
-                                    </li>
-                                ))}
-                            </ul>
+                            {activeInfo.points.length > 0 && (
+                                <ul className="space-y-2">
+                                    {activeInfo.points.map((point) => (
+                                        <li key={point} className="text-xs sm:text-sm text-[#E5E4E2]/70 leading-relaxed flex items-start gap-2">
+                                            <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-sage/80 shrink-0" />
+                                            <span>{point}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
                         </section>
                     )}
                 </div>
