@@ -147,6 +147,8 @@ interface XPContextType {
 
 const MAX_DAILY_DWELL_XP = 20;
 const LEVEL_THRESHOLD = 500;
+const LONG_FORM_RITUAL_THRESHOLD = 160;
+const DAY_MS = 24 * 60 * 60 * 1000;
 const STREAK_MILESTONES = new Set([5, 7, 10, 20, 40, 50, 100, 200, 250, 300, 350]);
 const REGISTRATION_GENDERS: RegistrationGender[] = ['female', 'male', 'non_binary', 'prefer_not_to_say'];
 const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
@@ -165,6 +167,40 @@ const KNOWN_MOVIES_BY_ID = new Map(
         }
     ])
 );
+
+const getLocalDateKey = (value = new Date()): string => {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const parseDateKeyToDayIndex = (dateKey: string): number | null => {
+    const parts = dateKey.split('-').map((part) => Number(part));
+    if (parts.length !== 3 || parts.some((part) => Number.isNaN(part))) return null;
+    const [year, month, day] = parts;
+    const parsed = new Date(year, month - 1, day);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return Math.floor(parsed.getTime() / DAY_MS);
+};
+
+const isSupabaseCapabilityError = (
+    error: { code?: string | null; message?: string | null } | null | undefined
+): boolean => {
+    if (!error) return false;
+    const code = (error.code || '').toUpperCase();
+    const message = (error.message || '').toLowerCase();
+    if (code === 'PGRST205' || code === '42P01' || code === '42501') return true;
+    return (
+        message.includes('relation "') ||
+        message.includes('does not exist') ||
+        message.includes('schema cache') ||
+        message.includes('permission') ||
+        message.includes('policy') ||
+        message.includes('jwt') ||
+        message.includes('forbidden')
+    );
+};
 
 const normalizeRitualLog = (ritual: RitualLog): RitualLog => {
     const knownMovie = KNOWN_MOVIES_BY_ID.get(ritual.movieId);
@@ -314,6 +350,9 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     const previousLeagueIndexRef = useRef(getLeagueIndexFromXp(state.totalXP));
     const pendingWelcomeWhisperRef = useRef(false);
     const pendingRegistrationProfileRef = useRef<PendingRegistrationProfile | null>(null);
+    const canReadProfileStateRef = useRef(true);
+    const canWriteProfileStateRef = useRef(true);
+    const canWriteRitualRef = useRef(true);
     const [isXpHydrated, setIsXpHydrated] = useState(false);
     const authMode: 'supabase' | 'local' = isSupabaseLive() && supabase ? 'supabase' : 'local';
 
@@ -358,6 +397,9 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         setLevelUpEvent(null);
         setLevelUpQueue([]);
         setStreakCelebrationEvent(null);
+        canReadProfileStateRef.current = true;
+        canWriteProfileStateRef.current = true;
+        canWriteRitualRef.current = true;
 
         if (!user) {
             setState(buildInitialXPState("Orbiting nearby..."));
@@ -373,7 +415,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         const hydrateState = async () => {
             let resolvedState: XPState | null = null;
 
-            if (isSupabaseLive() && supabase && user.id) {
+            if (isSupabaseLive() && supabase && user.id && canReadProfileStateRef.current) {
                 const { data, error } = await supabase
                     .from('profiles')
                     .select('xp_state')
@@ -382,12 +424,12 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
                 if (!error && data?.xp_state && typeof data.xp_state === 'object') {
                     resolvedState = normalizeXPState(data.xp_state as Partial<XPState>);
-                } else if (
-                    error &&
-                    !error.message.toLowerCase().includes('relation "profiles"') &&
-                    !error.message.toLowerCase().includes('does not exist')
-                ) {
-                    console.error('[XP] failed to read profile state', error);
+                } else if (error) {
+                    if (isSupabaseCapabilityError(error)) {
+                        canReadProfileStateRef.current = false;
+                    } else {
+                        console.error('[XP] failed to read profile state', error);
+                    }
                 }
             }
 
@@ -441,16 +483,15 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         };
     }, [user?.email, user?.id]);
 
-    const getToday = () => new Date().toISOString().split('T')[0];
+    const getToday = () => getLocalDateKey();
 
     // Check streak maintenance logic
     const checkStreakMaintenance = (lastDate: string | null, today: string) => {
         if (!lastDate) return 1;
-        const d1 = new Date(lastDate);
-        const d2 = new Date(today);
-        const diffTime = Math.abs(d2.getTime() - d1.getTime());
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
+        const lastDayIndex = parseDateKeyToDayIndex(lastDate);
+        const todayDayIndex = parseDateKeyToDayIndex(today);
+        if (lastDayIndex === null || todayDayIndex === null) return undefined;
+        const diffDays = todayDayIndex - lastDayIndex;
         if (diffDays === 1) return undefined; // Maintained
         if (diffDays > 1) return 0; // Broken
         return undefined; // Same day (0)
@@ -811,7 +852,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         if (state.dailyRituals.length === 0) currentMarks = tryUnlockMark('first_mark', currentMarks);
         if (length === 180) currentMarks = tryUnlockMark('180_exact', currentMarks);
         if (length < 40) currentMarks = tryUnlockMark('minimalist', currentMarks);
-        if (length > 200) currentMarks = tryUnlockMark('deep_diver', currentMarks);
+        if (length >= LONG_FORM_RITUAL_THRESHOLD) currentMarks = tryUnlockMark('deep_diver', currentMarks);
 
         if (nonConsecutive >= 10) currentMarks = tryUnlockMark('no_rush', currentMarks);
         if (newStreak >= 3) currentMarks = tryUnlockMark('daily_regular', currentMarks);
@@ -879,7 +920,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             nonConsecutiveCount: nonConsecutive
         });
 
-        if (isSupabaseLive() && supabase && user?.id) {
+        if (isSupabaseLive() && supabase && user?.id && canWriteRitualRef.current) {
             const leagueForInsert = LEAGUE_NAMES[getLeagueIndexFromXp(newTotalXP)];
             void (async () => {
                 const { data: sessionData } = await supabase.auth.getSession();
@@ -906,6 +947,11 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                     ]);
 
                 if (error) {
+                    if (isSupabaseCapabilityError(error)) {
+                        canWriteRitualRef.current = false;
+                        triggerWhisper("Cloud ritual sync devre disi. Yerel kayitla devam ediliyor.");
+                        return;
+                    }
                     console.error('[Ritual] Failed to sync ritual:', error);
                     const lowered = (error.message || '').toLowerCase();
                     if (lowered.includes('permission') || lowered.includes('policy') || lowered.includes('jwt')) {
@@ -1011,7 +1057,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         const userKey = `180_xp_data_${user.email}`;
         localStorage.setItem(userKey, JSON.stringify(state));
 
-        if (!isSupabaseLive() || !supabase || !user.id) return;
+        if (!isSupabaseLive() || !supabase || !user.id || !canWriteProfileStateRef.current) return;
 
         void supabase
             .from('profiles')
@@ -1027,8 +1073,9 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             )
             .then(({ error }) => {
                 if (error) {
-                    const msg = error.message.toLowerCase();
-                    if (!msg.includes('relation "profiles"') && !msg.includes('does not exist')) {
+                    if (isSupabaseCapabilityError(error)) {
+                        canWriteProfileStateRef.current = false;
+                    } else {
                         console.error('[XP] failed to upsert profile state', error);
                     }
                 }

@@ -10,6 +10,7 @@ import { supabase, isSupabaseLive } from '../../lib/supabase';
 interface RitualCardProps {
     ritual: Ritual;
     onDelete?: () => void;
+    onLocalRepliesChange?: (ritualId: string, replies: ReplyRecord[]) => void;
 }
 
 const MAIN_TEXT_PREVIEW_LIMIT = 220;
@@ -45,7 +46,7 @@ const toRelativeTimestamp = (rawTimestamp: string): string => {
     return `${Math.floor(diffMs / dayMs)}d ago`;
 };
 
-export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete }) => {
+export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLocalRepliesChange }) => {
     const { echoRitual, following, user } = useXP();
     const { addNotification } = useNotifications();
     const [echoed, setEchoed] = useState(ritual.isEchoedByMe);
@@ -75,12 +76,24 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete }) => {
     const [imageLoaded, setImageLoaded] = useState(false);
     const [candidates, setCandidates] = useState<string[]>([]);
     const [candidateIndex, setCandidateIndex] = useState(0);
+    const shouldSyncLocalRepliesRef = React.useRef(false);
 
     React.useEffect(() => {
         setEchoed(ritual.isEchoedByMe);
         setEchoCount(ritual.echoes);
         setReplies(ritual.replies || []);
     }, [ritual.id, ritual.echoes, ritual.isEchoedByMe, ritual.replies]);
+
+    const updateReplies = React.useCallback((updater: (prev: ReplyRecord[]) => ReplyRecord[]) => {
+        shouldSyncLocalRepliesRef.current = true;
+        setReplies((prev) => updater(prev));
+    }, []);
+
+    React.useEffect(() => {
+        if (!shouldSyncLocalRepliesRef.current) return;
+        shouldSyncLocalRepliesRef.current = false;
+        onLocalRepliesChange?.(ritual.id, replies);
+    }, [onLocalRepliesChange, replies, ritual.id]);
 
     const applyCandidates = (nextCandidates: string[]) => {
         setCandidates(nextCandidates);
@@ -194,7 +207,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete }) => {
             timestamp: 'Just Now'
         };
 
-        setReplies((prev) => [...prev, newReply]);
+        updateReplies((prev) => [...prev, newReply]);
         setReplyText('');
 
         if (canSyncRitual && supabase && user?.id) {
@@ -216,7 +229,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete }) => {
 
                     if (error) {
                         console.error('[Ritual] failed to sync replies', error);
-                        setReplies((prev) => prev.filter((reply) => reply.id !== tempId));
+                        updateReplies((prev) => prev.filter((reply) => reply.id !== tempId));
                         addNotification({
                             type: 'system',
                             message: 'Yanit senkronize edilemedi. Akisi yenileyip tekrar dene.'
@@ -234,10 +247,10 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete }) => {
                         timestamp: row.created_at ? toRelativeTimestamp(row.created_at) : 'Just Now'
                     };
 
-                    setReplies((prev) => prev.map((reply) => (reply.id === tempId ? syncedReply : reply)));
+                    updateReplies((prev) => prev.map((reply) => (reply.id === tempId ? syncedReply : reply)));
                 } catch (error: unknown) {
                     console.error('[Ritual] failed to sync replies', error);
-                    setReplies((prev) => prev.filter((reply) => reply.id !== tempId));
+                    updateReplies((prev) => prev.filter((reply) => reply.id !== tempId));
                     addNotification({
                         type: 'system',
                         message: 'Yanit senkronize edilemedi. Akisi yenileyip tekrar dene.'
@@ -245,7 +258,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete }) => {
                 }
             })();
         } else {
-            setReplies((prev) => prev.map((reply) => (reply.id === tempId ? { ...reply, id: Date.now().toString() } : reply)));
+            updateReplies((prev) => prev.map((reply) => (reply.id === tempId ? { ...reply, id: Date.now().toString() } : reply)));
         }
 
         addNotification({

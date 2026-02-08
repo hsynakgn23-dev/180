@@ -31,6 +31,24 @@ interface ReplyRow {
     created_at: string | null;
 }
 
+const isSupabaseCapabilityError = (
+    error: { code?: string | null; message?: string | null } | null | undefined
+): boolean => {
+    if (!error) return false;
+    const code = (error.code || '').toUpperCase();
+    const message = (error.message || '').toLowerCase();
+    if (code === 'PGRST205' || code === '42P01' || code === '42501') return true;
+    return (
+        message.includes('relation "') ||
+        message.includes('does not exist') ||
+        message.includes('schema cache') ||
+        message.includes('permission') ||
+        message.includes('policy') ||
+        message.includes('jwt') ||
+        message.includes('forbidden')
+    );
+};
+
 const MOVIE_ID_BY_TITLE = new Map(
     TMDB_SEEDS.map((movie) => [movie.title.trim().toLowerCase(), movie.id] as const)
 );
@@ -147,8 +165,11 @@ export const Arena: React.FC = () => {
     const [sortMode, setSortMode] = useState<'latest' | 'echoes'>('latest');
     const [query, setQuery] = useState('');
     const supabaseEnabled = isSupabaseLive() && !!supabase;
+    const [forceLocalFeed, setForceLocalFeed] = useState(false);
+    const canUseRemoteFeed = supabaseEnabled && !forceLocalFeed;
     const [remoteRituals, setRemoteRituals] = useState<Ritual[]>(() => (supabaseEnabled ? [] : MOCK_ARENA_RITUALS));
-    const [isRemoteLoading, setIsRemoteLoading] = useState(supabaseEnabled);
+    const [localRepliesByRitualId, setLocalRepliesByRitualId] = useState<Record<string, RitualReply[]>>({});
+    const [isRemoteLoading, setIsRemoteLoading] = useState(canUseRemoteFeed);
     const [feedError, setFeedError] = useState<string | null>(null);
     const lastNotifiedErrorRef = useRef<string | null>(null);
 
@@ -163,8 +184,20 @@ export const Arena: React.FC = () => {
     }, [addNotification]);
 
     useEffect(() => {
+        const validIds = new Set(dailyRituals.map((ritual) => `log-${ritual.id}`));
+        setLocalRepliesByRitualId((prev) => {
+            const nextEntries = Object.entries(prev).filter(([ritualId]) => validIds.has(ritualId));
+            if (nextEntries.length === Object.keys(prev).length) return prev;
+            return Object.fromEntries(nextEntries);
+        });
+    }, [dailyRituals]);
+
+    useEffect(() => {
         const client = supabase;
-        if (!supabaseEnabled || !client) return;
+        if (!canUseRemoteFeed || !client) {
+            setIsRemoteLoading(false);
+            return;
+        }
 
         let active = true;
         const fetchRituals = async () => {
@@ -178,6 +211,13 @@ export const Arena: React.FC = () => {
 
             if (error) {
                 console.error('[Arena] failed to fetch rituals', error);
+                if (isSupabaseCapabilityError(error)) {
+                    setForceLocalFeed(true);
+                    reportFeedError('Global ritual feed su an kullanilamiyor. Yerel feed gosteriliyor.');
+                    setRemoteRituals([]);
+                    setIsRemoteLoading(false);
+                    return;
+                }
                 reportFeedError('Ritual feed su anda yuklenemiyor. Baglantiyi kontrol edip tekrar dene.');
                 setRemoteRituals([]);
                 setIsRemoteLoading(false);
@@ -279,10 +319,10 @@ export const Arena: React.FC = () => {
             window.clearInterval(pollId);
             void client.removeChannel(channel);
         };
-    }, [reportFeedError, supabaseEnabled, user?.id]);
+    }, [canUseRemoteFeed, reportFeedError, user?.id]);
 
     const handleDelete = (ritualId: string) => {
-        if (supabaseEnabled && supabase) {
+        if (canUseRemoteFeed && supabase) {
             void supabase
                 .from('rituals')
                 .delete()
@@ -303,10 +343,6 @@ export const Arena: React.FC = () => {
     };
 
     const rituals = useMemo<Ritual[]>(() => {
-        if (supabaseEnabled) {
-            return remoteRituals;
-        }
-
         const mine: Ritual[] = dailyRituals.map((ritual) => ({
             id: `log-${ritual.id}`,
             movieId: ritual.movieId,
@@ -320,11 +356,26 @@ export const Arena: React.FC = () => {
             league,
             createdAt: new Date(`${ritual.date}T12:00:00`).getTime(),
             isCustom: true,
-            replies: []
+            replies: localRepliesByRitualId[`log-${ritual.id}`] || []
         }));
 
+        if (canUseRemoteFeed) {
+            if (remoteRituals.length === 0) {
+                return mine;
+            }
+
+            const remoteKeys = new Set(
+                remoteRituals.map((ritual) => `${ritual.movieId}|${ritual.text.trim().toLowerCase()}`)
+            );
+            const localOnlyMine = mine.filter(
+                (ritual) => !remoteKeys.has(`${ritual.movieId}|${ritual.text.trim().toLowerCase()}`)
+            );
+
+            return [...localOnlyMine, ...remoteRituals];
+        }
+
         return [...mine, ...MOCK_ARENA_RITUALS];
-    }, [dailyRituals, league, remoteRituals, supabaseEnabled, user?.name]);
+    }, [canUseRemoteFeed, dailyRituals, league, localRepliesByRitualId, remoteRituals, user?.name]);
 
     const filteredRituals = useMemo(() => {
         const queryText = query.trim().toLowerCase();
@@ -401,7 +452,7 @@ export const Arena: React.FC = () => {
                         {feedError}
                     </div>
                 )}
-                {isRemoteLoading && supabaseEnabled ? (
+                {isRemoteLoading && canUseRemoteFeed ? (
                     <div className="text-center py-10 text-[10px] text-gray-500 uppercase tracking-[0.18em] border border-white/5 rounded">
                         Loading global ritual feed...
                     </div>
@@ -411,6 +462,15 @@ export const Arena: React.FC = () => {
                             key={ritual.id}
                             ritual={ritual}
                             onDelete={ritual.isCustom ? () => handleDelete(ritual.id) : undefined}
+                            onLocalRepliesChange={ritual.id.startsWith('log-')
+                                ? (ritualId, replies) => {
+                                    setLocalRepliesByRitualId((prev) => ({
+                                        ...prev,
+                                        [ritualId]: replies
+                                    }));
+                                }
+                                : undefined
+                            }
                         />
                     ))
                 ) : (

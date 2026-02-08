@@ -36,7 +36,7 @@ export const MAJOR_MARKS: MarkDef[] = [
     { id: '180_exact', title: 'The Architect', description: 'Write exactly 180 characters.', category: 'Writing', Icon: HexagonMark, whisper: 'Perfectly framed.' },
     { id: 'precision_loop', title: 'Precision Loop', description: 'Write exactly 180 characters 3 times.', category: 'Writing', Icon: HexagonMark, whisper: 'Precision repeated.' },
     { id: 'minimalist', title: 'Minimalist', description: 'Write a ritual with < 40 characters.', category: 'Writing', Icon: CrossMark, whisper: 'Less said.' },
-    { id: 'deep_diver', title: 'Deep Diver', description: 'Submit a long-form ritual.', category: 'Writing', Icon: GridMark, whisper: 'The depths explored.' },
+    { id: 'deep_diver', title: 'Deep Diver', description: 'Submit a long-form ritual (160+ chars).', category: 'Writing', Icon: GridMark, whisper: 'The depths explored.' },
 
     // --- CATEGORY C: RHYTHM ---
     { id: 'no_rush', title: 'No Rush', description: 'Complete 10 rituals, none consecutive.', category: 'Rhythm', Icon: PentagonMark, whisper: 'Your pace is yours.' },
@@ -53,7 +53,7 @@ export const MAJOR_MARKS: MarkDef[] = [
     { id: 'genre_nomad', title: 'Genre Nomad', description: 'Write 5 rituals in 5 different genres in a row.', category: 'Discovery', Icon: OrbitMark, whisper: 'No fixed orbit.' },
 
     // --- CATEGORY E: CINEMA RITUALS ---
-    { id: 'watched_on_time', title: 'Dawn Watcher', description: 'Ritual within 24h of release.', category: 'Ritual', Icon: SunMark, whisper: 'Right on time.' },
+    { id: 'watched_on_time', title: 'Dawn Watcher', description: 'Submit a ritual between 05:00 and 07:00.', category: 'Ritual', Icon: SunMark, whisper: 'Right on time.' },
     { id: 'held_for_five', title: 'The Keeper', description: '5-day active streak.', category: 'Ritual', Icon: ShieldMark, whisper: 'You held it.' },
     { id: 'mystery_solver', title: 'Mystery Solver', description: 'Unlock the Mystery Slot.', category: 'Ritual', Icon: NestedSquareMark, whisper: 'The unknown revealed.' },
     { id: 'midnight_ritual', title: 'Midnight', description: 'Ritual between 00:00-01:00.', category: 'Ritual', Icon: SparkMark, whisper: 'The witching hour.' },
