@@ -1,4 +1,4 @@
-export type LanguageCode = 'tr' | 'en';
+export type LanguageCode = 'tr' | 'en' | 'es' | 'fr';
 
 export type MarkCopy = {
     title: string;
@@ -378,6 +378,354 @@ export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
             filmFallback: 'Film #{id}', timeToday: 'Today', timeJustNow: 'Just now', timeHoursAgo: '{count}h ago', timeDaysAgo: '{count}d ago'
         },
         xp: { markUnlockedFallback: 'Mark unlocked.' }
+    },
+    es: {} as UiDictionary,
+    fr: {} as UiDictionary
+};
+
+const EN_UI_BASE = UI_DICTIONARY.en;
+
+UI_DICTIONARY.es = {
+    ...EN_UI_BASE,
+    app: {
+        ...EN_UI_BASE.app,
+        profileTitle: 'Perfil',
+        profileAria: 'Abrir perfil'
+    },
+    landing: {
+        ...EN_UI_BASE.landing,
+        login: 'Iniciar sesion',
+        refreshInfo: 'Se actualiza cada dia a las 00:00',
+        titleLine1: 'LISTA',
+        titleLine2: 'DIARIA DE CINE',
+        subtitle: '5 peliculas cada dia. Completa el dia escribiendo un comentario.',
+        start: 'Empezar',
+        featureDailyTitle: '5 diarias',
+        featureDailyText: 'Una seleccion nueva de 5 peliculas cada manana.',
+        featureCommentTitle: '180 caracteres',
+        featureCommentText: 'Escribe comentarios cortos y claros.',
+        featureProgressTitle: 'Sistema de nivel',
+        featureProgressText: 'Sube de nivel con participacion constante.',
+        footerRules: 'Reglas',
+        footerContact: 'Contacto'
+    },
+    login: {
+        ...EN_UI_BASE.login,
+        modeRegister: 'Nuevo registro',
+        modeLogin: 'Ingreso',
+        registerForm: 'Formulario de registro',
+        loginForm: 'Formulario de ingreso',
+        registerInfo: 'Se guardan usuario, genero y fecha de nacimiento.',
+        loginInfo: 'Inicia sesion con tu cuenta existente.',
+        fullName: 'Nombre completo',
+        username: 'Usuario',
+        gender: 'Genero',
+        birthDate: 'Fecha de nacimiento',
+        email: 'Correo',
+        password: 'Contrasena',
+        fullNamePlaceholder: 'Nombre completo',
+        emailPlaceholder: 'ejemplo@email.com',
+        submitRegister: 'Registrarse',
+        submitLogin: 'Entrar',
+        googleContinue: 'Continuar con Google',
+        googleRedirecting: 'Redirigiendo...',
+        loginFailed: 'Error de inicio de sesion.',
+        googleFailed: 'Error con Google.'
+    },
+    settings: {
+        ...EN_UI_BASE.settings,
+        title: 'Ajustes',
+        subtitle: 'Ajustes de cuenta y experiencia',
+        tabIdentity: 'Identidad',
+        tabAppearance: 'Apariencia',
+        tabSession: 'Sesion',
+        uploadAvatar: 'Subir avatar',
+        avatarHint: 'Recomendado: imagen cuadrada',
+        personalInfo: 'Informacion personal',
+        fullName: 'Nombre',
+        birthDate: 'Nacimiento',
+        select: 'Seleccionar',
+        bio: 'Biografia',
+        saveIdentity: 'Guardar identidad',
+        themeMidnight: 'Noche',
+        themeDawn: 'Dia',
+        language: 'Idioma',
+        activeAccount: 'Cuenta activa',
+        unknown: 'desconocido',
+        sessionControl: 'Control de sesion',
+        logout: 'Salir',
+        logoutConfirm: 'Pulsa otra vez para salir',
+        statusThemeUpdated: 'Tema actualizado',
+        statusLanguageSaved: 'Idioma guardado',
+        statusIdentitySaveFailed: 'Error al guardar identidad',
+        statusIdentitySaved: 'Identidad guardada',
+        statusAvatarUpdated: 'Avatar actualizado'
+    },
+    daily: {
+        ...EN_UI_BASE.daily,
+        loading: 'CARGANDO LISTA DIARIA...',
+        title: 'PELICULAS DE HOY',
+        subtitle: '5 peliculas seleccionadas para hoy',
+        swipeHint: 'Desliza tarjetas',
+        lockLine1: 'Para desbloquear',
+        lockLine2: 'escribe 1 comentario'
+    },
+    movieDetail: {
+        ...EN_UI_BASE.movieDetail,
+        directedBy: 'Dirigida por',
+        noDetails: 'No hay detalles disponibles.',
+        cast: 'Reparto',
+        language: 'Idioma',
+        startComment: 'Escribir comentario'
+    },
+    writeOverlay: {
+        ...EN_UI_BASE.writeOverlay,
+        title: 'Comentario',
+        placeholder: 'Escribe tu opinion...',
+        cancel: 'Cancelar',
+        save: 'Guardar'
+    },
+    arena: {
+        ...EN_UI_BASE.arena,
+        title: 'Feed de comentarios',
+        subtitle: 'Los comentarios se publican desde las tarjetas de pelicula.',
+        all: 'Todos',
+        today: 'Hoy',
+        searchPlaceholder: 'Buscar comentarios...',
+        sortLatest: 'Mas recientes',
+        sortMostLiked: 'Mas valorados',
+        loading: 'Cargando feed global...',
+        empty: 'No se encontraron comentarios.',
+        end: 'Fin del feed'
+    },
+    notifications: {
+        ...EN_UI_BASE.notifications,
+        title: 'Notificaciones',
+        panelTitle: 'Centro de notificaciones',
+        empty: 'No hay notificaciones.'
+    },
+    profileWidget: {
+        ...EN_UI_BASE.profileWidget,
+        profile: 'Perfil',
+        openArchive: 'Abrir perfil',
+        openSettings: 'Abrir ajustes',
+        streak: 'Racha',
+        comments: 'Comentarios',
+        days: 'Dias',
+        marksUnlocked: 'Marcas desbloqueadas'
+    },
+    profile: {
+        ...EN_UI_BASE.profile,
+        backHome: 'Volver al inicio',
+        openSettings: 'Abrir ajustes',
+        logout: 'Salir',
+        upload: 'Subir',
+        save: 'Guardar',
+        cancel: 'Cancelar',
+        editIdentity: 'Editar identidad',
+        missingName: 'Nombre no definido',
+        missingGender: 'Genero no definido',
+        missingBirthDate: 'Fecha no definida',
+        genreDistribution: 'Distribucion de generos',
+        stats: 'Estadisticas',
+        comments: 'Comentarios',
+        films: 'Peliculas',
+        topGenre: 'Genero principal',
+        mostCommented: 'Mas comentada',
+        noRecords: 'Sin registros',
+        activity: 'Actividad',
+        profileFeed: 'Feed del perfil',
+        filmArchive: 'Archivo de peliculas',
+        noFilmComments: 'Aun no hay peliculas comentadas.',
+        noFilmCommentsHint: 'Empieza el archivo con tu primer comentario.',
+        marksArchive: 'Archivo de marcas',
+        markCategorySuffix: 'Marcas',
+        requirement: 'Requisito',
+        unlocked: 'Desbloqueada',
+        locked: 'Bloqueada',
+        closeMovieModal: 'Cerrar ventana de pelicula',
+        unknownGenre: 'Genero desconocido',
+        commentsAndReplies: 'Comentarios y respuestas',
+        close: 'Cerrar',
+        repliesLoading: 'Cargando respuestas...',
+        deleteComment: 'Eliminar comentario',
+        noReplies: 'Todavia no hay respuestas.'
+    },
+    xp: {
+        ...EN_UI_BASE.xp,
+        markUnlockedFallback: 'Marca desbloqueada.'
+    }
+};
+
+UI_DICTIONARY.fr = {
+    ...EN_UI_BASE,
+    app: {
+        ...EN_UI_BASE.app,
+        profileTitle: 'Profil',
+        profileAria: 'Ouvrir le profil'
+    },
+    landing: {
+        ...EN_UI_BASE.landing,
+        login: 'Connexion',
+        refreshInfo: 'Actualise chaque jour a 00:00',
+        titleLine1: 'LISTE',
+        titleLine2: 'CINEMA DU JOUR',
+        subtitle: '5 films par jour. Termine la journee avec un commentaire.',
+        start: 'Commencer',
+        featureDailyTitle: '5 films quotidiens',
+        featureDailyText: 'Une selection fraiche de 5 films chaque matin.',
+        featureCommentTitle: '180 caracteres',
+        featureCommentText: 'Ecris des commentaires courts et clairs.',
+        featureProgressTitle: 'Systeme de niveau',
+        featureProgressText: 'Progresse avec une participation reguliere.',
+        footerRules: 'Regles',
+        footerContact: 'Contact'
+    },
+    login: {
+        ...EN_UI_BASE.login,
+        modeRegister: 'Nouvelle inscription',
+        modeLogin: 'Connexion membre',
+        registerForm: 'Formulaire d inscription',
+        loginForm: 'Formulaire de connexion',
+        registerInfo: 'Nom, genre et date de naissance sont enregistres.',
+        loginInfo: 'Connecte-toi avec ton compte existant.',
+        fullName: 'Nom complet',
+        username: 'Pseudo',
+        gender: 'Genre',
+        birthDate: 'Date de naissance',
+        email: 'E-mail',
+        password: 'Mot de passe',
+        fullNamePlaceholder: 'Nom complet',
+        emailPlaceholder: 'exemple@email.com',
+        submitRegister: 'S inscrire',
+        submitLogin: 'Se connecter',
+        googleContinue: 'Continuer avec Google',
+        googleRedirecting: 'Redirection...',
+        loginFailed: 'Echec de connexion.',
+        googleFailed: 'Echec Google.'
+    },
+    settings: {
+        ...EN_UI_BASE.settings,
+        title: 'Parametres',
+        subtitle: 'Parametres du compte et de l experience',
+        tabIdentity: 'Identite',
+        tabAppearance: 'Apparence',
+        tabSession: 'Session',
+        uploadAvatar: 'Televerser un avatar',
+        avatarHint: 'Recommande: image carree',
+        personalInfo: 'Informations personnelles',
+        fullName: 'Nom',
+        birthDate: 'Naissance',
+        select: 'Selectionner',
+        bio: 'Bio',
+        saveIdentity: 'Enregistrer l identite',
+        themeMidnight: 'Nuit',
+        themeDawn: 'Jour',
+        language: 'Langue',
+        activeAccount: 'Compte actif',
+        unknown: 'inconnu',
+        sessionControl: 'Controle de session',
+        logout: 'Deconnexion',
+        logoutConfirm: 'Clique encore pour confirmer',
+        statusThemeUpdated: 'Theme mis a jour',
+        statusLanguageSaved: 'Langue enregistree',
+        statusIdentitySaveFailed: 'Echec d enregistrement',
+        statusIdentitySaved: 'Identite enregistree',
+        statusAvatarUpdated: 'Avatar mis a jour'
+    },
+    daily: {
+        ...EN_UI_BASE.daily,
+        loading: 'CHARGEMENT DE LA LISTE...',
+        title: 'FILMS DU JOUR',
+        subtitle: '5 films selectionnes pour aujourd hui',
+        swipeHint: 'Fais glisser les cartes',
+        lockLine1: 'Pour debloquer',
+        lockLine2: 'publie 1 commentaire'
+    },
+    movieDetail: {
+        ...EN_UI_BASE.movieDetail,
+        directedBy: 'Realise par',
+        noDetails: 'Aucun detail disponible.',
+        cast: 'Distribution',
+        language: 'Langue',
+        startComment: 'Ecrire un commentaire'
+    },
+    writeOverlay: {
+        ...EN_UI_BASE.writeOverlay,
+        title: 'Commentaire',
+        placeholder: 'Ecris ton avis...',
+        cancel: 'Annuler',
+        save: 'Enregistrer'
+    },
+    arena: {
+        ...EN_UI_BASE.arena,
+        title: 'Flux des commentaires',
+        subtitle: 'Les commentaires viennent des cartes film.',
+        all: 'Tous',
+        today: 'Aujourd hui',
+        searchPlaceholder: 'Rechercher des commentaires...',
+        sortLatest: 'Plus recents',
+        sortMostLiked: 'Plus aimes',
+        loading: 'Chargement du flux global...',
+        empty: 'Aucun commentaire trouve.',
+        end: 'Fin du flux'
+    },
+    notifications: {
+        ...EN_UI_BASE.notifications,
+        title: 'Notifications',
+        panelTitle: 'Centre de notifications',
+        empty: 'Aucune notification.'
+    },
+    profileWidget: {
+        ...EN_UI_BASE.profileWidget,
+        profile: 'Profil',
+        openArchive: 'Ouvrir le profil',
+        openSettings: 'Ouvrir les parametres',
+        streak: 'Serie',
+        comments: 'Commentaires',
+        days: 'Jours',
+        marksUnlocked: 'Marques debloquees'
+    },
+    profile: {
+        ...EN_UI_BASE.profile,
+        backHome: 'Retour a l accueil',
+        openSettings: 'Ouvrir les parametres',
+        logout: 'Se deconnecter',
+        upload: 'Televerser',
+        save: 'Enregistrer',
+        cancel: 'Annuler',
+        editIdentity: 'Modifier l identite',
+        missingName: 'Nom non defini',
+        missingGender: 'Genre non defini',
+        missingBirthDate: 'Date non definie',
+        genreDistribution: 'Distribution des genres',
+        stats: 'Statistiques',
+        comments: 'Commentaires',
+        films: 'Films',
+        topGenre: 'Genre principal',
+        mostCommented: 'Le plus commente',
+        noRecords: 'Aucun enregistrement',
+        activity: 'Activite',
+        profileFeed: 'Flux du profil',
+        filmArchive: 'Archive des films',
+        noFilmComments: 'Aucun film commente pour l instant.',
+        noFilmCommentsHint: 'Commence avec ton premier commentaire.',
+        marksArchive: 'Archive des marques',
+        markCategorySuffix: 'Marques',
+        requirement: 'Condition',
+        unlocked: 'Debloquee',
+        locked: 'Verrouillee',
+        closeMovieModal: 'Fermer la fenetre film',
+        unknownGenre: 'Genre inconnu',
+        commentsAndReplies: 'Commentaires et reponses',
+        close: 'Fermer',
+        repliesLoading: 'Chargement des reponses...',
+        deleteComment: 'Supprimer le commentaire',
+        noReplies: 'Pas encore de reponse.'
+    },
+    xp: {
+        ...EN_UI_BASE.xp,
+        markUnlockedFallback: 'Marque debloquee.'
     }
 };
 
@@ -457,12 +805,24 @@ export const MARK_DICTIONARY: Record<LanguageCode, Record<string, MarkCopy>> = {
         eternal_mark: { title: 'Eternal', description: 'Reach the Eternal League.', whisper: 'Still here.' },
         legacy: { title: 'The Pillar', description: 'Active for 30+ days.', whisper: 'A pillar in time.' },
         archive_keeper: { title: 'Archive Keeper', description: 'Submit 50 rituals.', whisper: 'The archive remembers.' }
-    }
+    },
+    es: {},
+    fr: {}
 };
+
+const cloneMarkSection = (section: Record<string, MarkCopy>): Record<string, MarkCopy> =>
+    Object.fromEntries(
+        Object.entries(section).map(([id, value]) => [id, { ...value }])
+    ) as Record<string, MarkCopy>;
+
+MARK_DICTIONARY.es = cloneMarkSection(MARK_DICTIONARY.en);
+MARK_DICTIONARY.fr = cloneMarkSection(MARK_DICTIONARY.en);
 
 export const MARK_CATEGORY_DICTIONARY: Record<LanguageCode, Record<string, string>> = {
     tr: { Presence: 'Katilim', Writing: 'Yazim', Rhythm: 'Ritim', Discovery: 'Kesif', Ritual: 'Yorum', Social: 'Sosyal', Legacy: 'Miras' },
-    en: { Presence: 'Presence', Writing: 'Writing', Rhythm: 'Rhythm', Discovery: 'Discovery', Ritual: 'Comment', Social: 'Social', Legacy: 'Legacy' }
+    en: { Presence: 'Presence', Writing: 'Writing', Rhythm: 'Rhythm', Discovery: 'Discovery', Ritual: 'Comment', Social: 'Social', Legacy: 'Legacy' },
+    es: { Presence: 'Presencia', Writing: 'Escritura', Rhythm: 'Ritmo', Discovery: 'Descubrimiento', Ritual: 'Comentario', Social: 'Social', Legacy: 'Legado' },
+    fr: { Presence: 'Presence', Writing: 'Ecriture', Rhythm: 'Rythme', Discovery: 'Decouverte', Ritual: 'Commentaire', Social: 'Social', Legacy: 'Heritage' }
 };
 
 export const LEAGUE_DICTIONARY: Record<LanguageCode, Record<string, LeagueCopy>> = {
@@ -481,5 +841,21 @@ export const LEAGUE_DICTIONARY: Record<LanguageCode, Record<string, LeagueCopy>>
         Ruby: { name: 'Ruby', description: 'High quality progression.' }, Diamond: { name: 'Diamond', description: 'Top-tier consistency.' },
         Master: { name: 'Master', description: 'Personal style established.' }, Grandmaster: { name: 'Grandmaster', description: 'Long-term high performance.' },
         Absolute: { name: 'Absolute', description: 'Beyond standard tiers.' }, Eternal: { name: 'Eternal', description: 'Top league.' }
+    },
+    es: {
+        Bronze: { name: 'Bronce', description: 'Nivel inicial.' }, Silver: { name: 'Plata', description: 'Empieza la constancia.' },
+        Gold: { name: 'Oro', description: 'Mejora la calidad de comentarios.' }, Platinum: { name: 'Platino', description: 'Aumenta la profundidad de analisis.' },
+        Emerald: { name: 'Esmeralda', description: 'El gusto se vuelve mas refinado.' }, Sapphire: { name: 'Zafiro', description: 'Fuerte compromiso con el cine.' },
+        Ruby: { name: 'Rubi', description: 'Progreso de alta calidad.' }, Diamond: { name: 'Diamante', description: 'Constancia de alto nivel.' },
+        Master: { name: 'Maestro', description: 'Estilo personal establecido.' }, Grandmaster: { name: 'Gran maestro', description: 'Alto rendimiento sostenido.' },
+        Absolute: { name: 'Absolute', description: 'Mas alla de niveles estandar.' }, Eternal: { name: 'Eternal', description: 'Liga maxima.' }
+    },
+    fr: {
+        Bronze: { name: 'Bronze', description: 'Niveau d entree.' }, Silver: { name: 'Argent', description: 'La regularite commence.' },
+        Gold: { name: 'Or', description: 'La qualite des commentaires progresse.' }, Platinum: { name: 'Platine', description: 'L analyse devient plus profonde.' },
+        Emerald: { name: 'Emeraude', description: 'Le gout devient plus raffine.' }, Sapphire: { name: 'Saphir', description: 'Fort engagement cinephile.' },
+        Ruby: { name: 'Rubis', description: 'Progression de haute qualite.' }, Diamond: { name: 'Diamant', description: 'Regularite de haut niveau.' },
+        Master: { name: 'Maitre', description: 'Style personnel etabli.' }, Grandmaster: { name: 'Grand maitre', description: 'Haute performance durable.' },
+        Absolute: { name: 'Absolute', description: 'Au-dela des paliers standards.' }, Eternal: { name: 'Eternal', description: 'Ligue maximale.' }
     }
 };

@@ -8,7 +8,7 @@ export const ThemeToggle: React.FC = () => {
     return (
         <button
             onClick={toggleTheme}
-            className="fixed top-8 left-8 z-40 p-3 transition-colors bg-[var(--color-bg)] border rounded-full shadow-sm"
+            className="theme-toggle-button fixed top-8 left-8 z-40 p-3 transition-colors bg-[var(--color-bg)] border rounded-full shadow-sm"
             style={{
                 color: 'var(--color-highlight)',
                 borderColor: 'var(--color-highlight)'

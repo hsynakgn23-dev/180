@@ -8,6 +8,7 @@ import { GearIcon } from '../../components/icons/GearIcon';
 import { MarkBadge } from '../marks/MarkBadge';
 import { supabase, isSupabaseLive } from '../../lib/supabase';
 import { useLanguage } from '../../context/LanguageContext';
+import { getRegistrationGenderLabel } from '../../i18n/localization';
 
 interface ProfileViewProps {
     onClose: () => void;
@@ -152,15 +153,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
     const nextLeagueLabel = nextLeagueKey
         ? leagueCopy(nextLeagueKey)?.name || LEAGUES_DATA[nextLeagueKey]?.name || 'Max'
         : 'Max';
-    const genderLabel = gender === 'female'
-        ? (language === 'tr' ? 'Kadin' : 'Female')
-        : gender === 'male'
-            ? (language === 'tr' ? 'Erkek' : 'Male')
-            : gender === 'non_binary'
-                ? 'Non-binary'
-                : gender === 'prefer_not_to_say'
-                    ? (language === 'tr' ? 'Belirtmek istemiyor' : 'Prefer not to say')
-                    : '';
+    const genderLabel = gender ? getRegistrationGenderLabel(language, gender) : '';
 
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 

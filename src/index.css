@@ -89,6 +89,22 @@ body.light-mode [class*="shadow-xl"] {
   box-shadow: 0 14px 36px rgba(76, 60, 43, 0.16) !important;
 }
 
+body.light-mode .theme-swatch-midnight {
+  background-color: #121212 !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+body.light-mode .theme-swatch-dawn {
+  background-color: #fdfcf8 !important;
+  border-color: #d8d4cc !important;
+}
+
+body.light-mode .theme-toggle-button {
+  color: var(--color-clay) !important;
+  border-color: rgba(165, 113, 100, 0.58) !important;
+  background-color: var(--color-surface-elevated) !important;
+}
+
 /* Scrollbar styling for a premium feel */
 ::-webkit-scrollbar {
   width: 6px;

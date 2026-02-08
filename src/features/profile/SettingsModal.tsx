@@ -2,6 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { useXP, type RegistrationGender } from '../../context/XPContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { applyThemeMode, resolveThemeMode, type ThemeMode } from '../../lib/themeMode';
+import {
+    getRegistrationGenderOptions,
+    SUPPORTED_LANGUAGE_OPTIONS,
+    type LanguageCode
+} from '../../i18n/localization';
+import { UI_DICTIONARY } from '../../i18n/dictionary';
 
 interface SettingsModalProps {
     isOpen: boolean;
@@ -22,19 +28,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     const [theme, setTheme] = useState<ThemeMode>('midnight');
     const [statusMessage, setStatusMessage] = useState('');
     const [confirmLogout, setConfirmLogout] = useState(false);
-    const genderOptions: Array<{ value: RegistrationGender; label: string }> = language === 'tr'
-        ? [
-            { value: 'female', label: 'Kadin' },
-            { value: 'male', label: 'Erkek' },
-            { value: 'non_binary', label: 'Non-binary' },
-            { value: 'prefer_not_to_say', label: 'Belirtmek istemiyorum' }
-        ]
-        : [
-            { value: 'female', label: 'Female' },
-            { value: 'male', label: 'Male' },
-            { value: 'non_binary', label: 'Non-binary' },
-            { value: 'prefer_not_to_say', label: 'Prefer not to say' }
-        ];
+    const genderOptions: Array<{ value: RegistrationGender; label: string }> = getRegistrationGenderOptions(language);
 
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -65,9 +59,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         setStatusMessage(text.settings.statusThemeUpdated);
     };
 
-    const applyLanguage = (nextLanguage: 'tr' | 'en') => {
+    const applyLanguage = (nextLanguage: LanguageCode) => {
         setLanguage(nextLanguage);
-        setStatusMessage(text.settings.statusLanguageSaved);
+        setStatusMessage(UI_DICTIONARY[nextLanguage].settings.statusLanguageSaved);
     };
 
     const handleSaveIdentity = async () => {
@@ -283,8 +277,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                                 : 'border-white/10 bg-[#141414] hover:border-sage/30'
                                         }`}
                                     >
-                                        <div className="h-10 rounded bg-[#121212] border border-white/10 mb-2" />
-                                        <p className="text-[10px] uppercase tracking-[0.18em] text-[#E5E4E2]">{text.settings.themeMidnight}</p>
+                                        <div className="theme-swatch-midnight h-10 rounded bg-[#121212] border border-white/10 mb-2" />
+                                        <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-text)]">{text.settings.themeMidnight}</p>
                                     </button>
                                     <button
                                         type="button"
@@ -295,37 +289,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                                 : 'border-white/10 bg-[#141414] hover:border-sage/30'
                                         }`}
                                     >
-                                        <div className="h-10 rounded bg-[#FDFCF8] border border-[#d8d4cc] mb-2" />
-                                        <p className="text-[10px] uppercase tracking-[0.18em] text-[#E5E4E2]">{text.settings.themeDawn}</p>
+                                        <div className="theme-swatch-dawn h-10 rounded bg-[#FDFCF8] border border-[#d8d4cc] mb-2" />
+                                        <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-text)]">{text.settings.themeDawn}</p>
                                     </button>
                                 </div>
                             </div>
 
                             <div className="bg-white/5 border border-white/10 rounded-xl p-5">
                                 <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-3">{text.settings.language}</p>
-                                <div className="flex items-center gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => applyLanguage('tr')}
-                                        className={`px-4 py-2 rounded border text-[10px] uppercase tracking-[0.18em] transition-colors ${
-                                            language === 'tr'
-                                                ? 'border-sage bg-sage/10 text-sage'
-                                                : 'border-white/10 text-gray-400 hover:border-sage/30 hover:text-sage'
-                                        }`}
-                                    >
-                                        {text.settings.languageTr}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => applyLanguage('en')}
-                                        className={`px-4 py-2 rounded border text-[10px] uppercase tracking-[0.18em] transition-colors ${
-                                            language === 'en'
-                                                ? 'border-sage bg-sage/10 text-sage'
-                                                : 'border-white/10 text-gray-400 hover:border-sage/30 hover:text-sage'
-                                        }`}
-                                    >
-                                        {text.settings.languageEn}
-                                    </button>
+                                <div className="grid grid-cols-2 gap-3">
+                                    {SUPPORTED_LANGUAGE_OPTIONS.map((option) => (
+                                        <button
+                                            key={option.code}
+                                            type="button"
+                                            onClick={() => applyLanguage(option.code)}
+                                            className={`px-4 py-2 rounded border text-[10px] uppercase tracking-[0.18em] transition-colors ${
+                                                language === option.code
+                                                    ? 'border-sage bg-sage/10 text-sage'
+                                                    : 'border-white/10 text-gray-400 hover:border-sage/30 hover:text-sage'
+                                            }`}
+                                        >
+                                            {option.label}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
                         </div>

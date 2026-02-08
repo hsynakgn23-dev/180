@@ -18,7 +18,62 @@ export const LANGUAGE_DICTIONARY = UI_DICTIONARY;
 export type FormatParams = Record<string, string | number | null | undefined>;
 
 export const isLanguageCode = (value: unknown): value is LanguageCode =>
-    value === 'tr' || value === 'en';
+    value === 'tr' || value === 'en' || value === 'es' || value === 'fr';
+
+export const SUPPORTED_LANGUAGE_OPTIONS: ReadonlyArray<{ code: LanguageCode; label: string }> = [
+    { code: 'tr', label: 'Turkce' },
+    { code: 'en', label: 'English' },
+    { code: 'es', label: 'Espanol' },
+    { code: 'fr', label: 'Francais' }
+];
+
+type RegistrationGenderOptionValue = 'female' | 'male' | 'non_binary' | 'prefer_not_to_say';
+
+const REGISTRATION_GENDER_LABELS: Record<LanguageCode, Record<RegistrationGenderOptionValue, string>> = {
+    tr: {
+        female: 'Kadin',
+        male: 'Erkek',
+        non_binary: 'Non-binary',
+        prefer_not_to_say: 'Belirtmek istemiyorum'
+    },
+    en: {
+        female: 'Female',
+        male: 'Male',
+        non_binary: 'Non-binary',
+        prefer_not_to_say: 'Prefer not to say'
+    },
+    es: {
+        female: 'Mujer',
+        male: 'Hombre',
+        non_binary: 'No binario',
+        prefer_not_to_say: 'Prefiero no decirlo'
+    },
+    fr: {
+        female: 'Femme',
+        male: 'Homme',
+        non_binary: 'Non binaire',
+        prefer_not_to_say: 'Je prefere ne pas le dire'
+    }
+};
+
+export const getRegistrationGenderOptions = (
+    language: LanguageCode
+): Array<{ value: RegistrationGenderOptionValue; label: string }> => {
+    const labels = REGISTRATION_GENDER_LABELS[language];
+    return [
+        { value: 'female', label: labels.female },
+        { value: 'male', label: labels.male },
+        { value: 'non_binary', label: labels.non_binary },
+        { value: 'prefer_not_to_say', label: labels.prefer_not_to_say }
+    ];
+};
+
+export const getRegistrationGenderLabel = (
+    language: LanguageCode,
+    value: RegistrationGenderOptionValue
+): string => {
+    return REGISTRATION_GENDER_LABELS[language][value];
+};
 
 export const formatTemplate = (template: string, params?: FormatParams): string => {
     if (!params) return template;
@@ -49,4 +104,3 @@ export const getMarkCategoryLabel = (language: LanguageCode, category: string): 
 export const getLeagueCopy = (language: LanguageCode, leagueKey: string): LeagueCopy | undefined => {
     return LEAGUE_DICTIONARY[language][leagueKey];
 };
-

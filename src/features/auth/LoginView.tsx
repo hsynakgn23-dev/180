@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useXP, type RegistrationGender } from '../../context/XPContext';
 import { useLanguage } from '../../context/LanguageContext';
+import { getRegistrationGenderOptions } from '../../i18n/localization';
 
 export const LoginView: React.FC = () => {
     const { login, loginWithGoogle, authMode } = useXP();
@@ -19,20 +20,7 @@ export const LoginView: React.FC = () => {
 
     const todayIso = new Date().toISOString().split('T')[0];
     const genderOptions = useMemo<Array<{ value: RegistrationGender; label: string }>>(
-        () =>
-            language === 'tr'
-                ? [
-                    { value: 'female', label: 'Kadin' },
-                    { value: 'male', label: 'Erkek' },
-                    { value: 'non_binary', label: 'Non-binary' },
-                    { value: 'prefer_not_to_say', label: 'Belirtmek istemiyorum' }
-                ]
-                : [
-                    { value: 'female', label: 'Female' },
-                    { value: 'male', label: 'Male' },
-                    { value: 'non_binary', label: 'Non-binary' },
-                    { value: 'prefer_not_to_say', label: 'Prefer not to say' }
-                ],
+        () => getRegistrationGenderOptions(language),
         [language]
     );
 
@@ -272,4 +260,3 @@ export const LoginView: React.FC = () => {
         </div>
     );
 };
-
