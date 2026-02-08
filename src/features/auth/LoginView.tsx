@@ -230,30 +230,26 @@ export const LoginView: React.FC = () => {
                         {isSubmitting ? text.login.submitLoading : isRegistering ? text.login.submitRegister : text.login.submitLogin}
                     </button>
 
-                    {!isRegistering && (
-                        <>
-                            <div className="flex items-center gap-4 my-2">
-                                <div className="h-px bg-white/10 flex-1"></div>
-                                <span className="text-[9px] uppercase tracking-widest text-gray-600">{text.login.or}</span>
-                                <div className="h-px bg-white/10 flex-1"></div>
-                            </div>
+                    <div className="flex items-center gap-4 my-2">
+                        <div className="h-px bg-white/10 flex-1"></div>
+                        <span className="text-[9px] uppercase tracking-widest text-gray-600">{text.login.or}</span>
+                        <div className="h-px bg-white/10 flex-1"></div>
+                    </div>
 
-                            {authMode === 'supabase' ? (
-                                <button
-                                    type="button"
-                                    onClick={handleGoogle}
-                                    disabled={isGoogleLoading}
-                                    className="w-full bg-white/10 text-[#E5E4E2] font-bold py-3 uppercase tracking-[0.15em] text-xs rounded-md hover:bg-white/15 transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                                >
-                                    <div className="w-3 h-3 bg-current rounded-full opacity-50"></div>
-                                    {isGoogleLoading ? text.login.googleRedirecting : text.login.googleContinue}
-                                </button>
-                            ) : (
-                                <div className="text-[10px] text-gray-500 text-center border border-white/10 rounded px-3 py-2">
-                                    {text.login.localAuthInfo}
-                                </div>
-                            )}
-                        </>
+                    {authMode === 'supabase' ? (
+                        <button
+                            type="button"
+                            onClick={handleGoogle}
+                            disabled={isGoogleLoading}
+                            className="w-full bg-white/10 text-[#E5E4E2] font-bold py-3 uppercase tracking-[0.15em] text-xs rounded-md hover:bg-white/15 transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                            <div className="w-3 h-3 bg-current rounded-full opacity-50"></div>
+                            {isGoogleLoading ? text.login.googleRedirecting : text.login.googleContinue}
+                        </button>
+                    ) : (
+                        <div className="text-[10px] text-gray-500 text-center border border-white/10 rounded px-3 py-2">
+                            {text.login.localAuthInfo}
+                        </div>
                     )}
                 </form>
             </div>
