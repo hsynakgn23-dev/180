@@ -13,9 +13,9 @@ export const ThemeToggle: React.FC = () => {
                 color: 'var(--color-highlight)',
                 borderColor: 'var(--color-highlight)'
             }}
-            title={`Switch to ${theme === 'night' ? 'Dawn' : 'Midnight'}`}
+            title={`Switch to ${theme === 'midnight' ? 'Dawn' : 'Midnight'}`}
         >
-            {theme === 'night' ? (
+            {theme === 'midnight' ? (
                 // Sun icon for Dawn option
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="12" r="5"></circle>

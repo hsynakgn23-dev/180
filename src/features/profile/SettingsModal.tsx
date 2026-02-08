@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useXP, type RegistrationGender } from '../../context/XPContext';
 import { useLanguage } from '../../context/LanguageContext';
+import { applyThemeMode, resolveThemeMode, type ThemeMode } from '../../lib/themeMode';
 
 interface SettingsModalProps {
     isOpen: boolean;
@@ -8,9 +9,6 @@ interface SettingsModalProps {
 }
 
 type SettingsTab = 'identity' | 'appearance' | 'session';
-type ThemeMode = 'midnight' | 'dawn';
-
-const THEME_STORAGE_KEY = '180_theme_pref';
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
     const { user, updateIdentity, updatePersonalInfo, logout, bio, avatarUrl, updateAvatar, avatarId, fullName, username, gender, birthDate } = useXP();
@@ -51,12 +49,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         setStatusMessage('');
         setConfirmLogout(false);
 
-        const storedTheme = localStorage.getItem(THEME_STORAGE_KEY);
-        if (storedTheme === 'dawn' || storedTheme === 'midnight') {
-            setTheme(storedTheme);
-        } else {
-            setTheme(document.body.classList.contains('light-mode') ? 'dawn' : 'midnight');
-        }
+        setTheme(resolveThemeMode());
 
     }, [isOpen, bio, fullName, username, gender, birthDate]);
 
@@ -68,12 +61,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
     const applyTheme = (nextTheme: ThemeMode) => {
         setTheme(nextTheme);
-        localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
-        if (nextTheme === 'dawn') {
-            document.body.classList.add('light-mode');
-        } else {
-            document.body.classList.remove('light-mode');
-        }
+        applyThemeMode(nextTheme);
         setStatusMessage(text.settings.statusThemeUpdated);
     };
 

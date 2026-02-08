@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { applyThemeMode, resolveThemeMode, type ThemeMode } from '../lib/themeMode';
 
 // Types
-type Theme = 'night' | 'dawn';
+type Theme = ThemeMode;
 
 interface ThemeContextType {
     theme: Theme;
@@ -12,22 +13,15 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [theme, setTheme] = useState<Theme>(() => {
-        const stored = localStorage.getItem('180_theme');
-        return (stored as Theme) || 'night';
+        return resolveThemeMode();
     });
 
     useEffect(() => {
-        const body = document.body;
-        if (theme === 'dawn') {
-            body.classList.add('light-mode');
-        } else {
-            body.classList.remove('light-mode');
-        }
-        localStorage.setItem('180_theme', theme);
+        applyThemeMode(theme);
     }, [theme]);
 
     const toggleTheme = () => {
-        setTheme(prev => prev === 'night' ? 'dawn' : 'night');
+        setTheme((prev) => (prev === 'midnight' ? 'dawn' : 'midnight'));
     };
 
     return (
