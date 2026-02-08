@@ -299,6 +299,12 @@ const normalizeAuthError = (message: string): string => {
     if (lowered.includes('invalid login credentials')) return 'Email veya sifre hatali.';
     if (lowered.includes('email not confirmed')) return 'E-posta onayi gerekli.';
     if (lowered.includes('user already registered')) return 'Bu e-posta zaten kayitli.';
+    if (lowered.includes('unsupported provider') || lowered.includes('provider is not enabled')) {
+        return 'Google girisi aktif degil. Supabase Dashboard > Authentication > Providers > Google bolumunden etkinlestir.';
+    }
+    if (lowered.includes('redirect_to is not allowed') || lowered.includes('redirect url')) {
+        return 'Google yonlendirme adresi hatali. Supabase ve Google Console ayarlarina mevcut site adresini ekle.';
+    }
     if (lowered.includes('email rate limit exceeded') || lowered.includes('rate limit')) {
         return 'Cok fazla deneme yapildi. Biraz bekleyip tekrar dene.';
     }
