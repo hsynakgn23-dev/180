@@ -253,8 +253,12 @@ export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
             footerManifesto: 'Manifesto', footerRules: 'Kurallar', footerContact: 'Iletisim',
             infoPanelClose: 'Kapat',
             manifestoTitle: '180 Manifestosu',
-            manifestoBody: 'Her gün sinema ile bağ kurmak,süreklilik yaratmak ve bakışını derinleştirmek. Her gün bir film izleme alışkanlığı kazanmak. Az ama net yazarak düşünceyi berraklaştırmak. 180 karakterle film yorumu yazmak. Rekabet yerine ritim,gösteriş yerine tutarlılık ve öğrenme odaklı bir topluluk',
-            manifestoPoints: [],
+            manifestoBody: '180, sinemayi kisa ama oz bir yorum disipliniyle takip etmek icin kuruldu.',
+            manifestoPoints: [
+                'Her gun sinema ile bag kurmak, sureklilik yaratmak ve bakisi derinlestirmek.',
+                'Az ama net yazarak dusunceyi berraklastirmak: 180 karakterlik odakli yorumlar.',
+                'Rekabet yerine ritim, gosteris yerine tutarlilik ve ogrenme odakli bir topluluk.'
+            ],
             rulesTitle: 'Site Ici Kurallar',
             rulesBody: 'Akisin temiz, adil ve kaliteli kalmasi icin temel kurallar:',
             rulesPoints: [
