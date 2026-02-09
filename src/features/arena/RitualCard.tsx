@@ -5,6 +5,7 @@ import { useXP } from '../../context/XPContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { resolvePosterCandidates } from '../../lib/posterCandidates';
 import { searchPosterPath } from '../../lib/tmdbApi';
+import { moderateComment } from '../../lib/commentModeration';
 import { supabase, isSupabaseLive } from '../../lib/supabase';
 import { useLanguage } from '../../context/LanguageContext';
 
@@ -198,6 +199,18 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
     const handleReplySubmit = () => {
         const text = replyText.trim();
         if (!text) return;
+        const moderation = moderateComment(text, {
+            maxChars: MAX_REPLY_CHARS,
+            maxEmojiCount: 5,
+            maxEmojiRatio: 0.25
+        });
+        if (!moderation.ok) {
+            addNotification({
+                type: 'system',
+                message: moderation.message || ui.ritualCard.replySyncFailed
+            });
+            return;
+        }
 
         const tempId = `tmp-${Date.now()}`;
         const newReply: ReplyRecord = {

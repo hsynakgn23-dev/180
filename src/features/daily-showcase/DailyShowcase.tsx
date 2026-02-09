@@ -216,4 +216,3 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
         </section>
     );
 };
-

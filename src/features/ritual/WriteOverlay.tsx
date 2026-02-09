@@ -13,13 +13,19 @@ export const WriteOverlay: React.FC<WriteOverlayProps> = ({ movie, onClose }) =>
     const { text: ui } = useLanguage();
     const [text, setText] = useState('');
     const [rating, setRating] = useState(0);
+    const [errorMessage, setErrorMessage] = useState('');
 
     const MAX_CHARS = 180;
     const charsLeft = MAX_CHARS - text.length;
 
     const handleSubmit = () => {
         if (text.length === 0) return;
-        submitRitual(movie.id, text, rating, movie.genre, movie.title, movie.posterPath);
+        const result = submitRitual(movie.id, text, rating, movie.genre, movie.title, movie.posterPath);
+        if (!result.ok) {
+            setErrorMessage(result.message || 'Yorum gonderilemedi.');
+            return;
+        }
+        setErrorMessage('');
         onClose();
     };
 
@@ -41,6 +47,7 @@ export const WriteOverlay: React.FC<WriteOverlayProps> = ({ movie, onClose }) =>
                         onChange={(e) => {
                             if (e.target.value.length <= MAX_CHARS) {
                                 setText(e.target.value);
+                                if (errorMessage) setErrorMessage('');
                             }
                         }}
                         placeholder={ui.writeOverlay.placeholder}
@@ -79,6 +86,12 @@ export const WriteOverlay: React.FC<WriteOverlayProps> = ({ movie, onClose }) =>
                 </div>
 
                 {/* Actions */}
+                {errorMessage && (
+                    <div className="mb-4 text-[11px] tracking-[0.08em] uppercase text-red-400/90 border border-red-500/30 bg-red-500/10 rounded px-3 py-2">
+                        {errorMessage}
+                    </div>
+                )}
+
                 <div className="flex flex-col-reverse sm:flex-row justify-center gap-3 sm:gap-6">
                     <button
                         onClick={onClose}

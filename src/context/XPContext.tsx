@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { MAJOR_MARKS } from '../data/marksData';
 import { TMDB_SEEDS } from '../data/tmdbSeeds';
 import { supabase, isSupabaseLive } from '../lib/supabase';
+import { moderateComment } from '../lib/commentModeration';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 // Types
@@ -129,7 +130,7 @@ interface XPContextType {
     updateIdentity: (bio: string, avatarId: string) => void;
     updatePersonalInfo: (profile: RegistrationProfileInput) => Promise<AuthResult>;
     toggleFollowUser: (username: string) => void;
-    submitRitual: (movieId: number, text: string, rating: number, genre: string, title?: string, posterPath?: string) => void;
+    submitRitual: (movieId: number, text: string, rating: number, genre: string, title?: string, posterPath?: string) => AuthResult;
     deleteRitual: (ritualId: string) => void;
     echoRitual: (ritualId: string) => void;
     receiveEcho: (movieTitle?: string) => void;
@@ -911,14 +912,29 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     }, [state.dailyDwellXP, state.lastDwellDate]);
 
     // 3. Ritual Submission
-    const submitRitual = (movieId: number, text: string, _rating: number, genre: string, title?: string, posterPath?: string) => {
+    const submitRitual = (
+        movieId: number,
+        text: string,
+        _rating: number,
+        genre: string,
+        title?: string,
+        posterPath?: string
+    ): AuthResult => {
+        const moderation = moderateComment(text, { maxChars: 180, maxEmojiCount: 6, maxEmojiRatio: 0.2 });
+        if (!moderation.ok) {
+            const message = moderation.message || 'Yorum gonderilemedi.';
+            triggerWhisper(message);
+            return { ok: false, message };
+        }
+
+        const sanitizedText = text.trim();
         const today = getToday();
         if (state.dailyRituals.some(r => r.date === today && r.movieId === movieId)) {
             triggerWhisper("Memory stored.");
-            return;
+            return { ok: false, message: 'Bu filme bugun zaten yorum yazildi.' };
         }
 
-        const length = text.length;
+        const length = sanitizedText.length;
         let earnedXP = 15;
         if (length === 180) earnedXP = 50;
 
@@ -966,7 +982,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             date: today,
             movieId,
             movieTitle: title || KNOWN_MOVIES_BY_ID.get(movieId)?.title || 'Unknown Title',
-            text,
+            text: sanitizedText,
             genre,
             rating: _rating,
             posterPath: posterPath || KNOWN_MOVIES_BY_ID.get(movieId)?.posterPath
@@ -1063,6 +1079,8 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 }
             })();
         }
+
+        return { ok: true, message: 'Yorum kaydedildi.' };
     };
 
     const deleteRitual = (ritualId: string) => {

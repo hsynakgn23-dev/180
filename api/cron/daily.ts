@@ -33,6 +33,18 @@ type PosterDiagnostic = {
     error: string;
 };
 
+type TmdbDiscoverMovie = {
+    id?: number;
+    title?: string;
+    name?: string;
+    poster_path?: string | null;
+    release_date?: string;
+    vote_average?: number;
+    overview?: string;
+    original_language?: string;
+    genre_ids?: number[];
+};
+
 const DEFAULT_SLOT_LABELS = [
     'The Legend',
     'The Hidden Gem',
@@ -53,6 +65,16 @@ const DAILY_MIN_UNIQUE_GENRES = 4;
 const CLASSIC_YEAR_THRESHOLD = 2000;
 const MODERN_YEAR_THRESHOLD = 2010;
 const DAILY_MAX_MOVIES_PER_DIRECTOR = 1;
+const TMDB_DISCOVER_PAGE_WINDOW = 20;
+const TMDB_SLOT_PAGE_COUNT = 2;
+
+const DEFAULT_SLOT_PARAMS = [
+    '&vote_average.gte=8.4&vote_count.gte=3000&sort_by=vote_average.desc',
+    '&vote_average.gte=7.5&vote_count.gte=50&vote_count.lte=1000&sort_by=popularity.desc',
+    '&with_genres=99,36,10752&sort_by=popularity.desc',
+    '&primary_release_date.gte=2024-01-01&vote_average.gte=7.0&sort_by=popularity.desc',
+    '&vote_average.gte=7.8&with_original_language=ja|ko|fr&sort_by=popularity.desc'
+];
 
 const DEFAULT_SEED_MOVIES: Movie[] = [
     {
@@ -150,6 +172,62 @@ const createSeededRandom = (seed: number) => {
         state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
         return state / 4294967296;
     };
+};
+
+const getModernFloorDate = (): string => {
+    const value = new Date();
+    value.setFullYear(value.getFullYear() - 2);
+    return value.toISOString().split('T')[0];
+};
+
+const getSlotParamsForToday = (): string[] => {
+    const modernFloor = getModernFloorDate();
+    return DEFAULT_SLOT_PARAMS.map((value) =>
+        value.replace('2024-01-01', modernFloor)
+    );
+};
+
+const getPreviousDateKey = (dateKey: string): string => {
+    const [year, month, day] = dateKey.split('-').map((part) => Number(part));
+    const date = new Date(year, (month || 1) - 1, day || 1);
+    date.setDate(date.getDate() - 1);
+    const prevYear = date.getFullYear();
+    const prevMonth = String(date.getMonth() + 1).padStart(2, '0');
+    const prevDay = String(date.getDate()).padStart(2, '0');
+    return `${prevYear}-${prevMonth}-${prevDay}`;
+};
+
+const normalizeMovieIds = (movieIds: number[] = []): number[] => {
+    return Array.from(
+        new Set(
+            movieIds
+                .map((value) => Number(value))
+                .filter((value) => Number.isInteger(value) && value > 0)
+        )
+    );
+};
+
+const parseYearFromDate = (value: string | undefined): number => {
+    if (!value) return 2005;
+    const year = Number.parseInt(value.slice(0, 4), 10);
+    if (!Number.isInteger(year) || year < 1900 || year > 2100) return 2005;
+    return year;
+};
+
+const parseSlotParams = (rawParams: string): URLSearchParams => {
+    const searchParams = new URLSearchParams();
+    const normalized = rawParams.replace(/^\?/, '').replace(/^&/, '');
+    for (const chunk of normalized.split('&')) {
+        if (!chunk) continue;
+        const [rawKey, ...rest] = chunk.split('=');
+        const key = (rawKey || '').trim();
+        if (!key) continue;
+        const value = rest.join('=').trim();
+        if (value) {
+            searchParams.set(key, value);
+        }
+    }
+    return searchParams;
 };
 
 const normalizeGenre = (movie: Movie): string => {
@@ -265,6 +343,105 @@ const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
 const TMDB_API_BASE = 'https://api.themoviedb.org/3';
 const IMAGE_SOURCE_PROXIES = ['https://images.weserv.nl/?url=', 'https://wsrv.nl/?url='];
 const tmdbPosterCache = new Map<number, string | null>();
+
+const fetchTmdbGenreMap = async (apiKey: string): Promise<Map<number, string>> => {
+    const params = new URLSearchParams({
+        api_key: apiKey,
+        language: 'en-US'
+    });
+    const response = await fetch(`${TMDB_API_BASE}/genre/movie/list?${params.toString()}`);
+    if (!response.ok) {
+        throw new Error(`genre_fetch_http_${response.status}`);
+    }
+
+    const payload = (await response.json()) as { genres?: Array<{ id: number; name: string }> };
+    const genreMap = new Map<number, string>();
+    for (const genre of payload.genres || []) {
+        if (typeof genre?.id === 'number' && typeof genre?.name === 'string') {
+            genreMap.set(genre.id, genre.name);
+        }
+    }
+    return genreMap;
+};
+
+const fetchTmdbDiscoverForSlot = async (
+    apiKey: string,
+    dateKey: string,
+    slotParams: string,
+    slotIndex: number
+): Promise<TmdbDiscoverMovie[]> => {
+    const parsedSlotParams = parseSlotParams(slotParams);
+    const basePage = (hashString(`cron-slot:${dateKey}:${slotIndex}`) % TMDB_DISCOVER_PAGE_WINDOW) + 1;
+    const results: TmdbDiscoverMovie[] = [];
+
+    for (let offset = 0; offset < TMDB_SLOT_PAGE_COUNT; offset += 1) {
+        const page = ((basePage + offset * 7 - 1) % TMDB_DISCOVER_PAGE_WINDOW) + 1;
+        const params = new URLSearchParams({
+            api_key: apiKey,
+            language: 'en-US',
+            include_adult: 'false',
+            include_video: 'false',
+            page: String(page)
+        });
+        parsedSlotParams.forEach((value, key) => params.set(key, value));
+
+        const response = await fetch(`${TMDB_API_BASE}/discover/movie?${params.toString()}`);
+        if (!response.ok) continue;
+
+        const payload = (await response.json()) as { results?: TmdbDiscoverMovie[] };
+        if (Array.isArray(payload.results)) {
+            results.push(...payload.results);
+        }
+    }
+
+    return results;
+};
+
+const fetchTmdbListPage = async (
+    apiKey: string,
+    endpoint: 'popular' | 'top_rated',
+    page: number
+): Promise<TmdbDiscoverMovie[]> => {
+    const params = new URLSearchParams({
+        api_key: apiKey,
+        language: 'en-US',
+        page: String(page)
+    });
+    const response = await fetch(`${TMDB_API_BASE}/movie/${endpoint}?${params.toString()}`);
+    if (!response.ok) return [];
+    const payload = (await response.json()) as { results?: TmdbDiscoverMovie[] };
+    return Array.isArray(payload.results) ? payload.results : [];
+};
+
+const mapTmdbResultToMovie = (result: TmdbDiscoverMovie, genreMap: Map<number, string>): Movie | null => {
+    const id = Number(result.id);
+    if (!Number.isInteger(id) || id <= 0) return null;
+
+    const title = (result.title || result.name || '').trim();
+    if (!title) return null;
+
+    const posterPath = typeof result.poster_path === 'string' ? result.poster_path : '';
+    if (!posterPath) return null;
+
+    const genres = (result.genre_ids || [])
+        .map((genreId) => genreMap.get(genreId) || '')
+        .filter((genreName) => Boolean(genreName))
+        .slice(0, 2);
+
+    return {
+        id,
+        title,
+        director: 'Unknown',
+        year: parseYearFromDate(result.release_date),
+        genre: genres.join('/') || 'Drama',
+        tagline: '',
+        color: DEFAULT_GRADIENTS[0],
+        posterPath,
+        voteAverage: typeof result.vote_average === 'number' ? result.vote_average : undefined,
+        overview: typeof result.overview === 'string' ? result.overview : undefined,
+        originalLanguage: typeof result.original_language === 'string' ? result.original_language : undefined
+    };
+};
 
 const getCronSecret = (): string | null => {
     return process.env.CRON_SECRET || process.env.VERCEL_CRON_SECRET || null;
@@ -551,13 +728,16 @@ const ensurePosters = async (
     };
 };
 
-const buildSeedMovies = (dateKey: string): Movie[] => {
-    const pool = [...DEFAULT_SEED_MOVIES];
+const buildSeedMovies = (dateKey: string, excludedMovieIds: number[] = []): Movie[] => {
+    const excludedSet = new Set(normalizeMovieIds(excludedMovieIds));
+    const basePool = [...DEFAULT_SEED_MOVIES];
     for (const extraMovie of EXTRA_POSTER_CACHE_MOVIES) {
-        if (!pool.some((movie) => movie.id === extraMovie.id)) {
-            pool.push(extraMovie);
+        if (!basePool.some((movie) => movie.id === extraMovie.id)) {
+            basePool.push(extraMovie);
         }
     }
+    const filteredPool = basePool.filter((movie) => !excludedSet.has(movie.id));
+    const pool = filteredPool.length >= DAILY_MOVIE_COUNT ? filteredPool : basePool;
 
     const random = createSeededRandom(hashString(`daily:${dateKey}`));
     for (let i = pool.length - 1; i > 0; i -= 1) {
@@ -584,6 +764,84 @@ const buildSeedMovies = (dateKey: string): Movie[] => {
     selected = enforceGenreDiversity(selected, pool);
 
     return applySlotStyles(selected);
+};
+
+const buildDailyTmdbMovies = async (dateKey: string, excludedMovieIds: number[] = []): Promise<Movie[]> => {
+    const apiKey = getTmdbApiKey();
+    if (!apiKey || apiKey === 'YOUR_TMDB_API_KEY') return [];
+
+    try {
+        const genreMap = await fetchTmdbGenreMap(apiKey);
+        const poolById = new Map<number, Movie>();
+        const slotParams = getSlotParamsForToday();
+
+        for (let slotIndex = 0; slotIndex < slotParams.length; slotIndex += 1) {
+            const results = await fetchTmdbDiscoverForSlot(apiKey, dateKey, slotParams[slotIndex], slotIndex);
+            for (const result of results) {
+                const mapped = mapTmdbResultToMovie(result, genreMap);
+                if (!mapped) continue;
+                if (!poolById.has(mapped.id)) {
+                    poolById.set(mapped.id, mapped);
+                }
+            }
+        }
+
+        if (poolById.size < 30) {
+            const fallbackPage = (hashString(`cron-fallback:${dateKey}`) % TMDB_DISCOVER_PAGE_WINDOW) + 1;
+            const [popularResults, topRatedResults] = await Promise.all([
+                fetchTmdbListPage(apiKey, 'popular', fallbackPage),
+                fetchTmdbListPage(
+                    apiKey,
+                    'top_rated',
+                    ((fallbackPage + 5 - 1) % TMDB_DISCOVER_PAGE_WINDOW) + 1
+                )
+            ]);
+
+            for (const result of [...popularResults, ...topRatedResults]) {
+                const mapped = mapTmdbResultToMovie(result, genreMap);
+                if (!mapped) continue;
+                if (!poolById.has(mapped.id)) {
+                    poolById.set(mapped.id, mapped);
+                }
+            }
+        }
+
+        const fullPool = Array.from(poolById.values());
+        const excludedSet = new Set(normalizeMovieIds(excludedMovieIds));
+        const filteredPool = fullPool.filter((movie) => !excludedSet.has(movie.id));
+        const pool = filteredPool.length >= DAILY_MOVIE_COUNT ? filteredPool : fullPool;
+        if (pool.length < DAILY_MOVIE_COUNT) return [];
+
+        const random = createSeededRandom(hashString(`daily-cron:${dateKey}`));
+        for (let i = pool.length - 1; i > 0; i -= 1) {
+            const j = Math.floor(random() * (i + 1));
+            [pool[i], pool[j]] = [pool[j], pool[i]];
+        }
+
+        let selected = pickWithDirectorLimit(pool);
+        selected = replaceMovie(
+            selected,
+            pool,
+            (movie) => movie.year < CLASSIC_YEAR_THRESHOLD,
+            (movie) => movie.year >= CLASSIC_YEAR_THRESHOLD
+        );
+        selected = replaceMovie(
+            selected,
+            pool,
+            (movie) => movie.year >= MODERN_YEAR_THRESHOLD,
+            (movie, snapshot) => {
+                if (movie.year >= CLASSIC_YEAR_THRESHOLD) return true;
+                return snapshot.filter((item) => item.year < CLASSIC_YEAR_THRESHOLD).length > 1;
+            }
+        );
+        selected = enforceGenreDiversity(selected, pool);
+
+        if (selected.length < DAILY_MOVIE_COUNT) return [];
+        return applySlotStyles(selected.slice(0, DAILY_MOVIE_COUNT));
+    } catch (error) {
+        console.warn('[daily-cron] dynamic tmdb pool failed, fallback to seeds', error);
+        return [];
+    }
 };
 
 export default async function handler(req: any, res: any) {
@@ -635,8 +893,24 @@ export default async function handler(req: any, res: any) {
         console.log('[daily-cron] bucket', bucket);
         await ensureBucket(supabase, bucket);
         const todayKey = new Date().toISOString().split('T')[0];
+        const previousKey = getPreviousDateKey(todayKey);
         const forceValue = getQueryParam(req, 'force');
         const force = forceValue === '1' || forceValue === 'true';
+        let previousMovieIds: number[] = [];
+
+        const { data: previousData } = await supabase
+            .from('daily_showcase')
+            .select('movies')
+            .eq('date', previousKey)
+            .single();
+
+        if (Array.isArray(previousData?.movies)) {
+            previousMovieIds = normalizeMovieIds(
+                previousData.movies
+                    .map((movie: any) => Number((movie as Partial<Movie>)?.id))
+                    .filter((id: number) => Number.isInteger(id) && id > 0)
+            );
+        }
 
         const { data: existing, error: readError } = await supabase
             .from('daily_showcase')
@@ -648,7 +922,13 @@ export default async function handler(req: any, res: any) {
             return sendJson(res, 500, { error: readError.message });
         }
 
-        let movies: Movie[] = Array.isArray(existing?.movies) ? existing.movies : buildSeedMovies(todayKey);
+        let movies: Movie[] = Array.isArray(existing?.movies) && !force ? existing.movies : [];
+        if (movies.length === 0) {
+            const dynamicMovies = await buildDailyTmdbMovies(todayKey, previousMovieIds);
+            movies = dynamicMovies.length === DAILY_MOVIE_COUNT
+                ? dynamicMovies
+                : buildSeedMovies(todayKey, previousMovieIds);
+        }
         const diagnostics: PosterDiagnostic[] = [];
 
         const isStorageBacked = movies.every((m: any) => typeof m.posterPath === 'string' && m.posterPath.includes('/storage/v1/object/public/'));
