@@ -137,7 +137,10 @@ interface XPContextType {
     debugUnlockMark: (markId: string) => void;
     user: SessionUser | null;
     authMode: 'supabase' | 'local';
+    isPasswordRecoveryMode: boolean;
     login: (email: string, password: string, isRegistering?: boolean, registrationProfile?: RegistrationProfileInput) => Promise<AuthResult>;
+    requestPasswordReset: (email: string) => Promise<AuthResult>;
+    completePasswordReset: (newPassword: string) => Promise<AuthResult>;
     loginWithGoogle: () => Promise<AuthResult>;
     logout: () => Promise<void>;
     avatarUrl?: string; // Custom uploaded avatar
@@ -294,6 +297,38 @@ const getLegacyStoredUser = (): SessionUser | null => {
     }
 };
 
+const isPasswordRecoveryUrl = (): boolean => {
+    if (typeof window === 'undefined') return false;
+    const hash = window.location.hash.toLowerCase();
+    const search = window.location.search.toLowerCase();
+    return hash.includes('type=recovery') || search.includes('type=recovery');
+};
+
+const buildAuthRedirectTo = (): string => {
+    const envRedirect = import.meta.env.VITE_AUTH_REDIRECT_TO;
+    if (typeof envRedirect === 'string' && envRedirect.trim()) {
+        return envRedirect.trim();
+    }
+    if (typeof window !== 'undefined') {
+        return `${window.location.origin}/`;
+    }
+    return '/';
+};
+
+const clearRecoveryUrlState = () => {
+    if (typeof window === 'undefined') return;
+    const currentUrl = new URL(window.location.href);
+    currentUrl.hash = '';
+    currentUrl.searchParams.delete('type');
+    currentUrl.searchParams.delete('access_token');
+    currentUrl.searchParams.delete('refresh_token');
+    currentUrl.searchParams.delete('expires_in');
+    currentUrl.searchParams.delete('token_type');
+    currentUrl.searchParams.delete('provider_token');
+    currentUrl.searchParams.delete('provider_refresh_token');
+    window.history.replaceState({}, document.title, `${currentUrl.pathname}${currentUrl.search}`);
+};
+
 const normalizeAuthError = (message: string): string => {
     const lowered = message.toLowerCase();
     if (lowered.includes('invalid login credentials')) return 'Email veya sifre hatali.';
@@ -307,6 +342,12 @@ const normalizeAuthError = (message: string): string => {
     }
     if (lowered.includes('email rate limit exceeded') || lowered.includes('rate limit')) {
         return 'Cok fazla deneme yapildi. Biraz bekleyip tekrar dene.';
+    }
+    if (lowered.includes('same password')) {
+        return 'Yeni sifre mevcut sifreden farkli olmali.';
+    }
+    if (lowered.includes('auth session missing')) {
+        return 'Sifre yenileme oturumu bulunamadi. E-postadaki baglantiyi yeniden ac.';
     }
     return message;
 };
@@ -360,6 +401,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     const canWriteProfileStateRef = useRef(true);
     const canWriteRitualRef = useRef(true);
     const [isXpHydrated, setIsXpHydrated] = useState(false);
+    const [isPasswordRecoveryMode, setIsPasswordRecoveryMode] = useState<boolean>(() => isPasswordRecoveryUrl());
     const authMode: 'supabase' | 'local' = isSupabaseLive() && supabase ? 'supabase' : 'local';
 
     const setSessionUser = (nextUser: SessionUser | null) => {
@@ -387,7 +429,13 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             applyAuthUser(data.session?.user ?? null);
         });
 
-        const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+        const { data } = supabase.auth.onAuthStateChange((event, session) => {
+            if (event === 'PASSWORD_RECOVERY') {
+                setIsPasswordRecoveryMode(true);
+            }
+            if (event === 'SIGNED_OUT') {
+                setIsPasswordRecoveryMode(false);
+            }
             applyAuthUser(session?.user ?? null);
         });
 
@@ -653,7 +701,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         }
 
         try {
-            const redirectTo = import.meta.env.VITE_AUTH_REDIRECT_TO || `${window.location.origin}/`;
+            const redirectTo = buildAuthRedirectTo();
             const { error } = await supabase.auth.signInWithOAuth({
                 provider: 'google',
                 options: { redirectTo }
@@ -667,11 +715,58 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         }
     };
 
+    const requestPasswordReset = async (email: string): Promise<AuthResult> => {
+        const normalizedEmail = email.trim().toLowerCase();
+        if (!normalizedEmail) {
+            return { ok: false, message: 'E-posta gerekli.' };
+        }
+
+        if (!isSupabaseLive() || !supabase) {
+            return { ok: false, message: 'Sifre sifirlama icin Supabase gerekli.' };
+        }
+
+        try {
+            const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+                redirectTo: buildAuthRedirectTo()
+            });
+            if (error) return { ok: false, message: normalizeAuthError(error.message) };
+            return { ok: true, message: 'Sifre yenileme baglantisi e-posta adresine gonderildi.' };
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Password reset failed.';
+            return { ok: false, message: normalizeAuthError(message) };
+        }
+    };
+
+    const completePasswordReset = async (newPassword: string): Promise<AuthResult> => {
+        const normalizedPassword = newPassword.trim();
+        if (normalizedPassword.length < 6) {
+            return { ok: false, message: 'Sifre en az 6 karakter olmali.' };
+        }
+
+        if (!isSupabaseLive() || !supabase) {
+            return { ok: false, message: 'Sifre guncelleme icin Supabase gerekli.' };
+        }
+
+        try {
+            const { error } = await supabase.auth.updateUser({ password: normalizedPassword });
+            if (error) return { ok: false, message: normalizeAuthError(error.message) };
+
+            setIsPasswordRecoveryMode(false);
+            clearRecoveryUrlState();
+            triggerWhisper("Password updated.");
+            return { ok: true, message: 'Sifre guncellendi.' };
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Password update failed.';
+            return { ok: false, message: normalizeAuthError(message) };
+        }
+    };
+
     const logout = async () => {
         if (isSupabaseLive() && supabase) {
             await supabase.auth.signOut();
         }
         setSessionUser(null);
+        setIsPasswordRecoveryMode(false);
         setState(buildInitialXPState("Orbiting nearby..."));
     };
 
@@ -1215,7 +1310,10 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             debugUnlockMark,
             user,
             authMode,
+            isPasswordRecoveryMode,
             login,
+            requestPasswordReset,
+            completePasswordReset,
             loginWithGoogle,
             logout,
             avatarUrl: state.avatarUrl,

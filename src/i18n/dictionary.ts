@@ -44,27 +44,46 @@ export type UiDictionary = {
     login: {
         modeRegister: string;
         modeLogin: string;
+        modeForgotPassword: string;
+        modeResetPassword: string;
         registerForm: string;
         loginForm: string;
+        forgotPasswordForm: string;
+        resetPasswordForm: string;
         registerInfo: string;
         loginInfo: string;
+        forgotPasswordInfo: string;
+        resetPasswordInfo: string;
         fullName: string;
         username: string;
         gender: string;
         birthDate: string;
         email: string;
         password: string;
+        newPassword: string;
+        confirmNewPassword: string;
         fullNamePlaceholder: string;
         usernamePlaceholder: string;
         emailPlaceholder: string;
         passwordPlaceholder: string;
+        newPasswordPlaceholder: string;
+        confirmNewPasswordPlaceholder: string;
         submitRegister: string;
         submitLogin: string;
+        submitForgotPassword: string;
+        submitResetPassword: string;
         submitLoading: string;
+        forgotPasswordLink: string;
+        backToLogin: string;
         googleContinue: string;
         googleRedirecting: string;
         localAuthInfo: string;
         loginFailed: string;
+        forgotPasswordFailed: string;
+        resetPasswordFailed: string;
+        forgotPasswordSuccess: string;
+        resetPasswordSuccess: string;
+        passwordMismatch: string;
         googleFailed: string;
         or: string;
     };
@@ -271,14 +290,21 @@ export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
             ]
         },
         login: {
-            modeRegister: 'Yeni Uyelik', modeLogin: 'Uye Girisi', registerForm: 'Kayit Formu', loginForm: 'Giris Formu',
+            modeRegister: 'Yeni Uyelik', modeLogin: 'Uye Girisi', modeForgotPassword: 'Sifre Sifirla', modeResetPassword: 'Yeni Sifre',
+            registerForm: 'Kayit Formu', loginForm: 'Giris Formu', forgotPasswordForm: 'Sifre Sifirlama', resetPasswordForm: 'Yeni Sifre Belirle',
             registerInfo: 'Kullanici adi, cinsiyet ve dogum tarihi profiline kaydedilir.', loginInfo: 'Mevcut hesabinla giris yap.',
+            forgotPasswordInfo: 'Kayitli e-posta adresini gir, sifre yenileme baglantisi gonderelim.', resetPasswordInfo: 'Guvenli bir yeni sifre belirleyip devam et.',
             fullName: 'Isim Soyisim', username: 'Kullanici Adi', gender: 'Cinsiyet', birthDate: 'Dogum Tarihi',
-            email: 'E-posta', password: 'Sifre', fullNamePlaceholder: 'Ad Soyad', usernamePlaceholder: 'ornek_kullanici',
+            email: 'E-posta', password: 'Sifre', newPassword: 'Yeni Sifre', confirmNewPassword: 'Yeni Sifre Tekrar',
+            fullNamePlaceholder: 'Ad Soyad', usernamePlaceholder: 'ornek_kullanici',
             emailPlaceholder: 'ornek@email.com', passwordPlaceholder: 'minimum 6 karakter',
-            submitRegister: 'Kayit Ol', submitLogin: 'Giris Yap', submitLoading: 'Bekleyin...',
+            newPasswordPlaceholder: 'yeni sifren (minimum 6 karakter)', confirmNewPasswordPlaceholder: 'yeni sifreni tekrar yaz',
+            submitRegister: 'Kayit Ol', submitLogin: 'Giris Yap', submitForgotPassword: 'Baglanti Gonder', submitResetPassword: 'Sifreyi Guncelle', submitLoading: 'Bekleyin...',
+            forgotPasswordLink: 'Sifremi Unuttum', backToLogin: 'Giris Ekranina Don',
             googleContinue: 'Google ile Devam Et', googleRedirecting: 'Yonlendiriliyor...', localAuthInfo: 'Supabase auth tanimli degil, yerel giris modu aktif.',
-            loginFailed: 'Giris basarisiz.', googleFailed: 'Google girisi basarisiz.', or: 'VEYA'
+            loginFailed: 'Giris basarisiz.', forgotPasswordFailed: 'Sifre yenileme istegi basarisiz.', resetPasswordFailed: 'Sifre guncellenemedi.',
+            forgotPasswordSuccess: 'Sifre yenileme baglantisi gonderildi.', resetPasswordSuccess: 'Sifre guncellendi.', passwordMismatch: 'Sifreler eslesmiyor.',
+            googleFailed: 'Google girisi basarisiz.', or: 'VEYA'
         },
         settings: {
             title: 'Ayarlar', subtitle: 'Hesap ve deneyim ayarlari', close: 'Kapat',
@@ -361,14 +387,21 @@ export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
             ]
         },
         login: {
-            modeRegister: 'New Membership', modeLogin: 'Member Login', registerForm: 'Register Form', loginForm: 'Login Form',
+            modeRegister: 'New Membership', modeLogin: 'Member Login', modeForgotPassword: 'Reset Password', modeResetPassword: 'Set New Password',
+            registerForm: 'Register Form', loginForm: 'Login Form', forgotPasswordForm: 'Password Reset', resetPasswordForm: 'Set New Password',
             registerInfo: 'Username, gender and birth date are saved to your profile.', loginInfo: 'Sign in with your existing account.',
+            forgotPasswordInfo: 'Enter your account email and we will send a reset link.', resetPasswordInfo: 'Set a secure new password to continue.',
             fullName: 'Full Name', username: 'Username', gender: 'Gender', birthDate: 'Birth Date',
-            email: 'Email', password: 'Password', fullNamePlaceholder: 'Full name', usernamePlaceholder: 'sample_user',
+            email: 'Email', password: 'Password', newPassword: 'New Password', confirmNewPassword: 'Confirm New Password',
+            fullNamePlaceholder: 'Full name', usernamePlaceholder: 'sample_user',
             emailPlaceholder: 'sample@email.com', passwordPlaceholder: 'minimum 6 characters',
-            submitRegister: 'Sign Up', submitLogin: 'Sign In', submitLoading: 'Please wait...',
+            newPasswordPlaceholder: 'your new password (minimum 6 characters)', confirmNewPasswordPlaceholder: 'repeat your new password',
+            submitRegister: 'Sign Up', submitLogin: 'Sign In', submitForgotPassword: 'Send Reset Link', submitResetPassword: 'Update Password', submitLoading: 'Please wait...',
+            forgotPasswordLink: 'Forgot Password?', backToLogin: 'Back to Login',
             googleContinue: 'Continue with Google', googleRedirecting: 'Redirecting...', localAuthInfo: 'Supabase auth is not configured, local login mode is active.',
-            loginFailed: 'Login failed.', googleFailed: 'Google sign-in failed.', or: 'OR'
+            loginFailed: 'Login failed.', forgotPasswordFailed: 'Password reset request failed.', resetPasswordFailed: 'Password update failed.',
+            forgotPasswordSuccess: 'Password reset link sent.', resetPasswordSuccess: 'Password updated successfully.', passwordMismatch: 'Passwords do not match.',
+            googleFailed: 'Google sign-in failed.', or: 'OR'
         },
         settings: {
             title: 'Settings', subtitle: 'Account and experience settings', close: 'Close',

@@ -25,6 +25,7 @@ const AppContent = () => {
     streakCelebrationEvent,
     closeStreakCelebration,
     user,
+    isPasswordRecoveryMode,
     avatarUrl
   } = useXP();
   const [activeMovie, setActiveMovie] = useState<Movie | null>(null);
@@ -50,8 +51,8 @@ const AppContent = () => {
     };
   }, [showDebugPanel]);
 
-  if (!user) {
-    if (showLanding) {
+  if (!user || isPasswordRecoveryMode) {
+    if (showLanding && !isPasswordRecoveryMode) {
       return <LandingPage onStart={() => setShowLanding(false)} />;
     }
     return <LoginView />;
