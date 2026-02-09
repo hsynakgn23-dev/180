@@ -15,7 +15,7 @@ interface LandingPageProps {
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onStart }) => {
     const { text, language, setLanguage } = useLanguage();
-    const [activeInfoSection, setActiveInfoSection] = useState<'manifesto' | 'rules' | null>(null);
+    const [activeInfoSection, setActiveInfoSection] = useState<'manifesto' | 'rules' | 'contact' | null>(null);
     const activeInfo = useMemo(() => {
         if (activeInfoSection === 'manifesto') {
             return {
@@ -31,9 +31,20 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStart }) => {
                 points: text.landing.rulesPoints
             };
         }
+        if (activeInfoSection === 'contact') {
+            return {
+                title: text.landing.footerContact,
+                body: '',
+                points: [
+                    'Gmail: 180absolutecinema@gmail.com',
+                    'X: https://x.com/180absolutecnma'
+                ]
+            };
+        }
         return null;
     }, [
         activeInfoSection,
+        text.landing.footerContact,
         text.landing.manifestoBody,
         text.landing.manifestoPoints,
         text.landing.manifestoTitle,
@@ -42,7 +53,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStart }) => {
         text.landing.rulesTitle
     ]);
 
-    const toggleInfoSection = (nextSection: 'manifesto' | 'rules') => {
+    const toggleInfoSection = (nextSection: 'manifesto' | 'rules' | 'contact') => {
         setActiveInfoSection((prev) => (prev === nextSection ? null : nextSection));
     };
 
@@ -196,9 +207,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStart }) => {
                     </button>
                     <button
                         type="button"
-                        disabled
-                        aria-disabled="true"
-                        className="opacity-40 cursor-not-allowed"
+                        onClick={() => toggleInfoSection('contact')}
+                        className={`transition-colors ${activeInfoSection === 'contact' ? 'text-sage' : 'hover:text-sage'}`}
                     >
                         {text.landing.footerContact}
                     </button>

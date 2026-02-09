@@ -49,6 +49,7 @@ interface XPState {
     bio: string; // Max 180 chars
     avatarId: string; // e.g. 'geo_1', 'geo_2'
     avatarUrl?: string; // Custom uploaded image (Data URL)
+    lastShareRewardDate: string | null;
 }
 
 interface AuthResult {
@@ -130,6 +131,7 @@ interface XPContextType {
     updateIdentity: (bio: string, avatarId: string) => void;
     updatePersonalInfo: (profile: RegistrationProfileInput) => Promise<AuthResult>;
     toggleFollowUser: (username: string) => void;
+    awardShareXP: (platform: 'instagram' | 'tiktok' | 'x') => AuthResult;
     submitRitual: (movieId: number, text: string, rating: number, genre: string, title?: string, posterPath?: string) => AuthResult;
     deleteRitual: (ritualId: string) => void;
     echoRitual: (ritualId: string) => void;
@@ -156,6 +158,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const STREAK_MILESTONES = new Set([5, 7, 10, 20, 40, 50, 100, 200, 250, 300, 350]);
 const REGISTRATION_GENDERS: RegistrationGender[] = ['female', 'male', 'non_binary', 'prefer_not_to_say'];
 const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
+const SHARE_REWARD_XP = 18;
 export const LEAGUE_NAMES = Object.keys(LEAGUES_DATA);
 type PendingRegistrationProfile = RegistrationProfileInput & { email: string };
 const getLeagueIndexFromXp = (xp: number): number =>
@@ -239,7 +242,8 @@ const buildInitialXPState = (bio = "A silent observer."): XPState => ({
     gender: '',
     birthDate: '',
     bio,
-    avatarId: "geo_1"
+    avatarId: "geo_1",
+    lastShareRewardDate: null
 });
 
 const normalizeXPState = (input: Partial<XPState> | null | undefined): XPState => {
@@ -269,7 +273,8 @@ const normalizeXPState = (input: Partial<XPState> | null | undefined): XPState =
         gender: (input.gender as RegistrationGender) || '',
         birthDate: input.birthDate || '',
         bio: input.bio || fallback.bio,
-        avatarId: input.avatarId || fallback.avatarId
+        avatarId: input.avatarId || fallback.avatarId,
+        lastShareRewardDate: input.lastShareRewardDate || null
     };
 };
 
@@ -789,6 +794,26 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             if (currentFollowing.length >= 5) currentMarks = tryUnlockMark('quiet_following', currentMarks);
         }
         updateState({ following: currentFollowing, marks: currentMarks });
+    };
+
+    const awardShareXP = (platform: 'instagram' | 'tiktok' | 'x'): AuthResult => {
+        const today = getToday();
+        if (state.lastShareRewardDate === today) {
+            return { ok: false, message: 'Bugun paylasim bonusu zaten alindi.' };
+        }
+
+        const nextXP = state.totalXP + SHARE_REWARD_XP;
+        updateState({
+            totalXP: nextXP,
+            lastShareRewardDate: today
+        });
+        triggerWhisper(`Paylasim bonusi +${SHARE_REWARD_XP} XP`);
+
+        const platformLabel = platform === 'x' ? 'X' : platform === 'tiktok' ? 'TikTok' : 'Instagram';
+        return {
+            ok: true,
+            message: `${platformLabel} paylasimi kaydedildi. +${SHARE_REWARD_XP} XP`
+        };
     };
 
     // Trigger Whisper
@@ -1320,6 +1345,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             updateIdentity,
             updatePersonalInfo,
             toggleFollowUser,
+            awardShareXP,
             submitRitual,
             deleteRitual,
             echoRitual,

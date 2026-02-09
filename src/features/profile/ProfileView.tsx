@@ -93,6 +93,8 @@ type FilmReplyEntry = {
     timestamp: string;
 };
 
+type SharePlatform = 'instagram' | 'tiktok' | 'x';
+
 const buildCommentKey = (movieTitle: string, text: string, date: string): string => {
     return `${movieTitle.trim()}::${text.trim()}::${date.trim()}`;
 };
@@ -132,6 +134,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
         bio,
         avatarId,
         updateIdentity,
+        awardShareXP,
         deleteRitual,
         user,
         logout,
@@ -143,6 +146,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
     const [tempBio, setTempBio] = useState(bio);
     const [tempAvatar, setTempAvatar] = useState(avatarId);
     const [showSettings, setShowSettings] = useState(false);
+    const [shareStatus, setShareStatus] = useState<string | null>(null);
     const [selectedMovieId, setSelectedMovieId] = useState<number | null>(null);
     const [repliesByCommentKey, setRepliesByCommentKey] = useState<Record<string, FilmReplyEntry[]>>({});
     const [isRepliesLoading, setIsRepliesLoading] = useState(false);
@@ -222,6 +226,93 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
     }, [dailyRituals]);
 
     const mostWrittenFilm = commentedFilms[0];
+    const latestRitual = dailyRituals[0];
+    const latestCommentPreview = useMemo(() => {
+        const raw = latestRitual?.text?.trim() || '';
+        if (!raw) return language === 'tr' ? 'Ilk yorumunla sinyali baslat.' : 'Start the signal with your first comment.';
+        if (raw.length <= 120) return raw;
+        return `${raw.slice(0, 120).trimEnd()}...`;
+    }, [latestRitual?.text, language]);
+
+    const shareCopy = useMemo(() => {
+        if (language === 'tr') {
+            return {
+                title: 'Social Share Card',
+                subtitle: 'Profilini ve yorum ritmini paylas, bonus XP kazan.',
+                previewBadge: 'Canli Onizleme',
+                shareInstagram: 'Instagram',
+                shareTiktok: 'TikTok',
+                shareX: 'X',
+                rewardHint: 'Gunluk ilk paylasim +18 XP',
+                copiedHint: 'Metin panoya kopyalandi. Platform acildi.',
+                failedHint: 'Paylasim hazirlanamadi. Tekrar dene.'
+            };
+        }
+        return {
+            title: 'Social Share Card',
+            subtitle: 'Share your profile and comment rhythm to earn bonus XP.',
+            previewBadge: 'Live Preview',
+            shareInstagram: 'Instagram',
+            shareTiktok: 'TikTok',
+            shareX: 'X',
+            rewardHint: 'First share of the day: +18 XP',
+            copiedHint: 'Caption copied to clipboard. Platform opened.',
+            failedHint: 'Could not prepare share. Try again.'
+        };
+    }, [language]);
+
+    const buildSharePayload = (platform: SharePlatform): string => {
+        const displayName = user?.name || text.profile.curatorFallback;
+        const handle = username || text.profile.observerHandle;
+        const topFilm = mostWrittenFilm?.title || text.profile.noRecords;
+        const platformTag = platform === 'x' ? '#X' : platform === 'tiktok' ? '#TikTok' : '#Instagram';
+        return [
+            '180 Absolute Cinema',
+            `${displayName} (@${handle})`,
+            `${currentLeagueLabel} • ${Math.floor(xp)} XP`,
+            `${text.profile.comments}: ${dailyRituals.length} | ${text.profile.days}: ${daysPresent} | ${text.profileWidget.streak}: ${streak || 0}`,
+            `${text.profile.mostCommented}: ${topFilm}`,
+            `"${latestCommentPreview}"`,
+            `${platformTag} #180AbsoluteCinema`
+        ].join('\n');
+    };
+
+    const copyToClipboard = async (value: string): Promise<boolean> => {
+        try {
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(value);
+                return true;
+            }
+            return false;
+        } catch {
+            return false;
+        }
+    };
+
+    const handleShare = async (platform: SharePlatform) => {
+        const payload = buildSharePayload(platform);
+        const originUrl = typeof window !== 'undefined' ? window.location.origin : '';
+        const pageUrl = `${originUrl}/`;
+
+        try {
+            if (platform === 'x') {
+                const shareUrl = `https://x.com/intent/tweet?text=${encodeURIComponent(payload)}&url=${encodeURIComponent(pageUrl)}`;
+                window.open(shareUrl, '_blank', 'noopener,noreferrer');
+            } else {
+                await copyToClipboard(`${payload}\n${pageUrl}`);
+                const target = platform === 'instagram'
+                    ? 'https://www.instagram.com/'
+                    : 'https://www.tiktok.com/';
+                window.open(target, '_blank', 'noopener,noreferrer');
+                setShareStatus(shareCopy.copiedHint);
+            }
+
+            const rewardResult = awardShareXP(platform);
+            setShareStatus(rewardResult.message || shareCopy.rewardHint);
+        } catch {
+            setShareStatus(shareCopy.failedHint);
+        }
+    };
     const ritualEntriesByMovie = useMemo(() => {
         const byMovie = new Map<number, FilmCommentEntry[]>();
         for (const ritual of dailyRituals) {
@@ -284,6 +375,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
         window.addEventListener('keydown', handleEscape);
         return () => window.removeEventListener('keydown', handleEscape);
     }, [selectedMovieId]);
+
+    useEffect(() => {
+        if (!shareStatus) return;
+        const timeoutId = window.setTimeout(() => setShareStatus(null), 5000);
+        return () => window.clearTimeout(timeoutId);
+    }, [shareStatus]);
 
     useEffect(() => {
         const originalOverflow = document.body.style.overflow;
@@ -701,6 +798,71 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                                         {mostWrittenFilm?.title || text.profile.noRecords}
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+
+                        {/* Social Share Card */}
+                        <div className="relative overflow-hidden rounded-xl border border-sage/20 bg-gradient-to-br from-[#111814] via-[#161616] to-[#2a1f1a] p-6 animate-fade-in shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
+                            <div className="pointer-events-none absolute -top-16 -right-16 w-48 h-48 rounded-full bg-sage/15 blur-3xl" />
+                            <div className="pointer-events-none absolute -bottom-20 -left-10 w-44 h-44 rounded-full bg-clay/20 blur-3xl" />
+                            <div className="relative z-10">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div>
+                                        <p className="text-[10px] uppercase tracking-[0.22em] text-sage/80 font-bold">{shareCopy.previewBadge}</p>
+                                        <h3 className="text-lg font-bold tracking-[0.06em] uppercase text-white mt-1">{shareCopy.title}</h3>
+                                    </div>
+                                    <span className="text-[10px] uppercase tracking-[0.2em] text-clay/80">{shareCopy.rewardHint}</span>
+                                </div>
+
+                                <p className="text-[11px] text-white/70 mb-5">{shareCopy.subtitle}</p>
+
+                                <div className="rounded-xl border border-white/15 bg-black/30 p-4 mb-5">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <p className="text-xs uppercase tracking-[0.18em] text-white/80 font-bold">{user?.name || text.profile.curatorFallback}</p>
+                                        <p className="text-[10px] font-mono text-sage/80">{Math.floor(xp)} XP</p>
+                                    </div>
+                                    <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-3">@{username || text.profile.observerHandle}</p>
+                                    <p className="text-sm text-white/90 leading-relaxed font-serif italic">"{latestCommentPreview}"</p>
+                                    <div className="mt-4 flex flex-wrap gap-2">
+                                        <span className="px-2 py-1 rounded-full border border-white/10 text-[9px] uppercase tracking-[0.16em] text-sage/85">
+                                            {text.profile.comments}: {dailyRituals.length}
+                                        </span>
+                                        <span className="px-2 py-1 rounded-full border border-white/10 text-[9px] uppercase tracking-[0.16em] text-sage/85">
+                                            {text.profile.days}: {daysPresent}
+                                        </span>
+                                        <span className="px-2 py-1 rounded-full border border-white/10 text-[9px] uppercase tracking-[0.16em] text-sage/85">
+                                            {text.profileWidget.streak}: {streak || 0}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => void handleShare('instagram')}
+                                        className="px-3 py-2 rounded-lg border border-white/15 bg-white/5 text-[10px] uppercase tracking-[0.18em] text-white hover:border-sage/50 hover:text-sage transition-colors"
+                                    >
+                                        {shareCopy.shareInstagram}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => void handleShare('tiktok')}
+                                        className="px-3 py-2 rounded-lg border border-white/15 bg-white/5 text-[10px] uppercase tracking-[0.18em] text-white hover:border-sage/50 hover:text-sage transition-colors"
+                                    >
+                                        {shareCopy.shareTiktok}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => void handleShare('x')}
+                                        className="px-3 py-2 rounded-lg border border-white/15 bg-white/5 text-[10px] uppercase tracking-[0.18em] text-white hover:border-sage/50 hover:text-sage transition-colors"
+                                    >
+                                        {shareCopy.shareX}
+                                    </button>
+                                </div>
+
+                                {shareStatus && (
+                                    <p className="mt-3 text-[10px] uppercase tracking-[0.14em] text-sage/90">{shareStatus}</p>
+                                )}
                             </div>
                         </div>
 
