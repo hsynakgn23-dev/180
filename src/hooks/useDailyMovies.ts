@@ -25,6 +25,43 @@ const DAILY_MAX_MOVIES_PER_DIRECTOR = 1;
 const TMDB_API_BASE = 'https://api.themoviedb.org/3';
 const TMDB_DISCOVER_PAGE_WINDOW = 20;
 const TMDB_SLOT_PAGE_COUNT = 2;
+const DEFAULT_DAILY_ROLLOVER_TIMEZONE = 'Europe/Istanbul';
+const DAILY_ROLLOVER_TIMEZONE = (
+    import.meta.env.VITE_DAILY_ROLLOVER_TIMEZONE || DEFAULT_DAILY_ROLLOVER_TIMEZONE
+).trim() || DEFAULT_DAILY_ROLLOVER_TIMEZONE;
+
+const createDateFormatter = (timeZone: string): Intl.DateTimeFormat => {
+    try {
+        return new Intl.DateTimeFormat('en-CA', {
+            timeZone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        });
+    } catch {
+        return new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'UTC',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        });
+    }
+};
+
+const DAILY_DATE_FORMATTER = createDateFormatter(DAILY_ROLLOVER_TIMEZONE);
+
+const getDateKeyFromFormatter = (date: Date, formatter: Intl.DateTimeFormat): string => {
+    const parts = formatter.formatToParts(date);
+    const year = parts.find((part) => part.type === 'year')?.value;
+    const month = parts.find((part) => part.type === 'month')?.value;
+    const day = parts.find((part) => part.type === 'day')?.value;
+
+    if (!year || !month || !day) {
+        return date.toISOString().split('T')[0];
+    }
+
+    return `${year}-${month}-${day}`;
+};
 
 type TmdbDiscoverMovie = {
     id?: number;
@@ -38,21 +75,15 @@ type TmdbDiscoverMovie = {
     genre_ids?: number[];
 };
 
-const getLocalDateKey = (): string => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-};
+const getDailyDateKey = (): string => getDateKeyFromFormatter(new Date(), DAILY_DATE_FORMATTER);
 
 const getPreviousDateKey = (dateKey: string): string => {
     const [year, month, day] = dateKey.split('-').map((part) => Number(part));
-    const date = new Date(year, (month || 1) - 1, day || 1);
-    date.setDate(date.getDate() - 1);
-    const prevYear = date.getFullYear();
-    const prevMonth = String(date.getMonth() + 1).padStart(2, '0');
-    const prevDay = String(date.getDate()).padStart(2, '0');
+    const date = new Date(Date.UTC(year, (month || 1) - 1, day || 1));
+    date.setUTCDate(date.getUTCDate() - 1);
+    const prevYear = date.getUTCFullYear();
+    const prevMonth = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const prevDay = String(date.getUTCDate()).padStart(2, '0');
     return `${prevYear}-${prevMonth}-${prevDay}`;
 };
 
@@ -71,6 +102,20 @@ const createSeededRandom = (seed: number) => {
         state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
         return state / 4294967296;
     };
+};
+
+const getModernFloorDate = (): string => {
+    const [year, month, day] = getDailyDateKey().split('-').map((part) => Number(part));
+    const value = new Date(Date.UTC((year || 2000) - 2, (month || 1) - 1, day || 1));
+    const floorYear = value.getUTCFullYear();
+    const floorMonth = String(value.getUTCMonth() + 1).padStart(2, '0');
+    const floorDay = String(value.getUTCDate()).padStart(2, '0');
+    return `${floorYear}-${floorMonth}-${floorDay}`;
+};
+
+const getSlotParamsForToday = (): string[] => {
+    const modernFloor = getModernFloorDate();
+    return DAILY_SLOTS.map((slot) => slot.params.replace('2024-01-01', modernFloor));
 };
 
 const uniqueMoviesById = (movies: Movie[]): Movie[] => {
@@ -356,10 +401,11 @@ const buildDailyTmdbMovies = async (
     try {
         const genreMap = await fetchTmdbGenreMap(apiKey);
         const poolById = new Map<number, Movie>();
+        const slotParamsForToday = getSlotParamsForToday();
 
-        for (let slotIndex = 0; slotIndex < DAILY_SLOTS.length; slotIndex += 1) {
-            const slot = DAILY_SLOTS[slotIndex];
-            const results = await fetchTmdbDiscoverForSlot(apiKey, dateKey, slot.params, slotIndex);
+        for (let slotIndex = 0; slotIndex < slotParamsForToday.length; slotIndex += 1) {
+            const slotParams = slotParamsForToday[slotIndex];
+            const results = await fetchTmdbDiscoverForSlot(apiKey, dateKey, slotParams, slotIndex);
             for (const result of results) {
                 const mapped = mapTmdbResultToMovie(result, genreMap);
                 if (!mapped) continue;
@@ -504,24 +550,22 @@ export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'g
     const [baseMovies, setBaseMovies] = useState<Movie[]>([]);
     const [candidateMovies, setCandidateMovies] = useState<Movie[]>(() => uniqueMoviesById(TMDB_SEEDS));
     const [loading, setLoading] = useState(true);
-    const [dateKey, setDateKey] = useState<string>(getLocalDateKey);
+    const [dateKey, setDateKey] = useState<string>(getDailyDateKey);
 
     useEffect(() => {
-        let midnightTimer: number | null = null;
+        let dateKeyTimer: number | null = null;
 
         const syncDateKey = () => {
-            const nextDateKey = getLocalDateKey();
+            const nextDateKey = getDailyDateKey();
             setDateKey((prev) => (prev === nextDateKey ? prev : nextDateKey));
         };
 
-        const scheduleMidnightTick = () => {
-            const now = new Date();
-            const nextMidnight = new Date(now);
-            nextMidnight.setHours(24, 0, 0, 120);
-            const waitMs = Math.max(100, nextMidnight.getTime() - now.getTime());
-            midnightTimer = window.setTimeout(() => {
+        const scheduleDateKeyTick = () => {
+            const nowMs = Date.now();
+            const waitMs = Math.max(500, 60000 - (nowMs % 60000) + 200);
+            dateKeyTimer = window.setTimeout(() => {
                 syncDateKey();
-                scheduleMidnightTick();
+                scheduleDateKeyTick();
             }, waitMs);
         };
 
@@ -532,13 +576,13 @@ export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'g
         };
 
         syncDateKey();
-        scheduleMidnightTick();
+        scheduleDateKeyTick();
         window.addEventListener('focus', syncDateKey);
         document.addEventListener('visibilitychange', handleVisibility);
 
         return () => {
-            if (midnightTimer !== null) {
-                window.clearTimeout(midnightTimer);
+            if (dateKeyTimer !== null) {
+                window.clearTimeout(dateKeyTimer);
             }
             window.removeEventListener('focus', syncDateKey);
             document.removeEventListener('visibilitychange', handleVisibility);

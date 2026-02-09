@@ -41,12 +41,14 @@ Client:
 - `VITE_ENABLE_DEBUG_PANEL` (`0` disables debug panel in dev)
 - `VITE_ENABLE_MOCK_NOTIFICATIONS` (`1` enables seeded notifications in dev)
 - `VITE_ALLOW_CLIENT_DAILY_WRITE` (`1` enables client write path in dev only)
+- `VITE_DAILY_ROLLOVER_TIMEZONE` (optional, default `Europe/Istanbul`)
 
 Server/cron (`api/cron/daily.ts`):
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `SUPABASE_STORAGE_BUCKET` (optional, default `posters`)
 - `TMDB_API_KEY`
+- `DAILY_ROLLOVER_TIMEZONE` (optional, default `Europe/Istanbul`)
 
 ## Supabase Rollout
 - Base setup SQL: `supabase_setup.sql`
@@ -58,4 +60,6 @@ Server/cron (`api/cron/daily.ts`):
 ## Notes
 - Social interactions use relational tables (`ritual_echoes`, `ritual_replies`).
 - Client-side Daily 5 writes are restricted to dev mode; production writer should be cron/service role.
+- `vercel.json` cron is set to `21:00 UTC` to align with `Europe/Istanbul` midnight rollover.
+- If you change rollover timezone, update cron schedule to the matching UTC hour.
 - Debug panel is dynamically imported only in dev mode.

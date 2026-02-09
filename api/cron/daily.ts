@@ -67,6 +67,46 @@ const MODERN_YEAR_THRESHOLD = 2010;
 const DAILY_MAX_MOVIES_PER_DIRECTOR = 1;
 const TMDB_DISCOVER_PAGE_WINDOW = 20;
 const TMDB_SLOT_PAGE_COUNT = 2;
+const DEFAULT_DAILY_ROLLOVER_TIMEZONE = 'Europe/Istanbul';
+const DAILY_ROLLOVER_TIMEZONE = (
+    process.env.DAILY_ROLLOVER_TIMEZONE || DEFAULT_DAILY_ROLLOVER_TIMEZONE
+).trim() || DEFAULT_DAILY_ROLLOVER_TIMEZONE;
+
+const createDateFormatter = (timeZone: string): Intl.DateTimeFormat => {
+    try {
+        return new Intl.DateTimeFormat('en-CA', {
+            timeZone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        });
+    } catch {
+        return new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'UTC',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        });
+    }
+};
+
+const DAILY_DATE_FORMATTER = createDateFormatter(DAILY_ROLLOVER_TIMEZONE);
+const DAILY_ROLLOVER_TIMEZONE_RESOLVED = DAILY_DATE_FORMATTER.resolvedOptions().timeZone || 'UTC';
+
+const getDateKeyFromFormatter = (date: Date, formatter: Intl.DateTimeFormat): string => {
+    const parts = formatter.formatToParts(date);
+    const year = parts.find((part) => part.type === 'year')?.value;
+    const month = parts.find((part) => part.type === 'month')?.value;
+    const day = parts.find((part) => part.type === 'day')?.value;
+
+    if (!year || !month || !day) {
+        return date.toISOString().split('T')[0];
+    }
+
+    return `${year}-${month}-${day}`;
+};
+
+const getDailyDateKey = (): string => getDateKeyFromFormatter(new Date(), DAILY_DATE_FORMATTER);
 
 const DEFAULT_SLOT_PARAMS = [
     '&vote_average.gte=8.4&vote_count.gte=3000&sort_by=vote_average.desc',
@@ -175,9 +215,12 @@ const createSeededRandom = (seed: number) => {
 };
 
 const getModernFloorDate = (): string => {
-    const value = new Date();
-    value.setFullYear(value.getFullYear() - 2);
-    return value.toISOString().split('T')[0];
+    const [year, month, day] = getDailyDateKey().split('-').map((part) => Number(part));
+    const value = new Date(Date.UTC((year || 2000) - 2, (month || 1) - 1, day || 1));
+    const floorYear = value.getUTCFullYear();
+    const floorMonth = String(value.getUTCMonth() + 1).padStart(2, '0');
+    const floorDay = String(value.getUTCDate()).padStart(2, '0');
+    return `${floorYear}-${floorMonth}-${floorDay}`;
 };
 
 const getSlotParamsForToday = (): string[] => {
@@ -189,11 +232,11 @@ const getSlotParamsForToday = (): string[] => {
 
 const getPreviousDateKey = (dateKey: string): string => {
     const [year, month, day] = dateKey.split('-').map((part) => Number(part));
-    const date = new Date(year, (month || 1) - 1, day || 1);
-    date.setDate(date.getDate() - 1);
-    const prevYear = date.getFullYear();
-    const prevMonth = String(date.getMonth() + 1).padStart(2, '0');
-    const prevDay = String(date.getDate()).padStart(2, '0');
+    const date = new Date(Date.UTC(year, (month || 1) - 1, day || 1));
+    date.setUTCDate(date.getUTCDate() - 1);
+    const prevYear = date.getUTCFullYear();
+    const prevMonth = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const prevDay = String(date.getUTCDate()).padStart(2, '0');
     return `${prevYear}-${prevMonth}-${prevDay}`;
 };
 
@@ -851,7 +894,12 @@ export default async function handler(req: any, res: any) {
         const envCheck = getQueryParam(req, 'env');
         const debug = getQueryParam(req, 'debug') === '1';
         if (ping === '1') {
-            return sendJson(res, 200, { ok: true, runtime: 'node', time: new Date().toISOString() });
+            return sendJson(res, 200, {
+                ok: true,
+                runtime: 'node',
+                time: new Date().toISOString(),
+                timezone: DAILY_ROLLOVER_TIMEZONE_RESOLVED
+            });
         }
         if (envCheck === '1') {
             const serviceRoleKey = getSupabaseServiceRoleKey();
@@ -892,7 +940,7 @@ export default async function handler(req: any, res: any) {
         const bucket = getBucketName();
         console.log('[daily-cron] bucket', bucket);
         await ensureBucket(supabase, bucket);
-        const todayKey = new Date().toISOString().split('T')[0];
+        const todayKey = getDailyDateKey();
         const previousKey = getPreviousDateKey(todayKey);
         const forceValue = getQueryParam(req, 'force');
         const force = forceValue === '1' || forceValue === 'true';
@@ -933,7 +981,12 @@ export default async function handler(req: any, res: any) {
 
         const isStorageBacked = movies.every((m: any) => typeof m.posterPath === 'string' && m.posterPath.includes('/storage/v1/object/public/'));
         if (existing?.movies && isStorageBacked && !force) {
-            return sendJson(res, 200, { ok: true, reused: true, date: todayKey });
+            return sendJson(res, 200, {
+                ok: true,
+                reused: true,
+                date: todayKey,
+                timezone: DAILY_ROLLOVER_TIMEZONE_RESOLVED
+            });
         }
 
         movies = await Promise.all(movies.map((movie) => ensurePosters(supabase, bucket, movie, diagnostics)));
@@ -963,6 +1016,7 @@ export default async function handler(req: any, res: any) {
             ok: true,
             updated: true,
             date: todayKey,
+            timezone: DAILY_ROLLOVER_TIMEZONE_RESOLVED,
             count: movies.length,
             storageBackedCount,
             allStorageBacked: storageBackedCount === movies.length,
