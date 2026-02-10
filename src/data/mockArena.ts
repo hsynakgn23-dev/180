@@ -2,6 +2,7 @@ import type { ComponentType } from 'react';
 
 export interface Ritual {
     id: string;
+    userId?: string | null;
     movieId: number;
     movieTitle: string;
     year?: number;

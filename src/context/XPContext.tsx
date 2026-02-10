@@ -134,6 +134,7 @@ interface XPContextType {
     streak: number;
     echoHistory: EchoLog[];
     following: string[];
+    isFollowingUser: (targetUserId?: string | null, username?: string) => boolean;
     fullName: string;
     username: string;
     gender: RegistrationGender | '';
@@ -142,7 +143,7 @@ interface XPContextType {
     avatarId: string;
     updateIdentity: (bio: string, avatarId: string) => void;
     updatePersonalInfo: (profile: RegistrationProfileInput) => Promise<AuthResult>;
-    toggleFollowUser: (username: string) => void;
+    toggleFollowUser: (target: { userId?: string | null; username: string }) => Promise<AuthResult>;
     awardShareXP: (platform: 'instagram' | 'tiktok' | 'x', trigger: ShareRewardTrigger) => AuthResult;
     submitRitual: (movieId: number, text: string, rating: number, genre: string, title?: string, posterPath?: string) => AuthResult;
     deleteRitual: (ritualId: string) => void;
@@ -295,6 +296,13 @@ const normalizeXPState = (input: Partial<XPState> | null | undefined): XPState =
         avatarId: input.avatarId || fallback.avatarId,
         lastShareRewardDate: input.lastShareRewardDate || null
     };
+};
+
+const normalizeFollowKey = (value: string | null | undefined): string => (value || '').trim().toLowerCase();
+const buildFollowUserIdKey = (userId: string | null | undefined): string | null => {
+    const normalized = normalizeFollowKey(userId);
+    if (!normalized) return null;
+    return `id:${normalized}`;
 };
 
 const getUserXpStorageKey = (email: string): string =>
@@ -1231,19 +1239,93 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         triggerWhisper("Visage captured.");
     };
 
+    const isFollowingUser = (targetUserId?: string | null, username?: string): boolean => {
+        const following = state.following || [];
+        if (following.length === 0) return false;
+
+        const userIdKey = buildFollowUserIdKey(targetUserId);
+        const normalizedUsername = normalizeFollowKey(username);
+
+        return following.some((entry) => {
+            const normalizedEntry = normalizeFollowKey(entry);
+            if (!normalizedEntry) return false;
+            if (userIdKey && normalizedEntry === userIdKey) return true;
+            if (!normalizedUsername) return false;
+            return normalizedEntry === normalizedUsername;
+        });
+    };
+
     // Shadow Follow Logic
-    const toggleFollowUser = (username: string) => {
-        let currentFollowing = [...(state.following || [])];
-        let currentMarks = [...(state.marks || [])];
-        if (currentFollowing.includes(username)) {
-            currentFollowing = currentFollowing.filter(u => u !== username);
-            triggerWhisper(`Unfollowed ${username}.`);
-        } else {
-            currentFollowing.push(username);
-            triggerWhisper(`Shadowing ${username}.`);
-            if (currentFollowing.length >= 5) currentMarks = tryUnlockMark('quiet_following', currentMarks);
+    const toggleFollowUser = async (target: { userId?: string | null; username: string }): Promise<AuthResult> => {
+        const normalizedUsername = (target.username || '').trim();
+        if (!normalizedUsername) {
+            return { ok: false, message: 'Takip edilecek kullanici adi gecersiz.' };
         }
-        updateState({ following: currentFollowing, marks: currentMarks });
+
+        const normalizedCurrentName = (user?.name || '').trim().toLowerCase();
+        const normalizedTargetName = normalizedUsername.toLowerCase();
+        if (target.userId && user?.id && target.userId === user.id) {
+            return { ok: false, message: 'Kendini takip edemezsin.' };
+        }
+        if (!target.userId && normalizedCurrentName && normalizedCurrentName === normalizedTargetName) {
+            return { ok: false, message: 'Kendini takip edemezsin.' };
+        }
+
+        const userIdKey = buildFollowUserIdKey(target.userId);
+        let didFollow = false;
+
+        setState((prev) => {
+            const prevFollowing = [...(prev.following || [])];
+            const nextMarks = [...(prev.marks || [])];
+            const wasFollowing = prevFollowing.some((entry) => {
+                const normalizedEntry = normalizeFollowKey(entry);
+                if (!normalizedEntry) return false;
+                if (userIdKey && normalizedEntry === userIdKey) return true;
+                return normalizedEntry === normalizedTargetName;
+            });
+
+            if (wasFollowing) {
+                didFollow = false;
+                const updatedFollowing = prevFollowing.filter((entry) => {
+                    const normalizedEntry = normalizeFollowKey(entry);
+                    if (userIdKey && normalizedEntry === userIdKey) return false;
+                    return normalizedEntry !== normalizedTargetName;
+                });
+                if (user) {
+                    persistUserXpStateToLocal(user.email, { ...prev, following: updatedFollowing, marks: nextMarks });
+                }
+                return {
+                    ...prev,
+                    following: updatedFollowing,
+                    marks: nextMarks
+                };
+            }
+
+            didFollow = true;
+            const followEntry = userIdKey || normalizedUsername;
+            const updatedFollowing = [...prevFollowing, followEntry];
+            const dedupedFollowing = Array.from(new Set(updatedFollowing.map((entry) => entry.trim()).filter(Boolean)));
+            let unlockedMarks = nextMarks;
+            if (dedupedFollowing.length >= 5) {
+                unlockedMarks = tryUnlockMark('quiet_following', unlockedMarks);
+            }
+            if (user) {
+                persistUserXpStateToLocal(user.email, { ...prev, following: dedupedFollowing, marks: unlockedMarks });
+            }
+            return {
+                ...prev,
+                following: dedupedFollowing,
+                marks: unlockedMarks
+            };
+        });
+
+        if (didFollow) {
+            triggerWhisper(`Shadowing ${normalizedUsername}.`);
+            return { ok: true, message: `${normalizedUsername} takip edildi.` };
+        }
+
+        triggerWhisper(`Unfollowed ${normalizedUsername}.`);
+        return { ok: true, message: `${normalizedUsername} takipten cikarildi.` };
     };
 
     const awardShareXP = (platform: 'instagram' | 'tiktok' | 'x', trigger: ShareRewardTrigger): AuthResult => {
@@ -1904,6 +1986,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             streak: state.streak || 0,
             echoHistory: state.echoHistory || [],
             following: state.following || [],
+            isFollowingUser,
             fullName: state.fullName || '',
             username: state.username || '',
             gender: state.gender || '',

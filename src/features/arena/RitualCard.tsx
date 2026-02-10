@@ -13,6 +13,7 @@ interface RitualCardProps {
     ritual: Ritual;
     onDelete?: () => void;
     onLocalRepliesChange?: (ritualId: string, replies: ReplyRecord[]) => void;
+    onOpenAuthorProfile?: (target: { userId?: string | null; username: string }) => void;
 }
 
 const MAIN_TEXT_PREVIEW_LIMIT = 220;
@@ -46,8 +47,8 @@ const toRelativeTimestamp = (rawTimestamp: string): string => {
     return `${Math.floor(diffMs / dayMs)}d ago`;
 };
 
-export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLocalRepliesChange }) => {
-    const { echoRitual, following, user } = useXP();
+export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLocalRepliesChange, onOpenAuthorProfile }) => {
+    const { echoRitual, isFollowingUser, toggleFollowUser, user } = useXP();
     const { addNotification } = useNotifications();
     const { text: ui, format } = useLanguage();
     const [echoed, setEchoed] = useState(ritual.isEchoedByMe);
@@ -64,7 +65,16 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
     const [isMainExpanded, setIsMainExpanded] = useState(false);
     const [expandedReplies, setExpandedReplies] = useState<Record<string, boolean>>({});
 
-    const isFollowing = following.includes(ritual.author);
+    const isFollowing = isFollowingUser(ritual.userId, ritual.author);
+    const normalizedAuthor = (ritual.author || '').trim().toLowerCase();
+    const isOwnAuthor = Boolean(
+        user &&
+        (
+            (ritual.userId && user.id && ritual.userId === user.id) ||
+            ((user.name || '').trim().toLowerCase() === normalizedAuthor && normalizedAuthor.length > 0)
+        )
+    );
+    const canInteractWithAuthor = Boolean(ritual.author && !isOwnAuthor);
     const isMainTextLong = ritual.text.length > MAIN_TEXT_PREVIEW_LIMIT;
     const visibleMainText = useMemo(() => {
         if (!isMainTextLong || isMainExpanded) return ritual.text;
@@ -194,6 +204,28 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
     const handleDelete = () => {
         if (!onDelete) return;
         onDelete();
+    };
+
+    const handleOpenProfile = () => {
+        if (!ritual.author) return;
+        onOpenAuthorProfile?.({
+            userId: ritual.userId ?? null,
+            username: ritual.author
+        });
+    };
+
+    const handleToggleFollow = async () => {
+        if (!ritual.author || !canInteractWithAuthor) return;
+        const result = await toggleFollowUser({
+            userId: ritual.userId ?? null,
+            username: ritual.author
+        });
+        if (!result.ok && result.message) {
+            addNotification({
+                type: 'system',
+                message: result.message
+            });
+        }
     };
 
     const handleReplySubmit = () => {
@@ -337,7 +369,12 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
                         </div>
 
                         <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-[10px] tracking-widest uppercase text-[#E5E4E2]/70 font-bold relative group/author cursor-pointer">
+                            <button
+                                type="button"
+                                onClick={handleOpenProfile}
+                                className="text-[10px] tracking-widest uppercase text-[#E5E4E2]/70 font-bold relative group/author cursor-pointer hover:text-sage transition-colors"
+                                title="Open profile"
+                            >
                                 {ritual.author ? ritual.author : ui.ritualCard.anonymous}
 
                                 <div
@@ -345,7 +382,20 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
                                     style={{ backgroundColor: ritual.league === 'Bronze' ? '#CD7F32' : ritual.league === 'Gold' ? '#FFD700' : '#C0C0C0' }}
                                     title={ritual.league}
                                 />
-                            </span>
+                            </button>
+
+                            {canInteractWithAuthor && (
+                                <button
+                                    type="button"
+                                    onClick={() => void handleToggleFollow()}
+                                    className={`text-[9px] uppercase tracking-widest transition-colors ${isFollowing
+                                        ? 'text-sage/90 hover:text-sage'
+                                        : 'text-gray-400 hover:text-sage'
+                                        }`}
+                                >
+                                    {isFollowing ? 'Following' : 'Follow'}
+                                </button>
+                            )}
 
                             <span className="text-[9px] tracking-widest text-gray-500 uppercase">
                                 - {formatRitualTimestamp(ritual.timestamp)}
