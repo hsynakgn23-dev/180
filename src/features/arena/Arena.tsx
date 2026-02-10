@@ -247,18 +247,9 @@ const formatDateAsRitualTimestamp = (dateStr: string): string => {
     return `${diffDays}d ago`;
 };
 
-const normalizeProfileHandle = (value: string | null | undefined): string => (value || '').trim().toLowerCase();
-
-const ritualMatchesProfileTarget = (ritual: Ritual, target: ProfileTarget): boolean => {
-    if (target.userId && ritual.userId) {
-        return target.userId === ritual.userId;
-    }
-    return normalizeProfileHandle(ritual.author) === normalizeProfileHandle(target.username);
-};
-
 export const Arena: React.FC = () => {
     const { text } = useLanguage();
-    const { dailyRituals, user, league, deleteRitual, isFollowingUser, toggleFollowUser } = useXP();
+    const { dailyRituals, user, username, league, deleteRitual } = useXP();
     const { addNotification } = useNotifications();
     const [filter, setFilter] = useState<'all' | 'today'>('all');
     const [sortMode, setSortMode] = useState<'latest' | 'echoes'>('latest');
@@ -270,7 +261,6 @@ export const Arena: React.FC = () => {
     const [localRepliesByRitualId, setLocalRepliesByRitualId] = useState<Record<string, RitualReply[]>>({});
     const [isRemoteLoading, setIsRemoteLoading] = useState(canUseRemoteFeed);
     const [feedError, setFeedError] = useState<string | null>(null);
-    const [selectedProfile, setSelectedProfile] = useState<ProfileTarget | null>(null);
     const lastNotifiedErrorRef = useRef<string | null>(null);
 
     const reportFeedError = useCallback((message: string) => {
@@ -521,53 +511,18 @@ export const Arena: React.FC = () => {
         return [...items].sort((a, b) => getRitualTimeScore(b) - getRitualTimeScore(a));
     }, [filter, query, rituals, sortMode]);
 
-    const selectedProfileRituals = useMemo(() => {
-        if (!selectedProfile) return [];
-        return rituals
-            .filter((ritual) => ritualMatchesProfileTarget(ritual, selectedProfile))
-            .sort((a, b) => getRitualTimeScore(b) - getRitualTimeScore(a));
-    }, [rituals, selectedProfile]);
-
-    const selectedProfileStats = useMemo(() => {
-        const echoes = selectedProfileRituals.reduce((sum, ritual) => sum + (ritual.echoes || 0), 0);
-        const replies = selectedProfileRituals.reduce((sum, ritual) => sum + (ritual.replies?.length || 0), 0);
-        return {
-            comments: selectedProfileRituals.length,
-            echoes,
-            replies
-        };
-    }, [selectedProfileRituals]);
-
-    const isViewingOwnProfile = useMemo(() => {
-        if (!selectedProfile || !user) return false;
-        if (selectedProfile.userId && user.id && selectedProfile.userId === user.id) return true;
-        return normalizeProfileHandle(selectedProfile.username) === normalizeProfileHandle(user.name);
-    }, [selectedProfile, user]);
-
-    const isFollowingSelectedProfile = selectedProfile
-        ? isFollowingUser(selectedProfile.userId, selectedProfile.username)
-        : false;
-
-    const handleToggleFollowSelectedProfile = async () => {
-        if (!selectedProfile || isViewingOwnProfile) return;
-        const result = await toggleFollowUser({
-            userId: selectedProfile.userId ?? null,
-            username: selectedProfile.username
-        });
-        if (result.message) {
-            addNotification({
-                type: 'system',
-                message: result.message
-            });
-        }
-    };
+    const selfHandle = (username || user?.name || 'You').trim();
 
     const handleOpenAuthorProfile = (target: ProfileTarget) => {
         if (!target.username?.trim()) return;
-        setSelectedProfile({
-            userId: target.userId ?? null,
-            username: target.username.trim()
-        });
+        const key = target.userId
+            ? `id:${target.userId}`
+            : `name:${target.username.trim()}`;
+        const encoded = encodeURIComponent(key);
+        const query = target.username.trim()
+            ? `?name=${encodeURIComponent(target.username.trim())}`
+            : '';
+        window.location.hash = `/u/${encoded}${query}`;
     };
 
     return (
@@ -580,6 +535,22 @@ export const Arena: React.FC = () => {
                 <p className="mt-2 text-[10px] tracking-[0.18em] uppercase text-[#E5E4E2]/40">
                     {text.arena.subtitle}
                 </p>
+            </div>
+
+            <div className="mb-4 px-4 sm:px-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <p className="text-[10px] uppercase tracking-[0.16em] text-sage/85">
+                    Your handle: <span className="font-bold text-[#E5E4E2]">@{selfHandle}</span>
+                </p>
+                <button
+                    type="button"
+                    onClick={() => {
+                        setQuery(user?.name || selfHandle);
+                        setSortMode('latest');
+                    }}
+                    className="text-[10px] uppercase tracking-[0.16em] text-gray-400 hover:text-sage transition-colors self-start"
+                >
+                    Find my comments
+                </button>
             </div>
 
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6 border-b border-sage/10 pb-3 px-4 sm:px-0">
@@ -656,79 +627,6 @@ export const Arena: React.FC = () => {
                     {text.arena.end}
                 </span>
             </div>
-
-            {selectedProfile && (
-                <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 sm:p-6 animate-fade-in">
-                    <button
-                        type="button"
-                        onClick={() => setSelectedProfile(null)}
-                        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-                        aria-label="Close profile preview"
-                    />
-                    <div className="relative w-full max-w-3xl max-h-[90vh] overflow-hidden rounded-xl border border-white/10 bg-[#111111] shadow-2xl">
-                        <div className="px-4 sm:px-6 py-4 border-b border-white/10 flex items-start justify-between gap-4">
-                            <div>
-                                <p className="text-[10px] uppercase tracking-[0.16em] text-sage/80">Public Profile</p>
-                                <h3 className="text-lg font-bold tracking-wide text-[#E5E4E2] mt-1">{selectedProfile.username}</h3>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                {!isViewingOwnProfile && (
-                                    <button
-                                        type="button"
-                                        onClick={() => void handleToggleFollowSelectedProfile()}
-                                        className={`px-3 py-1.5 rounded border text-[10px] uppercase tracking-[0.14em] transition-colors ${isFollowingSelectedProfile
-                                            ? 'border-sage/50 text-sage/90 bg-sage/10 hover:bg-sage/15'
-                                            : 'border-white/15 text-white/85 hover:border-sage/50 hover:text-sage'
-                                            }`}
-                                    >
-                                        {isFollowingSelectedProfile ? 'Following' : 'Follow'}
-                                    </button>
-                                )}
-                                <button
-                                    type="button"
-                                    onClick={() => setSelectedProfile(null)}
-                                    className="text-[10px] uppercase tracking-[0.14em] text-gray-400 hover:text-white transition-colors"
-                                >
-                                    Close
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="px-4 sm:px-6 py-4 border-b border-white/10 grid grid-cols-3 gap-3">
-                            <div className="rounded border border-white/10 bg-white/5 p-3">
-                                <p className="text-[9px] uppercase tracking-widest text-gray-500">Comments</p>
-                                <p className="text-lg font-bold text-sage mt-1">{selectedProfileStats.comments}</p>
-                            </div>
-                            <div className="rounded border border-white/10 bg-white/5 p-3">
-                                <p className="text-[9px] uppercase tracking-widest text-gray-500">Echoes</p>
-                                <p className="text-lg font-bold text-sage mt-1">{selectedProfileStats.echoes}</p>
-                            </div>
-                            <div className="rounded border border-white/10 bg-white/5 p-3">
-                                <p className="text-[9px] uppercase tracking-widest text-gray-500">Replies</p>
-                                <p className="text-lg font-bold text-sage mt-1">{selectedProfileStats.replies}</p>
-                            </div>
-                        </div>
-
-                        <div className="max-h-[55vh] overflow-y-auto custom-scrollbar px-4 sm:px-6 py-4 space-y-3">
-                            {selectedProfileRituals.length > 0 ? (
-                                selectedProfileRituals.slice(0, 20).map((ritual) => (
-                                    <article key={`profile-${ritual.id}`} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
-                                        <div className="flex items-center justify-between gap-3 mb-2">
-                                            <p className="text-[10px] uppercase tracking-[0.12em] text-sage/85">{ritual.movieTitle}</p>
-                                            <p className="text-[9px] text-gray-500">{ritual.timestamp}</p>
-                                        </div>
-                                        <p className="text-xs text-[#E5E4E2]/90 leading-relaxed">{ritual.text}</p>
-                                    </article>
-                                ))
-                            ) : (
-                                <div className="text-center py-10 text-[10px] uppercase tracking-[0.16em] text-gray-500 border border-white/10 rounded">
-                                    No comments found for this profile.
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
         </section>
     );
 };

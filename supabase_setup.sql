@@ -68,6 +68,16 @@ create table if not exists public.ritual_replies (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
+-- 2d. User Follow Graph
+-- Tracks follow relationships between users.
+create table if not exists public.user_follows (
+  follower_user_id uuid not null references auth.users(id) on delete cascade,
+  followed_user_id uuid not null references auth.users(id) on delete cascade,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  primary key (follower_user_id, followed_user_id),
+  constraint user_follows_no_self check (follower_user_id <> followed_user_id)
+);
+
 -- Comment moderation helpers (Turkish/English profanity and insult filtering).
 create or replace function public.normalize_moderation_text(input_text text)
 returns text
@@ -176,6 +186,9 @@ create index if not exists ritual_echoes_ritual_id_idx
 create index if not exists ritual_replies_ritual_created_idx
   on public.ritual_replies (ritual_id, created_at);
 
+create index if not exists user_follows_followed_idx
+  on public.user_follows (followed_user_id);
+
 -- 3. Profile State Table
 -- Stores per-user XP/profile state as JSON for cross-device sync.
 create table if not exists public.profiles (
@@ -194,6 +207,7 @@ alter table public.daily_showcase enable row level security;
 alter table public.rituals enable row level security;
 alter table public.ritual_echoes enable row level security;
 alter table public.ritual_replies enable row level security;
+alter table public.user_follows enable row level security;
 alter table public.profiles enable row level security;
 
 drop policy if exists "Public Daily Read" on public.daily_showcase;
@@ -210,7 +224,11 @@ drop policy if exists "Authenticated Ritual Echoes Delete Own" on public.ritual_
 drop policy if exists "Public Ritual Replies Read" on public.ritual_replies;
 drop policy if exists "Authenticated Ritual Replies Insert Own" on public.ritual_replies;
 drop policy if exists "Authenticated Ritual Replies Delete Own" on public.ritual_replies;
+drop policy if exists "Public User Follows Read" on public.user_follows;
+drop policy if exists "Authenticated User Follows Insert Own" on public.user_follows;
+drop policy if exists "Authenticated User Follows Delete Own" on public.user_follows;
 drop policy if exists "Profiles Select Own" on public.profiles;
+drop policy if exists "Profiles Select Public" on public.profiles;
 drop policy if exists "Profiles Insert Own" on public.profiles;
 drop policy if exists "Profiles Update Own" on public.profiles;
 
@@ -302,11 +320,30 @@ on public.ritual_replies for delete
 to authenticated
 using (auth.uid() = user_id);
 
--- Policy: Authenticated users can manage only their own profile row.
-create policy "Profiles Select Own"
-on public.profiles for select
+-- User follows policies
+create policy "Public User Follows Read"
+on public.user_follows for select
+to anon, authenticated
+using (true);
+
+create policy "Authenticated User Follows Insert Own"
+on public.user_follows for insert
 to authenticated
-using (auth.uid() = user_id);
+with check (
+  auth.uid() = follower_user_id
+  and follower_user_id <> followed_user_id
+);
+
+create policy "Authenticated User Follows Delete Own"
+on public.user_follows for delete
+to authenticated
+using (auth.uid() = follower_user_id);
+
+-- Policy: Public read for profile rows (required for public profile pages).
+create policy "Profiles Select Public"
+on public.profiles for select
+to anon, authenticated
+using (true);
 
 create policy "Profiles Insert Own"
 on public.profiles for insert

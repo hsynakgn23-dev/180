@@ -9,6 +9,7 @@ import { MovieDetailModal } from './features/daily-showcase/MovieDetailModal'
 import { Arena } from './features/arena/Arena'
 import { WriteOverlay } from './features/ritual/WriteOverlay'
 import { ProfileView } from './features/profile/ProfileView'
+import { PublicProfileView, type PublicProfileTarget } from './features/profile/PublicProfileView'
 import { LeagueTransition } from './components/LeagueTransition'
 import { StreakCelebration } from './components/StreakCelebration'
 import { SharePromptModal } from './components/SharePromptModal'
@@ -18,6 +19,40 @@ import { LanguageProvider, useLanguage } from './context/LanguageContext'
 
 import { LoginView } from './features/auth/LoginView'
 import { LandingPage } from './features/landing/LandingPage'
+
+const parsePublicProfileHash = (hash: string): PublicProfileTarget | null => {
+  const normalized = (hash || '').trim()
+  if (!normalized.startsWith('#/u/')) return null
+
+  const pathWithQuery = normalized.slice(4)
+  const [rawKey, rawQuery = ''] = pathWithQuery.split('?')
+  const decodedKey = decodeURIComponent(rawKey || '')
+  const query = new URLSearchParams(rawQuery)
+  const nameFromQuery = query.get('name') || undefined
+
+  if (decodedKey.startsWith('id:')) {
+    const userId = decodedKey.slice(3).trim()
+    if (!userId) return null
+    return {
+      userId,
+      username: nameFromQuery
+    }
+  }
+
+  if (decodedKey.startsWith('name:')) {
+    const username = decodedKey.slice(5).trim()
+    if (!username) return null
+    return {
+      username
+    }
+  }
+
+  const fallbackUsername = decodedKey.trim()
+  if (!fallbackUsername) return null
+  return {
+    username: fallbackUsername
+  }
+}
 
 const AppContent = () => {
   const { text } = useLanguage();
@@ -36,16 +71,39 @@ const AppContent = () => {
   const [detailMovie, setDetailMovie] = useState<Movie | null>(null);
   const [showProfile, setShowProfile] = useState(false);
   const [startProfileInSettings, setStartProfileInSettings] = useState(false);
+  const [publicProfileTarget, setPublicProfileTarget] = useState<PublicProfileTarget | null>(() => parsePublicProfileHash(window.location.hash));
   const [DebugPanelComponent, setDebugPanelComponent] = useState<ComponentType | null>(null);
 
   const [showLanding, setShowLanding] = useState(true);
   const showDebugPanel = import.meta.env.DEV && import.meta.env.VITE_ENABLE_DEBUG_PANEL !== '0';
+
+  useEffect(() => {
+    const syncFromHash = () => {
+      setPublicProfileTarget(parsePublicProfileHash(window.location.hash));
+    };
+
+    syncFromHash();
+    window.addEventListener('hashchange', syncFromHash);
+    return () => window.removeEventListener('hashchange', syncFromHash);
+  }, []);
+
+  useEffect(() => {
+    if (!publicProfileTarget) return;
+    setShowProfile(false);
+    setStartProfileInSettings(false);
+    setActiveMovie(null);
+    setDetailMovie(null);
+  }, [publicProfileTarget]);
 
   const openHome = () => {
     setActiveMovie(null);
     setDetailMovie(null);
     setShowProfile(false);
     setStartProfileInSettings(false);
+    setPublicProfileTarget(null);
+    if (window.location.hash.startsWith('#/u/')) {
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -102,6 +160,10 @@ const AppContent = () => {
         <button
           type="button"
           onClick={() => {
+            if (window.location.hash.startsWith('#/u/')) {
+              window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+              setPublicProfileTarget(null);
+            }
             setStartProfileInSettings(false);
             setShowProfile(true);
           }}
@@ -120,10 +182,18 @@ const AppContent = () => {
         <div className="hidden sm:block">
           <ProfileWidget
             onClick={() => {
+              if (window.location.hash.startsWith('#/u/')) {
+                window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+                setPublicProfileTarget(null);
+              }
               setStartProfileInSettings(false);
               setShowProfile(true);
             }}
             onOpenSettings={() => {
+              if (window.location.hash.startsWith('#/u/')) {
+                window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+                setPublicProfileTarget(null);
+              }
               setStartProfileInSettings(true);
               setShowProfile(true);
             }}
@@ -157,7 +227,15 @@ const AppContent = () => {
         />
       )}
 
-      <div className={`min-h-screen font-sans selection:bg-sage selection:text-white transition-opacity duration-500 ${activeMovie || showProfile || detailMovie ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+      {publicProfileTarget && (
+        <PublicProfileView
+          target={publicProfileTarget}
+          onClose={openHome}
+          onHome={openHome}
+        />
+      )}
+
+      <div className={`min-h-screen font-sans selection:bg-sage selection:text-white transition-opacity duration-500 ${activeMovie || showProfile || detailMovie || publicProfileTarget ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
         <div className="h-[72px] sm:h-[160px] w-full bg-transparent flex items-end justify-center pb-2 sm:pb-8 pointer-events-none" />
 
         <main className="container mx-auto px-4 sm:px-6 relative z-10">

@@ -328,6 +328,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
         <div
             className={`group relative pt-4 sm:pt-6 pb-4 sm:pb-6 border-b border-gray-100/5 flex flex-col sm:flex-row gap-3 sm:gap-4 md:gap-6 animate-fade-in hover:bg-transparent transition-all duration-500 px-4 sm:px-4 mx-0 sm:-mx-4
             ${isFollowing ? 'bg-gradient-to-r from-sage/5 to-transparent' : ''}
+            ${isOwnAuthor ? 'ring-1 ring-sage/25 bg-sage/10 rounded-lg' : ''}
         `}
         >
             <div className="shrink-0 pt-0 sm:pt-1 self-start group-hover:scale-105 transition-transform duration-500">
@@ -375,7 +376,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
                                 className="text-[10px] tracking-widest uppercase text-[#E5E4E2]/70 font-bold relative group/author cursor-pointer hover:text-sage transition-colors"
                                 title="Open profile"
                             >
-                                {ritual.author ? ritual.author : ui.ritualCard.anonymous}
+                                {ritual.author ? `@${ritual.author}` : ui.ritualCard.anonymous}
 
                                 <div
                                     className="absolute -left-3 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full shadow-[0_0_8px_rgba(255,255,255,0.3)]"
@@ -395,6 +396,12 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
                                 >
                                     {isFollowing ? 'Following' : 'Follow'}
                                 </button>
+                            )}
+
+                            {isOwnAuthor && (
+                                <span className="text-[9px] uppercase tracking-[0.18em] text-sage/90 font-bold">
+                                    You
+                                </span>
                             )}
 
                             <span className="text-[9px] tracking-widest text-gray-500 uppercase">

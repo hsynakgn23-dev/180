@@ -162,6 +162,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
         marks,
         daysPresent,
         streak,
+        following,
         featuredMarks,
         toggleFeaturedMark,
         dailyRituals,
@@ -190,6 +191,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
     const [selectedMovieId, setSelectedMovieId] = useState<number | null>(null);
     const [repliesByCommentKey, setRepliesByCommentKey] = useState<Record<string, FilmReplyEntry[]>>({});
     const [isRepliesLoading, setIsRepliesLoading] = useState(false);
+    const [followCounts, setFollowCounts] = useState<{ followers: number; following: number }>({
+        followers: 0,
+        following: Array.isArray(following) ? following.length : 0
+    });
     const progressFill = getProgressFill(progressPercentage);
     const progressTransitionMs = getProgressTransitionMs(progressPercentage);
     const currentLeagueLabel = leagueCopy(league)?.name || league;
@@ -677,6 +682,60 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
         text.profile.timeDaysAgo
     ]);
 
+    useEffect(() => {
+        let active = true;
+        const fallbackFollowingCount = Array.isArray(following) ? following.length : 0;
+        const client = supabase;
+
+        if (!user?.id || !isSupabaseLive() || !client) {
+            setFollowCounts({
+                followers: 0,
+                following: fallbackFollowingCount
+            });
+            return () => {
+                active = false;
+            };
+        }
+
+        const fetchFollowCounts = async () => {
+            const [followingRes, followersRes] = await Promise.all([
+                client
+                    .from('user_follows')
+                    .select('*', { head: true, count: 'exact' })
+                    .eq('follower_user_id', user.id),
+                client
+                    .from('user_follows')
+                    .select('*', { head: true, count: 'exact' })
+                    .eq('followed_user_id', user.id)
+            ]);
+
+            if (!active) return;
+
+            if (
+                followingRes.error ||
+                followersRes.error ||
+                typeof followingRes.count !== 'number' ||
+                typeof followersRes.count !== 'number'
+            ) {
+                setFollowCounts({
+                    followers: 0,
+                    following: fallbackFollowingCount
+                });
+                return;
+            }
+
+            setFollowCounts({
+                followers: followersRes.count,
+                following: followingRes.count
+            });
+        };
+
+        void fetchFollowCounts();
+        return () => {
+            active = false;
+        };
+    }, [following, user?.id]);
+
     const handleHome = () => {
         setSelectedMovieId(null);
         setIsVisible(false);
@@ -809,6 +868,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                                     {fullName || text.profile.missingName} | {genderLabel || text.profile.missingGender} | {birthDate || text.profile.missingBirthDate}
                                 </p>
 
+                                <div className="mb-4 flex items-center gap-3 text-[9px] uppercase tracking-[0.14em]">
+                                    <span className="text-[#E5E4E2]/80">Following: {followCounts.following}</span>
+                                    <span className="text-[#E5E4E2]/80">Followers: {followCounts.followers}</span>
+                                </div>
+
                                 {isEditing ? (
                                     <div className="flex flex-col items-center gap-2 w-full mb-4">
                                         <textarea
@@ -923,7 +987,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                         {/* Stats Card */}
                         <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
                             <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase mb-4">{text.profile.stats}</h3>
-                            <div className="grid grid-cols-3 gap-4 text-center">
+                            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 text-center">
                                 <div className="flex flex-col gap-1">
                                     <span className="text-4xl font-bold text-sage">{streak || 0}</span>
                                     <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profileWidget.streak}</span>
@@ -935,6 +999,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                                 <div className="flex flex-col gap-1">
                                     <span className="text-4xl font-bold text-sage">{dailyRituals.length}</span>
                                     <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profile.rituals}</span>
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <span className="text-4xl font-bold text-sage">{followCounts.following}</span>
+                                    <span className="text-[9px] tracking-wider text-gray-500 uppercase">Following</span>
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <span className="text-4xl font-bold text-sage">{followCounts.followers}</span>
+                                    <span className="text-[9px] tracking-wider text-gray-500 uppercase">Followers</span>
                                 </div>
                             </div>
                         </div>

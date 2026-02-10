@@ -475,6 +475,10 @@ type RitualBackupRow = {
     timestamp?: string | null;
 };
 
+type UserFollowRow = {
+    followed_user_id: string | null;
+};
+
 const RITUAL_READ_VARIANTS = [
     {
         select: 'id, movie_title, poster_path, text, timestamp',
@@ -833,6 +837,8 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     const canReadProfileStateRef = useRef(true);
     const canWriteProfileStateRef = useRef(true);
     const canWriteRitualRef = useRef(true);
+    const canReadFollowRef = useRef(true);
+    const canWriteFollowRef = useRef(true);
     const [isXpHydrated, setIsXpHydrated] = useState(false);
     const [isPasswordRecoveryMode, setIsPasswordRecoveryMode] = useState<boolean>(() => isPasswordRecoveryUrl());
     const authMode: 'supabase' | 'local' = isSupabaseLive() && supabase ? 'supabase' : 'local';
@@ -900,6 +906,8 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         canReadProfileStateRef.current = true;
         canWriteProfileStateRef.current = true;
         canWriteRitualRef.current = true;
+        canReadFollowRef.current = true;
+        canWriteFollowRef.current = true;
 
         if (!user) {
             setState(buildInitialXPState("Orbiting nearby..."));
@@ -916,6 +924,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             let localState: XPState | null = null;
             let cloudRituals: RitualLog[] = [];
             let localRitualBackup: RitualLog[] = [];
+            let cloudFollowingKeys: string[] = [];
 
             if (isSupabaseLive() && supabase && user.id && canReadProfileStateRef.current) {
                 const { data, error } = await supabase
@@ -935,6 +944,25 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 }
 
                 cloudRituals = await readUserRitualsFromCloud(user.id);
+
+                if (canReadFollowRef.current) {
+                    const { data: followData, error: followError } = await supabase
+                        .from('user_follows')
+                        .select('followed_user_id')
+                        .eq('follower_user_id', user.id)
+                        .limit(1000);
+
+                    if (!followError) {
+                        const rows = Array.isArray(followData) ? (followData as UserFollowRow[]) : [];
+                        cloudFollowingKeys = rows
+                            .map((row) => buildFollowUserIdKey(row.followed_user_id))
+                            .filter((value): value is string => Boolean(value));
+                    } else if (isSupabaseCapabilityError(followError)) {
+                        canReadFollowRef.current = false;
+                    } else {
+                        console.error('[XP] failed to read follow graph', followError);
+                    }
+                }
             }
 
             localState = readUserXpStateFromLocal(user.email);
@@ -978,7 +1006,8 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 dailyRituals: mergedRituals,
                 activeDays: mergeStringLists(resolvedState.activeDays || [], mergedRituals.map((ritual) => ritual.date))
                     .sort((a, b) => a.localeCompare(b)),
-                uniqueGenres: mergeStringLists(resolvedState.uniqueGenres || [], ritualGenres)
+                uniqueGenres: mergeStringLists(resolvedState.uniqueGenres || [], ritualGenres),
+                following: mergeStringLists(resolvedState.following || [], cloudFollowingKeys)
             };
 
             if (!active) return;
@@ -1319,13 +1348,54 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             };
         });
 
+        let syncWarning: string | null = null;
+        if (isSupabaseLive() && supabase && user?.id && target.userId && canWriteFollowRef.current) {
+            if (didFollow) {
+                const { error } = await supabase
+                    .from('user_follows')
+                    .upsert(
+                        [
+                            {
+                                follower_user_id: user.id,
+                                followed_user_id: target.userId
+                            }
+                        ],
+                        { onConflict: 'follower_user_id,followed_user_id', ignoreDuplicates: true }
+                    );
+
+                if (error) {
+                    if (isSupabaseCapabilityError(error)) {
+                        canWriteFollowRef.current = false;
+                    } else {
+                        console.error('[XP] failed to sync follow insert', error);
+                        syncWarning = 'Takip kaydedildi, cloud senkronu basarisiz.';
+                    }
+                }
+            } else {
+                const { error } = await supabase
+                    .from('user_follows')
+                    .delete()
+                    .eq('follower_user_id', user.id)
+                    .eq('followed_user_id', target.userId);
+
+                if (error) {
+                    if (isSupabaseCapabilityError(error)) {
+                        canWriteFollowRef.current = false;
+                    } else {
+                        console.error('[XP] failed to sync follow delete', error);
+                        syncWarning = 'Takipten cikarma kaydedildi, cloud senkronu basarisiz.';
+                    }
+                }
+            }
+        }
+
         if (didFollow) {
             triggerWhisper(`Shadowing ${normalizedUsername}.`);
-            return { ok: true, message: `${normalizedUsername} takip edildi.` };
+            return { ok: true, message: syncWarning || `${normalizedUsername} takip edildi.` };
         }
 
         triggerWhisper(`Unfollowed ${normalizedUsername}.`);
-        return { ok: true, message: `${normalizedUsername} takipten cikarildi.` };
+        return { ok: true, message: syncWarning || `${normalizedUsername} takipten cikarildi.` };
     };
 
     const awardShareXP = (platform: 'instagram' | 'tiktok' | 'x', trigger: ShareRewardTrigger): AuthResult => {
