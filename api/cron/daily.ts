@@ -842,44 +842,6 @@ const ensurePosters = async (
     };
 };
 
-const buildSeedMovies = (dateKey: string, excludedMovieIds: number[] = []): Movie[] => {
-    const excludedSet = new Set(normalizeMovieIds(excludedMovieIds));
-    const basePool = [...DEFAULT_SEED_MOVIES];
-    for (const extraMovie of EXTRA_POSTER_CACHE_MOVIES) {
-        if (!basePool.some((movie) => movie.id === extraMovie.id)) {
-            basePool.push(extraMovie);
-        }
-    }
-    const filteredPool = basePool.filter((movie) => !excludedSet.has(movie.id));
-    const pool = filteredPool.length >= DAILY_MOVIE_COUNT ? filteredPool : basePool;
-
-    const random = createSeededRandom(hashString(`daily:${dateKey}`));
-    for (let i = pool.length - 1; i > 0; i -= 1) {
-        const j = Math.floor(random() * (i + 1));
-        [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-
-    let selected = pickWithDirectorLimit(pool);
-    selected = replaceMovie(
-        selected,
-        pool,
-        (movie) => movie.year < CLASSIC_YEAR_THRESHOLD,
-        (movie) => movie.year >= CLASSIC_YEAR_THRESHOLD
-    );
-    selected = replaceMovie(
-        selected,
-        pool,
-        (movie) => movie.year >= MODERN_YEAR_THRESHOLD,
-        (movie, snapshot) => {
-            if (movie.year >= CLASSIC_YEAR_THRESHOLD) return true;
-            return snapshot.filter((item) => item.year < CLASSIC_YEAR_THRESHOLD).length > 1;
-        }
-    );
-    selected = enforceGenreDiversity(selected, pool);
-
-    return applySlotStyles(selected);
-};
-
 const buildDailyTmdbMovies = async (dateKey: string, excludedMovieIds: number[] = []): Promise<Movie[]> => {
     const apiKey = getTmdbApiKey();
     if (!apiKey || apiKey === 'YOUR_TMDB_API_KEY') return [];
