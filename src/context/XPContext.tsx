@@ -520,6 +520,7 @@ const XPContext = createContext<XPContextType | undefined>(undefined);
 
 export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [user, setUser] = useState<SessionUser | null>(() => getLegacyStoredUser());
+    const sessionUserRef = useRef<SessionUser | null>(getLegacyStoredUser());
 
     const [state, setState] = useState<XPState>(buildInitialXPState());
     const stateRef = useRef<XPState>(buildInitialXPState());
@@ -544,6 +545,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
     const setSessionUser = (nextUser: SessionUser | null) => {
         setUser(nextUser);
+        sessionUserRef.current = nextUser;
         if (nextUser) {
             localStorage.setItem('180_user_session', JSON.stringify(nextUser));
         } else {
@@ -564,7 +566,11 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         };
 
         void supabase.auth.getSession().then(({ data }) => {
-            applyAuthUser(data.session?.user ?? null);
+            const sessionUser = data.session?.user ?? null;
+            if (!sessionUser && sessionUserRef.current) {
+                return;
+            }
+            applyAuthUser(sessionUser);
         });
 
         const { data } = supabase.auth.onAuthStateChange((event, session) => {
@@ -573,8 +579,15 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             }
             if (event === 'SIGNED_OUT') {
                 setIsPasswordRecoveryMode(false);
+                applyAuthUser(null);
+                return;
             }
-            applyAuthUser(session?.user ?? null);
+
+            const sessionUser = session?.user ?? null;
+            if (!sessionUser && sessionUserRef.current) {
+                return;
+            }
+            applyAuthUser(sessionUser);
         });
 
         return () => {
