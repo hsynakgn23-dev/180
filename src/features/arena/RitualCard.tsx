@@ -326,7 +326,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
 
     return (
         <div
-            className={`group relative pt-4 sm:pt-6 pb-4 sm:pb-6 border-b border-gray-100/5 flex flex-col sm:flex-row gap-3 sm:gap-4 md:gap-6 animate-fade-in hover:bg-transparent transition-all duration-500 px-4 sm:px-4 mx-0 sm:-mx-4
+            className={`group relative pt-4 sm:pt-6 pb-4 sm:pb-6 border-b border-gray-100/5 flex flex-col sm:flex-row gap-3 sm:gap-4 md:gap-6 animate-fade-in hover:bg-transparent transition-all duration-500 px-4 sm:px-4 mx-0 sm:-mx-4 overflow-x-hidden
             ${isFollowing ? 'bg-gradient-to-r from-sage/5 to-transparent' : ''}
             ${isOwnAuthor ? 'ring-1 ring-sage/25 bg-sage/10 rounded-lg' : ''}
         `}
@@ -358,10 +358,10 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
             </div>
 
             <div className="grow min-w-0">
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-3">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 mb-3">
                     <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-[11px] sm:text-xs tracking-wider text-sage font-bold hover:text-white cursor-pointer transition-colors line-clamp-1">
+                            <span className="text-[11px] sm:text-xs tracking-wider text-sage font-bold hover:text-white cursor-pointer transition-colors line-clamp-1 break-words">
                                 {ritual.movieTitle}
                             </span>
                             <span className="text-[10px] text-sage/40 font-mono shrink-0">
@@ -369,11 +369,11 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
                             </span>
                         </div>
 
-                        <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                             <button
                                 type="button"
                                 onClick={handleOpenProfile}
-                                className="text-[10px] tracking-widest uppercase text-[#E5E4E2]/70 font-bold relative group/author cursor-pointer hover:text-sage transition-colors"
+                                className="text-[10px] sm:text-[11px] tracking-widest uppercase text-[#E5E4E2]/70 font-bold relative group/author cursor-pointer hover:text-sage transition-colors break-all max-w-full text-left"
                                 title="Open profile"
                             >
                                 {ritual.author ? `@${ritual.author}` : ui.ritualCard.anonymous}
@@ -404,13 +404,13 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
                                 </span>
                             )}
 
-                            <span className="text-[9px] tracking-widest text-gray-500 uppercase">
-                                - {formatRitualTimestamp(ritual.timestamp)}
+                            <span className="text-[9px] tracking-widest text-gray-500 uppercase break-words">
+                                {formatRitualTimestamp(ritual.timestamp)}
                             </span>
                         </div>
                     </div>
 
-                    <div className="flex gap-1.5 sm:ml-2 sm:border-l border-white/5 sm:pl-2 opacity-60 self-start">
+                    <div className="flex flex-wrap gap-1.5 sm:ml-2 sm:border-l border-white/5 sm:pl-2 opacity-60 self-start">
                         {ritual.featuredMarks?.map((MarkIcon, i) => (
                             <div key={i} className="text-[#E5E4E2]/50 hover:text-sage transition-colors">
                                 <MarkIcon size={10} />
@@ -431,7 +431,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
                     </button>
                 )}
 
-                <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-6">
+                <div className="mt-1 flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-6">
                     <button
                         onClick={handleEcho}
                         disabled={echoed}

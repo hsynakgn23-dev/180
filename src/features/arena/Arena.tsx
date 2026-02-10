@@ -526,7 +526,7 @@ export const Arena: React.FC = () => {
     };
 
     return (
-        <section className="max-w-4xl mx-auto px-0 sm:px-6 mb-32 animate-slide-up">
+        <section className="max-w-4xl mx-auto px-0 sm:px-6 mb-32 animate-slide-up overflow-x-hidden">
             <div className="flex flex-col items-center mb-10 opacity-70 px-4 sm:px-0">
                 <div className="w-px h-12 bg-sage/20 mb-4" />
                 <h2 className="text-xs font-bold tracking-[0.3em] text-sage uppercase">
@@ -537,8 +537,8 @@ export const Arena: React.FC = () => {
                 </p>
             </div>
 
-            <div className="mb-4 px-4 sm:px-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <p className="text-[10px] uppercase tracking-[0.16em] text-sage/85">
+            <div className="mb-4 px-4 sm:px-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <p className="text-[10px] uppercase tracking-[0.16em] text-sage/85 break-all">
                     Your handle: <span className="font-bold text-[#E5E4E2]">@{selfHandle}</span>
                 </p>
                 <button
@@ -547,14 +547,14 @@ export const Arena: React.FC = () => {
                         setQuery(user?.name || selfHandle);
                         setSortMode('latest');
                     }}
-                    className="text-[10px] uppercase tracking-[0.16em] text-gray-400 hover:text-sage transition-colors self-start"
+                    className="text-[10px] uppercase tracking-[0.16em] text-gray-400 hover:text-sage transition-colors self-start sm:self-auto"
                 >
                     Find my comments
                 </button>
             </div>
 
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6 border-b border-sage/10 pb-3 px-4 sm:px-0">
-                <div className="flex gap-4 sm:gap-6">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-6 border-b border-sage/10 pb-3 px-4 sm:px-0">
+                <div className="flex flex-wrap gap-4 sm:gap-6">
                     <button
                         onClick={() => setFilter('all')}
                         className={`text-[10px] uppercase tracking-widest transition-colors ${filter === 'all' ? 'text-sage font-bold' : 'text-gray-500 hover:text-gray-300'}`}
@@ -569,12 +569,12 @@ export const Arena: React.FC = () => {
                     </button>
                 </div>
 
-                <div className="flex w-full md:w-auto flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
+                <div className="flex w-full lg:w-auto flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
                     <input
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
                         placeholder={text.arena.searchPlaceholder}
-                        className="w-full sm:w-56 md:w-44 bg-[#121212] border border-white/10 text-[11px] text-[#E5E4E2] px-3 py-1.5 rounded outline-none focus:border-sage/40"
+                        className="w-full sm:w-60 md:w-48 bg-[#121212] border border-white/10 text-[11px] text-[#E5E4E2] px-3 py-1.5 rounded outline-none focus:border-sage/40"
                     />
                     <select
                         value={sortMode}

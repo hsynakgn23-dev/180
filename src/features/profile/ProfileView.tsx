@@ -858,17 +858,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                                 </div>
 
                                 {/* Username & Bio */}
-                                <h2 className="text-xl tracking-widest font-bold text-[#E5E4E2]/90 mb-2">
+                                <h2 className="text-lg sm:text-xl tracking-[0.14em] sm:tracking-widest font-bold text-[#E5E4E2]/90 mb-2 text-center break-words max-w-full">
                                     {user?.name ? user.name.toUpperCase() : text.profile.curatorFallback}
                                 </h2>
-                                <p className="text-[10px] tracking-[0.2em] uppercase text-gray-400 mb-1">
+                                <p className="text-[10px] tracking-[0.2em] uppercase text-gray-400 mb-1 text-center break-all max-w-full px-2">
                                     @{username || text.profile.observerHandle}
                                 </p>
-                                <p className="text-[10px] text-gray-500 mb-4 text-center">
+                                <p className="text-[10px] text-gray-500 mb-4 text-center break-words">
                                     {fullName || text.profile.missingName} | {genderLabel || text.profile.missingGender} | {birthDate || text.profile.missingBirthDate}
                                 </p>
 
-                                <div className="mb-4 flex items-center gap-3 text-[9px] uppercase tracking-[0.14em]">
+                                <div className="mb-4 flex flex-wrap items-center justify-center gap-2 sm:gap-3 text-[9px] uppercase tracking-[0.14em]">
                                     <span className="text-[#E5E4E2]/80">Following: {followCounts.following}</span>
                                     <span className="text-[#E5E4E2]/80">Followers: {followCounts.followers}</span>
                                 </div>
@@ -985,27 +985,27 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                         </div>
 
                         {/* Stats Card */}
-                        <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
+                        <div className="bg-white/5 border border-white/5 rounded-xl p-4 sm:p-6 animate-fade-in">
                             <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase mb-4">{text.profile.stats}</h3>
-                            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 text-center">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 text-center">
                                 <div className="flex flex-col gap-1">
-                                    <span className="text-4xl font-bold text-sage">{streak || 0}</span>
+                                    <span className="text-3xl sm:text-4xl font-bold text-sage">{streak || 0}</span>
                                     <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profileWidget.streak}</span>
                                 </div>
                                 <div className="flex flex-col gap-1">
-                                    <span className="text-4xl font-bold text-sage">{daysPresent}</span>
+                                    <span className="text-3xl sm:text-4xl font-bold text-sage">{daysPresent}</span>
                                     <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profile.days}</span>
                                 </div>
                                 <div className="flex flex-col gap-1">
-                                    <span className="text-4xl font-bold text-sage">{dailyRituals.length}</span>
+                                    <span className="text-3xl sm:text-4xl font-bold text-sage">{dailyRituals.length}</span>
                                     <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profile.rituals}</span>
                                 </div>
                                 <div className="flex flex-col gap-1">
-                                    <span className="text-4xl font-bold text-sage">{followCounts.following}</span>
+                                    <span className="text-3xl sm:text-4xl font-bold text-sage">{followCounts.following}</span>
                                     <span className="text-[9px] tracking-wider text-gray-500 uppercase">Following</span>
                                 </div>
                                 <div className="flex flex-col gap-1">
-                                    <span className="text-4xl font-bold text-sage">{followCounts.followers}</span>
+                                    <span className="text-3xl sm:text-4xl font-bold text-sage">{followCounts.followers}</span>
                                     <span className="text-[9px] tracking-wider text-gray-500 uppercase">Followers</span>
                                 </div>
                             </div>
@@ -1142,7 +1142,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                         </div>
 
                         {/* Film Journal Card */}
-                        <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
+                        <div className="bg-white/5 border border-white/5 rounded-xl p-4 sm:p-6 animate-fade-in">
                             <div className="flex justify-between items-end mb-6 border-b border-gray-100/10 pb-4">
                                 <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase">{text.profile.filmArchive}</h3>
                                 <span className="text-[9px] tracking-wider text-gray-500">
@@ -1152,7 +1152,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
 
                             {commentedFilms.length > 0 ? (
                                 <>
-                                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                                         {commentedFilms.map((film) => {
                                             const selected = selectedMovieId === film.movieId;
                                             return (
