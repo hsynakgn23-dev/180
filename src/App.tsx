@@ -11,6 +11,7 @@ import { WriteOverlay } from './features/ritual/WriteOverlay'
 import { ProfileView } from './features/profile/ProfileView'
 import { LeagueTransition } from './components/LeagueTransition'
 import { StreakCelebration } from './components/StreakCelebration'
+import { SharePromptModal } from './components/SharePromptModal'
 import { InfoFooter } from './components/InfoFooter'
 import type { Movie } from './data/mockMovies'
 import { LanguageProvider, useLanguage } from './context/LanguageContext'
@@ -25,6 +26,8 @@ const AppContent = () => {
     closeLevelUp,
     streakCelebrationEvent,
     closeStreakCelebration,
+    sharePromptEvent,
+    dismissSharePrompt,
     user,
     isPasswordRecoveryMode,
     avatarUrl
@@ -81,6 +84,13 @@ const AppContent = () => {
         <StreakCelebration
           event={streakCelebrationEvent}
           onComplete={closeStreakCelebration}
+        />
+      )}
+
+      {sharePromptEvent && !showProfile && (
+        <SharePromptModal
+          event={sharePromptEvent}
+          onClose={dismissSharePrompt}
         />
       )}
 

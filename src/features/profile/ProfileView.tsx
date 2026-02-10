@@ -110,19 +110,29 @@ const getTodayDateKey = (): string => {
     return `${year}-${month}-${day}`;
 };
 
-const toRelativeTimestamp = (rawTimestamp: string): string => {
+const toRelativeTimestamp = (
+    rawTimestamp: string,
+    labels: {
+        timeToday: string;
+        timeJustNow: string;
+        timeHoursAgo: string;
+        timeDaysAgo: string;
+    }
+): string => {
     const parsed = Date.parse(rawTimestamp);
     if (Number.isNaN(parsed)) return rawTimestamp;
 
     const diffMs = Date.now() - parsed;
-    if (diffMs < 0) return 'Today';
+    if (diffMs < 0) return labels.timeToday;
 
     const hourMs = 60 * 60 * 1000;
     const dayMs = 24 * hourMs;
     const diffHours = Math.floor(diffMs / hourMs);
-    if (diffHours < 1) return 'Just Now';
-    if (diffHours < 24) return `${diffHours}h ago`;
-    return `${Math.floor(diffMs / dayMs)}d ago`;
+    if (diffHours < 1) return labels.timeJustNow;
+    if (diffHours < 24) {
+        return labels.timeHoursAgo.replace('{count}', String(diffHours));
+    }
+    return labels.timeDaysAgo.replace('{count}', String(Math.floor(diffMs / dayMs)));
 };
 
 export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, startInSettings = false }) => {
@@ -250,13 +260,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
     const shareGoalReady = shareGoal === 'comment' ? hasCommentToday : isStreakCompletedToday;
     const streakSharePreview = language === 'tr'
         ? `Bugunku streak tamamlandi: ${streak || 0} gun`
-        : `Today's streak is complete: ${streak || 0} days`;
+        : language === 'es'
+            ? `Racha completada hoy: ${streak || 0} dias`
+            : language === 'fr'
+                ? `Serie terminee aujourd'hui : ${streak || 0} jours`
+                : `Today's streak is complete: ${streak || 0} days`;
     const latestCommentPreview = useMemo(() => {
         const raw = activeRitualForShare?.text?.trim() || '';
         if (!raw) {
             return language === 'tr'
                 ? 'Bugun yorum yazip paylasarak bonus XP kazan.'
-                : 'Post a comment today and share it to earn bonus XP.';
+                : language === 'es'
+                    ? 'Escribe un comentario hoy y compartelo para ganar XP extra.'
+                    : language === 'fr'
+                        ? 'Ecris un commentaire aujourd\'hui et partage-le pour gagner du XP bonus.'
+                        : 'Post a comment today and share it to earn bonus XP.';
         }
         if (raw.length <= 120) return raw;
         return `${raw.slice(0, 120).trimEnd()}...`;
@@ -277,7 +295,44 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                 rewardHint: 'Gunluk ilk uygun paylasim +18 XP',
                 commentLocked: 'Yorum paylasimi icin once bugun yorum yaz.',
                 streakLocked: 'Streak paylasimi icin once bugunku rituelini tamamla.',
-                failedHint: 'Paylasim hazirlanamadi. Tekrar dene.'
+                failedHint: 'Paylasim hazirlanamadi. Tekrar dene.',
+                claimedHint: 'Bugun paylasim bonusu zaten alindi.'
+            };
+        }
+        if (language === 'es') {
+            return {
+                title: 'Bonus por Compartir',
+                subtitle: 'Comparte tu comentario minimal o la racha de hoy y gana XP extra.',
+                commentMode: 'Compartir Comentario',
+                streakMode: 'Compartir Racha',
+                commentHint: 'Comparte el comentario de hoy para ganar XP extra.',
+                streakHint: 'Completa la racha de hoy y compartela para ganar XP extra.',
+                shareInstagram: 'Instagram',
+                shareTiktok: 'TikTok',
+                shareX: 'X',
+                rewardHint: 'Primer compartido valido del dia: +18 XP',
+                commentLocked: 'Escribe un comentario hoy antes de reclamar XP por compartir.',
+                streakLocked: 'Completa el ritual de hoy antes de reclamar XP por racha.',
+                failedHint: 'No se pudo preparar el compartido. Intenta otra vez.',
+                claimedHint: 'El bonus de compartido de hoy ya fue reclamado.'
+            };
+        }
+        if (language === 'fr') {
+            return {
+                title: 'Bonus de Partage',
+                subtitle: 'Partage ton commentaire minimal ou ta serie du jour et gagne du XP bonus.',
+                commentMode: 'Partager Commentaire',
+                streakMode: 'Partager Serie',
+                commentHint: 'Partage le commentaire du jour pour gagner du XP bonus.',
+                streakHint: 'Termine la serie du jour puis partage pour gagner du XP bonus.',
+                shareInstagram: 'Instagram',
+                shareTiktok: 'TikTok',
+                shareX: 'X',
+                rewardHint: 'Premier partage valide du jour : +18 XP',
+                commentLocked: 'Ecris un commentaire aujourd\'hui avant le bonus de partage.',
+                streakLocked: 'Termine le rituel du jour avant le bonus de serie.',
+                failedHint: 'Impossible de preparer le partage. Reessaie.',
+                claimedHint: 'Le bonus de partage du jour est deja pris.'
             };
         }
         return {
@@ -293,7 +348,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
             rewardHint: 'First eligible share of the day: +18 XP',
             commentLocked: 'Write a comment today before claiming comment-share XP.',
             streakLocked: 'Complete today\'s ritual before claiming streak-share XP.',
-            failedHint: 'Could not prepare share. Try again.'
+            failedHint: 'Could not prepare share. Try again.',
+            claimedHint: 'Today\'s share bonus has already been claimed.'
         };
     }, [language]);
 
@@ -315,7 +371,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
         return [
             '180 Absolute Cinema',
             `${displayName} (@${handle})`,
-            `${currentLeagueLabel} • ${Math.floor(xp)} XP`,
+            `${currentLeagueLabel} - ${Math.floor(xp)} XP`,
             `"${latestCommentPreview}"`,
             `${platformTag} #180AbsoluteCinema`
         ].join('\n');
@@ -357,7 +413,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
             }
 
             const rewardResult = awardShareXP(platform, goal);
-            setShareStatus(rewardResult.message || shareCopy.rewardHint);
+            if (rewardResult.ok) {
+                setShareStatus(shareCopy.rewardHint);
+            } else {
+                setShareStatus(shareCopy.claimedHint);
+            }
         } catch {
             setShareStatus(shareCopy.failedHint);
         }
@@ -532,9 +592,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                     if (!row.id || !row.ritual_id || !row.text) continue;
                     const normalized: FilmReplyEntry = {
                         id: row.id,
-                        author: row.author || 'Observer',
+                        author: row.author || text.profile.observerHandle,
                         text: row.text,
-                        timestamp: row.created_at ? toRelativeTimestamp(row.created_at) : 'Just Now'
+                        timestamp: row.created_at
+                            ? toRelativeTimestamp(row.created_at, {
+                                timeToday: text.profile.timeToday,
+                                timeJustNow: text.profile.timeJustNow,
+                                timeHoursAgo: text.profile.timeHoursAgo,
+                                timeDaysAgo: text.profile.timeDaysAgo
+                            })
+                            : text.profile.timeJustNow
                     };
                     const current = repliesByRitual.get(row.ritual_id) || [];
                     current.push(normalized);
@@ -560,7 +627,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
         return () => {
             canceled = true;
         };
-    }, [selectedMovieId, selectedFilmComments, user?.id]);
+    }, [
+        selectedMovieId,
+        selectedFilmComments,
+        user?.id,
+        text.profile.observerHandle,
+        text.profile.timeToday,
+        text.profile.timeJustNow,
+        text.profile.timeHoursAgo,
+        text.profile.timeDaysAgo
+    ]);
 
     const handleHome = () => {
         setSelectedMovieId(null);
@@ -725,7 +801,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
 
                                 {/* League & XP */}
                                 <div className="text-xs tracking-[0.2em] text-[#E5E4E2]/60 mb-4 uppercase">
-                                    {currentLeagueLabel} · {Math.floor(xp)} XP
+                                    {currentLeagueLabel} - {Math.floor(xp)} XP
                                 </div>
 
                                 {/* XP Progress Bar */}
@@ -807,19 +883,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
 
                         {/* Stats Card */}
                         <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
-                            <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase mb-4">Stats</h3>
+                            <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase mb-4">{text.profile.stats}</h3>
                             <div className="grid grid-cols-3 gap-4 text-center">
                                 <div className="flex flex-col gap-1">
                                     <span className="text-4xl font-bold text-sage">{streak || 0}</span>
-                                    <span className="text-[9px] tracking-wider text-gray-500 uppercase">Streak</span>
+                                    <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profileWidget.streak}</span>
                                 </div>
                                 <div className="flex flex-col gap-1">
                                     <span className="text-4xl font-bold text-sage">{daysPresent}</span>
-                                    <span className="text-[9px] tracking-wider text-gray-500 uppercase">Days</span>
+                                    <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profile.days}</span>
                                 </div>
                                 <div className="flex flex-col gap-1">
                                     <span className="text-4xl font-bold text-sage">{dailyRituals.length}</span>
-                                    <span className="text-[9px] tracking-wider text-gray-500 uppercase">Rituals</span>
+                                    <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profile.rituals}</span>
                                 </div>
                             </div>
                         </div>
@@ -1099,7 +1175,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                         type="button"
                         onClick={() => setSelectedMovieId(null)}
                         className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-                        aria-label="Film modalini kapat"
+                        aria-label={text.profile.closeMovieModal}
                     />
 
                     <div className="relative w-full max-w-5xl max-h-[92vh] overflow-hidden rounded-xl border border-white/10 bg-[#121212] shadow-2xl flex flex-col md:flex-row">
@@ -1111,31 +1187,31 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                                 className="w-full h-64 md:h-full rounded-none border-0"
                             />
                             <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-4 py-4">
-                                <p className="text-xs tracking-[0.18em] uppercase text-sage/80">{selectedFilm.genre || 'Unknown Genre'}</p>
+                                <p className="text-xs tracking-[0.18em] uppercase text-sage/80">{selectedFilm.genre || text.profile.unknownGenre}</p>
                                 <h4 className="text-lg font-bold text-[#E5E4E2] leading-tight">{selectedFilm.title}</h4>
-                                <p className="text-[10px] text-gray-400 mt-1">{selectedFilm.count} yorum</p>
+                                <p className="text-[10px] text-gray-400 mt-1">{format(text.profile.commentCount, { count: selectedFilm.count })}</p>
                             </div>
                         </div>
 
                         <div className="flex-1 min-h-0 flex flex-col">
                             <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-white/10">
                                 <div>
-                                    <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase">Yorumlar ve Cevaplar</h3>
-                                    <p className="text-[10px] text-gray-500 mt-1">{selectedFilmComments.length} yorum kaydi</p>
+                                    <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase">{text.profile.commentsAndReplies}</h3>
+                                    <p className="text-[10px] text-gray-500 mt-1">{format(text.profile.commentRecords, { count: selectedFilmComments.length })}</p>
                                 </div>
                                 <button
                                     type="button"
                                     onClick={() => setSelectedMovieId(null)}
                                     className="text-[10px] uppercase tracking-[0.16em] text-gray-400 hover:text-white transition-colors"
                                 >
-                                    Kapat
+                                    {text.profile.close}
                                 </button>
                             </div>
 
                             <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-6 space-y-4">
                                 {isRepliesLoading && (
                                     <div className="text-[10px] uppercase tracking-[0.16em] text-sage/70">
-                                        Cevaplar yukleniyor...
+                                        {text.profile.repliesLoading}
                                     </div>
                                 )}
 
@@ -1154,9 +1230,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                                                         type="button"
                                                         onClick={() => handleDeleteRitual(entry.id)}
                                                         className="text-[8px] uppercase tracking-widest text-gray-500 hover:text-clay transition-colors"
-                                                        title="Delete this ritual"
+                                                        title={text.profile.deleteComment}
                                                     >
-                                                        Erase
+                                                        {text.profile.deleteComment}
                                                     </button>
                                                 </div>
                                             </div>
@@ -1167,7 +1243,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
 
                                             <div className="mt-3 pt-3 border-t border-white/10">
                                                 <div className="text-[9px] uppercase tracking-[0.16em] text-sage/75 mb-2">
-                                                    Cevaplar ({replies.length})
+                                                    {format(text.profile.replies, { count: replies.length })}
                                                 </div>
                                                 {replies.length > 0 ? (
                                                     <div className="space-y-2">
@@ -1182,7 +1258,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                                                         ))}
                                                     </div>
                                                 ) : (
-                                                    <p className="text-[10px] italic text-gray-500">Bu yoruma henuz cevap yok.</p>
+                                                    <p className="text-[10px] italic text-gray-500">{text.profile.noReplies}</p>
                                                 )}
                                             </div>
                                         </article>

@@ -80,6 +80,14 @@ export interface StreakCelebrationEvent {
     isMilestone: boolean;
 }
 
+export interface SharePromptEvent {
+    id: string;
+    preferredGoal: ShareRewardTrigger;
+    commentPreview: string;
+    streak: number;
+    date: string;
+}
+
 export type RegistrationGender = 'female' | 'male' | 'non_binary' | 'prefer_not_to_say';
 
 export interface RegistrationProfileInput {
@@ -112,6 +120,8 @@ interface XPContextType {
     closeLevelUp: () => void;
     streakCelebrationEvent: StreakCelebrationEvent | null;
     closeStreakCelebration: () => void;
+    sharePromptEvent: SharePromptEvent | null;
+    dismissSharePrompt: () => void;
     progressPercentage: number;
     nextLevelXP: number;
     whisper: string | null;
@@ -280,6 +290,50 @@ const normalizeXPState = (input: Partial<XPState> | null | undefined): XPState =
     };
 };
 
+const getLatestStateDateKey = (state: XPState): string => {
+    const candidates = [
+        state.lastLoginDate || '',
+        state.lastStreakDate || '',
+        state.dailyRituals?.[0]?.date || '',
+        state.activeDays?.[state.activeDays.length - 1] || ''
+    ].filter(Boolean);
+
+    if (candidates.length === 0) return '';
+    return candidates.sort((a, b) => b.localeCompare(a))[0];
+};
+
+const getStateRichnessScore = (state: XPState): number => {
+    const ritualsScore = (state.dailyRituals?.length || 0) * 120;
+    const marksScore = (state.marks?.length || 0) * 30;
+    const activeDaysScore = (state.activeDays?.length || 0) * 18;
+    const streakScore = (state.streak || 0) * 60;
+    const xpScore = Math.floor(state.totalXP || 0);
+    return ritualsScore + marksScore + activeDaysScore + streakScore + xpScore;
+};
+
+const pickPreferredState = (remote: XPState | null, local: XPState | null): XPState | null => {
+    if (remote && !local) return remote;
+    if (local && !remote) return local;
+    if (!remote && !local) return null;
+
+    const safeRemote = remote as XPState;
+    const safeLocal = local as XPState;
+
+    const remoteLatestDate = getLatestStateDateKey(safeRemote);
+    const localLatestDate = getLatestStateDateKey(safeLocal);
+    if (remoteLatestDate !== localLatestDate) {
+        return remoteLatestDate > localLatestDate ? safeRemote : safeLocal;
+    }
+
+    const remoteScore = getStateRichnessScore(safeRemote);
+    const localScore = getStateRichnessScore(safeLocal);
+    if (remoteScore !== localScore) {
+        return remoteScore > localScore ? safeRemote : safeLocal;
+    }
+
+    return (safeRemote.totalXP || 0) >= (safeLocal.totalXP || 0) ? safeRemote : safeLocal;
+};
+
 const getLegacyStoredUser = (): SessionUser | null => {
     const stored = localStorage.getItem('180_user_session');
     if (!stored) return null;
@@ -402,6 +456,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     const [levelUpEvent, setLevelUpEvent] = useState<LeagueInfo | null>(null);
     const [levelUpQueue, setLevelUpQueue] = useState<LeagueInfo[]>([]);
     const [streakCelebrationEvent, setStreakCelebrationEvent] = useState<StreakCelebrationEvent | null>(null);
+    const [sharePromptEvent, setSharePromptEvent] = useState<SharePromptEvent | null>(null);
     const previousLeagueIndexRef = useRef(getLeagueIndexFromXp(state.totalXP));
     const pendingWelcomeWhisperRef = useRef(false);
     const pendingRegistrationProfileRef = useRef<PendingRegistrationProfile | null>(null);
@@ -459,6 +514,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         setLevelUpEvent(null);
         setLevelUpQueue([]);
         setStreakCelebrationEvent(null);
+        setSharePromptEvent(null);
         canReadProfileStateRef.current = true;
         canWriteProfileStateRef.current = true;
         canWriteRitualRef.current = true;
@@ -475,7 +531,8 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         let active = true;
 
         const hydrateState = async () => {
-            let resolvedState: XPState | null = null;
+            let remoteState: XPState | null = null;
+            let localState: XPState | null = null;
 
             if (isSupabaseLive() && supabase && user.id && canReadProfileStateRef.current) {
                 const { data, error } = await supabase
@@ -485,7 +542,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                     .maybeSingle();
 
                 if (!error && data?.xp_state && typeof data.xp_state === 'object') {
-                    resolvedState = normalizeXPState(data.xp_state as Partial<XPState>);
+                    remoteState = normalizeXPState(data.xp_state as Partial<XPState>);
                 } else if (error) {
                     if (isSupabaseCapabilityError(error)) {
                         canReadProfileStateRef.current = false;
@@ -495,17 +552,16 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 }
             }
 
-            if (!resolvedState) {
-                const stored = localStorage.getItem(userKey);
-                if (stored) {
-                    try {
-                        resolvedState = normalizeXPState(JSON.parse(stored) as Partial<XPState>);
-                    } catch {
-                        resolvedState = null;
-                    }
+            const stored = localStorage.getItem(userKey);
+            if (stored) {
+                try {
+                    localState = normalizeXPState(JSON.parse(stored) as Partial<XPState>);
+                } catch {
+                    localState = null;
                 }
             }
 
+            let resolvedState = pickPreferredState(remoteState, localState);
             if (!resolvedState) {
                 resolvedState = buildInitialXPState();
             }
@@ -575,6 +631,10 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             day,
             isMilestone: STREAK_MILESTONES.has(day)
         });
+    };
+
+    const dismissSharePrompt = () => {
+        setSharePromptEvent(null);
     };
 
     const login = async (
@@ -775,6 +835,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         }
         setSessionUser(null);
         setIsPasswordRecoveryMode(false);
+        setSharePromptEvent(null);
         setState(buildInitialXPState("Orbiting nearby..."));
     };
 
@@ -1078,6 +1139,16 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             streak: newStreak,
             lastStreakDate: today,
             nonConsecutiveCount: nonConsecutive
+        });
+
+        const preferredGoal: ShareRewardTrigger =
+            shouldIncreaseStreakToday && newStreak > 0 ? 'streak' : 'comment';
+        setSharePromptEvent({
+            id: `${today}-${movieId}-${Date.now()}`,
+            preferredGoal,
+            commentPreview: sanitizedText,
+            streak: newStreak,
+            date: today
         });
 
         if (isSupabaseLive() && supabase && user?.id && canWriteRitualRef.current) {
@@ -1402,6 +1473,8 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             closeLevelUp: () => setLevelUpEvent(null),
             streakCelebrationEvent,
             closeStreakCelebration: () => setStreakCelebrationEvent(null),
+            sharePromptEvent,
+            dismissSharePrompt,
             progressPercentage,
             nextLevelXP,
             whisper,
