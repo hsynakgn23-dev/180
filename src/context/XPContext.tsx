@@ -392,48 +392,157 @@ const readUserXpStateFromLocal = (email: string): XPState | null => {
     return null;
 };
 
-const getLatestStateDateKey = (state: XPState): string => {
-    const candidates = [
-        state.lastLoginDate || '',
-        state.lastStreakDate || '',
-        state.dailyRituals?.[0]?.date || '',
-        state.activeDays?.[state.activeDays.length - 1] || ''
-    ].filter(Boolean);
-
-    if (candidates.length === 0) return '';
-    return candidates.sort((a, b) => b.localeCompare(a))[0];
+const maxDateKey = (values: Array<string | null | undefined>): string | null => {
+    const valid = values.filter((value): value is string => Boolean(value && value.trim()));
+    if (valid.length === 0) return null;
+    return valid.reduce((latest, current) => (current > latest ? current : latest), valid[0]);
 };
 
-const getStateRichnessScore = (state: XPState): number => {
-    const ritualsScore = (state.dailyRituals?.length || 0) * 120;
-    const marksScore = (state.marks?.length || 0) * 30;
-    const activeDaysScore = (state.activeDays?.length || 0) * 18;
-    const streakScore = (state.streak || 0) * 60;
-    const xpScore = Math.floor(state.totalXP || 0);
-    return ritualsScore + marksScore + activeDaysScore + streakScore + xpScore;
+const mergeStringLists = (...lists: string[][]): string[] => {
+    const merged: string[] = [];
+    const seen = new Set<string>();
+    for (const list of lists) {
+        for (const item of list || []) {
+            const normalized = String(item || '').trim();
+            if (!normalized || seen.has(normalized)) continue;
+            seen.add(normalized);
+            merged.push(normalized);
+        }
+    }
+    return merged;
 };
 
-const pickPreferredState = (remote: XPState | null, local: XPState | null): XPState | null => {
-    if (remote && !local) return remote;
-    if (local && !remote) return local;
-    if (!remote && !local) return null;
+const ritualMergeKey = (ritual: RitualLog): string => {
+    const id = String(ritual.id || '').trim();
+    if (id) return `id:${id}`;
+    return `fallback:${ritual.date}|${ritual.movieId}|${ritual.text.trim()}`;
+};
 
-    const safeRemote = remote as XPState;
-    const safeLocal = local as XPState;
-
-    const remoteLatestDate = getLatestStateDateKey(safeRemote);
-    const localLatestDate = getLatestStateDateKey(safeLocal);
-    if (remoteLatestDate !== localLatestDate) {
-        return remoteLatestDate > localLatestDate ? safeRemote : safeLocal;
+const mergeRitualLogs = (...lists: RitualLog[][]): RitualLog[] => {
+    const map = new Map<string, RitualLog>();
+    for (const list of lists) {
+        for (const ritual of list || []) {
+            const normalized = normalizeRitualLog(ritual);
+            const key = ritualMergeKey(normalized);
+            const existing = map.get(key);
+            if (!existing) {
+                map.set(key, normalized);
+                continue;
+            }
+            map.set(key, {
+                ...existing,
+                ...normalized,
+                movieTitle:
+                    normalized.movieTitle && normalized.movieTitle !== 'Unknown Title'
+                        ? normalized.movieTitle
+                        : existing.movieTitle,
+                posterPath: normalized.posterPath || existing.posterPath,
+                text: normalized.text.length >= existing.text.length ? normalized.text : existing.text
+            });
+        }
     }
+    return Array.from(map.values()).sort((a, b) => {
+        const byDate = b.date.localeCompare(a.date);
+        if (byDate !== 0) return byDate;
+        return String(b.id).localeCompare(String(a.id));
+    });
+};
 
-    const remoteScore = getStateRichnessScore(safeRemote);
-    const localScore = getStateRichnessScore(safeLocal);
-    if (remoteScore !== localScore) {
-        return remoteScore > localScore ? safeRemote : safeLocal;
+const echoHistoryMergeKey = (entry: EchoLog): string => {
+    const id = String(entry.id || '').trim();
+    if (id) return `id:${id}`;
+    return `fallback:${entry.movieTitle}|${entry.date}`;
+};
+
+const mergeEchoHistory = (...lists: EchoLog[][]): EchoLog[] => {
+    const map = new Map<string, EchoLog>();
+    for (const list of lists) {
+        for (const entry of list || []) {
+            const normalized: EchoLog = {
+                id: String(entry.id || '').trim() || `${entry.movieTitle}-${entry.date}`,
+                movieTitle: entry.movieTitle || 'Unknown Ritual',
+                date: entry.date || ''
+            };
+            const key = echoHistoryMergeKey(normalized);
+            if (!map.has(key)) {
+                map.set(key, normalized);
+            }
+        }
     }
+    return Array.from(map.values()).slice(0, 30);
+};
 
-    return (safeRemote.totalXP || 0) >= (safeLocal.totalXP || 0) ? safeRemote : safeLocal;
+const mergeXPStates = (states: Array<XPState | null | undefined>): XPState | null => {
+    const normalizedStates = states
+        .filter((state): state is XPState => Boolean(state))
+        .map((state) => normalizeXPState(state));
+
+    if (normalizedStates.length === 0) return null;
+
+    // Priority: local source last in input should win for textual fields.
+    const priority = [...normalizedStates].reverse();
+    const merged = buildInitialXPState();
+
+    const latestLoginDate = maxDateKey(normalizedStates.map((state) => state.lastLoginDate));
+    const latestStreakDate = maxDateKey(normalizedStates.map((state) => state.lastStreakDate));
+    const latestDwellDate = maxDateKey(normalizedStates.map((state) => state.lastDwellDate));
+    const latestShareRewardDate = maxDateKey(normalizedStates.map((state) => state.lastShareRewardDate));
+
+    const mergedRituals = mergeRitualLogs(...priority.map((state) => state.dailyRituals || []));
+    const mergedMarks = mergeStringLists(...priority.map((state) => state.marks || []));
+    const mergedFeaturedMarks = mergeStringLists(...priority.map((state) => state.featuredMarks || []))
+        .filter((markId) => mergedMarks.includes(markId))
+        .slice(0, 3);
+
+    const dwellCandidates = normalizedStates.filter((state) => state.lastDwellDate === latestDwellDate);
+    const streakCandidates = normalizedStates.filter((state) => state.lastStreakDate === latestStreakDate);
+
+    merged.totalXP = Math.max(...normalizedStates.map((state) => state.totalXP || 0));
+    merged.lastLoginDate = latestLoginDate;
+    merged.dailyDwellXP = dwellCandidates.length
+        ? Math.max(...dwellCandidates.map((state) => state.dailyDwellXP || 0))
+        : Math.max(...normalizedStates.map((state) => state.dailyDwellXP || 0));
+    merged.lastDwellDate = latestDwellDate;
+    merged.dailyRituals = mergedRituals;
+    merged.marks = mergedMarks;
+    merged.featuredMarks = mergedFeaturedMarks;
+    merged.activeDays = mergeStringLists(...priority.map((state) => state.activeDays || [])).sort((a, b) =>
+        a.localeCompare(b)
+    );
+    merged.uniqueGenres = mergeStringLists(...priority.map((state) => state.uniqueGenres || []));
+    merged.streak = streakCandidates.length
+        ? Math.max(...streakCandidates.map((state) => state.streak || 0))
+        : Math.max(...normalizedStates.map((state) => state.streak || 0));
+    merged.lastStreakDate = latestStreakDate;
+    merged.echoesReceived = Math.max(...normalizedStates.map((state) => state.echoesReceived || 0));
+    merged.echoesGiven = Math.max(...normalizedStates.map((state) => state.echoesGiven || 0));
+    merged.echoHistory = mergeEchoHistory(...priority.map((state) => state.echoHistory || []));
+    merged.followers = Math.max(...normalizedStates.map((state) => state.followers || 0));
+    merged.following = mergeStringLists(...priority.map((state) => state.following || []));
+    merged.nonConsecutiveCount = Math.max(...normalizedStates.map((state) => state.nonConsecutiveCount || 0));
+    merged.lastShareRewardDate = latestShareRewardDate;
+
+    const pickPreferredText = (selector: (state: XPState) => string): string => {
+        for (const state of priority) {
+            const value = selector(state).trim();
+            if (value) return value;
+        }
+        return '';
+    };
+
+    merged.fullName = pickPreferredText((state) => state.fullName);
+    merged.username = pickPreferredText((state) => state.username);
+    const mergedGender = pickPreferredText((state) => state.gender);
+    merged.gender = REGISTRATION_GENDERS.includes(mergedGender as RegistrationGender)
+        ? (mergedGender as RegistrationGender)
+        : '';
+    merged.birthDate = pickPreferredText((state) => state.birthDate);
+    merged.bio = pickPreferredText((state) => state.bio) || merged.bio;
+    merged.avatarId = pickPreferredText((state) => state.avatarId) || merged.avatarId;
+    merged.avatarUrl = priority.find((state) => typeof state.avatarUrl === 'string' && state.avatarUrl.trim())
+        ?.avatarUrl;
+
+    return normalizeXPState(merged);
 };
 
 const getLegacyStoredUser = (): SessionUser | null => {
@@ -555,7 +664,6 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     const sessionUserRef = useRef<SessionUser | null>(getLegacyStoredUser());
 
     const [state, setState] = useState<XPState>(buildInitialXPState());
-    const stateRef = useRef<XPState>(buildInitialXPState());
     const [whisper, setWhisper] = useState<string | null>(null);
     const [levelUpEvent, setLevelUpEvent] = useState<LeagueInfo | null>(null);
     const [levelUpQueue, setLevelUpQueue] = useState<LeagueInfo[]>([]);
@@ -570,10 +678,6 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     const [isXpHydrated, setIsXpHydrated] = useState(false);
     const [isPasswordRecoveryMode, setIsPasswordRecoveryMode] = useState<boolean>(() => isPasswordRecoveryUrl());
     const authMode: 'supabase' | 'local' = isSupabaseLive() && supabase ? 'supabase' : 'local';
-
-    useEffect(() => {
-        stateRef.current = state;
-    }, [state]);
 
     const setSessionUser = (nextUser: SessionUser | null) => {
         setUser(nextUser);
@@ -673,7 +777,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
             localState = readUserXpStateFromLocal(user.email);
 
-            let resolvedState = pickPreferredState(remoteState, localState);
+            let resolvedState = mergeXPStates([remoteState, localState]);
             if (!resolvedState) {
                 resolvedState = buildInitialXPState();
             }
@@ -700,12 +804,9 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
             if (!active) return;
 
-            const runtimeState = stateRef.current;
-            const mergedState = pickPreferredState(resolvedState, runtimeState) || resolvedState;
-
-            setState(mergedState);
-            previousLeagueIndexRef.current = getLeagueIndexFromXp(mergedState.totalXP || 0);
-            persistUserXpStateToLocal(user.email, mergedState);
+            setState(resolvedState);
+            previousLeagueIndexRef.current = getLeagueIndexFromXp(resolvedState.totalXP || 0);
+            persistUserXpStateToLocal(user.email, resolvedState);
             setIsXpHydrated(true);
         };
 
