@@ -172,6 +172,7 @@ const REGISTRATION_GENDERS: RegistrationGender[] = ['female', 'male', 'non_binar
 const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
 const SHARE_REWARD_XP = 18;
 const USER_XP_STORAGE_KEY_PREFIX = '180_xp_data_';
+const USER_RITUAL_BACKUP_KEY_PREFIX = '180_ritual_backup_';
 const MAX_PERSISTED_AVATAR_URL_LENGTH = 180_000;
 const STORAGE_RECOVERY_KEYS = ['DAILY_CANDIDATE_POOL_V2', 'DAILY_SELECTION_V18'] as const;
 export const LEAGUE_NAMES = Object.keys(LEAGUES_DATA);
@@ -188,6 +189,9 @@ const KNOWN_MOVIES_BY_ID = new Map(
             voteAverage: movie.voteAverage ?? null
         }
     ])
+);
+const KNOWN_MOVIE_ID_BY_TITLE = new Map(
+    TMDB_SEEDS.map((movie) => [movie.title.trim().toLowerCase(), movie.id] as const)
 );
 
 const getLocalDateKey = (value = new Date()): string => {
@@ -311,6 +315,8 @@ const compactStateForPersistence = (state: XPState): XPState => {
 
 const persistUserXpStateToLocal = (email: string, state: XPState) => {
     if (!email) return;
+    persistUserRitualBackupToLocal(email, state.dailyRituals || []);
+
     const primaryKey = getUserXpStorageKey(email);
     const legacyKey = getLegacyUserXpStorageKey(email);
 
@@ -390,6 +396,114 @@ const readUserXpStateFromLocal = (email: string): XPState | null => {
     }
 
     return null;
+};
+
+const getUserRitualBackupKey = (email: string): string =>
+    `${USER_RITUAL_BACKUP_KEY_PREFIX}${(email || '').trim().toLowerCase()}`;
+
+const fallbackMovieIdFromTitle = (title: string): number => {
+    const normalized = (title || '').trim().toLowerCase();
+    if (!normalized) return 0;
+    const known = KNOWN_MOVIE_ID_BY_TITLE.get(normalized);
+    if (known) return known;
+
+    let hash = 2166136261;
+    for (let i = 0; i < normalized.length; i += 1) {
+        hash ^= normalized.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+    }
+    return 100000000 + ((hash >>> 0) % 900000000);
+};
+
+const normalizeRitualDateKey = (input: string | null | undefined): string => {
+    const raw = (input || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+    if (/^\d{4}-\d{2}-\d{2}T/.test(raw)) return raw.slice(0, 10);
+    return getLocalDateKey();
+};
+
+const persistUserRitualBackupToLocal = (email: string, rituals: RitualLog[]) => {
+    if (!email) return;
+    const key = getUserRitualBackupKey(email);
+    const normalized = mergeRitualLogs(rituals).slice(0, 800);
+
+    const attempt = (limit: number): boolean => {
+        try {
+            localStorage.setItem(key, JSON.stringify(normalized.slice(0, limit)));
+            return true;
+        } catch {
+            return false;
+        }
+    };
+
+    if (attempt(800)) return;
+    if (attempt(400)) return;
+    if (attempt(200)) return;
+
+    console.warn('[XP] ritual backup persistence failed.');
+};
+
+const readUserRitualBackupFromLocal = (email: string): RitualLog[] => {
+    if (!email) return [];
+    const key = getUserRitualBackupKey(email);
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+
+    try {
+        const parsed = JSON.parse(raw) as RitualLog[];
+        if (!Array.isArray(parsed)) return [];
+        return mergeRitualLogs(parsed.map((ritual) => normalizeRitualLog(ritual)));
+    } catch {
+        localStorage.removeItem(key);
+        return [];
+    }
+};
+
+type RitualBackupRow = {
+    id: string | null;
+    movie_title: string | null;
+    poster_path: string | null;
+    text: string | null;
+    timestamp: string | null;
+};
+
+const readUserRitualsFromCloud = async (userId: string): Promise<RitualLog[]> => {
+    if (!userId || !isSupabaseLive() || !supabase) return [];
+
+    const { data, error } = await supabase
+        .from('rituals')
+        .select('id, movie_title, poster_path, text, timestamp')
+        .eq('user_id', userId)
+        .order('timestamp', { ascending: false })
+        .limit(500);
+
+    if (error) {
+        return [];
+    }
+
+    const rows = Array.isArray(data) ? (data as unknown as RitualBackupRow[]) : [];
+    const mapped: RitualLog[] = rows
+        .map((row, index) => {
+            const text = (row.text || '').trim();
+            const movieTitle = (row.movie_title || '').trim();
+            if (!text || !movieTitle) return null;
+
+            const date = normalizeRitualDateKey(row.timestamp);
+            const movieId = fallbackMovieIdFromTitle(movieTitle);
+            const stableId = (row.id || '').trim() || `cloud-${date}-${movieId}-${index}`;
+
+            return normalizeRitualLog({
+                id: stableId,
+                date,
+                movieId,
+                movieTitle,
+                text,
+                posterPath: row.poster_path || undefined
+            });
+        })
+        .filter((item): item is RitualLog => Boolean(item));
+
+    return mergeRitualLogs(mapped);
 };
 
 const maxDateKey = (values: Array<string | null | undefined>): string | null => {
@@ -756,6 +870,8 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         const hydrateState = async () => {
             let remoteState: XPState | null = null;
             let localState: XPState | null = null;
+            let cloudRituals: RitualLog[] = [];
+            let localRitualBackup: RitualLog[] = [];
 
             if (isSupabaseLive() && supabase && user.id && canReadProfileStateRef.current) {
                 const { data, error } = await supabase
@@ -773,9 +889,12 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                         console.error('[XP] failed to read profile state', error);
                     }
                 }
+
+                cloudRituals = await readUserRitualsFromCloud(user.id);
             }
 
             localState = readUserXpStateFromLocal(user.email);
+            localRitualBackup = readUserRitualBackupFromLocal(user.email);
 
             let resolvedState = mergeXPStates([remoteState, localState]);
             if (!resolvedState) {
@@ -800,6 +919,22 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 username: resolvedState.username || user.username || '',
                 gender: resolvedState.gender || user.gender || '',
                 birthDate: resolvedState.birthDate || user.birthDate || ''
+            };
+
+            const mergedRituals = mergeRitualLogs(
+                resolvedState.dailyRituals || [],
+                localRitualBackup,
+                cloudRituals
+            );
+            const ritualGenres = mergedRituals
+                .map((ritual) => (ritual.genre || '').trim())
+                .filter((genre): genre is string => Boolean(genre));
+            resolvedState = {
+                ...resolvedState,
+                dailyRituals: mergedRituals,
+                activeDays: mergeStringLists(resolvedState.activeDays || [], mergedRituals.map((ritual) => ritual.date))
+                    .sort((a, b) => a.localeCompare(b)),
+                uniqueGenres: mergeStringLists(resolvedState.uniqueGenres || [], ritualGenres)
             };
 
             if (!active) return;
@@ -1317,6 +1452,9 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
         // Check for 'One Genre Devotion' (20 in one genre)
         const allRituals = [newRitual, ...(state.dailyRituals || [])];
+        if (user?.email) {
+            persistUserRitualBackupToLocal(user.email, allRituals);
+        }
         if (allRituals.length >= 20) currentMarks = tryUnlockMark('ritual_marathon', currentMarks);
         if (allRituals.length >= 50) currentMarks = tryUnlockMark('archive_keeper', currentMarks);
 
