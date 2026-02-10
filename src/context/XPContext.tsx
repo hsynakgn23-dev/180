@@ -462,26 +462,62 @@ const readUserRitualBackupFromLocal = (email: string): RitualLog[] => {
 type RitualBackupRow = {
     id: string | null;
     movie_title: string | null;
-    poster_path: string | null;
+    poster_path?: string | null;
     text: string | null;
-    timestamp: string | null;
+    timestamp?: string | null;
 };
+
+const RITUAL_READ_VARIANTS = [
+    {
+        select: 'id, movie_title, poster_path, text, timestamp',
+        orderBy: 'timestamp'
+    },
+    {
+        select: 'id, movie_title, poster_path, text, timestamp:created_at',
+        orderBy: 'created_at'
+    },
+    {
+        select: 'id, movie_title, text, timestamp',
+        orderBy: 'timestamp'
+    },
+    {
+        select: 'id, movie_title, text, timestamp:created_at',
+        orderBy: 'created_at'
+    }
+] as const;
 
 const readUserRitualsFromCloud = async (userId: string): Promise<RitualLog[]> => {
     if (!userId || !isSupabaseLive() || !supabase) return [];
 
-    const { data, error } = await supabase
-        .from('rituals')
-        .select('id, movie_title, poster_path, text, timestamp')
-        .eq('user_id', userId)
-        .order('timestamp', { ascending: false })
-        .limit(500);
+    let rows: RitualBackupRow[] = [];
+    let queryError: { code?: string | null; message?: string | null } | null = null;
 
-    if (error) {
+    for (const variant of RITUAL_READ_VARIANTS) {
+        const { data, error } = await supabase
+            .from('rituals')
+            .select(variant.select)
+            .eq('user_id', userId)
+            .order(variant.orderBy, { ascending: false })
+            .limit(500);
+
+        if (error) {
+            queryError = error;
+            if (isSupabaseCapabilityError(error)) {
+                continue;
+            }
+            console.error('[XP] failed to read ritual backups', error);
+            return [];
+        }
+
+        rows = Array.isArray(data) ? (data as unknown as RitualBackupRow[]) : [];
+        queryError = null;
+        break;
+    }
+
+    if (queryError) {
         return [];
     }
 
-    const rows = Array.isArray(data) ? (data as unknown as RitualBackupRow[]) : [];
     const mapped: RitualLog[] = rows
         .map((row, index) => {
             const text = (row.text || '').trim();
@@ -1516,6 +1552,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                     return;
                 }
 
+                const nowIso = new Date().toISOString();
                 const ritualInsertPayloads: Array<Record<string, string | null>> = [
                     {
                         user_id: sessionUser.id,
@@ -1523,7 +1560,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                         movie_title: newRitual.movieTitle,
                         poster_path: newRitual.posterPath || null,
                         text: newRitual.text,
-                        timestamp: new Date().toISOString(),
+                        timestamp: nowIso,
                         league: leagueForInsert,
                         year: knownMovie?.year ? String(knownMovie.year) : null
                     },
@@ -1533,7 +1570,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                         movie_title: newRitual.movieTitle,
                         poster_path: newRitual.posterPath || null,
                         text: newRitual.text,
-                        timestamp: new Date().toISOString(),
+                        timestamp: nowIso,
                         league: leagueForInsert
                     },
                     {
@@ -1541,7 +1578,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                         author: user.name || sessionUser.email?.split('@')[0] || 'Observer',
                         movie_title: newRitual.movieTitle,
                         text: newRitual.text,
-                        timestamp: new Date().toISOString(),
+                        timestamp: nowIso,
                         league: leagueForInsert
                     },
                     {
@@ -1549,7 +1586,32 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                         author: user.name || sessionUser.email?.split('@')[0] || 'Observer',
                         movie_title: newRitual.movieTitle,
                         text: newRitual.text,
-                        timestamp: new Date().toISOString()
+                        timestamp: nowIso
+                    },
+                    {
+                        user_id: sessionUser.id,
+                        author: user.name || sessionUser.email?.split('@')[0] || 'Observer',
+                        movie_title: newRitual.movieTitle,
+                        poster_path: newRitual.posterPath || null,
+                        text: newRitual.text,
+                        created_at: nowIso,
+                        league: leagueForInsert,
+                        year: knownMovie?.year ? String(knownMovie.year) : null
+                    },
+                    {
+                        user_id: sessionUser.id,
+                        author: user.name || sessionUser.email?.split('@')[0] || 'Observer',
+                        movie_title: newRitual.movieTitle,
+                        text: newRitual.text,
+                        created_at: nowIso,
+                        league: leagueForInsert
+                    },
+                    {
+                        user_id: sessionUser.id,
+                        author: user.name || sessionUser.email?.split('@')[0] || 'Observer',
+                        movie_title: newRitual.movieTitle,
+                        text: newRitual.text,
+                        created_at: nowIso
                     },
                     {
                         user_id: sessionUser.id,

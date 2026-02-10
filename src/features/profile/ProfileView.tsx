@@ -74,7 +74,7 @@ type FilmCommentEntry = {
 };
 
 type RitualRow = {
-    id: string;
+    id: string | null;
     movie_title: string | null;
     text: string | null;
     timestamp: string | null;
@@ -133,6 +133,24 @@ const toRelativeTimestamp = (
         return labels.timeHoursAgo.replace('{count}', String(diffHours));
     }
     return labels.timeDaysAgo.replace('{count}', String(Math.floor(diffMs / dayMs)));
+};
+
+const isSupabaseCapabilityError = (
+    error: { code?: string | null; message?: string | null } | null | undefined
+): boolean => {
+    if (!error) return false;
+    const code = (error.code || '').toUpperCase();
+    const message = (error.message || '').toLowerCase();
+    if (code === 'PGRST205' || code === '42P01' || code === '42501') return true;
+    return (
+        message.includes('relation "') ||
+        message.includes('does not exist') ||
+        message.includes('schema cache') ||
+        message.includes('permission') ||
+        message.includes('policy') ||
+        message.includes('jwt') ||
+        message.includes('forbidden')
+    );
 };
 
 export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, startInSettings = false }) => {
@@ -536,22 +554,43 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
 
         const loadReplies = async () => {
             try {
-                const { data: ritualsData, error: ritualsError } = await client
-                    .from('rituals')
-                    .select('id, movie_title, text, timestamp')
-                    .eq('user_id', user.id)
-                    .in('movie_title', movieTitles);
+                const ritualReadVariants = [
+                    { select: 'id, movie_title, text, timestamp' },
+                    { select: 'id, movie_title, text, timestamp:created_at' }
+                ] as const;
+                let ritualsData: RitualRow[] = [];
+                let ritualsError: { code?: string | null; message?: string | null } | null = null;
+
+                for (const variant of ritualReadVariants) {
+                    const { data, error } = await client
+                        .from('rituals')
+                        .select(variant.select)
+                        .eq('user_id', user.id)
+                        .in('movie_title', movieTitles);
+
+                    if (error) {
+                        ritualsError = error;
+                        if (isSupabaseCapabilityError(error)) {
+                            continue;
+                        }
+                        break;
+                    }
+
+                    ritualsData = Array.isArray(data) ? (data as RitualRow[]) : [];
+                    ritualsError = null;
+                    break;
+                }
 
                 if (canceled) return;
 
-                if (ritualsError || !Array.isArray(ritualsData)) {
+                if (ritualsError) {
                     setRepliesByCommentKey({});
                     setIsRepliesLoading(false);
                     return;
                 }
 
                 const ritualIdsByCommentKey = new Map<string, string[]>();
-                for (const row of ritualsData as RitualRow[]) {
+                for (const row of ritualsData) {
                     if (!row.id || !row.movie_title || !row.text || !row.timestamp) continue;
 
                     const dateKey = row.timestamp.slice(0, 10);

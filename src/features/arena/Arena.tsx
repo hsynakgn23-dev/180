@@ -105,6 +105,46 @@ const RITUAL_SELECT_VARIANTS = [
     {
         select: 'id, user_id, author, movie_title, text, timestamp:created_at, league',
         orderBy: 'created_at'
+    },
+    {
+        select: 'id, user_id, author, movie_title, poster_path, text, timestamp',
+        orderBy: 'timestamp'
+    },
+    {
+        select: 'id, user_id, author, movie_title, text, timestamp',
+        orderBy: 'timestamp'
+    },
+    {
+        select: 'id, user_id, author, movie_title, poster_path, text, timestamp:created_at',
+        orderBy: 'created_at'
+    },
+    {
+        select: 'id, user_id, author, movie_title, text, timestamp:created_at',
+        orderBy: 'created_at'
+    },
+    {
+        select: 'id, author, movie_title, poster_path, text, timestamp',
+        orderBy: 'timestamp'
+    },
+    {
+        select: 'id, author, movie_title, text, timestamp',
+        orderBy: 'timestamp'
+    },
+    {
+        select: 'id, author, movie_title, poster_path, text, timestamp:created_at',
+        orderBy: 'created_at'
+    },
+    {
+        select: 'id, author, movie_title, text, timestamp:created_at',
+        orderBy: 'created_at'
+    },
+    {
+        select: 'id, movie_title, text, timestamp',
+        orderBy: 'timestamp'
+    },
+    {
+        select: 'id, movie_title, text, timestamp:created_at',
+        orderBy: 'created_at'
     }
 ] as const;
 
