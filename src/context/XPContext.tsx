@@ -57,6 +57,8 @@ interface AuthResult {
     message?: string;
 }
 
+type ShareRewardTrigger = 'comment' | 'streak';
+
 interface SessionUser {
     id?: string;
     email: string;
@@ -131,7 +133,7 @@ interface XPContextType {
     updateIdentity: (bio: string, avatarId: string) => void;
     updatePersonalInfo: (profile: RegistrationProfileInput) => Promise<AuthResult>;
     toggleFollowUser: (username: string) => void;
-    awardShareXP: (platform: 'instagram' | 'tiktok' | 'x') => AuthResult;
+    awardShareXP: (platform: 'instagram' | 'tiktok' | 'x', trigger: ShareRewardTrigger) => AuthResult;
     submitRitual: (movieId: number, text: string, rating: number, genre: string, title?: string, posterPath?: string) => AuthResult;
     deleteRitual: (ritualId: string) => void;
     echoRitual: (ritualId: string) => void;
@@ -796,8 +798,23 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         updateState({ following: currentFollowing, marks: currentMarks });
     };
 
-    const awardShareXP = (platform: 'instagram' | 'tiktok' | 'x'): AuthResult => {
+    const awardShareXP = (platform: 'instagram' | 'tiktok' | 'x', trigger: ShareRewardTrigger): AuthResult => {
         const today = getToday();
+
+        if (trigger === 'comment') {
+            const hasCommentToday = state.dailyRituals.some((ritual) => ritual.date === today);
+            if (!hasCommentToday) {
+                return { ok: false, message: 'Yorum paylasim bonusu icin once bugun yorum yaz.' };
+            }
+        }
+
+        if (trigger === 'streak') {
+            const isStreakCompletedToday = state.streak > 0 && state.lastStreakDate === today;
+            if (!isStreakCompletedToday) {
+                return { ok: false, message: 'Streak paylasim bonusu icin once bugunku rituelini tamamla.' };
+            }
+        }
+
         if (state.lastShareRewardDate === today) {
             return { ok: false, message: 'Bugun paylasim bonusu zaten alindi.' };
         }
@@ -810,9 +827,10 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         triggerWhisper(`Paylasim bonusi +${SHARE_REWARD_XP} XP`);
 
         const platformLabel = platform === 'x' ? 'X' : platform === 'tiktok' ? 'TikTok' : 'Instagram';
+        const triggerLabel = trigger === 'streak' ? 'streak paylasimi' : 'yorum paylasimi';
         return {
             ok: true,
-            message: `${platformLabel} paylasimi kaydedildi. +${SHARE_REWARD_XP} XP`
+            message: `${platformLabel} ${triggerLabel} kaydedildi. +${SHARE_REWARD_XP} XP`
         };
     };
 

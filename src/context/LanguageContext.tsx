@@ -27,7 +27,7 @@ const LanguageContext = createContext<LanguageContextType | undefined>(undefined
 
 const getInitialLanguage = (): LanguageCode => {
     const stored = localStorage.getItem(LANGUAGE_STORAGE_KEY);
-    return isLanguageCode(stored) ? stored : 'tr';
+    return isLanguageCode(stored) ? stored : 'en';
 };
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -96,4 +96,3 @@ export const useLanguage = (): LanguageContextType => {
 };
 
 export { LANGUAGE_DICTIONARY };
-

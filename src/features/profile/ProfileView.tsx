@@ -9,9 +9,11 @@ import { MarkBadge } from '../marks/MarkBadge';
 import { supabase, isSupabaseLive } from '../../lib/supabase';
 import { useLanguage } from '../../context/LanguageContext';
 import { getRegistrationGenderLabel } from '../../i18n/localization';
+import { InfoFooter } from '../../components/InfoFooter';
 
 interface ProfileViewProps {
     onClose: () => void;
+    onHome?: () => void;
     startInSettings?: boolean;
 }
 
@@ -94,9 +96,18 @@ type FilmReplyEntry = {
 };
 
 type SharePlatform = 'instagram' | 'tiktok' | 'x';
+type ShareGoal = 'comment' | 'streak';
 
 const buildCommentKey = (movieTitle: string, text: string, date: string): string => {
     return `${movieTitle.trim()}::${text.trim()}::${date.trim()}`;
+};
+
+const getTodayDateKey = (): string => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
 };
 
 const toRelativeTimestamp = (rawTimestamp: string): string => {
@@ -114,7 +125,7 @@ const toRelativeTimestamp = (rawTimestamp: string): string => {
     return `${Math.floor(diffMs / dayMs)}d ago`;
 };
 
-export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettings = false }) => {
+export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, startInSettings = false }) => {
     const { text, format, markCopy, markCategory, leagueCopy, language } = useLanguage();
     const {
         xp,
@@ -147,6 +158,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
     const [tempAvatar, setTempAvatar] = useState(avatarId);
     const [showSettings, setShowSettings] = useState(false);
     const [shareStatus, setShareStatus] = useState<string | null>(null);
+    const [shareGoal, setShareGoal] = useState<ShareGoal>('comment');
     const [selectedMovieId, setSelectedMovieId] = useState<number | null>(null);
     const [repliesByCommentKey, setRepliesByCommentKey] = useState<Record<string, FilmReplyEntry[]>>({});
     const [isRepliesLoading, setIsRepliesLoading] = useState(false);
@@ -226,52 +238,84 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
     }, [dailyRituals]);
 
     const mostWrittenFilm = commentedFilms[0];
+    const todayDateKey = getTodayDateKey();
     const latestRitual = dailyRituals[0];
+    const latestTodayRitual = useMemo(
+        () => dailyRituals.find((ritual) => ritual.date === todayDateKey) || null,
+        [dailyRituals, todayDateKey]
+    );
+    const activeRitualForShare = latestTodayRitual || latestRitual;
+    const hasCommentToday = Boolean(latestTodayRitual);
+    const isStreakCompletedToday = hasCommentToday && (streak || 0) > 0;
+    const shareGoalReady = shareGoal === 'comment' ? hasCommentToday : isStreakCompletedToday;
+    const streakSharePreview = language === 'tr'
+        ? `Bugunku streak tamamlandi: ${streak || 0} gun`
+        : `Today's streak is complete: ${streak || 0} days`;
     const latestCommentPreview = useMemo(() => {
-        const raw = latestRitual?.text?.trim() || '';
-        if (!raw) return language === 'tr' ? 'Ilk yorumunla sinyali baslat.' : 'Start the signal with your first comment.';
+        const raw = activeRitualForShare?.text?.trim() || '';
+        if (!raw) {
+            return language === 'tr'
+                ? 'Bugun yorum yazip paylasarak bonus XP kazan.'
+                : 'Post a comment today and share it to earn bonus XP.';
+        }
         if (raw.length <= 120) return raw;
         return `${raw.slice(0, 120).trimEnd()}...`;
-    }, [latestRitual?.text, language]);
+    }, [activeRitualForShare?.text, language]);
 
     const shareCopy = useMemo(() => {
         if (language === 'tr') {
             return {
-                title: 'Social Share Card',
-                subtitle: 'Profilini ve yorum ritmini paylas, bonus XP kazan.',
-                previewBadge: 'Canli Onizleme',
+                title: 'Paylasim Bonusu',
+                subtitle: 'Minimal yorumunu veya bugunku streakini paylas, bonus XP kazan.',
+                commentMode: 'Yorum Paylas',
+                streakMode: 'Streak Paylas',
+                commentHint: 'Bugun yazdigin yorumu paylasirsan bonus XP alirsin.',
+                streakHint: 'Bugunku seriyi tamamlayip paylasirsan bonus XP alirsin.',
                 shareInstagram: 'Instagram',
                 shareTiktok: 'TikTok',
                 shareX: 'X',
-                rewardHint: 'Gunluk ilk paylasim +18 XP',
-                copiedHint: 'Metin panoya kopyalandi. Platform acildi.',
+                rewardHint: 'Gunluk ilk uygun paylasim +18 XP',
+                commentLocked: 'Yorum paylasimi icin once bugun yorum yaz.',
+                streakLocked: 'Streak paylasimi icin once bugunku rituelini tamamla.',
                 failedHint: 'Paylasim hazirlanamadi. Tekrar dene.'
             };
         }
         return {
-            title: 'Social Share Card',
-            subtitle: 'Share your profile and comment rhythm to earn bonus XP.',
-            previewBadge: 'Live Preview',
+            title: 'Share Bonus',
+            subtitle: 'Share your minimal comment or today\'s streak and earn bonus XP.',
+            commentMode: 'Share Comment',
+            streakMode: 'Share Streak',
+            commentHint: 'Share today\'s comment to earn bonus XP.',
+            streakHint: 'Complete today\'s streak, then share to earn bonus XP.',
             shareInstagram: 'Instagram',
             shareTiktok: 'TikTok',
             shareX: 'X',
-            rewardHint: 'First share of the day: +18 XP',
-            copiedHint: 'Caption copied to clipboard. Platform opened.',
+            rewardHint: 'First eligible share of the day: +18 XP',
+            commentLocked: 'Write a comment today before claiming comment-share XP.',
+            streakLocked: 'Complete today\'s ritual before claiming streak-share XP.',
             failedHint: 'Could not prepare share. Try again.'
         };
     }, [language]);
 
-    const buildSharePayload = (platform: SharePlatform): string => {
+    const buildSharePayload = (platform: SharePlatform, goal: ShareGoal): string => {
         const displayName = user?.name || text.profile.curatorFallback;
         const handle = username || text.profile.observerHandle;
-        const topFilm = mostWrittenFilm?.title || text.profile.noRecords;
         const platformTag = platform === 'x' ? '#X' : platform === 'tiktok' ? '#TikTok' : '#Instagram';
+
+        if (goal === 'streak') {
+            return [
+                '180 Absolute Cinema',
+                `${displayName} (@${handle})`,
+                streakSharePreview,
+                `${currentLeagueLabel} - ${Math.floor(xp)} XP`,
+                `${platformTag} #180AbsoluteCinema`
+            ].join('\n');
+        }
+
         return [
             '180 Absolute Cinema',
             `${displayName} (@${handle})`,
             `${currentLeagueLabel} • ${Math.floor(xp)} XP`,
-            `${text.profile.comments}: ${dailyRituals.length} | ${text.profile.days}: ${daysPresent} | ${text.profileWidget.streak}: ${streak || 0}`,
-            `${text.profile.mostCommented}: ${topFilm}`,
             `"${latestCommentPreview}"`,
             `${platformTag} #180AbsoluteCinema`
         ].join('\n');
@@ -289,8 +333,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
         }
     };
 
-    const handleShare = async (platform: SharePlatform) => {
-        const payload = buildSharePayload(platform);
+    const handleShare = async (platform: SharePlatform, goal: ShareGoal) => {
+        const isReady = goal === 'comment' ? hasCommentToday : isStreakCompletedToday;
+        if (!isReady) {
+            setShareStatus(goal === 'comment' ? shareCopy.commentLocked : shareCopy.streakLocked);
+            return;
+        }
+
+        const payload = buildSharePayload(platform, goal);
         const originUrl = typeof window !== 'undefined' ? window.location.origin : '';
         const pageUrl = `${originUrl}/`;
 
@@ -304,10 +354,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                     ? 'https://www.instagram.com/'
                     : 'https://www.tiktok.com/';
                 window.open(target, '_blank', 'noopener,noreferrer');
-                setShareStatus(shareCopy.copiedHint);
             }
 
-            const rewardResult = awardShareXP(platform);
+            const rewardResult = awardShareXP(platform, goal);
             setShareStatus(rewardResult.message || shareCopy.rewardHint);
         } catch {
             setShareStatus(shareCopy.failedHint);
@@ -513,9 +562,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
         };
     }, [selectedMovieId, selectedFilmComments, user?.id]);
 
-    const handleClose = () => {
+    const handleHome = () => {
+        setSelectedMovieId(null);
         setIsVisible(false);
-        setTimeout(onClose, 500); // Wait for fade out
+        const next = onHome || onClose;
+        setTimeout(next, 500);
     };
 
     const handleSaveIdentity = () => {
@@ -533,7 +584,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
             {/* Top Right Controls */}
             <div className="absolute top-3 right-3 sm:top-8 sm:right-8 z-50 flex items-center gap-2 sm:gap-2.5">
                 <button
-                    onClick={handleClose}
+                    onClick={handleHome}
                     className="h-10 w-10 sm:h-11 sm:w-11 rounded-full border border-sage/30 hover:border-clay/60 text-clay/80 hover:text-clay transition-colors flex items-center justify-center bg-[#1A1A1A]/85"
                     aria-label={text.profile.backHome}
                     title={text.profile.backHome}
@@ -570,8 +621,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
             <div className="w-full max-w-7xl px-4 sm:px-6 md:px-12 pb-16 pt-20 sm:pt-24">
                 {/* Header - 180 Absolute Cinema */}
                 <header className="mb-12 text-center animate-fade-in">
-                    <h1 className="text-4xl md:text-5xl font-bold tracking-tighter text-sage mb-3 drop-shadow-sm">180</h1>
-                    <p className="text-clay font-medium tracking-[0.2em] text-xs md:text-sm uppercase">{text.app.brandSubtitle}</p>
+                    <button
+                        type="button"
+                        onClick={handleHome}
+                        className="inline-flex flex-col items-center"
+                        aria-label={text.profile.backHome}
+                        title={text.profile.backHome}
+                    >
+                        <h1 className="text-4xl md:text-5xl font-bold tracking-tighter text-sage mb-3 drop-shadow-sm">180</h1>
+                        <p className="text-clay font-medium tracking-[0.2em] text-xs md:text-sm uppercase">{text.app.brandSubtitle}</p>
+                    </button>
                 </header>
 
                 {/* Two Column Grid */}
@@ -807,54 +866,83 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                             <div className="pointer-events-none absolute -bottom-20 -left-10 w-44 h-44 rounded-full bg-clay/20 blur-3xl" />
                             <div className="relative z-10">
                                 <div className="flex items-center justify-between mb-4">
-                                    <div>
-                                        <p className="text-[10px] uppercase tracking-[0.22em] text-sage/80 font-bold">{shareCopy.previewBadge}</p>
-                                        <h3 className="text-lg font-bold tracking-[0.06em] uppercase text-white mt-1">{shareCopy.title}</h3>
-                                    </div>
+                                    <h3 className="text-lg font-bold tracking-[0.06em] uppercase text-white">{shareCopy.title}</h3>
                                     <span className="text-[10px] uppercase tracking-[0.2em] text-clay/80">{shareCopy.rewardHint}</span>
                                 </div>
 
-                                <p className="text-[11px] text-white/70 mb-5">{shareCopy.subtitle}</p>
+                                <p className="text-[11px] text-white/70 mb-4">{shareCopy.subtitle}</p>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShareGoal('comment')}
+                                        className={`px-3 py-2 rounded-lg border text-[10px] uppercase tracking-[0.18em] transition-colors ${
+                                            shareGoal === 'comment'
+                                                ? 'border-sage/60 bg-sage/10 text-sage'
+                                                : 'border-white/15 bg-white/5 text-white hover:border-sage/50 hover:text-sage'
+                                        }`}
+                                    >
+                                        {shareCopy.commentMode}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShareGoal('streak')}
+                                        className={`px-3 py-2 rounded-lg border text-[10px] uppercase tracking-[0.18em] transition-colors ${
+                                            shareGoal === 'streak'
+                                                ? 'border-sage/60 bg-sage/10 text-sage'
+                                                : 'border-white/15 bg-white/5 text-white hover:border-sage/50 hover:text-sage'
+                                        }`}
+                                    >
+                                        {shareCopy.streakMode}
+                                    </button>
+                                </div>
+
+                                <p className="text-[11px] text-white/70 mb-4">
+                                    {shareGoal === 'comment' ? shareCopy.commentHint : shareCopy.streakHint}
+                                </p>
 
                                 <div className="rounded-xl border border-white/15 bg-black/30 p-4 mb-5">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <p className="text-xs uppercase tracking-[0.18em] text-white/80 font-bold">{user?.name || text.profile.curatorFallback}</p>
-                                        <p className="text-[10px] font-mono text-sage/80">{Math.floor(xp)} XP</p>
-                                    </div>
-                                    <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-3">@{username || text.profile.observerHandle}</p>
-                                    <p className="text-sm text-white/90 leading-relaxed font-serif italic">"{latestCommentPreview}"</p>
-                                    <div className="mt-4 flex flex-wrap gap-2">
-                                        <span className="px-2 py-1 rounded-full border border-white/10 text-[9px] uppercase tracking-[0.16em] text-sage/85">
-                                            {text.profile.comments}: {dailyRituals.length}
-                                        </span>
-                                        <span className="px-2 py-1 rounded-full border border-white/10 text-[9px] uppercase tracking-[0.16em] text-sage/85">
-                                            {text.profile.days}: {daysPresent}
-                                        </span>
-                                        <span className="px-2 py-1 rounded-full border border-white/10 text-[9px] uppercase tracking-[0.16em] text-sage/85">
-                                            {text.profileWidget.streak}: {streak || 0}
-                                        </span>
-                                    </div>
+                                    <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-2">
+                                        @{username || text.profile.observerHandle}
+                                    </p>
+                                    {shareGoal === 'comment' ? (
+                                        <p className="text-sm text-white/90 leading-relaxed font-serif italic">"{latestCommentPreview}"</p>
+                                    ) : (
+                                        <p className="text-sm text-white/90 leading-relaxed font-serif italic">{streakSharePreview}</p>
+                                    )}
+                                    <p className={`mt-4 text-[10px] uppercase tracking-[0.16em] ${
+                                        shareGoalReady ? 'text-sage/80' : 'text-clay/80'
+                                    }`}>
+                                        {shareGoalReady
+                                            ? shareCopy.rewardHint
+                                            : shareGoal === 'comment'
+                                                ? shareCopy.commentLocked
+                                                : shareCopy.streakLocked}
+                                    </p>
                                 </div>
 
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                                     <button
                                         type="button"
-                                        onClick={() => void handleShare('instagram')}
-                                        className="px-3 py-2 rounded-lg border border-white/15 bg-white/5 text-[10px] uppercase tracking-[0.18em] text-white hover:border-sage/50 hover:text-sage transition-colors"
+                                        onClick={() => void handleShare('instagram', shareGoal)}
+                                        disabled={!shareGoalReady}
+                                        className="px-3 py-2 rounded-lg border border-white/15 bg-white/5 text-[10px] uppercase tracking-[0.18em] text-white hover:border-sage/50 hover:text-sage transition-colors disabled:opacity-45 disabled:cursor-not-allowed"
                                     >
                                         {shareCopy.shareInstagram}
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => void handleShare('tiktok')}
-                                        className="px-3 py-2 rounded-lg border border-white/15 bg-white/5 text-[10px] uppercase tracking-[0.18em] text-white hover:border-sage/50 hover:text-sage transition-colors"
+                                        onClick={() => void handleShare('tiktok', shareGoal)}
+                                        disabled={!shareGoalReady}
+                                        className="px-3 py-2 rounded-lg border border-white/15 bg-white/5 text-[10px] uppercase tracking-[0.18em] text-white hover:border-sage/50 hover:text-sage transition-colors disabled:opacity-45 disabled:cursor-not-allowed"
                                     >
                                         {shareCopy.shareTiktok}
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => void handleShare('x')}
-                                        className="px-3 py-2 rounded-lg border border-white/15 bg-white/5 text-[10px] uppercase tracking-[0.18em] text-white hover:border-sage/50 hover:text-sage transition-colors"
+                                        onClick={() => void handleShare('x', shareGoal)}
+                                        disabled={!shareGoalReady}
+                                        className="px-3 py-2 rounded-lg border border-white/15 bg-white/5 text-[10px] uppercase tracking-[0.18em] text-white hover:border-sage/50 hover:text-sage transition-colors disabled:opacity-45 disabled:cursor-not-allowed"
                                     >
                                         {shareCopy.shareX}
                                     </button>
@@ -998,6 +1086,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, startInSettin
                     </div>
                 </div>
             </div>
+
+            <InfoFooter
+                className="w-full mt-auto"
+                panelWrapperClassName="px-4 sm:px-6 md:px-12 pb-4"
+                footerClassName="py-8 px-4 sm:px-6 md:px-12 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4 text-[10px] uppercase tracking-widest text-white/20"
+            />
 
             {selectedMovieId && selectedFilm && (
                 <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6 animate-fade-in">

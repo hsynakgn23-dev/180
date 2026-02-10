@@ -11,6 +11,7 @@ import { WriteOverlay } from './features/ritual/WriteOverlay'
 import { ProfileView } from './features/profile/ProfileView'
 import { LeagueTransition } from './components/LeagueTransition'
 import { StreakCelebration } from './components/StreakCelebration'
+import { InfoFooter } from './components/InfoFooter'
 import type { Movie } from './data/mockMovies'
 import { LanguageProvider, useLanguage } from './context/LanguageContext'
 
@@ -36,6 +37,14 @@ const AppContent = () => {
 
   const [showLanding, setShowLanding] = useState(true);
   const showDebugPanel = import.meta.env.DEV && import.meta.env.VITE_ENABLE_DEBUG_PANEL !== '0';
+
+  const openHome = () => {
+    setActiveMovie(null);
+    setDetailMovie(null);
+    setShowProfile(false);
+    setStartProfileInSettings(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   useEffect(() => {
     if (!showDebugPanel) return;
@@ -132,10 +141,8 @@ const AppContent = () => {
 
       {showProfile && (
         <ProfileView
-          onClose={() => {
-            setShowProfile(false);
-            setStartProfileInSettings(false);
-          }}
+          onClose={openHome}
+          onHome={openHome}
           startInSettings={startProfileInSettings}
         />
       )}
@@ -145,13 +152,23 @@ const AppContent = () => {
 
         <main className="container mx-auto px-4 sm:px-6 relative z-10">
           <header className="mb-8 sm:mb-16 text-center animate-fade-in">
-            <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold tracking-tighter text-sage mb-2 sm:mb-4 drop-shadow-sm">180</h1>
-            <p className="text-clay font-medium tracking-[0.2em] text-sm md:text-base uppercase">{text.app.brandSubtitle}</p>
+            <button
+              type="button"
+              onClick={openHome}
+              className="inline-flex flex-col items-center"
+              aria-label={text.profile.backHome}
+              title={text.profile.backHome}
+            >
+              <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold tracking-tighter text-sage mb-2 sm:mb-4 drop-shadow-sm">180</h1>
+              <p className="text-clay font-medium tracking-[0.2em] text-sm md:text-base uppercase">{text.app.brandSubtitle}</p>
+            </button>
           </header>
 
           <DailyShowcase onMovieSelect={setDetailMovie} />
           <Arena />
         </main>
+
+        <InfoFooter className="mt-8" panelWrapperClassName="px-4 sm:px-6 pb-4" footerClassName="py-8 px-4 sm:px-6 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4 text-[10px] uppercase tracking-widest text-white/20" />
       </div>
     </>
   );

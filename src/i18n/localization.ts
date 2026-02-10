@@ -21,10 +21,10 @@ export const isLanguageCode = (value: unknown): value is LanguageCode =>
     value === 'tr' || value === 'en' || value === 'es' || value === 'fr';
 
 export const SUPPORTED_LANGUAGE_OPTIONS: ReadonlyArray<{ code: LanguageCode; label: string }> = [
-    { code: 'tr', label: 'Turkce' },
     { code: 'en', label: 'English' },
-    { code: 'es', label: 'Espanol' },
-    { code: 'fr', label: 'Francais' }
+    { code: 'tr', label: 'Türkçe' },
+    { code: 'es', label: 'Español' },
+    { code: 'fr', label: 'Français' }
 ];
 
 type RegistrationGenderOptionValue = 'female' | 'male' | 'non_binary' | 'prefer_not_to_say';

@@ -313,7 +313,7 @@ export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
             personalInfo: 'Kisisel Bilgiler', fullName: 'Isim', username: 'Kullanici', gender: 'Cinsiyet', birthDate: 'Dogum',
             select: 'Seciniz', usernameHint: 'Kullanici adi: 3-20 karakter, harf/rakam/_',
             bio: 'Biyografi', bioPlaceholder: 'Kisa bir profil notu yaz...', saveIdentity: 'Kimligi Kaydet',
-            theme: 'Tema', themeMidnight: 'Gece', themeDawn: 'Gunduz', language: 'Dil', languageTr: 'Turkce', languageEn: 'Ingilizce',
+            theme: 'Tema', themeMidnight: 'Gece', themeDawn: 'Gunduz', language: 'Dil', languageTr: 'Türkçe', languageEn: 'İngilizce',
             activeAccount: 'Aktif Hesap', unknown: 'bilinmiyor', sessionControl: 'Oturum Kontrolu', logout: 'Cikis Yap', logoutConfirm: 'Tekrar Tikla ve Cik',
             statusThemeUpdated: 'Tema guncellendi', statusLanguageSaved: 'Dil tercihi kaydedildi', statusIdentitySaveFailed: 'Kimlik kaydi basarisiz',
             statusIdentitySaved: 'Kimlik kaydedildi', statusAvatarUpdated: 'Avatar guncellendi'

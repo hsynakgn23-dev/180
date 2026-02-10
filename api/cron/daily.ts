@@ -40,6 +40,8 @@ type TmdbDiscoverMovie = {
     poster_path?: string | null;
     release_date?: string;
     vote_average?: number;
+    vote_count?: number;
+    popularity?: number;
     overview?: string;
     original_language?: string;
     genre_ids?: number[];
@@ -67,6 +69,16 @@ const MODERN_YEAR_THRESHOLD = 2010;
 const DAILY_MAX_MOVIES_PER_DIRECTOR = 1;
 const TMDB_DISCOVER_PAGE_WINDOW = 20;
 const TMDB_SLOT_PAGE_COUNT = 2;
+const TMDB_MIN_VOTE_AVERAGE = 7.0;
+const TMDB_MIN_VOTE_COUNT = 600;
+const TMDB_MIN_POPULARITY = 12;
+const TMDB_MIN_RUNTIME_MINUTES = 70;
+const TMDB_EXCLUDED_GENRE_IDS = new Set<number>([99]);
+const TMDB_FALLBACK_DISCOVER_PARAMS = [
+    '&sort_by=vote_count.desc',
+    '&sort_by=popularity.desc',
+    '&sort_by=vote_average.desc&vote_count.gte=1200'
+];
 const DEFAULT_DAILY_ROLLOVER_TIMEZONE = 'Europe/Istanbul';
 const DAILY_ROLLOVER_TIMEZONE = (
     process.env.DAILY_ROLLOVER_TIMEZONE || DEFAULT_DAILY_ROLLOVER_TIMEZONE
@@ -109,11 +121,11 @@ const getDateKeyFromFormatter = (date: Date, formatter: Intl.DateTimeFormat): st
 const getDailyDateKey = (): string => getDateKeyFromFormatter(new Date(), DAILY_DATE_FORMATTER);
 
 const DEFAULT_SLOT_PARAMS = [
-    '&vote_average.gte=8.4&vote_count.gte=3000&sort_by=vote_average.desc',
-    '&vote_average.gte=7.5&vote_count.gte=50&vote_count.lte=1000&sort_by=popularity.desc',
-    '&with_genres=99,36,10752&sort_by=popularity.desc',
-    '&primary_release_date.gte=2024-01-01&vote_average.gte=7.0&sort_by=popularity.desc',
-    '&vote_average.gte=7.8&with_original_language=ja|ko|fr&sort_by=popularity.desc'
+    '&vote_average.gte=8.0&vote_count.gte=4000&popularity.gte=20&sort_by=vote_average.desc',
+    '&vote_average.gte=7.2&vote_count.gte=1200&popularity.gte=25&sort_by=popularity.desc',
+    '&with_genres=36,10752,80&vote_average.gte=7.0&vote_count.gte=800&popularity.gte=15&sort_by=popularity.desc',
+    '&primary_release_date.gte=2024-01-01&vote_average.gte=7.0&vote_count.gte=700&popularity.gte=20&sort_by=popularity.desc',
+    '&vote_average.gte=7.4&vote_count.gte=900&popularity.gte=18&with_original_language=ja|ko|fr&sort_by=popularity.desc'
 ];
 
 const DEFAULT_SEED_MOVIES: Movie[] = [
@@ -273,6 +285,49 @@ const parseSlotParams = (rawParams: string): URLSearchParams => {
     return searchParams;
 };
 
+const parseNumberParam = (value: string | null): number | null => {
+    if (typeof value !== 'string') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+};
+
+const enforceMinNumberParam = (params: URLSearchParams, key: string, minValue: number) => {
+    const existing = parseNumberParam(params.get(key));
+    if (existing === null || existing < minValue) {
+        params.set(key, String(minValue));
+    }
+};
+
+const sanitizeGenreFilter = (rawValue: string | null): number[] => {
+    if (!rawValue) return [];
+    return rawValue
+        .split(',')
+        .map((chunk) => Number(chunk.trim()))
+        .filter((value) => Number.isInteger(value) && value > 0);
+};
+
+const enforceDiscoverQualityFilters = (params: URLSearchParams) => {
+    enforceMinNumberParam(params, 'vote_average.gte', TMDB_MIN_VOTE_AVERAGE);
+    enforceMinNumberParam(params, 'vote_count.gte', TMDB_MIN_VOTE_COUNT);
+    enforceMinNumberParam(params, 'popularity.gte', TMDB_MIN_POPULARITY);
+    enforceMinNumberParam(params, 'with_runtime.gte', TMDB_MIN_RUNTIME_MINUTES);
+
+    const withGenres = sanitizeGenreFilter(params.get('with_genres')).filter(
+        (genreId) => !TMDB_EXCLUDED_GENRE_IDS.has(genreId)
+    );
+    if (withGenres.length > 0) {
+        params.set('with_genres', withGenres.join(','));
+    } else {
+        params.delete('with_genres');
+    }
+
+    const withoutGenres = new Set<number>([
+        ...sanitizeGenreFilter(params.get('without_genres')),
+        ...Array.from(TMDB_EXCLUDED_GENRE_IDS.values())
+    ]);
+    params.set('without_genres', Array.from(withoutGenres.values()).join(','));
+};
+
 const normalizeGenre = (movie: Movie): string => {
     return (movie.genre || '').split('/')[0].trim().toLowerCase();
 };
@@ -427,6 +482,7 @@ const fetchTmdbDiscoverForSlot = async (
             page: String(page)
         });
         parsedSlotParams.forEach((value, key) => params.set(key, value));
+        enforceDiscoverQualityFilters(params);
 
         const response = await fetch(`${TMDB_API_BASE}/discover/movie?${params.toString()}`);
         if (!response.ok) continue;
@@ -440,22 +496,6 @@ const fetchTmdbDiscoverForSlot = async (
     return results;
 };
 
-const fetchTmdbListPage = async (
-    apiKey: string,
-    endpoint: 'popular' | 'top_rated',
-    page: number
-): Promise<TmdbDiscoverMovie[]> => {
-    const params = new URLSearchParams({
-        api_key: apiKey,
-        language: 'en-US',
-        page: String(page)
-    });
-    const response = await fetch(`${TMDB_API_BASE}/movie/${endpoint}?${params.toString()}`);
-    if (!response.ok) return [];
-    const payload = (await response.json()) as { results?: TmdbDiscoverMovie[] };
-    return Array.isArray(payload.results) ? payload.results : [];
-};
-
 const mapTmdbResultToMovie = (result: TmdbDiscoverMovie, genreMap: Map<number, string>): Movie | null => {
     const id = Number(result.id);
     if (!Number.isInteger(id) || id <= 0) return null;
@@ -466,7 +506,20 @@ const mapTmdbResultToMovie = (result: TmdbDiscoverMovie, genreMap: Map<number, s
     const posterPath = typeof result.poster_path === 'string' ? result.poster_path : '';
     if (!posterPath) return null;
 
-    const genres = (result.genre_ids || [])
+    const voteAverage = typeof result.vote_average === 'number' ? result.vote_average : 0;
+    const voteCount = typeof result.vote_count === 'number' ? result.vote_count : 0;
+    const popularity = typeof result.popularity === 'number' ? result.popularity : 0;
+    if (voteAverage < TMDB_MIN_VOTE_AVERAGE) return null;
+    if (voteCount < TMDB_MIN_VOTE_COUNT) return null;
+    if (popularity < TMDB_MIN_POPULARITY) return null;
+
+    const genreIds = (result.genre_ids || [])
+        .map((genreId) => Number(genreId))
+        .filter((genreId) => Number.isInteger(genreId) && genreId > 0);
+    if (genreIds.length === 0) return null;
+    if (genreIds.some((genreId) => TMDB_EXCLUDED_GENRE_IDS.has(genreId))) return null;
+
+    const genres = genreIds
         .map((genreId) => genreMap.get(genreId) || '')
         .filter((genreName) => Boolean(genreName))
         .slice(0, 2);
@@ -480,7 +533,7 @@ const mapTmdbResultToMovie = (result: TmdbDiscoverMovie, genreMap: Map<number, s
         tagline: '',
         color: DEFAULT_GRADIENTS[0],
         posterPath,
-        voteAverage: typeof result.vote_average === 'number' ? result.vote_average : undefined,
+        voteAverage: voteAverage || undefined,
         overview: typeof result.overview === 'string' ? result.overview : undefined,
         originalLanguage: typeof result.original_language === 'string' ? result.original_language : undefined
     };
@@ -830,21 +883,19 @@ const buildDailyTmdbMovies = async (dateKey: string, excludedMovieIds: number[] 
         }
 
         if (poolById.size < 30) {
-            const fallbackPage = (hashString(`cron-fallback:${dateKey}`) % TMDB_DISCOVER_PAGE_WINDOW) + 1;
-            const [popularResults, topRatedResults] = await Promise.all([
-                fetchTmdbListPage(apiKey, 'popular', fallbackPage),
-                fetchTmdbListPage(
+            for (let idx = 0; idx < TMDB_FALLBACK_DISCOVER_PARAMS.length; idx += 1) {
+                const fallbackResults = await fetchTmdbDiscoverForSlot(
                     apiKey,
-                    'top_rated',
-                    ((fallbackPage + 5 - 1) % TMDB_DISCOVER_PAGE_WINDOW) + 1
-                )
-            ]);
-
-            for (const result of [...popularResults, ...topRatedResults]) {
-                const mapped = mapTmdbResultToMovie(result, genreMap);
-                if (!mapped) continue;
-                if (!poolById.has(mapped.id)) {
-                    poolById.set(mapped.id, mapped);
+                    dateKey,
+                    TMDB_FALLBACK_DISCOVER_PARAMS[idx],
+                    100 + idx
+                );
+                for (const result of fallbackResults) {
+                    const mapped = mapTmdbResultToMovie(result, genreMap);
+                    if (!mapped) continue;
+                    if (!poolById.has(mapped.id)) {
+                        poolById.set(mapped.id, mapped);
+                    }
                 }
             }
         }
