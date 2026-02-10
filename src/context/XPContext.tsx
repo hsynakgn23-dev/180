@@ -1091,29 +1091,89 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                     return;
                 }
 
-                const { error } = await supabase
-                    .from('rituals')
-                    .insert([
-                        {
-                            user_id: sessionUser.id,
-                            author: user.name || sessionUser.email?.split('@')[0] || 'Observer',
-                            movie_title: newRitual.movieTitle,
-                            poster_path: newRitual.posterPath || null,
-                            text: newRitual.text,
-                            timestamp: new Date().toISOString(),
-                            league: leagueForInsert,
-                            year: knownMovie?.year ? String(knownMovie.year) : null
-                        }
-                    ]);
+                const ritualInsertPayloads: Array<Record<string, string | null>> = [
+                    {
+                        user_id: sessionUser.id,
+                        author: user.name || sessionUser.email?.split('@')[0] || 'Observer',
+                        movie_title: newRitual.movieTitle,
+                        poster_path: newRitual.posterPath || null,
+                        text: newRitual.text,
+                        timestamp: new Date().toISOString(),
+                        league: leagueForInsert,
+                        year: knownMovie?.year ? String(knownMovie.year) : null
+                    },
+                    {
+                        user_id: sessionUser.id,
+                        author: user.name || sessionUser.email?.split('@')[0] || 'Observer',
+                        movie_title: newRitual.movieTitle,
+                        poster_path: newRitual.posterPath || null,
+                        text: newRitual.text,
+                        timestamp: new Date().toISOString(),
+                        league: leagueForInsert
+                    },
+                    {
+                        user_id: sessionUser.id,
+                        author: user.name || sessionUser.email?.split('@')[0] || 'Observer',
+                        movie_title: newRitual.movieTitle,
+                        text: newRitual.text,
+                        timestamp: new Date().toISOString(),
+                        league: leagueForInsert
+                    },
+                    {
+                        user_id: sessionUser.id,
+                        author: user.name || sessionUser.email?.split('@')[0] || 'Observer',
+                        movie_title: newRitual.movieTitle,
+                        text: newRitual.text,
+                        timestamp: new Date().toISOString()
+                    },
+                    {
+                        user_id: sessionUser.id,
+                        author: user.name || sessionUser.email?.split('@')[0] || 'Observer',
+                        movie_title: newRitual.movieTitle,
+                        poster_path: newRitual.posterPath || null,
+                        text: newRitual.text,
+                        league: leagueForInsert,
+                        year: knownMovie?.year ? String(knownMovie.year) : null
+                    },
+                    {
+                        user_id: sessionUser.id,
+                        author: user.name || sessionUser.email?.split('@')[0] || 'Observer',
+                        movie_title: newRitual.movieTitle,
+                        text: newRitual.text,
+                        league: leagueForInsert
+                    },
+                    {
+                        user_id: sessionUser.id,
+                        author: user.name || sessionUser.email?.split('@')[0] || 'Observer',
+                        movie_title: newRitual.movieTitle,
+                        text: newRitual.text
+                    }
+                ];
 
-                if (error) {
-                    if (isSupabaseCapabilityError(error)) {
+                let insertError: { code?: string | null; message?: string | null } | null = null;
+
+                for (const payload of ritualInsertPayloads) {
+                    const { error } = await supabase
+                        .from('rituals')
+                        .insert([payload]);
+                    if (!error) {
+                        insertError = null;
+                        break;
+                    }
+                    insertError = error;
+                    if (!isSupabaseCapabilityError(error)) {
+                        break;
+                    }
+                }
+
+                if (insertError) {
+                    if (isSupabaseCapabilityError(insertError)) {
                         canWriteRitualRef.current = false;
                         triggerWhisper("Cloud ritual sync devre disi. Yerel kayitla devam ediliyor.");
                         return;
                     }
-                    console.error('[Ritual] Failed to sync ritual:', error);
-                    const lowered = (error.message || '').toLowerCase();
+                    console.error('[Ritual] Failed to sync ritual:', insertError);
+                    const lowered = (insertError.message || '').toLowerCase();
                     if (lowered.includes('permission') || lowered.includes('policy') || lowered.includes('jwt')) {
                         triggerWhisper("Cloud izni reddedildi. Cikis-giris yapip tekrar dene.");
                     } else {

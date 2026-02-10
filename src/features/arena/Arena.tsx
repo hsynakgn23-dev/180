@@ -19,6 +19,10 @@ interface RitualRow {
     year: string | null;
 }
 
+type PartialRitualRow = Partial<RitualRow> & {
+    id?: string;
+};
+
 interface EchoRow {
     ritual_id: string;
     user_id: string;
@@ -65,6 +69,44 @@ const parseYear = (yearRaw: string | null): number | undefined => {
     if (Number.isNaN(parsed)) return undefined;
     return parsed;
 };
+
+const normalizeRitualRow = (row: PartialRitualRow): RitualRow | null => {
+    if (!row.id || typeof row.id !== 'string') return null;
+    return {
+        id: row.id,
+        user_id: typeof row.user_id === 'string' ? row.user_id : null,
+        author: typeof row.author === 'string' ? row.author : null,
+        movie_title: typeof row.movie_title === 'string' ? row.movie_title : null,
+        poster_path: typeof row.poster_path === 'string' ? row.poster_path : null,
+        text: typeof row.text === 'string' ? row.text : null,
+        timestamp: typeof row.timestamp === 'string' ? row.timestamp : null,
+        league: typeof row.league === 'string' ? row.league : null,
+        year: typeof row.year === 'string' ? row.year : null
+    };
+};
+
+const RITUAL_SELECT_VARIANTS = [
+    {
+        select: 'id, user_id, author, movie_title, poster_path, text, timestamp, league, year',
+        orderBy: 'timestamp'
+    },
+    {
+        select: 'id, user_id, author, movie_title, poster_path, text, timestamp, league',
+        orderBy: 'timestamp'
+    },
+    {
+        select: 'id, user_id, author, movie_title, text, timestamp, league',
+        orderBy: 'timestamp'
+    },
+    {
+        select: 'id, user_id, author, movie_title, poster_path, text, timestamp:created_at, league, year',
+        orderBy: 'created_at'
+    },
+    {
+        select: 'id, user_id, author, movie_title, text, timestamp:created_at, league',
+        orderBy: 'created_at'
+    }
+] as const;
 
 const toRelativeTimestamp = (rawTimestamp: string): string => {
     const parsed = Date.parse(rawTimestamp);
@@ -202,12 +244,33 @@ export const Arena: React.FC = () => {
         }
 
         let active = true;
+        const fetchRitualRows = async (): Promise<{ rows: RitualRow[]; error: { code?: string | null; message?: string | null } | null }> => {
+            let lastError: { code?: string | null; message?: string | null } | null = null;
+            for (const variant of RITUAL_SELECT_VARIANTS) {
+                const { data, error } = await client
+                    .from('rituals')
+                    .select(variant.select)
+                    .order(variant.orderBy, { ascending: false })
+                    .limit(120);
+
+                if (error) {
+                    lastError = error;
+                    if (isSupabaseCapabilityError(error)) {
+                        continue;
+                    }
+                    return { rows: [], error };
+                }
+
+                const normalizedRows = (Array.isArray(data) ? data : [])
+                    .map((row) => normalizeRitualRow(row as PartialRitualRow))
+                    .filter((row): row is RitualRow => Boolean(row));
+                return { rows: normalizedRows, error: null };
+            }
+            return { rows: [], error: lastError };
+        };
+
         const fetchRituals = async () => {
-            const { data, error } = await client
-                .from('rituals')
-                .select('id, user_id, author, movie_title, poster_path, text, timestamp, league, year')
-                .order('timestamp', { ascending: false })
-                .limit(120);
+            const { rows, error } = await fetchRitualRows();
 
             if (!active) return;
 
@@ -226,7 +289,6 @@ export const Arena: React.FC = () => {
                 return;
             }
 
-            const rows = Array.isArray(data) ? (data as RitualRow[]) : [];
             const ritualIds = rows.map((row) => row.id);
             let echoRows: EchoRow[] = [];
             let replyRows: ReplyRow[] = [];
