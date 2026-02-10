@@ -173,6 +173,7 @@ const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
 const SHARE_REWARD_XP = 18;
 const USER_XP_STORAGE_KEY_PREFIX = '180_xp_data_';
 const MAX_PERSISTED_AVATAR_URL_LENGTH = 180_000;
+const STORAGE_RECOVERY_KEYS = ['DAILY_CANDIDATE_POOL_V2', 'DAILY_SELECTION_V18'] as const;
 export const LEAGUE_NAMES = Object.keys(LEAGUES_DATA);
 type PendingRegistrationProfile = RegistrationProfileInput & { email: string };
 const getLeagueIndexFromXp = (xp: number): number =>
@@ -313,8 +314,11 @@ const persistUserXpStateToLocal = (email: string, state: XPState) => {
     const primaryKey = getUserXpStorageKey(email);
     const legacyKey = getLegacyUserXpStorageKey(email);
 
-    const writePayload = (payloadState: XPState): boolean => {
+    const writePayload = (payloadState: XPState, options?: { dropLegacyBeforeWrite?: boolean }): boolean => {
         try {
+            if (options?.dropLegacyBeforeWrite && legacyKey !== primaryKey) {
+                localStorage.removeItem(legacyKey);
+            }
             localStorage.setItem(primaryKey, JSON.stringify(payloadState));
             if (legacyKey !== primaryKey) {
                 localStorage.removeItem(legacyKey);
@@ -326,10 +330,38 @@ const persistUserXpStateToLocal = (email: string, state: XPState) => {
     };
 
     if (writePayload(state)) return;
+    if (writePayload(state, { dropLegacyBeforeWrite: true })) return;
 
     const compactState = compactStateForPersistence(state);
-    if (compactState !== state && writePayload(compactState)) {
+    if (compactState !== state && writePayload(compactState, { dropLegacyBeforeWrite: true })) {
         console.warn('[XP] local persistence compacted by removing oversized avatar payload.');
+        return;
+    }
+
+    // Recovery path for quota pressure: drop heavy cache keys and retry compact payload.
+    for (const key of STORAGE_RECOVERY_KEYS) {
+        try {
+            localStorage.removeItem(key);
+        } catch {
+            // ignore
+        }
+    }
+
+    try {
+        localStorage.removeItem(primaryKey);
+    } catch {
+        // ignore
+    }
+    if (legacyKey !== primaryKey) {
+        try {
+            localStorage.removeItem(legacyKey);
+        } catch {
+            // ignore
+        }
+    }
+
+    if (writePayload(compactState, { dropLegacyBeforeWrite: true })) {
+        console.warn('[XP] local persistence recovered after cache cleanup.');
         return;
     }
 
