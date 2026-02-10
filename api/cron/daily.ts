@@ -69,15 +69,15 @@ const MODERN_YEAR_THRESHOLD = 2010;
 const DAILY_MAX_MOVIES_PER_DIRECTOR = 1;
 const TMDB_DISCOVER_PAGE_WINDOW = 20;
 const TMDB_SLOT_PAGE_COUNT = 2;
-const TMDB_MIN_VOTE_AVERAGE = 7.0;
-const TMDB_MIN_VOTE_COUNT = 600;
-const TMDB_MIN_POPULARITY = 12;
-const TMDB_MIN_RUNTIME_MINUTES = 70;
+const TMDB_MIN_VOTE_AVERAGE = 6.5;
+const TMDB_MIN_VOTE_COUNT = 700;
+const TMDB_MIN_POPULARITY = 10;
+const TMDB_MIN_RUNTIME_MINUTES = 60;
 const TMDB_EXCLUDED_GENRE_IDS = new Set<number>([99]);
 const TMDB_FALLBACK_DISCOVER_PARAMS = [
-    '&sort_by=vote_count.desc',
-    '&sort_by=popularity.desc',
-    '&sort_by=vote_average.desc&vote_count.gte=1200'
+    '&vote_average.gte=6.5&vote_count.gte=1200&sort_by=vote_count.desc',
+    '&vote_average.gte=6.5&vote_count.gte=900&sort_by=popularity.desc',
+    '&vote_average.gte=6.5&vote_count.gte=1200&sort_by=vote_average.desc'
 ];
 const DEFAULT_DAILY_ROLLOVER_TIMEZONE = 'Europe/Istanbul';
 const DAILY_ROLLOVER_TIMEZONE = (
@@ -121,11 +121,11 @@ const getDateKeyFromFormatter = (date: Date, formatter: Intl.DateTimeFormat): st
 const getDailyDateKey = (): string => getDateKeyFromFormatter(new Date(), DAILY_DATE_FORMATTER);
 
 const DEFAULT_SLOT_PARAMS = [
-    '&vote_average.gte=8.0&vote_count.gte=4000&popularity.gte=20&sort_by=vote_average.desc',
-    '&vote_average.gte=7.2&vote_count.gte=1200&popularity.gte=25&sort_by=popularity.desc',
-    '&with_genres=36,10752,80&vote_average.gte=7.0&vote_count.gte=800&popularity.gte=15&sort_by=popularity.desc',
-    '&primary_release_date.gte=2024-01-01&vote_average.gte=7.0&vote_count.gte=700&popularity.gte=20&sort_by=popularity.desc',
-    '&vote_average.gte=7.4&vote_count.gte=900&popularity.gte=18&with_original_language=ja|ko|fr&sort_by=popularity.desc'
+    '&vote_average.gte=7.2&vote_count.gte=2500&popularity.gte=18&sort_by=vote_average.desc',
+    '&vote_average.gte=6.5&vote_count.gte=1200&popularity.gte=15&sort_by=popularity.desc',
+    '&with_genres=36,10752,80,53,28&vote_average.gte=6.5&vote_count.gte=1000&popularity.gte=12&sort_by=popularity.desc',
+    '&primary_release_date.gte=2024-01-01&vote_average.gte=6.5&vote_count.gte=800&popularity.gte=12&sort_by=popularity.desc',
+    '&vote_average.gte=6.5&vote_count.gte=900&popularity.gte=12&with_original_language=ja|ko|fr&sort_by=popularity.desc'
 ];
 
 const DEFAULT_SEED_MOVIES: Movie[] = [
@@ -196,6 +196,8 @@ const DEFAULT_SEED_MOVIES: Movie[] = [
     }
 ];
 
+const LEGACY_SEED_ID_SET = new Set<number>(DEFAULT_SEED_MOVIES.map((movie) => movie.id));
+
 const EXTRA_POSTER_CACHE_MOVIES: Movie[] = [
     {
         id: 843,
@@ -260,6 +262,21 @@ const normalizeMovieIds = (movieIds: number[] = []): number[] => {
                 .filter((value) => Number.isInteger(value) && value > 0)
         )
     );
+};
+
+const isMovieEligibleForDaily = (movie: Movie): boolean => {
+    const voteAverage = Number(movie.voteAverage);
+    if (!Number.isFinite(voteAverage) || voteAverage < TMDB_MIN_VOTE_AVERAGE) return false;
+    const normalizedGenre = String(movie.genre || '').toLowerCase();
+    if (normalizedGenre.includes('documentary') || normalizedGenre.includes('belgesel')) return false;
+    return true;
+};
+
+const isLegacySeedSelection = (movies: Movie[]): boolean => {
+    const selected = movies.slice(0, DAILY_MOVIE_COUNT);
+    if (selected.length !== DAILY_MOVIE_COUNT) return false;
+    const legacyCount = selected.filter((movie) => LEGACY_SEED_ID_SET.has(movie.id)).length;
+    return legacyCount >= 1;
 };
 
 const parseYearFromDate = (value: string | undefined): number => {
@@ -499,6 +516,7 @@ const fetchTmdbDiscoverForSlot = async (
 const mapTmdbResultToMovie = (result: TmdbDiscoverMovie, genreMap: Map<number, string>): Movie | null => {
     const id = Number(result.id);
     if (!Number.isInteger(id) || id <= 0) return null;
+    if (LEGACY_SEED_ID_SET.has(id)) return null;
 
     const title = (result.title || result.name || '').trim();
     if (!title) return null;
@@ -900,7 +918,7 @@ const buildDailyTmdbMovies = async (dateKey: string, excludedMovieIds: number[] 
             }
         }
 
-        const fullPool = Array.from(poolById.values());
+        const fullPool = Array.from(poolById.values()).filter(isMovieEligibleForDaily);
         const excludedSet = new Set(normalizeMovieIds(excludedMovieIds));
         const filteredPool = fullPool.filter((movie) => !excludedSet.has(movie.id));
         const pool = filteredPool.length >= DAILY_MOVIE_COUNT ? filteredPool : fullPool;
@@ -931,9 +949,9 @@ const buildDailyTmdbMovies = async (dateKey: string, excludedMovieIds: number[] 
         selected = enforceGenreDiversity(selected, pool);
 
         if (selected.length < DAILY_MOVIE_COUNT) return [];
-        return applySlotStyles(selected.slice(0, DAILY_MOVIE_COUNT));
+        return applySlotStyles(selected.slice(0, DAILY_MOVIE_COUNT)).filter(isMovieEligibleForDaily);
     } catch (error) {
-        console.warn('[daily-cron] dynamic tmdb pool failed, fallback to seeds', error);
+        console.warn('[daily-cron] dynamic tmdb pool failed', error);
         return [];
     }
 };
@@ -1021,17 +1039,34 @@ export default async function handler(req: any, res: any) {
             return sendJson(res, 500, { error: readError.message });
         }
 
-        let movies: Movie[] = Array.isArray(existing?.movies) && !force ? existing.movies : [];
+        const existingMovies = Array.isArray(existing?.movies)
+            ? (existing.movies as Movie[]).map((movie) => movie as Movie)
+            : [];
+        const existingMoviesEligible =
+            existingMovies.length === DAILY_MOVIE_COUNT &&
+            existingMovies.every(isMovieEligibleForDaily) &&
+            !isLegacySeedSelection(existingMovies);
+
+        let movies: Movie[] = !force && existingMoviesEligible ? existingMovies : [];
         if (movies.length === 0) {
             const dynamicMovies = await buildDailyTmdbMovies(todayKey, previousMovieIds);
-            movies = dynamicMovies.length === DAILY_MOVIE_COUNT
-                ? dynamicMovies
-                : buildSeedMovies(todayKey, previousMovieIds);
+            movies = dynamicMovies.slice(0, DAILY_MOVIE_COUNT);
+        }
+        if (movies.length !== DAILY_MOVIE_COUNT) {
+            const retryMovies = await buildDailyTmdbMovies(todayKey, []);
+            movies = retryMovies.slice(0, DAILY_MOVIE_COUNT);
+        }
+        if (movies.length !== DAILY_MOVIE_COUNT) {
+            return sendJson(res, 503, {
+                error: 'No eligible TMDB movies found for constraints',
+                date: todayKey,
+                timezone: DAILY_ROLLOVER_TIMEZONE_RESOLVED
+            });
         }
         const diagnostics: PosterDiagnostic[] = [];
 
         const isStorageBacked = movies.every((m: any) => typeof m.posterPath === 'string' && m.posterPath.includes('/storage/v1/object/public/'));
-        if (existing?.movies && isStorageBacked && !force) {
+        if (existingMoviesEligible && isStorageBacked && !force) {
             return sendJson(res, 200, {
                 ok: true,
                 reused: true,

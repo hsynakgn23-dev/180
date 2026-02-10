@@ -15,8 +15,8 @@ interface UseDailyMoviesOptions {
     personalizationSeed?: string;
 }
 
-const DAILY_CACHE_KEY = 'DAILY_SELECTION_V17';
-const DAILY_CANDIDATE_CACHE_KEY = 'DAILY_CANDIDATE_POOL_V1';
+const DAILY_CACHE_KEY = 'DAILY_SELECTION_V18';
+const DAILY_CANDIDATE_CACHE_KEY = 'DAILY_CANDIDATE_POOL_V2';
 const DAILY_MOVIE_COUNT = 5;
 const DAILY_MIN_UNIQUE_GENRES = 4;
 const CLASSIC_YEAR_THRESHOLD = 2000;
@@ -77,16 +77,17 @@ type TmdbDiscoverMovie = {
     genre_ids?: number[];
 };
 
-const TMDB_MIN_VOTE_AVERAGE = 7.0;
-const TMDB_MIN_VOTE_COUNT = 600;
-const TMDB_MIN_POPULARITY = 12;
-const TMDB_MIN_RUNTIME_MINUTES = 70;
+const TMDB_MIN_VOTE_AVERAGE = 6.5;
+const TMDB_MIN_VOTE_COUNT = 700;
+const TMDB_MIN_POPULARITY = 10;
+const TMDB_MIN_RUNTIME_MINUTES = 60;
 const TMDB_EXCLUDED_GENRE_IDS = new Set<number>([99]);
 const TMDB_FALLBACK_DISCOVER_PARAMS = [
-    '&sort_by=vote_count.desc',
-    '&sort_by=popularity.desc',
-    '&sort_by=vote_average.desc&vote_count.gte=1200'
+    '&vote_average.gte=6.5&vote_count.gte=1200&sort_by=vote_count.desc',
+    '&vote_average.gte=6.5&vote_count.gte=900&sort_by=popularity.desc',
+    '&vote_average.gte=6.5&vote_count.gte=1200&sort_by=vote_average.desc'
 ];
+const LEGACY_SEED_ID_SET = new Set<number>(TMDB_SEEDS.map((movie) => movie.id));
 
 const getDailyDateKey = (): string => getDateKeyFromFormatter(new Date(), DAILY_DATE_FORMATTER);
 
@@ -261,6 +262,7 @@ const fetchTmdbDiscoverForSlot = async (
 const mapTmdbResultToMovie = (result: TmdbDiscoverMovie, genreMap: Map<number, string>): Movie | null => {
     const id = Number(result.id);
     if (!Number.isInteger(id) || id <= 0) return null;
+    if (LEGACY_SEED_ID_SET.has(id)) return null;
 
     const title = (result.title || result.name || '').trim();
     if (!title) return null;
@@ -411,40 +413,6 @@ const enforceGenreDiversity = (selected: Movie[], pool: Movie[]): Movie[] => {
     return next;
 };
 
-const buildDailySeedMovies = (dateKey: string, excludedMovieIds: number[] = []): Movie[] => {
-    const excludedSet = new Set(normalizeMovieIds(excludedMovieIds));
-    const seedPool = uniqueMoviesById(TMDB_SEEDS);
-    const pool = seedPool.filter((movie) => !excludedSet.has(movie.id));
-    const effectivePool = pool.length >= DAILY_MOVIE_COUNT ? pool : seedPool;
-    if (effectivePool.length === 0) return [];
-
-    const random = createSeededRandom(hashString(`daily:${dateKey}`));
-    for (let i = effectivePool.length - 1; i > 0; i -= 1) {
-        const j = Math.floor(random() * (i + 1));
-        [effectivePool[i], effectivePool[j]] = [effectivePool[j], effectivePool[i]];
-    }
-
-    let selected = pickWithDirectorLimit(effectivePool);
-    selected = replaceMovie(
-        selected,
-        effectivePool,
-        (movie) => movie.year < CLASSIC_YEAR_THRESHOLD,
-        (movie) => movie.year >= CLASSIC_YEAR_THRESHOLD
-    );
-    selected = replaceMovie(
-        selected,
-        effectivePool,
-        (movie) => movie.year >= MODERN_YEAR_THRESHOLD,
-        (movie, snapshot) => {
-            if (movie.year >= CLASSIC_YEAR_THRESHOLD) return true;
-            return snapshot.filter((item) => item.year < CLASSIC_YEAR_THRESHOLD).length > 1;
-        }
-    );
-    selected = enforceGenreDiversity(selected, effectivePool);
-
-    return applySlotStyles(selected);
-};
-
 const buildDailyTmdbMovies = async (
     dateKey: string,
     apiKey: string,
@@ -487,7 +455,7 @@ const buildDailyTmdbMovies = async (
             }
         }
 
-        const fullPool = Array.from(poolById.values());
+        const fullPool = Array.from(poolById.values()).filter(isMovieEligibleForDaily);
         const excludedSet = new Set(normalizeMovieIds(excludedMovieIds));
         const filteredPool = fullPool.filter((movie) => !excludedSet.has(movie.id));
         const pool = filteredPool.length >= DAILY_MOVIE_COUNT ? filteredPool : fullPool;
@@ -521,11 +489,11 @@ const buildDailyTmdbMovies = async (
             return { selected: [], pool: fullPool };
         }
         return {
-            selected: applySlotStyles(selected.slice(0, DAILY_MOVIE_COUNT)),
+            selected: applySlotStyles(selected.slice(0, DAILY_MOVIE_COUNT)).filter(isMovieEligibleForDaily),
             pool: fullPool
         };
     } catch (error) {
-        console.warn('[Daily5] TMDB dynamic pool failed, fallback to seeds.', error);
+        console.warn('[Daily5] TMDB dynamic pool failed.', error);
         return { selected: [], pool: [] };
     }
 };
@@ -549,6 +517,21 @@ const normalizeMovieIds = (movieIds: number[] = []): number[] => {
     );
 };
 
+const isMovieEligibleForDaily = (movie: Movie): boolean => {
+    const voteAverage = Number(movie.voteAverage);
+    if (!Number.isFinite(voteAverage) || voteAverage < TMDB_MIN_VOTE_AVERAGE) return false;
+    const normalizedGenre = String(movie.genre || '').toLowerCase();
+    if (normalizedGenre.includes('documentary') || normalizedGenre.includes('belgesel')) return false;
+    return true;
+};
+
+const isLegacySeedSelection = (movies: Movie[]): boolean => {
+    const selected = movies.slice(0, DAILY_MOVIE_COUNT);
+    if (selected.length !== DAILY_MOVIE_COUNT) return false;
+    const legacyCount = selected.filter((movie) => LEGACY_SEED_ID_SET.has(movie.id)).length;
+    return legacyCount >= 1;
+};
+
 const buildPersonalizedDailyMovies = (
     baseMovies: Movie[],
     candidateMovies: Movie[],
@@ -562,10 +545,7 @@ const buildPersonalizedDailyMovies = (
     const excludedSet = new Set(normalizeMovieIds(excludedMovieIds));
     if (excludedSet.size === 0) return applySlotStyles(base);
 
-    const replacementPool = uniqueMoviesById([
-        ...candidateMovies,
-        ...TMDB_SEEDS
-    ]);
+    const replacementPool = uniqueMoviesById(candidateMovies).filter(isMovieEligibleForDaily);
     const baseMovieIds = new Set(base.map((movie) => movie.id));
     const random = createSeededRandom(hashString(`daily-user:${dateKey}:${personalizationSeed}`));
 
@@ -600,7 +580,7 @@ const buildPersonalizedDailyMovies = (
 
 export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'guest' }: UseDailyMoviesOptions = {}) => {
     const [baseMovies, setBaseMovies] = useState<Movie[]>([]);
-    const [candidateMovies, setCandidateMovies] = useState<Movie[]>(() => uniqueMoviesById(TMDB_SEEDS));
+    const [candidateMovies, setCandidateMovies] = useState<Movie[]>([]);
     const [loading, setLoading] = useState(true);
     const [dateKey, setDateKey] = useState<string>(getDailyDateKey);
 
@@ -661,7 +641,9 @@ export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'g
                     if (parsed?.date !== todayKey) return false;
                     const cachedMovies = Array.isArray(parsed?.movies) ? parsed.movies : [];
                     if (cachedMovies.length === 0) return false;
-                    const normalized = uniqueMoviesById(cachedMovies.map((m) => normalizeMovie(m)));
+                    const normalized = uniqueMoviesById(cachedMovies.map((m) => normalizeMovie(m))).filter(
+                        isMovieEligibleForDaily
+                    );
                     if (normalized.length === 0) return false;
                     setCandidateMovies(normalized);
                     return true;
@@ -672,7 +654,9 @@ export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'g
             };
 
             const updateCandidatePool = (movies: Movie[]) => {
-                const normalized = uniqueMoviesById(movies.map((movie) => normalizeMovie(movie)));
+                const normalized = uniqueMoviesById(movies.map((movie) => normalizeMovie(movie))).filter(
+                    isMovieEligibleForDaily
+                );
                 if (!normalized.length) return;
                 setCandidateMovies(normalized);
                 localStorage.setItem(
@@ -708,21 +692,33 @@ export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'g
                         .single();
 
                     if (data && data.movies) {
-                        if (isDev) {
-                            console.log('[Daily5] Sync successful. Using global daily selection.');
-                        }
                         const fromDb = Array.isArray(data.movies) ? (data.movies as unknown[]) : [];
-                        const normalized = fromDb.map((m: unknown) => normalizeMovie(m));
-                        setBaseMovies(normalized);
-                        if (!applyCandidateCache() && apiKey && apiKey !== 'YOUR_TMDB_API_KEY') {
-                            void buildDailyTmdbMovies(todayKey, apiKey, previousGlobalMovieIds).then((result) => {
-                                if (result.pool.length) {
-                                    updateCandidatePool(result.pool);
-                                }
-                            });
+                        const normalized = fromDb
+                            .map((m: unknown) => normalizeMovie(m))
+                            .filter(isMovieEligibleForDaily);
+                        const isEligibleSelection =
+                            normalized.length === DAILY_MOVIE_COUNT &&
+                            !isLegacySeedSelection(normalized);
+
+                        if (isEligibleSelection) {
+                            if (isDev) {
+                                console.log('[Daily5] Sync successful. Using global daily selection.');
+                            }
+                            setBaseMovies(normalized);
+                            if (!applyCandidateCache() && apiKey && apiKey !== 'YOUR_TMDB_API_KEY') {
+                                void buildDailyTmdbMovies(todayKey, apiKey, previousGlobalMovieIds).then((result) => {
+                                    if (result.pool.length) {
+                                        updateCandidatePool(result.pool);
+                                    }
+                                });
+                            }
+                            setLoading(false);
+                            return;
                         }
-                        setLoading(false);
-                        return;
+
+                        if (isDev) {
+                            console.log('[Daily5] Existing selection rejected by quality rules. Regenerating...');
+                        }
                     }
 
                     if (error && error.code !== 'PGRST116') { // PGRST116 is 'Row not found', which is expected first time
@@ -749,11 +745,18 @@ export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'g
                     const date = parsed?.date;
                     const cachedMovies = Array.isArray(parsed?.movies) ? parsed.movies : [];
                     if (date === todayKey && cachedMovies.length === DAILY_MOVIE_COUNT) {
-                        const normalized = cachedMovies.map((m) => normalizeMovie(m));
-                        setBaseMovies(normalized);
-                        applyCandidateCache();
-                        setLoading(false);
-                        return;
+                        const normalized = cachedMovies
+                            .map((m) => normalizeMovie(m))
+                            .filter(isMovieEligibleForDaily);
+                        const isEligibleSelection =
+                            normalized.length === DAILY_MOVIE_COUNT &&
+                            !isLegacySeedSelection(normalized);
+                        if (isEligibleSelection) {
+                            setBaseMovies(normalized);
+                            applyCandidateCache();
+                            setLoading(false);
+                            return;
+                        }
                     }
                 } catch {
                     localStorage.removeItem(DAILY_CACHE_KEY);
@@ -768,11 +771,15 @@ export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'g
                 if (dynamicResult.pool.length) {
                     updateCandidatePool(dynamicResult.pool);
                 }
+                if (finalMovies.length !== DAILY_MOVIE_COUNT) {
+                    const retryResult = await buildDailyTmdbMovies(todayKey, apiKey, []);
+                    finalMovies = retryResult.selected;
+                    if (retryResult.pool.length) {
+                        updateCandidatePool(retryResult.pool);
+                    }
+                }
             }
-            if (finalMovies.length !== DAILY_MOVIE_COUNT) {
-                finalMovies = buildDailySeedMovies(todayKey, previousGlobalMovieIds);
-                updateCandidatePool(finalMovies);
-            }
+            finalMovies = finalMovies.filter(isMovieEligibleForDaily).slice(0, DAILY_MOVIE_COUNT);
 
             // c) SAVE TO DB (Only when explicitly enabled; cron should be the default writer)
             if (allowClientDailyWrite && isSupabaseLive() && supabase && finalMovies.length === 5) {
@@ -790,7 +797,11 @@ export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'g
             }
 
             // Local Cache & Set State
-            localStorage.setItem(DAILY_CACHE_KEY, JSON.stringify({ date: todayKey, movies: finalMovies }));
+            if (finalMovies.length === DAILY_MOVIE_COUNT) {
+                localStorage.setItem(DAILY_CACHE_KEY, JSON.stringify({ date: todayKey, movies: finalMovies }));
+            } else {
+                localStorage.removeItem(DAILY_CACHE_KEY);
+            }
             setBaseMovies(finalMovies);
             setLoading(false);
         };
