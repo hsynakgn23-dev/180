@@ -171,6 +171,8 @@ const STREAK_MILESTONES = new Set([5, 7, 10, 20, 40, 50, 100, 200, 250, 300, 350
 const REGISTRATION_GENDERS: RegistrationGender[] = ['female', 'male', 'non_binary', 'prefer_not_to_say'];
 const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
 const SHARE_REWARD_XP = 18;
+const USER_XP_STORAGE_KEY_PREFIX = '180_xp_data_';
+const MAX_PERSISTED_AVATAR_URL_LENGTH = 180_000;
 export const LEAGUE_NAMES = Object.keys(LEAGUES_DATA);
 type PendingRegistrationProfile = RegistrationProfileInput & { email: string };
 const getLeagueIndexFromXp = (xp: number): number =>
@@ -288,6 +290,74 @@ const normalizeXPState = (input: Partial<XPState> | null | undefined): XPState =
         avatarId: input.avatarId || fallback.avatarId,
         lastShareRewardDate: input.lastShareRewardDate || null
     };
+};
+
+const getUserXpStorageKey = (email: string): string =>
+    `${USER_XP_STORAGE_KEY_PREFIX}${(email || '').trim().toLowerCase()}`;
+
+const getLegacyUserXpStorageKey = (email: string): string =>
+    `${USER_XP_STORAGE_KEY_PREFIX}${email}`;
+
+const compactStateForPersistence = (state: XPState): XPState => {
+    if (!state.avatarUrl || state.avatarUrl.length <= MAX_PERSISTED_AVATAR_URL_LENGTH) {
+        return state;
+    }
+    return {
+        ...state,
+        avatarUrl: undefined
+    };
+};
+
+const persistUserXpStateToLocal = (email: string, state: XPState) => {
+    if (!email) return;
+    const primaryKey = getUserXpStorageKey(email);
+    const legacyKey = getLegacyUserXpStorageKey(email);
+
+    const writePayload = (payloadState: XPState): boolean => {
+        try {
+            localStorage.setItem(primaryKey, JSON.stringify(payloadState));
+            if (legacyKey !== primaryKey) {
+                localStorage.removeItem(legacyKey);
+            }
+            return true;
+        } catch {
+            return false;
+        }
+    };
+
+    if (writePayload(state)) return;
+
+    const compactState = compactStateForPersistence(state);
+    if (compactState !== state && writePayload(compactState)) {
+        console.warn('[XP] local persistence compacted by removing oversized avatar payload.');
+        return;
+    }
+
+    console.warn('[XP] local persistence failed; state could not be written.');
+};
+
+const readUserXpStateFromLocal = (email: string): XPState | null => {
+    if (!email) return null;
+    const primaryKey = getUserXpStorageKey(email);
+    const legacyKey = getLegacyUserXpStorageKey(email);
+    const keys = legacyKey === primaryKey ? [primaryKey] : [primaryKey, legacyKey];
+
+    for (const key of keys) {
+        const stored = localStorage.getItem(key);
+        if (!stored) continue;
+        try {
+            const parsed = JSON.parse(stored) as Partial<XPState>;
+            const normalized = normalizeXPState(parsed);
+            if (key !== primaryKey) {
+                persistUserXpStateToLocal(email, normalized);
+            }
+            return normalized;
+        } catch {
+            localStorage.removeItem(key);
+        }
+    }
+
+    return null;
 };
 
 const getLatestStateDateKey = (state: XPState): string => {
@@ -452,6 +522,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     const [user, setUser] = useState<SessionUser | null>(() => getLegacyStoredUser());
 
     const [state, setState] = useState<XPState>(buildInitialXPState());
+    const stateRef = useRef<XPState>(buildInitialXPState());
     const [whisper, setWhisper] = useState<string | null>(null);
     const [levelUpEvent, setLevelUpEvent] = useState<LeagueInfo | null>(null);
     const [levelUpQueue, setLevelUpQueue] = useState<LeagueInfo[]>([]);
@@ -466,6 +537,10 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     const [isXpHydrated, setIsXpHydrated] = useState(false);
     const [isPasswordRecoveryMode, setIsPasswordRecoveryMode] = useState<boolean>(() => isPasswordRecoveryUrl());
     const authMode: 'supabase' | 'local' = isSupabaseLive() && supabase ? 'supabase' : 'local';
+
+    useEffect(() => {
+        stateRef.current = state;
+    }, [state]);
 
     const setSessionUser = (nextUser: SessionUser | null) => {
         setUser(nextUser);
@@ -527,7 +602,6 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         }
 
         setState(buildInitialXPState());
-        const userKey = `180_xp_data_${user.email}`;
         let active = true;
 
         const hydrateState = async () => {
@@ -552,14 +626,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 }
             }
 
-            const stored = localStorage.getItem(userKey);
-            if (stored) {
-                try {
-                    localState = normalizeXPState(JSON.parse(stored) as Partial<XPState>);
-                } catch {
-                    localState = null;
-                }
-            }
+            localState = readUserXpStateFromLocal(user.email);
 
             let resolvedState = pickPreferredState(remoteState, localState);
             if (!resolvedState) {
@@ -588,9 +655,12 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
             if (!active) return;
 
-            setState(resolvedState);
-            previousLeagueIndexRef.current = getLeagueIndexFromXp(resolvedState.totalXP || 0);
-            localStorage.setItem(userKey, JSON.stringify(resolvedState));
+            const runtimeState = stateRef.current;
+            const mergedState = pickPreferredState(resolvedState, runtimeState) || resolvedState;
+
+            setState(mergedState);
+            previousLeagueIndexRef.current = getLeagueIndexFromXp(mergedState.totalXP || 0);
+            persistUserXpStateToLocal(user.email, mergedState);
             setIsXpHydrated(true);
         };
 
@@ -619,7 +689,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         setState(prev => {
             const updated = { ...prev, ...newState };
             if (user) {
-                localStorage.setItem(`180_xp_data_${user.email}`, JSON.stringify(updated));
+                persistUserXpStateToLocal(user.email, updated);
             }
             return updated;
         });
@@ -986,7 +1056,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 updated = { ...prev, marks: currentMarks };
             }
 
-            localStorage.setItem(`180_xp_data_${user.email}`, JSON.stringify(updated));
+            persistUserXpStateToLocal(user.email, updated);
             return updated;
         });
     }, [isXpHydrated, user?.email]);
@@ -1268,7 +1338,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             const remaining = currentRituals.filter((ritual) => String(ritual.id) !== normalizedId);
             const updated = { ...prev, dailyRituals: remaining };
             if (user) {
-                localStorage.setItem(`180_xp_data_${user.email}`, JSON.stringify(updated));
+                persistUserXpStateToLocal(user.email, updated);
             }
             return updated;
         });
@@ -1338,7 +1408,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         setState(prev => {
             const updated = { ...prev, totalXP: prev.totalXP + amount };
             if (user) {
-                localStorage.setItem(`180_xp_data_${user.email}`, JSON.stringify(updated));
+                persistUserXpStateToLocal(user.email, updated);
             }
             return updated;
         });
@@ -1347,8 +1417,9 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     useEffect(() => {
         if (!user || !isXpHydrated) return;
 
-        const userKey = `180_xp_data_${user.email}`;
-        localStorage.setItem(userKey, JSON.stringify(state));
+        persistUserXpStateToLocal(user.email, state);
+
+        const stateForCloud = compactStateForPersistence(state);
 
         if (!isSupabaseLive() || !supabase || !user.id || !canWriteProfileStateRef.current) return;
 
@@ -1359,7 +1430,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                     user_id: user.id,
                     email: user.email,
                     display_name: state.username || state.fullName || user.name,
-                    xp_state: state,
+                    xp_state: stateForCloud,
                     updated_at: new Date().toISOString()
                 },
                 { onConflict: 'user_id' }
