@@ -1,25 +1,28 @@
 import React, { useMemo, useState } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 
-type InfoSection = 'manifesto' | 'rules' | 'contact';
-
-type InfoPoint =
-    | {
-          kind: 'text';
-          value: string;
-      }
-    | {
-          kind: 'link';
-          label: string;
-          value: string;
-          href: string;
-      };
+type InfoSection = 'manifesto' | 'rules';
 
 interface InfoFooterProps {
     className?: string;
     panelWrapperClassName?: string;
     footerClassName?: string;
 }
+
+const SOCIAL_LINKS = [
+    {
+        label: 'X',
+        href: 'https://x.com/180absolutecnma'
+    },
+    {
+        label: 'Instagram',
+        href: 'https://www.instagram.com/180absolutecinema/'
+    },
+    {
+        label: 'TikTok',
+        href: 'https://www.tiktok.com/@180absolutecinema'
+    }
+] as const;
 
 const renderSocialIcon = (label: string) => {
     if (label === 'X') {
@@ -69,59 +72,25 @@ export const InfoFooter: React.FC<InfoFooterProps> = ({
 }) => {
     const { text } = useLanguage();
     const [activeInfoSection, setActiveInfoSection] = useState<InfoSection | null>(null);
-    const isContactPanelOpen = activeInfoSection === 'contact';
 
     const activeInfo = useMemo(() => {
         if (activeInfoSection === 'manifesto') {
             return {
                 title: text.landing.manifestoTitle,
                 body: text.landing.manifestoBody,
-                points: text.landing.manifestoPoints.map<InfoPoint>((value) => ({
-                    kind: 'text',
-                    value
-                }))
+                points: text.landing.manifestoPoints
             };
         }
         if (activeInfoSection === 'rules') {
             return {
                 title: text.landing.rulesTitle,
                 body: text.landing.rulesBody,
-                points: text.landing.rulesPoints.map<InfoPoint>((value) => ({
-                    kind: 'text',
-                    value
-                }))
-            };
-        }
-        if (activeInfoSection === 'contact') {
-            return {
-                title: text.landing.footerContact,
-                body: '',
-                points: [
-                    {
-                        kind: 'link',
-                        label: 'X',
-                        value: '@180absolutecnma',
-                        href: 'https://x.com/180absolutecnma'
-                    },
-                    {
-                        kind: 'link',
-                        label: 'Instagram',
-                        value: '@180absolutecinema',
-                        href: 'https://www.instagram.com/180absolutecinema/'
-                    },
-                    {
-                        kind: 'link',
-                        label: 'TikTok',
-                        value: '@180absolutecinema',
-                        href: 'https://www.tiktok.com/@180absolutecinema'
-                    }
-                ] as InfoPoint[]
+                points: text.landing.rulesPoints
             };
         }
         return null;
     }, [
         activeInfoSection,
-        text.landing.footerContact,
         text.landing.manifestoBody,
         text.landing.manifestoPoints,
         text.landing.manifestoTitle,
@@ -161,60 +130,18 @@ export const InfoFooter: React.FC<InfoFooterProps> = ({
                                     {activeInfo.body}
                                 </p>
                             )}
-                            {isContactPanelOpen ? (
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                    {activeInfo.points
-                                        .filter(
-                                            (point): point is Extract<InfoPoint, { kind: 'link' }> =>
-                                                point.kind === 'link'
-                                        )
-                                        .map((point) => (
-                                            <a
-                                                key={point.label}
-                                                href={point.href}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="group rounded-lg border border-sage/30 bg-black/30 px-4 py-3 hover:border-sage hover:bg-sage/10 transition-colors"
-                                            >
-                                                <span className="flex items-center gap-3">
-                                                    <span className="text-sage">{renderSocialIcon(point.label)}</span>
-                                                    <span className="flex flex-col text-left leading-tight">
-                                                        <span className="text-[10px] uppercase tracking-[0.18em] text-white/70 group-hover:text-white transition-colors">
-                                                            {point.label}
-                                                        </span>
-                                                        <span className="text-xs text-sage/90 group-hover:text-sage transition-colors">
-                                                            {point.value}
-                                                        </span>
-                                                    </span>
-                                                </span>
-                                            </a>
-                                        ))}
-                                </div>
-                            ) : (
-                                activeInfo.points.length > 0 && (
+                            {activeInfo.points.length > 0 && (
                                 <ul className="space-y-2">
                                     {activeInfo.points.map((point, index) => (
                                         <li
-                                            key={`${point.kind}-${index}`}
+                                            key={`${point}-${index}`}
                                             className="text-xs sm:text-sm text-[#E5E4E2]/70 leading-relaxed flex items-start gap-2"
                                         >
                                             <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-sage/80 shrink-0" />
-                                            {point.kind === 'link' ? (
-                                                <a
-                                                    href={point.href}
-                                                    target={point.href.startsWith('http') ? '_blank' : undefined}
-                                                    rel={point.href.startsWith('http') ? 'noreferrer' : undefined}
-                                                    className="text-sage hover:text-[#9AB06B] underline underline-offset-2 break-all"
-                                                >
-                                                    {point.label}: {point.value}
-                                                </a>
-                                            ) : (
-                                                <span>{point.value}</span>
-                                            )}
+                                            <span>{point}</span>
                                         </li>
                                     ))}
                                 </ul>
-                                )
                             )}
                         </section>
                     )}
@@ -242,15 +169,21 @@ export const InfoFooter: React.FC<InfoFooterProps> = ({
                     >
                         {text.landing.footerRules}
                     </button>
-                    <button
-                        type="button"
-                        onClick={() => toggleInfoSection('contact')}
-                        className={`transition-colors ${
-                            activeInfoSection === 'contact' ? 'text-sage' : 'hover:text-sage'
-                        }`}
-                    >
-                        {text.landing.footerContact}
-                    </button>
+                    <div className="flex items-center gap-2 sm:gap-3">
+                        {SOCIAL_LINKS.map((social) => (
+                            <a
+                                key={social.label}
+                                href={social.href}
+                                target="_blank"
+                                rel="noreferrer"
+                                aria-label={social.label}
+                                title={social.label}
+                                className="rounded-md border border-white/15 bg-white/5 p-2 text-white/70 hover:text-sage hover:border-sage/50 hover:bg-sage/10 transition-colors"
+                            >
+                                {renderSocialIcon(social.label)}
+                            </a>
+                        ))}
+                    </div>
                 </div>
             </footer>
         </div>
