@@ -580,15 +580,27 @@ const ritualMergeKey = (ritual: RitualLog): string => {
     return `fallback:${ritual.date}|${ritual.movieId}|${ritual.text.trim()}`;
 };
 
+const ritualFingerprint = (ritual: RitualLog): string => {
+    const date = normalizeRitualDateKey(ritual.date);
+    const movieTitle = (ritual.movieTitle || '').trim().toLowerCase();
+    const text = (ritual.text || '').trim().toLowerCase();
+    const movieIdentity = movieTitle || String(ritual.movieId || 0);
+    return `${date}|${movieIdentity}|${text}`;
+};
+
 const mergeRitualLogs = (...lists: RitualLog[][]): RitualLog[] => {
     const map = new Map<string, RitualLog>();
+    const semanticToKey = new Map<string, string>();
     for (const list of lists) {
         for (const ritual of list || []) {
             const normalized = normalizeRitualLog(ritual);
-            const key = ritualMergeKey(normalized);
+            const keyById = ritualMergeKey(normalized);
+            const semanticKey = ritualFingerprint(normalized);
+            const key = semanticToKey.get(semanticKey) || keyById;
             const existing = map.get(key);
             if (!existing) {
                 map.set(key, normalized);
+                semanticToKey.set(semanticKey, key);
                 continue;
             }
             map.set(key, {
@@ -599,8 +611,10 @@ const mergeRitualLogs = (...lists: RitualLog[][]): RitualLog[] => {
                         ? normalized.movieTitle
                         : existing.movieTitle,
                 posterPath: normalized.posterPath || existing.posterPath,
-                text: normalized.text.length >= existing.text.length ? normalized.text : existing.text
+                text: normalized.text.length >= existing.text.length ? normalized.text : existing.text,
+                id: String(existing.id || '').trim() || String(normalized.id || '').trim()
             });
+            semanticToKey.set(semanticKey, key);
         }
     }
     return Array.from(map.values()).sort((a, b) => {

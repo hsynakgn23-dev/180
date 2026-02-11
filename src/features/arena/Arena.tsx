@@ -247,6 +247,27 @@ const formatDateAsRitualTimestamp = (dateStr: string): string => {
     return `${diffDays}d ago`;
 };
 
+const normalizeRitualText = (value: string): string => value.trim().toLowerCase();
+const normalizeRitualTitle = (value: string): string => value.trim().toLowerCase();
+const getRitualDayKey = (ritual: Ritual): string => {
+    if (typeof ritual.createdAt === 'number' && Number.isFinite(ritual.createdAt)) {
+        const date = new Date(ritual.createdAt);
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+    return ritual.timestamp.trim().toLowerCase();
+};
+
+const buildArenaDedupKey = (ritual: Ritual): string => {
+    const dayKey = getRitualDayKey(ritual);
+    const normalizedText = normalizeRitualText(ritual.text);
+    const normalizedTitle = normalizeRitualTitle(ritual.movieTitle);
+    const normalizedAuthor = (ritual.author || '').trim().toLowerCase();
+    return `${dayKey}|${normalizedTitle}|${normalizedText}|${normalizedAuthor}`;
+};
+
 export const Arena: React.FC = () => {
     const { text } = useLanguage();
     const { dailyRituals, user, username, league, deleteRitual } = useXP();
@@ -476,10 +497,10 @@ export const Arena: React.FC = () => {
             }
 
             const remoteKeys = new Set(
-                remoteRituals.map((ritual) => `${ritual.movieId}|${ritual.text.trim().toLowerCase()}`)
+                remoteRituals.map((ritual) => buildArenaDedupKey(ritual))
             );
             const localOnlyMine = mine.filter(
-                (ritual) => !remoteKeys.has(`${ritual.movieId}|${ritual.text.trim().toLowerCase()}`)
+                (ritual) => !remoteKeys.has(buildArenaDedupKey(ritual))
             );
 
             return [...localOnlyMine, ...remoteRituals];
