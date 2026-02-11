@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { InfoFooter } from '../../components/InfoFooter';
 import { LEAGUES_DATA, LEAGUE_NAMES, useXP } from '../../context/XPContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -194,6 +194,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
     const [error, setError] = useState<string | null>(null);
     const [profile, setProfile] = useState<PublicProfileData | null>(null);
     const [isFollowBusy, setIsFollowBusy] = useState(false);
+    const commentsSectionRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
         let active = true;
@@ -388,8 +389,11 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
 
     const isOwnProfile = useMemo(() => {
         if (!profile || !user) return false;
-        if (profile.userId && user.id && profile.userId === user.id) return true;
-        return normalizeHandle(profile.displayName) === normalizeHandle(user.name);
+        if (profile.userId && user.id) return profile.userId === user.id;
+        const normalizedCurrentName = normalizeHandle(user.name);
+        const normalizedProfileUsername = normalizeHandle(profile.username);
+        if (!normalizedCurrentName || !normalizedProfileUsername) return false;
+        return normalizedCurrentName === normalizedProfileUsername;
     }, [profile, user]);
 
     const isFollowing = useMemo(() => {
@@ -450,6 +454,10 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
             });
         }
         setIsFollowBusy(false);
+    };
+
+    const handleReadComments = () => {
+        commentsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
 
     return (
@@ -532,19 +540,28 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                                         </p>
                                     </div>
 
-                                    {!isOwnProfile && (
+                                    <div className="mb-5 flex flex-wrap items-center justify-center gap-2.5">
+                                        {!isOwnProfile && (
+                                            <button
+                                                type="button"
+                                                onClick={() => void handleFollowToggle()}
+                                                disabled={isFollowBusy}
+                                                className={`px-4 py-2 rounded border text-[10px] uppercase tracking-[0.16em] transition-colors ${isFollowing
+                                                    ? 'border-sage/50 text-sage bg-sage/10 hover:bg-sage/15'
+                                                    : 'border-white/15 text-white/80 hover:border-sage/40 hover:text-sage'
+                                                    } disabled:opacity-60`}
+                                            >
+                                                {isFollowing ? 'Following' : 'Follow'}
+                                            </button>
+                                        )}
                                         <button
                                             type="button"
-                                            onClick={() => void handleFollowToggle()}
-                                            disabled={isFollowBusy}
-                                            className={`mb-5 px-4 py-2 rounded border text-[10px] uppercase tracking-[0.16em] transition-colors ${isFollowing
-                                                ? 'border-sage/50 text-sage bg-sage/10 hover:bg-sage/15'
-                                                : 'border-white/15 text-white/80 hover:border-sage/40 hover:text-sage'
-                                                } disabled:opacity-60`}
+                                            onClick={handleReadComments}
+                                            className="px-4 py-2 rounded border border-white/15 text-[10px] uppercase tracking-[0.16em] text-white/80 hover:border-sage/40 hover:text-sage transition-colors"
                                         >
-                                            {isFollowing ? 'Following' : 'Follow'}
+                                            {text.profile.commentsAndReplies}
                                         </button>
-                                    )}
+                                    </div>
 
                                     <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3.5 mb-5 text-[10px] uppercase tracking-[0.14em]">
                                         <span className="text-[#E5E4E2]/80">Following: {profile.followCounts.following}</span>
@@ -659,11 +676,14 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                                 )}
                             </div>
 
-                            <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
+                            <div ref={commentsSectionRef} className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
                                 <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase mb-5">{text.profile.commentsAndReplies}</h3>
+                                <p className="text-[9px] tracking-[0.14em] uppercase text-gray-500 mb-4">
+                                    {commentsCount} {text.profile.comments}
+                                </p>
                                 <div className="space-y-3 max-h-[45vh] overflow-y-auto custom-scrollbar pr-1">
                                     {profile.rituals.length > 0 ? (
-                                        profile.rituals.slice(0, 40).map((ritual) => (
+                                        profile.rituals.slice(0, 80).map((ritual) => (
                                             <article key={`ritual-${ritual.id}`} className="rounded-lg border border-white/10 bg-white/5 p-3.5">
                                                 <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
                                                     <p className="text-[10px] uppercase tracking-[0.12em] text-sage/85 break-words">{ritual.movieTitle}</p>
