@@ -95,6 +95,11 @@ const AppContent = () => {
     setDetailMovie(null);
   }, [publicProfileTarget]);
 
+  useEffect(() => {
+    if (!showProfile && !publicProfileTarget) return;
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [showProfile, publicProfileTarget]);
+
   const openHome = () => {
     setActiveMovie(null);
     setDetailMovie(null);
