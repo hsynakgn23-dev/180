@@ -453,25 +453,46 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
     };
 
     return (
-        <div className="min-h-screen overflow-x-hidden bg-[var(--color-bg)] text-[#E5E4E2] flex flex-col">
-            <div className="px-4 sm:px-6 md:px-12 pt-8 pb-6">
-                <header className="flex flex-wrap items-start justify-between gap-3 mb-8 border-b border-white/5 pb-4">
+        <div className="relative min-h-screen overflow-x-hidden bg-[var(--color-bg)] text-[#E5E4E2] flex flex-col">
+            <div className="absolute top-3 right-3 sm:top-8 sm:right-8 z-40 flex items-center gap-2 sm:gap-2.5">
+                <button
+                    type="button"
+                    onClick={() => (onHome ? onHome() : onClose())}
+                    className="h-10 w-10 sm:h-11 sm:w-11 rounded-full border border-sage/30 hover:border-clay/60 text-clay/80 hover:text-clay transition-colors flex items-center justify-center bg-[#1A1A1A]/85"
+                    aria-label={text.profile.backHome}
+                    title={text.profile.backHome}
+                >
+                    <svg viewBox="0 0 24 24" fill="none" className="w-[18px] h-[18px]" aria-hidden="true">
+                        <path d="M3 11.5L12 4L21 11.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d="M6.5 10.5V20H17.5V10.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d="M10 20V14H14V20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                </button>
+                <button
+                    type="button"
+                    onClick={onClose}
+                    className="h-10 w-10 sm:h-11 sm:w-11 rounded-full border border-white/20 hover:border-sage/50 text-white/75 hover:text-sage transition-colors flex items-center justify-center bg-[#1A1A1A]/85"
+                    aria-label={text.profile.close}
+                    title={text.profile.close}
+                >
+                    <svg viewBox="0 0 24 24" fill="none" className="w-[18px] h-[18px]" aria-hidden="true">
+                        <path d="M6 6L18 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                        <path d="M18 6L6 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                    </svg>
+                </button>
+            </div>
+
+            <div className="px-4 sm:px-6 md:px-12 pt-20 sm:pt-24 pb-10">
+                <header className="mb-12 text-center animate-fade-in">
                     <button
                         type="button"
                         onClick={() => (onHome ? onHome() : onClose())}
-                        className="inline-flex flex-col items-start"
+                        className="inline-flex flex-col items-center"
                         aria-label={text.profile.backHome}
                         title={text.profile.backHome}
                     >
-                        <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tighter text-sage mb-2 drop-shadow-sm">180</h1>
+                        <h1 className="text-4xl md:text-5xl font-bold tracking-tighter text-sage mb-3 drop-shadow-sm">180</h1>
                         <p className="text-clay font-medium tracking-[0.2em] text-xs md:text-sm uppercase">{text.app.brandSubtitle}</p>
-                    </button>
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="text-[10px] uppercase tracking-[0.16em] text-gray-400 hover:text-white transition-colors"
-                    >
-                        Close
                     </button>
                 </header>
 
@@ -484,11 +505,11 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                         {error || 'Profile could not be loaded.'}
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 lg:grid-cols-[350px_1fr] gap-8">
-                        <div className="space-y-6">
-                            <div className="bg-white/5 border border-white/5 rounded-xl p-4 sm:p-6 animate-slide-up">
+                    <div className="grid grid-cols-1 lg:grid-cols-[350px_1fr] gap-8 xl:gap-10">
+                        <div className="space-y-7">
+                            <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-slide-up">
                                 <div className="flex flex-col items-center">
-                                    <div className="w-24 h-24 rounded-full border border-gray-200/10 flex items-center justify-center bg-white/5 shadow-sm mb-4 overflow-hidden">
+                                    <div className="w-24 h-24 rounded-full border border-gray-200/10 flex items-center justify-center bg-white/5 shadow-sm mb-5 overflow-hidden">
                                         {profile.avatarUrl ? (
                                             <img src={profile.avatarUrl} alt={profile.displayName} className="w-full h-full object-cover" />
                                         ) : (
@@ -498,22 +519,25 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                                         )}
                                     </div>
 
-                                    <h2 className="text-lg sm:text-xl tracking-[0.14em] sm:tracking-widest font-bold text-[#E5E4E2]/90 mb-2 text-center break-words max-w-full">
+                                    <h2 className="text-lg sm:text-xl tracking-[0.14em] sm:tracking-widest font-bold leading-tight text-[#E5E4E2]/90 mb-3 text-center break-words max-w-full">
                                         {(profile.displayName || profile.username).toUpperCase()}
                                     </h2>
-                                    <p className="text-[10px] tracking-[0.2em] uppercase text-gray-400 mb-1 text-center break-all max-w-full px-2">
+                                    <p className="text-[10px] tracking-[0.2em] uppercase text-gray-400 mb-2 text-center break-all max-w-full px-2">
                                         @{profile.username || profile.displayName}
                                     </p>
-                                    <p className="text-[10px] text-gray-500 mb-4 text-center break-words">
-                                        {(profile.fullName || text.profile.missingName)} | {(profile.gender || text.profile.missingGender)} | {(profile.birthDate || text.profile.missingBirthDate)}
-                                    </p>
+                                    <div className="mb-5 text-[10px] text-gray-500 text-center leading-relaxed space-y-1">
+                                        <p className="break-words">{profile.fullName || text.profile.missingName}</p>
+                                        <p className="break-words">
+                                            {(profile.gender || text.profile.missingGender)} | {(profile.birthDate || text.profile.missingBirthDate)}
+                                        </p>
+                                    </div>
 
                                     {!isOwnProfile && (
                                         <button
                                             type="button"
                                             onClick={() => void handleFollowToggle()}
                                             disabled={isFollowBusy}
-                                            className={`mb-4 px-4 py-2 rounded border text-[10px] uppercase tracking-[0.16em] transition-colors ${isFollowing
+                                            className={`mb-5 px-4 py-2 rounded border text-[10px] uppercase tracking-[0.16em] transition-colors ${isFollowing
                                                 ? 'border-sage/50 text-sage bg-sage/10 hover:bg-sage/15'
                                                 : 'border-white/15 text-white/80 hover:border-sage/40 hover:text-sage'
                                                 } disabled:opacity-60`}
@@ -522,7 +546,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                                         </button>
                                     )}
 
-                                    <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 mb-4 text-[9px] uppercase tracking-[0.14em]">
+                                    <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3.5 mb-5 text-[10px] uppercase tracking-[0.14em]">
                                         <span className="text-[#E5E4E2]/80">Following: {profile.followCounts.following}</span>
                                         <span className="text-[#E5E4E2]/80">Followers: {profile.followCounts.followers}</span>
                                     </div>
@@ -533,26 +557,26 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                                 </div>
                             </div>
 
-                            <div className="bg-white/5 border border-white/5 rounded-xl p-4 sm:p-6 animate-fade-in">
-                                <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase mb-4">{text.profile.stats}</h3>
-                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 text-center">
-                                    <div className="flex flex-col gap-1">
+                            <div className="bg-white/5 border border-white/5 rounded-xl p-5 sm:p-6 animate-fade-in">
+                                <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase mb-5">{text.profile.stats}</h3>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-5 text-center">
+                                    <div className="flex flex-col gap-1.5">
                                         <span className="text-2xl sm:text-3xl font-bold text-sage">{profile.streak || 0}</span>
                                         <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profileWidget.streak}</span>
                                     </div>
-                                    <div className="flex flex-col gap-1">
+                                    <div className="flex flex-col gap-1.5">
                                         <span className="text-2xl sm:text-3xl font-bold text-sage">{profile.daysPresent}</span>
                                         <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profile.days}</span>
                                     </div>
-                                    <div className="flex flex-col gap-1">
+                                    <div className="flex flex-col gap-1.5">
                                         <span className="text-2xl sm:text-3xl font-bold text-sage">{commentsCount}</span>
                                         <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profile.comments}</span>
                                     </div>
-                                    <div className="flex flex-col gap-1">
+                                    <div className="flex flex-col gap-1.5">
                                         <span className="text-2xl sm:text-3xl font-bold text-sage">{profile.followCounts.following}</span>
                                         <span className="text-[9px] tracking-wider text-gray-500 uppercase">Following</span>
                                     </div>
-                                    <div className="flex flex-col gap-1">
+                                    <div className="flex flex-col gap-1.5">
                                         <span className="text-2xl sm:text-3xl font-bold text-sage">{profile.followCounts.followers}</span>
                                         <span className="text-[9px] tracking-wider text-gray-500 uppercase">Followers</span>
                                     </div>
@@ -560,29 +584,29 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                             </div>
                         </div>
 
-                        <div className="space-y-6">
-                            <div className="bg-white/5 border border-white/5 rounded-xl p-4 sm:p-6 animate-fade-in">
-                                <div className="flex justify-between items-end mb-6 border-b border-gray-100/10 pb-4">
+                        <div className="space-y-7">
+                            <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
+                                <div className="flex justify-between items-end mb-5 border-b border-gray-100/10 pb-4">
                                     <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase">{text.profile.activity}</h3>
                                     <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profile.profileFeed}</span>
                                 </div>
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                    <div className="bg-white/5 border border-white/10 rounded-lg px-3 py-3">
-                                        <div className="text-[9px] uppercase tracking-[0.18em] text-gray-500 mb-1">{text.profile.comments}</div>
+                                    <div className="bg-white/5 border border-white/10 rounded-lg px-3.5 py-3.5">
+                                        <div className="text-[9px] uppercase tracking-[0.18em] text-gray-500 mb-1.5">{text.profile.comments}</div>
                                         <div className="text-2xl font-bold text-sage">{commentsCount}</div>
                                     </div>
-                                    <div className="bg-white/5 border border-white/10 rounded-lg px-3 py-3">
-                                        <div className="text-[9px] uppercase tracking-[0.18em] text-gray-500 mb-1">{text.profile.films}</div>
+                                    <div className="bg-white/5 border border-white/10 rounded-lg px-3.5 py-3.5">
+                                        <div className="text-[9px] uppercase tracking-[0.18em] text-gray-500 mb-1.5">{text.profile.films}</div>
                                         <div className="text-2xl font-bold text-sage">{uniqueFilmsCount}</div>
                                     </div>
-                                    <div className="bg-white/5 border border-white/10 rounded-lg px-3 py-3">
-                                        <div className="text-[9px] uppercase tracking-[0.18em] text-gray-500 mb-1">League</div>
+                                    <div className="bg-white/5 border border-white/10 rounded-lg px-3.5 py-3.5">
+                                        <div className="text-[9px] uppercase tracking-[0.18em] text-gray-500 mb-1.5">League</div>
                                         <div className="text-sm font-bold text-[#E5E4E2] uppercase">
                                             {leagueInfo?.name || profile.league}
                                         </div>
                                     </div>
-                                    <div className="bg-white/5 border border-white/10 rounded-lg px-3 py-3">
-                                        <div className="text-[9px] uppercase tracking-[0.18em] text-gray-500 mb-1">{text.profile.mostCommented}</div>
+                                    <div className="bg-white/5 border border-white/10 rounded-lg px-3.5 py-3.5">
+                                        <div className="text-[9px] uppercase tracking-[0.18em] text-gray-500 mb-1.5">{text.profile.mostCommented}</div>
                                         <div className="text-sm font-bold text-[#E5E4E2] line-clamp-1">
                                             {mostCommentedMovie?.title || text.profile.noRecords}
                                         </div>
@@ -599,8 +623,8 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                                 </div>
                             </div>
 
-                            <div className="bg-white/5 border border-white/5 rounded-xl p-4 sm:p-6 animate-fade-in">
-                                <div className="flex justify-between items-end mb-6 border-b border-gray-100/10 pb-4">
+                            <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
+                                <div className="flex justify-between items-end mb-5 border-b border-gray-100/10 pb-4">
                                     <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase">{text.profile.filmArchive}</h3>
                                     <span className="text-[9px] tracking-wider text-gray-500 uppercase">
                                         {commentsCount} {text.profile.comments}
@@ -635,17 +659,17 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                                 )}
                             </div>
 
-                            <div className="bg-white/5 border border-white/5 rounded-xl p-4 sm:p-6 animate-fade-in">
-                                <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase mb-4">{text.profile.commentsAndReplies}</h3>
+                            <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
+                                <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase mb-5">{text.profile.commentsAndReplies}</h3>
                                 <div className="space-y-3 max-h-[45vh] overflow-y-auto custom-scrollbar pr-1">
                                     {profile.rituals.length > 0 ? (
                                         profile.rituals.slice(0, 40).map((ritual) => (
-                                            <article key={`ritual-${ritual.id}`} className="rounded-lg border border-white/10 bg-white/5 p-3">
-                                                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                                            <article key={`ritual-${ritual.id}`} className="rounded-lg border border-white/10 bg-white/5 p-3.5">
+                                                <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
                                                     <p className="text-[10px] uppercase tracking-[0.12em] text-sage/85 break-words">{ritual.movieTitle}</p>
                                                     <p className="text-[9px] text-gray-500">{ritual.timestamp}</p>
                                                 </div>
-                                                <p className="text-[11px] sm:text-xs font-serif italic text-[#E5E4E2]/90 leading-relaxed">
+                                                <p className="text-[11px] sm:text-xs font-serif italic text-[#E5E4E2]/90 leading-[1.65]">
                                                     "{ritual.text}"
                                                 </p>
                                             </article>

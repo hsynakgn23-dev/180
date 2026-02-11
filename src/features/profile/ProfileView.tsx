@@ -808,14 +808,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                 </header>
 
                 {/* Two Column Grid */}
-                <div className="grid grid-cols-1 lg:grid-cols-[350px_1fr] gap-8">
+                <div className="grid grid-cols-1 lg:grid-cols-[350px_1fr] gap-8 xl:gap-10">
                     {/* LEFT COLUMN - User Card, DNA, Stats */}
-                    <div className="space-y-6">
+                    <div className="space-y-7">
                         {/* User Identity Card */}
                         <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-slide-up">
                             <div className="flex flex-col items-center">
                                 {/* Avatar with Settings Icon */}
-                                <div className="relative mb-4">
+                                <div className="relative mb-5">
                                     <div
                                         className="w-24 h-24 rounded-full border border-gray-200/10 flex items-center justify-center bg-white/5 shadow-sm relative group overflow-hidden"
                                         onClick={() => isEditing && fileInputRef.current?.click()}
@@ -858,23 +858,26 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                                 </div>
 
                                 {/* Username & Bio */}
-                                <h2 className="text-lg sm:text-xl tracking-[0.14em] sm:tracking-widest font-bold text-[#E5E4E2]/90 mb-2 text-center break-words max-w-full">
+                                <h2 className="text-lg sm:text-xl tracking-[0.14em] sm:tracking-widest font-bold leading-tight text-[#E5E4E2]/90 mb-3 text-center break-words max-w-full">
                                     {user?.name ? user.name.toUpperCase() : text.profile.curatorFallback}
                                 </h2>
-                                <p className="text-[10px] tracking-[0.2em] uppercase text-gray-400 mb-1 text-center break-all max-w-full px-2">
+                                <p className="text-[10px] tracking-[0.2em] uppercase text-gray-400 mb-2 text-center break-all max-w-full px-2">
                                     @{username || text.profile.observerHandle}
                                 </p>
-                                <p className="text-[10px] text-gray-500 mb-4 text-center break-words">
-                                    {fullName || text.profile.missingName} | {genderLabel || text.profile.missingGender} | {birthDate || text.profile.missingBirthDate}
-                                </p>
+                                <div className="mb-5 text-[10px] text-gray-500 text-center leading-relaxed space-y-1">
+                                    <p className="break-words">{fullName || text.profile.missingName}</p>
+                                    <p className="break-words">
+                                        {genderLabel || text.profile.missingGender} | {birthDate || text.profile.missingBirthDate}
+                                    </p>
+                                </div>
 
-                                <div className="mb-4 flex flex-wrap items-center justify-center gap-2 sm:gap-3 text-[9px] uppercase tracking-[0.14em]">
+                                <div className="mb-5 flex flex-wrap items-center justify-center gap-2.5 sm:gap-3.5 text-[10px] uppercase tracking-[0.14em]">
                                     <span className="text-[#E5E4E2]/80">Following: {followCounts.following}</span>
                                     <span className="text-[#E5E4E2]/80">Followers: {followCounts.followers}</span>
                                 </div>
 
                                 {isEditing ? (
-                                    <div className="flex flex-col items-center gap-2 w-full mb-4">
+                                    <div className="flex flex-col items-center gap-2 w-full mb-5">
                                         <textarea
                                             value={tempBio}
                                             onChange={(e) => setTempBio(e.target.value)}
@@ -892,7 +895,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="flex flex-col items-center gap-2 mb-4 group cursor-pointer" onClick={() => setIsEditing(true)}>
+                                    <div className="flex flex-col items-center gap-2 mb-5 group cursor-pointer" onClick={() => setIsEditing(true)}>
                                         <p className="text-xs font-serif italic text-sage/60 text-center max-w-xs leading-relaxed">
                                             "{bio}"
                                         </p>
@@ -903,7 +906,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                                 )}
 
                                 {/* League & XP */}
-                                <div className="text-xs tracking-[0.2em] text-[#E5E4E2]/60 mb-4 uppercase">
+                                <div className="text-xs tracking-[0.2em] text-[#E5E4E2]/60 mb-5 uppercase">
                                     {currentLeagueLabel} - {Math.floor(xp)} XP
                                 </div>
 
@@ -985,26 +988,26 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                         </div>
 
                         {/* Stats Card */}
-                        <div className="bg-white/5 border border-white/5 rounded-xl p-4 sm:p-6 animate-fade-in">
-                            <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase mb-4">{text.profile.stats}</h3>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 text-center">
-                                <div className="flex flex-col gap-1">
+                        <div className="bg-white/5 border border-white/5 rounded-xl p-5 sm:p-6 animate-fade-in">
+                            <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase mb-5">{text.profile.stats}</h3>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-5 text-center">
+                                <div className="flex flex-col gap-1.5">
                                     <span className="text-3xl sm:text-4xl font-bold text-sage">{streak || 0}</span>
                                     <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profileWidget.streak}</span>
                                 </div>
-                                <div className="flex flex-col gap-1">
+                                <div className="flex flex-col gap-1.5">
                                     <span className="text-3xl sm:text-4xl font-bold text-sage">{daysPresent}</span>
                                     <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profile.days}</span>
                                 </div>
-                                <div className="flex flex-col gap-1">
+                                <div className="flex flex-col gap-1.5">
                                     <span className="text-3xl sm:text-4xl font-bold text-sage">{dailyRituals.length}</span>
                                     <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profile.rituals}</span>
                                 </div>
-                                <div className="flex flex-col gap-1">
+                                <div className="flex flex-col gap-1.5">
                                     <span className="text-3xl sm:text-4xl font-bold text-sage">{followCounts.following}</span>
                                     <span className="text-[9px] tracking-wider text-gray-500 uppercase">Following</span>
                                 </div>
-                                <div className="flex flex-col gap-1">
+                                <div className="flex flex-col gap-1.5">
                                     <span className="text-3xl sm:text-4xl font-bold text-sage">{followCounts.followers}</span>
                                     <span className="text-[9px] tracking-wider text-gray-500 uppercase">Followers</span>
                                 </div>
@@ -1013,7 +1016,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                     </div>
 
                     {/* RIGHT COLUMN - Activity & Vault */}
-                    <div className="space-y-6">
+                    <div className="space-y-7">
                         {/* Activity Pulse */}
                         <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
                             <div className="flex justify-between items-end mb-6 border-b border-gray-100/10 pb-4">
