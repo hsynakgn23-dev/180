@@ -339,3 +339,8 @@ body.light-mode .theme-toggle-button {
 .animate-streak-pulse {
   animation: streak-pulse 2.8s ease-out forwards;
 }
+
+/* Interaction color policy: sage -> clay on interactive controls */
+:is(button, a, [role="button"])[class*="text-sage"]:is(:hover, :focus-visible, :active) {
+  color: var(--color-clay);
+}
