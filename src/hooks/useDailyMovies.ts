@@ -528,8 +528,7 @@ const isMovieEligibleForDaily = (movie: Movie): boolean => {
 const isLegacySeedSelection = (movies: Movie[]): boolean => {
     const selected = movies.slice(0, DAILY_MOVIE_COUNT);
     if (selected.length !== DAILY_MOVIE_COUNT) return false;
-    const legacyCount = selected.filter((movie) => LEGACY_SEED_ID_SET.has(movie.id)).length;
-    return legacyCount >= 1;
+    return selected.every((movie) => LEGACY_SEED_ID_SET.has(movie.id));
 };
 const buildPersonalizedDailyMovies = (
     baseMovies: Movie[],
@@ -817,6 +816,7 @@ export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'g
 
     return { movies, loading, dateKey };
 };
+
 
 
 
