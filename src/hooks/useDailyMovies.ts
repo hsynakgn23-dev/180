@@ -870,9 +870,33 @@ export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'g
     const exclusionKey = normalizeMovieIds(excludedMovieIds).sort((a, b) => a - b).join(',');
 
     const movies = useMemo(() => {
-        return buildPersonalizedDailyMovies(baseMovies, candidateMovies, excludedMovieIds, dateKey, personalizationSeed);
+        const personalized = buildPersonalizedDailyMovies(
+            baseMovies,
+            candidateMovies,
+            excludedMovieIds,
+            dateKey,
+            personalizationSeed
+        );
+        if (personalized.length === DAILY_MOVIE_COUNT) return personalized;
+
+        const emergencyFallback = buildSeedFallbackMovies(dateKey, excludedMovieIds);
+        if (emergencyFallback.selected.length === DAILY_MOVIE_COUNT) {
+            const emergencyPool = emergencyFallback.pool.length
+                ? emergencyFallback.pool
+                : emergencyFallback.selected;
+            return buildPersonalizedDailyMovies(
+                emergencyFallback.selected,
+                emergencyPool,
+                excludedMovieIds,
+                dateKey,
+                personalizationSeed
+            );
+        }
+
+        return personalized;
     }, [baseMovies, candidateMovies, dateKey, exclusionKey, excludedMovieIds, personalizationSeed]);
 
     return { movies, loading, dateKey };
 };
+
 
