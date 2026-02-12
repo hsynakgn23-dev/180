@@ -674,7 +674,7 @@ export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'g
                         .from('daily_showcase')
                         .select('movies')
                         .eq('date', previousKey)
-                        .single();
+                        .maybeSingle();
                     const previousMovies = Array.isArray(previousData?.movies) ? previousData.movies : [];
                     previousGlobalMovieIds = normalizeMovieIds(
                         previousMovies
@@ -687,7 +687,7 @@ export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'g
                         .from('daily_showcase')
                         .select('*')
                         .eq('date', todayKey)
-                        .single();
+                        .maybeSingle();
 
                     if (data && data.movies) {
                         const fromDb = Array.isArray(data.movies) ? (data.movies as unknown[]) : [];
@@ -779,6 +779,32 @@ export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'g
             }
             finalMovies = finalMovies.filter(isMovieEligibleForDaily).slice(0, DAILY_MOVIE_COUNT);
 
+            if (finalMovies.length !== DAILY_MOVIE_COUNT && isSupabaseLive() && supabase) {
+                try {
+                    await fetch('/api/cron/daily');
+                    const { data: refreshedData } = await supabase
+                        .from('daily_showcase')
+                        .select('*')
+                        .eq('date', todayKey)
+                        .maybeSingle();
+
+                    const refreshedMovies = Array.isArray(refreshedData?.movies)
+                        ? (refreshedData.movies as unknown[])
+                              .map((movie) => normalizeMovie(movie))
+                              .filter(isMovieEligibleForDaily)
+                        : [];
+
+                    if (
+                        refreshedMovies.length === DAILY_MOVIE_COUNT &&
+                        !isLegacySeedSelection(refreshedMovies)
+                    ) {
+                        finalMovies = refreshedMovies;
+                    }
+                } catch {
+                    // noop: if cron endpoint is protected or unavailable, keep current fallback path
+                }
+            }
+
 
             // c) SAVE TO DB (Only when explicitly enabled; cron should be the default writer)
             if (allowClientDailyWrite && isSupabaseLive() && supabase && finalMovies.length === 5) {
@@ -816,6 +842,8 @@ export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'g
 
     return { movies, loading, dateKey };
 };
+
+
 
 
 
