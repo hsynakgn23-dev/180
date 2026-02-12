@@ -100,6 +100,34 @@ const getPreviousDateKey = (dateKey: string): string => {
     const prevDay = String(date.getUTCDate()).padStart(2, '0');
     return `${prevYear}-${prevMonth}-${prevDay}`;
 };
+const readDailyShowcaseFromPublic = async (dateKey: string): Promise<Movie[] | null> => {
+    const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+    const anonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
+    if (!supabaseUrl || !anonKey) return null;
+
+    try {
+        const endpoint = `${supabaseUrl}/rest/v1/daily_showcase?select=movies&date=eq.${encodeURIComponent(dateKey)}&limit=1`;
+        const response = await fetch(endpoint, {
+            headers: {
+                apikey: anonKey,
+                Accept: 'application/json'
+            }
+        });
+        if (!response.ok) return null;
+
+        const rows = (await response.json()) as Array<{ movies?: unknown[] }>;
+        if (!Array.isArray(rows) || rows.length === 0) return null;
+
+        const rawMovies = Array.isArray(rows[0]?.movies) ? rows[0].movies : [];
+        const normalized = rawMovies
+            .map((movie) => normalizeMovie(movie))
+            .filter(isMovieEligibleForDaily);
+
+        return normalized.length ? normalized : null;
+    } catch {
+        return null;
+    }
+};
 
 const hashString = (value: string): number => {
     let hash = 2166136261;
@@ -629,6 +657,7 @@ export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'g
             const allowClientDailyWrite =
                 isDev && import.meta.env.VITE_ALLOW_CLIENT_DAILY_WRITE === '1';
             const apiKey = import.meta.env.VITE_TMDB_API_KEY;
+            const isClientTmdbDisabled = import.meta.env.VITE_TMDB_API_DISABLED === '1';
             let previousGlobalMovieIds: number[] = [];
 
             const applyCandidateCache = () => {
@@ -682,6 +711,13 @@ export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'g
                             .filter((id): id is number => Number.isInteger(id) && id > 0)
                     );
 
+                    if (previousGlobalMovieIds.length === 0) {
+                        const previousPublicMovies = await readDailyShowcaseFromPublic(previousKey);
+                        if (previousPublicMovies?.length) {
+                            previousGlobalMovieIds = normalizeMovieIds(previousPublicMovies.map((movie) => movie.id));
+                        }
+                    }
+
                     // a) READ from DB
                     const { data, error } = await supabase
                         .from('daily_showcase')
@@ -703,7 +739,7 @@ export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'g
                                 console.log('[Daily5] Sync successful. Using global daily selection.');
                             }
                             setBaseMovies(normalized);
-                            if (!applyCandidateCache() && apiKey && apiKey !== 'YOUR_TMDB_API_KEY') {
+                            if (!applyCandidateCache() && !isClientTmdbDisabled && apiKey && apiKey !== 'YOUR_TMDB_API_KEY') {
                                 void buildDailyTmdbMovies(todayKey, apiKey, previousGlobalMovieIds).then((result) => {
                                     if (result.pool.length) {
                                         updateCandidatePool(result.pool);
@@ -719,6 +755,15 @@ export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'g
                         }
                     }
 
+                    const publicTodayMovies = await readDailyShowcaseFromPublic(todayKey);
+                    if (
+                        publicTodayMovies?.length === DAILY_MOVIE_COUNT &&
+                        !isLegacySeedSelection(publicTodayMovies)
+                    ) {
+                        setBaseMovies(publicTodayMovies);
+                        setLoading(false);
+                        return;
+                    }
                     if (error && error.code !== 'PGRST116') { // PGRST116 is 'Row not found', which is expected first time
                         console.warn('[Daily5] Supabase Error:', error);
                     }
@@ -763,7 +808,7 @@ export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'g
 
             let finalMovies: Movie[] = [];
 
-            if (apiKey && apiKey !== 'YOUR_TMDB_API_KEY') {
+            if (!isClientTmdbDisabled && apiKey && apiKey !== 'YOUR_TMDB_API_KEY') {
                 const dynamicResult = await buildDailyTmdbMovies(todayKey, apiKey, previousGlobalMovieIds);
                 finalMovies = dynamicResult.selected;
                 if (dynamicResult.pool.length) {
@@ -799,6 +844,14 @@ export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'g
                         !isLegacySeedSelection(refreshedMovies)
                     ) {
                         finalMovies = refreshedMovies;
+                    } else {
+                        const publicRefreshedMovies = await readDailyShowcaseFromPublic(todayKey);
+                        if (
+                            publicRefreshedMovies?.length === DAILY_MOVIE_COUNT &&
+                            !isLegacySeedSelection(publicRefreshedMovies)
+                        ) {
+                            finalMovies = publicRefreshedMovies;
+                        }
                     }
                 } catch {
                     // noop: if cron endpoint is protected or unavailable, keep current fallback path
@@ -842,6 +895,10 @@ export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'g
 
     return { movies, loading, dateKey };
 };
+
+
+
+
 
 
 
