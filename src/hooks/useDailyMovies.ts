@@ -531,54 +531,6 @@ const isLegacySeedSelection = (movies: Movie[]): boolean => {
     const legacyCount = selected.filter((movie) => LEGACY_SEED_ID_SET.has(movie.id)).length;
     return legacyCount >= 1;
 };
-const buildSeedFallbackMovies = (
-    dateKey: string,
-    excludedMovieIds: number[] = []
-): { selected: Movie[]; pool: Movie[] } => {
-    const fullPool = uniqueMoviesById(TMDB_SEEDS.map((movie) => normalizeMovie(movie))).filter(
-        isMovieEligibleForDaily
-    );
-    if (fullPool.length === 0) return { selected: [], pool: [] };
-
-    const pool = [...fullPool];
-    const random = createSeededRandom(hashString(`daily-seed:${dateKey}`));
-    for (let i = pool.length - 1; i > 0; i -= 1) {
-        const j = Math.floor(random() * (i + 1));
-        [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-
-    const excludedSet = new Set(normalizeMovieIds(excludedMovieIds));
-    const filteredPool = pool.filter((movie) => !excludedSet.has(movie.id));
-    const eligiblePool = filteredPool.length >= DAILY_MOVIE_COUNT ? filteredPool : pool;
-
-    let selected = pickWithDirectorLimit(eligiblePool);
-    selected = replaceMovie(
-        selected,
-        eligiblePool,
-        (movie) => movie.year < CLASSIC_YEAR_THRESHOLD,
-        (movie) => movie.year >= CLASSIC_YEAR_THRESHOLD
-    );
-    selected = replaceMovie(
-        selected,
-        eligiblePool,
-        (movie) => movie.year >= MODERN_YEAR_THRESHOLD,
-        (movie, snapshot) => {
-            if (movie.year >= CLASSIC_YEAR_THRESHOLD) return true;
-            return snapshot.filter((item) => item.year < CLASSIC_YEAR_THRESHOLD).length > 1;
-        }
-    );
-    selected = enforceGenreDiversity(selected, eligiblePool);
-
-    if (selected.length < DAILY_MOVIE_COUNT) {
-        selected = eligiblePool.slice(0, DAILY_MOVIE_COUNT);
-    }
-
-    return {
-        selected: applySlotStyles(selected.slice(0, DAILY_MOVIE_COUNT)).filter(isMovieEligibleForDaily),
-        pool
-    };
-};
-
 const buildPersonalizedDailyMovies = (
     baseMovies: Movie[],
     candidateMovies: Movie[],
@@ -828,16 +780,6 @@ export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'g
             }
             finalMovies = finalMovies.filter(isMovieEligibleForDaily).slice(0, DAILY_MOVIE_COUNT);
 
-            if (finalMovies.length !== DAILY_MOVIE_COUNT) {
-                if (isDev) {
-                    console.warn('[Daily5] Falling back to built-in seed pool.');
-                }
-                const fallback = buildSeedFallbackMovies(todayKey, previousGlobalMovieIds);
-                finalMovies = fallback.selected;
-                if (fallback.pool.length) {
-                    setCandidateMovies(fallback.pool);
-                }
-            }
 
             // c) SAVE TO DB (Only when explicitly enabled; cron should be the default writer)
             if (allowClientDailyWrite && isSupabaseLive() && supabase && finalMovies.length === 5) {
@@ -870,33 +812,11 @@ export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'g
     const exclusionKey = normalizeMovieIds(excludedMovieIds).sort((a, b) => a - b).join(',');
 
     const movies = useMemo(() => {
-        const personalized = buildPersonalizedDailyMovies(
-            baseMovies,
-            candidateMovies,
-            excludedMovieIds,
-            dateKey,
-            personalizationSeed
-        );
-        if (personalized.length === DAILY_MOVIE_COUNT) return personalized;
-
-        const emergencyFallback = buildSeedFallbackMovies(dateKey, excludedMovieIds);
-        if (emergencyFallback.selected.length === DAILY_MOVIE_COUNT) {
-            const emergencyPool = emergencyFallback.pool.length
-                ? emergencyFallback.pool
-                : emergencyFallback.selected;
-            return buildPersonalizedDailyMovies(
-                emergencyFallback.selected,
-                emergencyPool,
-                excludedMovieIds,
-                dateKey,
-                personalizationSeed
-            );
-        }
-
-        return personalized;
+        return buildPersonalizedDailyMovies(baseMovies, candidateMovies, excludedMovieIds, dateKey, personalizationSeed);
     }, [baseMovies, candidateMovies, dateKey, exclusionKey, excludedMovieIds, personalizationSeed]);
 
     return { movies, loading, dateKey };
 };
+
 
 
