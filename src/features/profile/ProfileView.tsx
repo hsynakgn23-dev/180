@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useXP, LEAGUES_DATA, LEAGUE_NAMES } from '../../context/XPContext';
 import { MAJOR_MARKS } from '../../data/marksData';
+import { TMDB_SEEDS } from '../../data/tmdbSeeds';
 import { SettingsModal } from './SettingsModal';
 import { resolvePosterCandidates } from '../../lib/posterCandidates';
 import { PROGRESS_EASING, getProgressFill, getProgressTransitionMs } from '../../lib/progressVisuals';
@@ -98,6 +99,17 @@ type FilmReplyEntry = {
 
 type SharePlatform = 'instagram' | 'tiktok' | 'x';
 type ShareGoal = 'comment' | 'streak';
+
+type DnaSegment = {
+    id: string;
+    label: string;
+    detail: string;
+    unlocked: boolean;
+};
+
+const HIDDEN_GEM_MOVIE_IDS = new Set(
+    TMDB_SEEDS.filter((movie) => typeof movie.voteAverage === 'number' && movie.voteAverage <= 7.9).map((movie) => movie.id)
+);
 
 const buildCommentKey = (movieTitle: string, text: string, date: string): string => {
     return `${movieTitle.trim()}::${text.trim()}::${date.trim()}`;
@@ -238,6 +250,55 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
     const topGenres = Object.entries(genreCounts)
         .sort(([, a], [, b]) => b - a)
         .slice(0, 3);
+
+    const hiddenGemCount = useMemo(
+        () => dailyRituals.filter((ritual) => HIDDEN_GEM_MOVIE_IDS.has(ritual.movieId)).length,
+        [dailyRituals]
+    );
+
+    const exact180Count = useMemo(
+        () => dailyRituals.filter((ritual) => (ritual.text || '').trim().length === 180).length,
+        [dailyRituals]
+    );
+
+    const dnaSegments = useMemo<DnaSegment[]>(() => {
+        const uniqueGenreCount = Object.keys(genreCounts).length;
+        const dominantGenreEntry = topGenres[0];
+        const dominantGenreLabel = dominantGenreEntry ? `${dominantGenreEntry[0]} x${dominantGenreEntry[1]}` : 'No genre signal yet';
+
+        return [
+            {
+                id: 'hidden-gem',
+                label: 'Hidden Gem Detector',
+                detail: `${hiddenGemCount}/10 low-score gems`,
+                unlocked: hiddenGemCount >= 10
+            },
+            {
+                id: 'genre-nomad',
+                label: 'Genre Nomad',
+                detail: `${uniqueGenreCount}/6 unique genres`,
+                unlocked: uniqueGenreCount >= 6
+            },
+            {
+                id: 'precision-loop',
+                label: 'Precision Loop',
+                detail: `${exact180Count}/5 exact-180 comments`,
+                unlocked: exact180Count >= 5
+            },
+            {
+                id: 'rhythm-engine',
+                label: 'Rhythm Engine',
+                detail: `${streak || 0}/7 active streak`,
+                unlocked: (streak || 0) >= 7
+            },
+            {
+                id: 'dominant-tone',
+                label: 'Dominant Tone',
+                detail: dominantGenreLabel,
+                unlocked: Boolean(dominantGenreEntry && dominantGenreEntry[1] >= 8)
+            }
+        ];
+    }, [exact180Count, genreCounts, hiddenGemCount, streak, topGenres]);
 
     const commentedFilms = useMemo<FilmCommentSummary[]>(() => {
         const filmMap = new Map<number, FilmCommentSummary>();
@@ -1015,6 +1076,29 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                                         ))}
                                     </div>
                                 )}
+                            </div>
+
+                            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {dnaSegments.map((segment) => (
+                                    <div
+                                        key={segment.id}
+                                        className={`rounded-lg border px-3 py-2 transition-colors ${
+                                            segment.unlocked
+                                                ? 'border-sage/35 bg-sage/10'
+                                                : 'border-white/10 bg-white/[0.03]'
+                                        }`}
+                                    >
+                                        <div className="flex items-center justify-between gap-3">
+                                            <span className={`text-[10px] uppercase tracking-[0.14em] ${segment.unlocked ? 'text-sage' : 'text-gray-400'}`}>
+                                                {segment.label}
+                                            </span>
+                                            <span className={`text-[9px] uppercase tracking-[0.12em] ${segment.unlocked ? 'text-sage/85' : 'text-gray-500'}`}>
+                                                {segment.unlocked ? 'Unlocked' : 'Tracking'}
+                                            </span>
+                                        </div>
+                                        <p className="mt-1 text-[10px] text-[#E5E4E2]/70">{segment.detail}</p>
+                                    </div>
+                                ))}
                             </div>
                         </div>
 

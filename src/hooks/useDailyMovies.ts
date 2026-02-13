@@ -130,6 +130,29 @@ const readDailyShowcaseFromPublic = async (dateKey: string): Promise<Movie[] | n
     }
 };
 
+const readDailyShowcaseFromEdgeCache = async (dateKey: string): Promise<Movie[] | null> => {
+    try {
+        const response = await fetch(`/api/daily?date=${encodeURIComponent(dateKey)}`, {
+            headers: {
+                Accept: 'application/json'
+            }
+        });
+        if (!response.ok) return null;
+
+        const payload = (await response.json()) as { movies?: unknown[] };
+        const rawMovies = Array.isArray(payload?.movies) ? payload.movies : [];
+        if (rawMovies.length === 0) return null;
+
+        const normalized = rawMovies
+            .map((movie) => normalizeMovie(movie))
+            .filter(isMovieEligibleForDaily);
+
+        return normalized.length ? normalized : null;
+    } catch {
+        return null;
+    }
+};
+
 const hashString = (value: string): number => {
     let hash = 2166136261;
     for (let i = 0; i < value.length; i += 1) {
@@ -724,6 +747,41 @@ export const useDailyMovies = ({
                 );
             };
 
+            // 0. EDGE-FRIENDLY CACHE STRATEGY (CDN/Redis-backed API path)
+            try {
+                const [todayCached, previousCached] = await Promise.all([
+                    readDailyShowcaseFromEdgeCache(todayKey),
+                    readDailyShowcaseFromEdgeCache(previousKey)
+                ]);
+
+                if (previousCached?.length) {
+                    previousGlobalMovieIds = normalizeMovieIds(previousCached.map((movie) => movie.id));
+                }
+
+                if (
+                    todayCached?.length === DAILY_MOVIE_COUNT &&
+                    !isLegacySeedSelection(todayCached)
+                ) {
+                    setBaseMovies(todayCached);
+                    if (
+                        !applyCandidateCache() &&
+                        !isClientTmdbDisabled &&
+                        apiKey &&
+                        apiKey !== 'YOUR_TMDB_API_KEY'
+                    ) {
+                        void buildDailyTmdbMovies(todayKey, apiKey, previousGlobalMovieIds).then((result) => {
+                            if (result.pool.length) {
+                                updateCandidatePool(result.pool);
+                            }
+                        });
+                    }
+                    setLoading(false);
+                    return;
+                }
+            } catch {
+                // noop: fallback to direct DB/local strategies below
+            }
+
             // 1. SUPABASE STRATEGY (The Absolute Source)
             if (isSupabaseLive() && supabase) {
                 if (isDev) {
@@ -731,22 +789,24 @@ export const useDailyMovies = ({
                 }
 
                 try {
-                    const { data: previousData } = await supabase
-                        .from('daily_showcase')
-                        .select('movies')
-                        .eq('date', previousKey)
-                        .maybeSingle();
-                    const previousMovies = Array.isArray(previousData?.movies) ? previousData.movies : [];
-                    previousGlobalMovieIds = normalizeMovieIds(
-                        previousMovies
-                            .map((movie) => normalizeMovie(movie).id)
-                            .filter((id): id is number => Number.isInteger(id) && id > 0)
-                    );
-
                     if (previousGlobalMovieIds.length === 0) {
-                        const previousPublicMovies = await readDailyShowcaseFromPublic(previousKey);
-                        if (previousPublicMovies?.length) {
-                            previousGlobalMovieIds = normalizeMovieIds(previousPublicMovies.map((movie) => movie.id));
+                        const { data: previousData } = await supabase
+                            .from('daily_showcase')
+                            .select('movies')
+                            .eq('date', previousKey)
+                            .maybeSingle();
+                        const previousMovies = Array.isArray(previousData?.movies) ? previousData.movies : [];
+                        previousGlobalMovieIds = normalizeMovieIds(
+                            previousMovies
+                                .map((movie) => normalizeMovie(movie).id)
+                                .filter((id): id is number => Number.isInteger(id) && id > 0)
+                        );
+
+                        if (previousGlobalMovieIds.length === 0) {
+                            const previousPublicMovies = await readDailyShowcaseFromPublic(previousKey);
+                            if (previousPublicMovies?.length) {
+                                previousGlobalMovieIds = normalizeMovieIds(previousPublicMovies.map((movie) => movie.id));
+                            }
                         }
                     }
 
@@ -859,6 +919,13 @@ export const useDailyMovies = ({
             if (finalMovies.length !== DAILY_MOVIE_COUNT && isSupabaseLive() && supabase) {
                 try {
                     await fetch('/api/cron/daily');
+                    const refreshedFromCache = await readDailyShowcaseFromEdgeCache(todayKey);
+                    if (
+                        refreshedFromCache?.length === DAILY_MOVIE_COUNT &&
+                        !isLegacySeedSelection(refreshedFromCache)
+                    ) {
+                        finalMovies = refreshedFromCache;
+                    } else {
                     const { data: refreshedData } = await supabase
                         .from('daily_showcase')
                         .select('*')
@@ -884,6 +951,7 @@ export const useDailyMovies = ({
                         ) {
                             finalMovies = publicRefreshedMovies;
                         }
+                    }
                     }
                 } catch {
                     // noop: if cron endpoint is protected or unavailable, keep current fallback path

@@ -108,6 +108,52 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
         personalizationSeed: user?.id || user?.email || 'guest'
     });
 
+    const dailyStructuredData = useMemo(() => {
+        if (!movies.length) return null;
+
+        const origin = typeof window !== 'undefined' ? window.location.origin : 'https://180absolutecinema.com';
+        const itemListElement = movies.map((movie, index) => {
+            const movieSchema: Record<string, unknown> = {
+                '@type': 'Movie',
+                name: movie.title,
+                genre: movie.genre || undefined,
+                image: movie.posterPath || undefined,
+                dateCreated: movie.year ? String(movie.year) : undefined,
+                director: movie.director
+                    ? {
+                          '@type': 'Person',
+                          name: movie.director
+                      }
+                    : undefined
+            };
+
+            if (typeof movie.voteAverage === 'number' && Number.isFinite(movie.voteAverage) && movie.voteAverage > 0) {
+                movieSchema.aggregateRating = {
+                    '@type': 'AggregateRating',
+                    ratingValue: movie.voteAverage.toFixed(1),
+                    bestRating: '10'
+                };
+            }
+
+            return {
+                '@type': 'ListItem',
+                position: index + 1,
+                url: `${origin}/#/film/${movie.id}`,
+                item: movieSchema
+            };
+        });
+
+        return {
+            '@context': 'https://schema.org',
+            '@type': 'ItemList',
+            name: `180 Daily 5 - ${todayKey}`,
+            description: 'Curated Daily 5 movie selection.',
+            numberOfItems: itemListElement.length,
+            itemListOrder: 'http://schema.org/ItemListOrderAscending',
+            itemListElement
+        };
+    }, [movies, todayKey]);
+
     const scrollerRef = useRef<HTMLDivElement | null>(null);
     const [canScrollLeft, setCanScrollLeft] = useState(false);
     const [canScrollRight, setCanScrollRight] = useState(true);
@@ -161,6 +207,13 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
 
     return (
         <section className="max-w-6xl mx-auto mb-24">
+            {dailyStructuredData ? (
+                <script
+                    type="application/ld+json"
+                    dangerouslySetInnerHTML={{ __html: JSON.stringify(dailyStructuredData) }}
+                />
+            ) : null}
+
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end items-start gap-4 px-4 sm:px-6 mb-8 border-b border-gray-200/50 pb-4">
                 <div>
                     <h3 className="text-sm font-bold tracking-widest text-sage uppercase">{text.daily.title}</h3>

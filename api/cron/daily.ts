@@ -1,4 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { setCachedDailyMovies } from '../lib/dailyCache';
+
 export const config = {
     runtime: 'nodejs'
 };
@@ -1057,6 +1059,12 @@ export default async function handler(req: any, res: any) {
 
         if (upsertError) {
             return sendJson(res, 500, { error: upsertError.message });
+        }
+
+        try {
+            await setCachedDailyMovies(todayKey, movies);
+        } catch (cacheError) {
+            console.warn('[daily-cron] cache refresh failed', cacheError);
         }
 
         return sendJson(res, 200, {

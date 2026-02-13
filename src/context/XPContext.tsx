@@ -1829,6 +1829,8 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                     const lowered = (insertError.message || '').toLowerCase();
                     if (lowered.includes('permission') || lowered.includes('policy') || lowered.includes('jwt')) {
                         triggerWhisper("Cloud izni reddedildi. Cikis-giris yapip tekrar dene.");
+                    } else if (lowered.includes('rate limit') || lowered.includes('too many')) {
+                        triggerWhisper("Cok hizli gonderim algilandi. Biraz bekleyip tekrar dene.");
                     } else {
                         triggerWhisper("Ritual kaydedildi ama cloud senkronu basarisiz oldu.");
                     }

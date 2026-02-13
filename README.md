@@ -25,6 +25,7 @@ npm run dev
 - `npm run dev` - start Vite dev server
 - `npm run lint` - run ESLint
 - `npm run build` - run TypeScript build + Vite production build
+- `npm run analyze` - build with bundle visualizer output (`dist/bundle-analysis.html`)
 - `npm run preview` - preview production build locally
 - `node test-supabase-connection.js` - quick Supabase read/write capability check
 
@@ -50,9 +51,14 @@ Server/cron (`api/cron/daily.ts`):
 - `TMDB_API_KEY`
 - `DAILY_ROLLOVER_TIMEZONE` (optional, default `Europe/Istanbul`)
 
+Optional edge-friendly cache (`api/daily.ts`, Redis/KV REST):
+- `KV_REST_API_URL` or `UPSTASH_REDIS_REST_URL`
+- `KV_REST_API_TOKEN` or `UPSTASH_REDIS_REST_TOKEN`
+
 ## Supabase Rollout
 - Base setup SQL: `supabase_setup.sql`
 - Social migration SQL: `sql/migrations/20260207_social_model_v2.sql`
+- Rate limit migration SQL: `sql/migrations/20260213_rate_limits.sql`
 - Rollout checklist: `docs/ROLLOUT_SOCIAL_MODEL.md`
 - Test checklist: `docs/TEST_PLAN_SOCIAL_SYNC.md`
 - Integration plan: `PLAN_SUPABASE_INTEGRATION.md`

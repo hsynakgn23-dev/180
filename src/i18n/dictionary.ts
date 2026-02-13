@@ -184,6 +184,7 @@ export type UiDictionary = {
         anonymous: string;
         reactionSyncFailed: string;
         replySyncFailed: string;
+        rateLimitReached: string;
         replyNotification: string;
         now: string;
     };
@@ -337,6 +338,7 @@ export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
             delete: 'SIL', deleteTitle: 'Yorumunu sil', replyPlaceholder: 'Yanit yaz...', send: 'Gonder', anonymous: 'ANONIM',
             reactionSyncFailed: 'Tepki senkronize edilemedi. Akisi yenileyip tekrar dene.',
             replySyncFailed: 'Yanit senkronize edilemedi. Akisi yenileyip tekrar dene.',
+            rateLimitReached: 'Hiz limiti asildi. Biraz bekleyip tekrar dene.',
             replyNotification: '{author} yorumuna yanit: "{text}"', now: 'Simdi'
         },
         notifications: { title: 'Bildirimler', panelTitle: 'Bildirim Merkezi', empty: 'Bildirim yok.' },
@@ -434,6 +436,7 @@ export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
             delete: 'DELETE', deleteTitle: 'Delete your comment', replyPlaceholder: 'Write a reply...', send: 'Send', anonymous: 'ANONYMOUS',
             reactionSyncFailed: 'Reaction sync failed. Refresh the feed and retry.',
             replySyncFailed: 'Reply sync failed. Refresh the feed and retry.',
+            rateLimitReached: 'Rate limit reached. Please wait and try again shortly.',
             replyNotification: 'Reply sent to {author}: "{text}"', now: 'Now'
         },
         notifications: { title: 'Notifications', panelTitle: 'Notification Center', empty: 'No notifications.' },

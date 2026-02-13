@@ -11,6 +11,7 @@ import { useLanguage } from '../../context/LanguageContext';
 
 interface RitualCardProps {
     ritual: Ritual;
+    isHotStreak?: boolean;
     onDelete?: () => void;
     onLocalRepliesChange?: (ritualId: string, replies: ReplyRecord[]) => void;
     onOpenAuthorProfile?: (target: { userId?: string | null; username: string }) => void;
@@ -47,7 +48,12 @@ const toRelativeTimestamp = (rawTimestamp: string): string => {
     return `${Math.floor(diffMs / dayMs)}d ago`;
 };
 
-export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLocalRepliesChange, onOpenAuthorProfile }) => {
+const isRateLimitError = (error: { message?: string | null } | null | undefined): boolean => {
+    const lowered = (error?.message || '').toLowerCase();
+    return lowered.includes('rate limit') || lowered.includes('too many');
+};
+
+export const RitualCard: React.FC<RitualCardProps> = ({ ritual, isHotStreak = false, onDelete, onLocalRepliesChange, onOpenAuthorProfile }) => {
     const { echoRitual, isFollowingUser, toggleFollowUser, user } = useXP();
     const { addNotification } = useNotifications();
     const { text: ui, format } = useLanguage();
@@ -194,7 +200,9 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
                         setEchoCount((prev) => Math.max(0, prev - 1));
                         addNotification({
                             type: 'system',
-                            message: ui.ritualCard.reactionSyncFailed
+                            message: isRateLimitError(error)
+                                ? ui.ritualCard.rateLimitReached
+                                : ui.ritualCard.reactionSyncFailed
                         });
                     }
                 });
@@ -277,7 +285,9 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
                         updateReplies((prev) => prev.filter((reply) => reply.id !== tempId));
                         addNotification({
                             type: 'system',
-                            message: ui.ritualCard.replySyncFailed
+                            message: isRateLimitError(error)
+                                ? ui.ritualCard.rateLimitReached
+                                : ui.ritualCard.replySyncFailed
                         });
                         return;
                     }
@@ -296,9 +306,12 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
                 } catch (error: unknown) {
                     console.error('[Ritual] failed to sync replies', error);
                     updateReplies((prev) => prev.filter((reply) => reply.id !== tempId));
+                    const message = isRateLimitError(error as { message?: string | null })
+                        ? ui.ritualCard.rateLimitReached
+                        : ui.ritualCard.replySyncFailed;
                     addNotification({
                         type: 'system',
-                        message: ui.ritualCard.replySyncFailed
+                        message
                     });
                 }
             })();
@@ -329,6 +342,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
             className={`group relative pt-4 sm:pt-6 pb-4 sm:pb-6 border-b border-gray-100/5 flex flex-col sm:flex-row gap-3 sm:gap-4 md:gap-6 animate-fade-in hover:bg-transparent transition-all duration-500 px-4 sm:px-4 mx-0 sm:-mx-4 overflow-x-hidden
             ${isFollowing ? 'bg-gradient-to-r from-sage/5 to-transparent' : ''}
             ${isOwnAuthor ? 'ring-1 ring-sage/25 bg-sage/10 rounded-lg' : ''}
+            ${isHotStreak ? 'ring-1 ring-clay/35 bg-gradient-to-r from-clay/10 to-transparent shadow-[0_0_26px_rgba(165,113,100,0.22)] rounded-lg' : ''}
         `}
         >
             <div className="shrink-0 pt-0 sm:pt-1 self-start group-hover:scale-105 transition-transform duration-500">
@@ -407,6 +421,12 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, onDelete, onLoca
                             <span className="text-[9px] tracking-widest text-gray-500 uppercase break-words">
                                 {formatRitualTimestamp(ritual.timestamp)}
                             </span>
+
+                            {isHotStreak && (
+                                <span className="inline-flex items-center rounded-full border border-clay/40 bg-clay/15 px-2 py-0.5 text-[8px] uppercase tracking-[0.18em] text-clay/90 shadow-[0_0_10px_rgba(165,113,100,0.35)]">
+                                    Hot Streak
+                                </span>
+                            )}
                         </div>
                     </div>
 

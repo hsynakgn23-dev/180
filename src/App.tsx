@@ -14,6 +14,7 @@ import { LeagueTransition } from './components/LeagueTransition'
 import { StreakCelebration } from './components/StreakCelebration'
 import { SharePromptModal } from './components/SharePromptModal'
 import { InfoFooter } from './components/InfoFooter'
+import { SectionErrorBoundary } from './components/SectionErrorBoundary'
 import type { Movie } from './data/mockMovies'
 import { LanguageProvider, useLanguage } from './context/LanguageContext'
 
@@ -257,8 +258,19 @@ const AppContent = () => {
             </button>
           </header>
 
-          <DailyShowcase onMovieSelect={setDetailMovie} />
-          <Arena />
+          <SectionErrorBoundary
+            title="Daily Showcase"
+            fallbackMessage="Daily list is temporarily unavailable. Please refresh in a moment."
+          >
+            <DailyShowcase onMovieSelect={setDetailMovie} />
+          </SectionErrorBoundary>
+
+          <SectionErrorBoundary
+            title="Arena"
+            fallbackMessage="Arena is temporarily unavailable. Your session is still active."
+          >
+            <Arena />
+          </SectionErrorBoundary>
         </main>
 
         <InfoFooter className="mt-8" panelWrapperClassName="px-4 sm:px-6 pb-4" footerClassName="py-8 px-4 sm:px-6 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4 text-[10px] uppercase tracking-widest text-white/20" />

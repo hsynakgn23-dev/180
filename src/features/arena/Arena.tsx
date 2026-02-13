@@ -282,6 +282,7 @@ export const Arena: React.FC = () => {
     const [localRepliesByRitualId, setLocalRepliesByRitualId] = useState<Record<string, RitualReply[]>>({});
     const [isRemoteLoading, setIsRemoteLoading] = useState(canUseRemoteFeed);
     const [feedError, setFeedError] = useState<string | null>(null);
+    const [hotStreakNowMs, setHotStreakNowMs] = useState(0);
     const lastNotifiedErrorRef = useRef<string | null>(null);
 
     const reportFeedError = useCallback((message: string) => {
@@ -302,6 +303,13 @@ export const Arena: React.FC = () => {
             return Object.fromEntries(nextEntries);
         });
     }, [dailyRituals]);
+
+    useEffect(() => {
+        const updateNow = () => setHotStreakNowMs(Date.now());
+        updateNow();
+        const timer = window.setInterval(updateNow, 60 * 1000);
+        return () => window.clearInterval(timer);
+    }, []);
 
     useEffect(() => {
         const client = supabase;
@@ -532,6 +540,24 @@ export const Arena: React.FC = () => {
         return [...items].sort((a, b) => getRitualTimeScore(b) - getRitualTimeScore(a));
     }, [filter, query, rituals, sortMode]);
 
+    const hotStreakAuthors = useMemo(() => {
+        const cutoff = hotStreakNowMs - 2 * 24 * 60 * 60 * 1000;
+        const countsByAuthor = new Map<string, number>();
+
+        for (const ritual of rituals) {
+            const authorKey = (ritual.author || '').trim().toLowerCase();
+            if (!authorKey) continue;
+            if (getRitualTimeScore(ritual) < cutoff) continue;
+            countsByAuthor.set(authorKey, (countsByAuthor.get(authorKey) || 0) + 1);
+        }
+
+        return new Set(
+            Array.from(countsByAuthor.entries())
+                .filter(([, count]) => count >= 3)
+                .map(([author]) => author)
+        );
+    }, [hotStreakNowMs, rituals]);
+
     const selfHandle = (username || user?.name || 'You').trim();
 
     const handleOpenAuthorProfile = (target: ProfileTarget) => {
@@ -623,6 +649,7 @@ export const Arena: React.FC = () => {
                         <RitualCard
                             key={ritual.id}
                             ritual={ritual}
+                            isHotStreak={hotStreakAuthors.has((ritual.author || '').trim().toLowerCase())}
                             onDelete={ritual.isCustom ? () => handleDelete(ritual.id) : undefined}
                             onOpenAuthorProfile={handleOpenAuthorProfile}
                             onLocalRepliesChange={ritual.id.startsWith('log-')
