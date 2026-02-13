@@ -1,7 +1,7 @@
 import { ImageResponse } from '@vercel/og';
 
 export const config = {
-    runtime: 'edge'
+    runtime: 'nodejs'
 };
 
 const safeText = (value: string | null, max = 40): string => {
