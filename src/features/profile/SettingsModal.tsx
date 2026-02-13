@@ -8,6 +8,13 @@ import {
     type LanguageCode
 } from '../../i18n/localization';
 import { UI_DICTIONARY } from '../../i18n/dictionary';
+import {
+    analyzeLetterboxdCsv,
+    readStoredLetterboxdImport,
+    saveLetterboxdImport,
+    type LetterboxdCsvAnalysis,
+    type StoredLetterboxdImport
+} from '../../lib/letterboxdImport';
 
 interface SettingsModalProps {
     isOpen: boolean;
@@ -15,6 +22,30 @@ interface SettingsModalProps {
 }
 
 type SettingsTab = 'identity' | 'appearance' | 'session';
+
+type ImportCopy = {
+    title: string;
+    subtitle: string;
+    cta: string;
+    inProgress: string;
+    noIdentity: string;
+    parseFailed: string;
+    emptyFile: string;
+    importSuccess: string;
+    statsPrefix: string;
+    previewReady: string;
+    previewTitle: string;
+    mappingTitle: string;
+    sampleTitle: string;
+    confirmImport: string;
+    clearPreview: string;
+    colTitle: string;
+    colYear: string;
+    colTmdb: string;
+    colImdb: string;
+    colWatched: string;
+    colRating: string;
+};
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
     const { user, updateIdentity, updatePersonalInfo, logout, bio, avatarUrl, updateAvatar, avatarId, fullName, username, gender, birthDate } = useXP();
@@ -28,9 +59,116 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     const [theme, setTheme] = useState<ThemeMode>('midnight');
     const [statusMessage, setStatusMessage] = useState('');
     const [confirmLogout, setConfirmLogout] = useState(false);
+    const [isImportingLetterboxd, setIsImportingLetterboxd] = useState(false);
+    const [letterboxdSummary, setLetterboxdSummary] = useState('');
+    const [letterboxdSnapshot, setLetterboxdSnapshot] = useState<StoredLetterboxdImport | null>(null);
+    const [pendingLetterboxdImport, setPendingLetterboxdImport] = useState<LetterboxdCsvAnalysis | null>(null);
+    const [pendingImportFileName, setPendingImportFileName] = useState('');
     const genderOptions: Array<{ value: RegistrationGender; label: string }> = getRegistrationGenderOptions(language);
 
     const fileInputRef = React.useRef<HTMLInputElement>(null);
+    const letterboxdInputRef = React.useRef<HTMLInputElement>(null);
+
+    const importCopy: ImportCopy = React.useMemo(() => {
+        if (language === 'tr') {
+            return {
+                title: 'Letterboxd Import',
+                subtitle: 'Letterboxd CSV dosyani yukleyip izleme gecmisini kisitlama motoruna aktar.',
+                cta: 'CSV Yukle',
+                inProgress: 'Aktariliyor...',
+                noIdentity: 'Aktif hesap bulunamadi. Tekrar giris yap.',
+                parseFailed: 'CSV dosyasi okunamadi. Letterboxd export dosyasini tekrar dene.',
+                emptyFile: 'Gecerli satir bulunamadi. CSV basligini kontrol et.',
+                importSuccess: 'Letterboxd verisi eklendi.',
+                statsPrefix: 'Toplam aktarilan',
+                previewReady: 'Onizleme hazir. Importu onaylayabilirsin.',
+                previewTitle: 'CSV Onizleme',
+                mappingTitle: 'Algilanan Alan Eslesmeleri',
+                sampleTitle: 'Ornek Satirlar',
+                confirmImport: 'Importu Onayla',
+                clearPreview: 'Temizle',
+                colTitle: 'Film',
+                colYear: 'Yil',
+                colTmdb: 'TMDB',
+                colImdb: 'IMDb',
+                colWatched: 'Izleme',
+                colRating: 'Puan'
+            };
+        }
+        if (language === 'es') {
+            return {
+                title: 'Importar Letterboxd',
+                subtitle: 'Sube tu CSV de Letterboxd para transferir historial al motor de personalizacion.',
+                cta: 'Subir CSV',
+                inProgress: 'Importando...',
+                noIdentity: 'No hay una cuenta activa. Vuelve a iniciar sesion.',
+                parseFailed: 'No se pudo leer el CSV. Intenta de nuevo con el export de Letterboxd.',
+                emptyFile: 'No se encontraron filas validas. Revisa los encabezados del CSV.',
+                importSuccess: 'Datos de Letterboxd agregados.',
+                statsPrefix: 'Importado total',
+                previewReady: 'Vista previa lista. Puedes confirmar la importacion.',
+                previewTitle: 'Vista Previa CSV',
+                mappingTitle: 'Asignaciones Detectadas',
+                sampleTitle: 'Filas de Muestra',
+                confirmImport: 'Confirmar Importacion',
+                clearPreview: 'Limpiar',
+                colTitle: 'Pelicula',
+                colYear: 'Ano',
+                colTmdb: 'TMDB',
+                colImdb: 'IMDb',
+                colWatched: 'Visto',
+                colRating: 'Puntuacion'
+            };
+        }
+        if (language === 'fr') {
+            return {
+                title: 'Import Letterboxd',
+                subtitle: 'Ajoute ton CSV Letterboxd pour transferer l historique vers la personnalisation.',
+                cta: 'Importer CSV',
+                inProgress: 'Import en cours...',
+                noIdentity: 'Aucun compte actif. Reconnecte-toi.',
+                parseFailed: 'CSV illisible. Reessaie avec l export Letterboxd.',
+                emptyFile: 'Aucune ligne valide detectee. Verifie les en-tetes CSV.',
+                importSuccess: 'Donnees Letterboxd ajoutees.',
+                statsPrefix: 'Total importe',
+                previewReady: 'Apercu pret. Tu peux confirmer l import.',
+                previewTitle: 'Apercu CSV',
+                mappingTitle: 'Correspondances Detectees',
+                sampleTitle: 'Lignes Exemple',
+                confirmImport: 'Confirmer Import',
+                clearPreview: 'Effacer',
+                colTitle: 'Film',
+                colYear: 'Annee',
+                colTmdb: 'TMDB',
+                colImdb: 'IMDb',
+                colWatched: 'Vu le',
+                colRating: 'Note'
+            };
+        }
+        return {
+            title: 'Letterboxd Import',
+            subtitle: 'Upload your Letterboxd CSV and transfer watch history into personalization.',
+            cta: 'Upload CSV',
+            inProgress: 'Importing...',
+            noIdentity: 'No active account found. Please sign in again.',
+            parseFailed: 'Could not read CSV. Try the original Letterboxd export again.',
+            emptyFile: 'No valid rows found. Check your CSV headers.',
+            importSuccess: 'Letterboxd data added.',
+            statsPrefix: 'Imported total',
+            previewReady: 'Preview is ready. Confirm to import.',
+            previewTitle: 'CSV Preview',
+            mappingTitle: 'Detected Field Mapping',
+            sampleTitle: 'Sample Rows',
+            confirmImport: 'Confirm Import',
+            clearPreview: 'Clear',
+            colTitle: 'Title',
+            colYear: 'Year',
+            colTmdb: 'TMDB',
+            colImdb: 'IMDb',
+            colWatched: 'Watched',
+            colRating: 'Rating'
+        };
+    }, [language]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -42,10 +180,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         setBirthDateDraft(birthDate);
         setStatusMessage('');
         setConfirmLogout(false);
+        setLetterboxdSummary('');
+        setPendingLetterboxdImport(null);
+        setPendingImportFileName('');
 
         setTheme(resolveThemeMode());
+        setLetterboxdSnapshot(readStoredLetterboxdImport(user?.id || user?.email || ''));
 
-    }, [isOpen, bio, fullName, username, gender, birthDate]);
+    }, [isOpen, bio, fullName, username, gender, birthDate, user?.id, user?.email]);
 
     useEffect(() => {
         if (!statusMessage) return;
@@ -91,6 +233,64 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             }
         };
         reader.readAsDataURL(file);
+    };
+
+    const handleLetterboxdImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        setIsImportingLetterboxd(true);
+        try {
+            const csvText = await file.text();
+            const analysis = analyzeLetterboxdCsv(csvText);
+            if (analysis.parse.importedRows === 0) {
+                setStatusMessage(analysis.parse.totalRows > 0 ? importCopy.emptyFile : importCopy.parseFailed);
+                event.target.value = '';
+                return;
+            }
+
+            setPendingLetterboxdImport(analysis);
+            setPendingImportFileName(file.name);
+            setStatusMessage(importCopy.previewReady);
+        } catch {
+            setStatusMessage(importCopy.parseFailed);
+        } finally {
+            setIsImportingLetterboxd(false);
+            event.target.value = '';
+        }
+    };
+
+    const clearPendingLetterboxdImport = () => {
+        setPendingLetterboxdImport(null);
+        setPendingImportFileName('');
+    };
+
+    const confirmPendingLetterboxdImport = () => {
+        const identity = user?.id || user?.email || '';
+        if (!identity) {
+            setStatusMessage(importCopy.noIdentity);
+            return;
+        }
+        if (!pendingLetterboxdImport) return;
+
+        const parsed = pendingLetterboxdImport.parse;
+        const saved = saveLetterboxdImport(identity, {
+            movieIds: parsed.movieIds,
+            titleKeys: parsed.titleKeys,
+            totalRows: parsed.totalRows,
+            importedRows: parsed.importedRows,
+            importedAt: new Date().toISOString(),
+            sourceFileName: pendingImportFileName || undefined
+        });
+
+        setLetterboxdSnapshot(saved);
+        setStatusMessage(importCopy.importSuccess);
+        clearPendingLetterboxdImport();
+        if (saved) {
+            setLetterboxdSummary(
+                `${importCopy.statsPrefix}: ${saved.importedRows} rows, ${saved.movieIds.length} ids, ${saved.titleKeys.length} title keys`
+            );
+        }
     };
 
     const handleLogout = async () => {
@@ -259,6 +459,103 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                 >
                                     {text.settings.saveIdentity}
                                 </button>
+                            </div>
+
+                            <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+                                <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-2">{importCopy.title}</p>
+                                <p className="text-xs text-gray-500 mb-4">{importCopy.subtitle}</p>
+
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => letterboxdInputRef.current?.click()}
+                                        disabled={isImportingLetterboxd}
+                                        className="text-[10px] uppercase tracking-[0.18em] border border-sage/30 rounded px-3 py-2 text-sage hover:border-sage/60 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                    >
+                                        {isImportingLetterboxd ? importCopy.inProgress : importCopy.cta}
+                                    </button>
+                                    {letterboxdSnapshot ? (
+                                        <span className="text-[10px] text-gray-500">
+                                            {importCopy.statsPrefix}: {letterboxdSnapshot.importedRows} rows
+                                        </span>
+                                    ) : null}
+                                </div>
+
+                                <input
+                                    ref={letterboxdInputRef}
+                                    type="file"
+                                    accept=".csv,text/csv"
+                                    className="hidden"
+                                    onChange={(event) => void handleLetterboxdImport(event)}
+                                />
+
+                                {pendingLetterboxdImport ? (
+                                    <div className="mt-4 rounded-lg border border-sage/25 bg-[#0f0f0f] p-3">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                                <p className="text-[10px] uppercase tracking-[0.16em] text-sage/85">{importCopy.previewTitle}</p>
+                                                <p className="mt-1 text-[10px] text-gray-500">
+                                                    {pendingImportFileName || 'letterboxd.csv'} · {pendingLetterboxdImport.parse.totalRows} rows
+                                                </p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={clearPendingLetterboxdImport}
+                                                className="text-[10px] uppercase tracking-[0.14em] text-gray-400 hover:text-white transition-colors"
+                                            >
+                                                {importCopy.clearPreview}
+                                            </button>
+                                        </div>
+
+                                        <div className="mt-3">
+                                            <p className="text-[10px] uppercase tracking-[0.14em] text-gray-400 mb-2">{importCopy.mappingTitle}</p>
+                                            <div className="grid grid-cols-2 gap-2 text-[10px]">
+                                                <div className="rounded border border-white/10 bg-white/5 px-2 py-1 text-gray-300">
+                                                    {importCopy.colTitle}: {pendingLetterboxdImport.mapping.title || '-'}
+                                                </div>
+                                                <div className="rounded border border-white/10 bg-white/5 px-2 py-1 text-gray-300">
+                                                    {importCopy.colYear}: {pendingLetterboxdImport.mapping.year || '-'}
+                                                </div>
+                                                <div className="rounded border border-white/10 bg-white/5 px-2 py-1 text-gray-300">
+                                                    {importCopy.colTmdb}: {pendingLetterboxdImport.mapping.tmdbId || '-'}
+                                                </div>
+                                                <div className="rounded border border-white/10 bg-white/5 px-2 py-1 text-gray-300">
+                                                    {importCopy.colImdb}: {pendingLetterboxdImport.mapping.imdbId || '-'}
+                                                </div>
+                                                <div className="rounded border border-white/10 bg-white/5 px-2 py-1 text-gray-300">
+                                                    {importCopy.colWatched}: {pendingLetterboxdImport.mapping.watchedDate || '-'}
+                                                </div>
+                                                <div className="rounded border border-white/10 bg-white/5 px-2 py-1 text-gray-300">
+                                                    {importCopy.colRating}: {pendingLetterboxdImport.mapping.rating || '-'}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-3">
+                                            <p className="text-[10px] uppercase tracking-[0.14em] text-gray-400 mb-2">{importCopy.sampleTitle}</p>
+                                            <div className="space-y-1">
+                                                {pendingLetterboxdImport.previewRows.map((entry, index) => (
+                                                    <div key={`${entry.title}-${index}`} className="rounded border border-white/10 bg-white/[0.03] px-2 py-1 text-[10px] text-gray-300">
+                                                        <span className="text-[#E5E4E2]">{entry.title || '-'}</span>
+                                                        <span className="text-gray-500"> · {entry.year || '-'} · {importCopy.colTmdb}: {entry.tmdbId || '-'} · {importCopy.colWatched}: {entry.watchedDate || '-'}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            onClick={confirmPendingLetterboxdImport}
+                                            className="mt-4 w-full bg-sage text-[#121212] rounded py-2 text-[10px] uppercase tracking-[0.18em] font-bold hover:opacity-90 transition-opacity"
+                                        >
+                                            {importCopy.confirmImport}
+                                        </button>
+                                    </div>
+                                ) : null}
+
+                                {letterboxdSummary ? (
+                                    <p className="mt-3 text-[10px] text-sage/80 uppercase tracking-[0.12em]">{letterboxdSummary}</p>
+                                ) : null}
                             </div>
                         </div>
                     )}

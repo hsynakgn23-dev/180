@@ -12,6 +12,7 @@ type LooseMovie = Partial<Movie> & {
 
 interface UseDailyMoviesOptions {
     excludedMovieIds?: number[];
+    excludedMovieTitles?: string[];
     personalizationSeed?: string;
 }
 
@@ -545,6 +546,25 @@ const normalizeMovieIds = (movieIds: number[] = []): number[] => {
     );
 };
 
+const normalizeMovieTitleKey = (value: string): string => {
+    return value
+        .toLowerCase()
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+};
+
+const normalizeMovieTitles = (movieTitles: string[] = []): string[] => {
+    return Array.from(
+        new Set(
+            movieTitles
+                .map((value) => normalizeMovieTitleKey(String(value || '')))
+                .filter(Boolean)
+        )
+    );
+};
+
 const isMovieEligibleForDaily = (movie: Movie): boolean => {
     const voteAverage = Number(movie.voteAverage);
     if (!Number.isFinite(voteAverage) || voteAverage < TMDB_MIN_VOTE_AVERAGE) return false;
@@ -562,6 +582,7 @@ const buildPersonalizedDailyMovies = (
     baseMovies: Movie[],
     candidateMovies: Movie[],
     excludedMovieIds: number[],
+    excludedMovieTitles: string[],
     dateKey: string,
     personalizationSeed: string
 ): Movie[] => {
@@ -569,11 +590,18 @@ const buildPersonalizedDailyMovies = (
     if (base.length === 0) return [];
 
     const excludedSet = new Set(normalizeMovieIds(excludedMovieIds));
-    if (excludedSet.size === 0) return applySlotStyles(base);
+    const excludedTitleSet = new Set(normalizeMovieTitles(excludedMovieTitles));
+    if (excludedSet.size === 0 && excludedTitleSet.size === 0) return applySlotStyles(base);
 
     const replacementPool = uniqueMoviesById(candidateMovies).filter(isMovieEligibleForDaily);
     const baseMovieIds = new Set(base.map((movie) => movie.id));
     const random = createSeededRandom(hashString(`daily-user:${dateKey}:${personalizationSeed}`));
+
+    const isExcluded = (movie: Movie): boolean => {
+        if (excludedSet.has(movie.id)) return true;
+        const titleKey = normalizeMovieTitleKey(movie.title || '');
+        return Boolean(titleKey && excludedTitleSet.has(titleKey));
+    };
 
     for (let i = replacementPool.length - 1; i > 0; i -= 1) {
         const j = Math.floor(random() * (i + 1));
@@ -582,11 +610,11 @@ const buildPersonalizedDailyMovies = (
 
     const usedMovieIds = new Set<number>();
     const availableReplacements = replacementPool.filter(
-        (movie) => !excludedSet.has(movie.id) && !baseMovieIds.has(movie.id)
+        (movie) => !isExcluded(movie) && !baseMovieIds.has(movie.id)
     );
 
     const personalized = base.map((movie) => {
-        if (!excludedSet.has(movie.id) && !usedMovieIds.has(movie.id)) {
+        if (!isExcluded(movie) && !usedMovieIds.has(movie.id)) {
             usedMovieIds.add(movie.id);
             return movie;
         }
@@ -604,7 +632,11 @@ const buildPersonalizedDailyMovies = (
     return applySlotStyles(personalized);
 };
 
-export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'guest' }: UseDailyMoviesOptions = {}) => {
+export const useDailyMovies = ({
+    excludedMovieIds = [],
+    excludedMovieTitles = [],
+    personalizationSeed = 'guest'
+}: UseDailyMoviesOptions = {}) => {
     const [baseMovies, setBaseMovies] = useState<Movie[]>([]);
     const [candidateMovies, setCandidateMovies] = useState<Movie[]>([]);
     const [loading, setLoading] = useState(true);
@@ -888,10 +920,18 @@ export const useDailyMovies = ({ excludedMovieIds = [], personalizationSeed = 'g
     }, [dateKey]);
 
     const exclusionKey = normalizeMovieIds(excludedMovieIds).sort((a, b) => a - b).join(',');
+    const exclusionTitleKey = normalizeMovieTitles(excludedMovieTitles).sort((a, b) => a.localeCompare(b)).join('|');
 
     const movies = useMemo(() => {
-        return buildPersonalizedDailyMovies(baseMovies, candidateMovies, excludedMovieIds, dateKey, personalizationSeed);
-    }, [baseMovies, candidateMovies, dateKey, exclusionKey, excludedMovieIds, personalizationSeed]);
+        return buildPersonalizedDailyMovies(
+            baseMovies,
+            candidateMovies,
+            excludedMovieIds,
+            excludedMovieTitles,
+            dateKey,
+            personalizationSeed
+        );
+    }, [baseMovies, candidateMovies, dateKey, exclusionKey, exclusionTitleKey, excludedMovieIds, excludedMovieTitles, personalizationSeed]);
 
     return { movies, loading, dateKey };
 };

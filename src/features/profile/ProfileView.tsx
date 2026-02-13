@@ -10,6 +10,7 @@ import { supabase, isSupabaseLive } from '../../lib/supabase';
 import { useLanguage } from '../../context/LanguageContext';
 import { getRegistrationGenderLabel } from '../../i18n/localization';
 import { InfoFooter } from '../../components/InfoFooter';
+import { buildFilmOgImageUrl, buildProfileOgImageUrl } from '../../lib/ogCards';
 
 interface ProfileViewProps {
     onClose: () => void;
@@ -400,6 +401,37 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
         ].join('\n');
     };
 
+    const profileOgUrl = useMemo(
+        () =>
+            buildProfileOgImageUrl({
+                handle: username || text.profile.observerHandle,
+                name: user?.name || text.profile.curatorFallback,
+                league: currentLeagueLabel,
+                xp: Math.floor(xp),
+                streak: streak || 0
+            }),
+        [currentLeagueLabel, streak, text.profile.curatorFallback, text.profile.observerHandle, user?.name, username, xp]
+    );
+
+    const filmOgUrl = useMemo(
+        () =>
+            buildFilmOgImageUrl({
+                title: activeRitualForShare?.movieTitle || mostWrittenFilm?.title || 'Daily Selection',
+                genre: activeRitualForShare?.genre || mostWrittenFilm?.genre || '',
+                author: username || text.profile.observerHandle,
+                quote: latestCommentPreview
+            }),
+        [
+            activeRitualForShare?.genre,
+            activeRitualForShare?.movieTitle,
+            latestCommentPreview,
+            mostWrittenFilm?.genre,
+            mostWrittenFilm?.title,
+            text.profile.observerHandle,
+            username
+        ]
+    );
+
     const copyToClipboard = async (value: string): Promise<boolean> => {
         try {
             if (navigator.clipboard?.writeText) {
@@ -420,8 +452,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
         }
 
         const payload = buildSharePayload(platform, goal);
-        const originUrl = typeof window !== 'undefined' ? window.location.origin : '';
-        const pageUrl = `${originUrl}/`;
+        const pageUrl = goal === 'streak' ? profileOgUrl : filmOgUrl;
 
         try {
             if (platform === 'x') {

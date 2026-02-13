@@ -5,6 +5,10 @@ import { MovieCard } from './MovieCard';
 import { CycleTime } from './CycleTime';
 import type { Movie } from '../../data/mockMovies';
 import { useLanguage } from '../../context/LanguageContext';
+import {
+    LETTERBOXD_IMPORT_UPDATED_EVENT,
+    readStoredLetterboxdImport
+} from '../../lib/letterboxdImport';
 
 interface DailyShowcaseProps {
     onMovieSelect: (movie: Movie) => void;
@@ -22,6 +26,20 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
     const { text } = useLanguage();
     const { dailyRituals, dailyRitualsCount, user } = useXP();
     const [todayKey, setTodayKey] = useState<string>(getLocalDateKey);
+    const [importRevision, setImportRevision] = useState(0);
+
+    useEffect(() => {
+        const handleImportUpdate = () => {
+            setImportRevision((prev) => prev + 1);
+        };
+        window.addEventListener(LETTERBOXD_IMPORT_UPDATED_EVENT, handleImportUpdate);
+        return () => window.removeEventListener(LETTERBOXD_IMPORT_UPDATED_EVENT, handleImportUpdate);
+    }, []);
+
+    const importedHistory = useMemo(
+        () => readStoredLetterboxdImport(user?.id || user?.email || ''),
+        [user?.id, user?.email, importRevision]
+    );
 
     useEffect(() => {
         let midnightTimer: number | null = null;
@@ -67,21 +85,26 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
         [dailyRituals, todayKey]
     );
 
-    const previouslyCommentedMovieIds = useMemo(
-        () =>
-            Array.from(
-                new Set(
-                    dailyRituals
-                        .filter((ritual) => ritual.date < todayKey)
-                        .map((ritual) => ritual.movieId)
-                        .filter((movieId) => Number.isInteger(movieId) && movieId > 0)
-                )
-            ),
-        [dailyRituals, todayKey]
-    );
+    const previouslyCommentedMovieIds = useMemo(() => {
+        const fromRituals = dailyRituals
+            .filter((ritual) => ritual.date < todayKey)
+            .map((ritual) => ritual.movieId)
+            .filter((movieId) => Number.isInteger(movieId) && movieId > 0);
+        return Array.from(new Set([...fromRituals, ...(importedHistory?.movieIds || [])]));
+    }, [dailyRituals, todayKey, importedHistory?.movieIds]);
+
+    const previouslyCommentedMovieTitles = useMemo(() => {
+        const fromRituals = dailyRituals
+            .filter((ritual) => ritual.date < todayKey)
+            .map((ritual) => ritual.movieTitle || '')
+            .map((value) => value.trim())
+            .filter(Boolean);
+        return Array.from(new Set([...fromRituals, ...(importedHistory?.titleKeys || [])]));
+    }, [dailyRituals, todayKey, importedHistory?.titleKeys]);
 
     const { movies, loading } = useDailyMovies({
         excludedMovieIds: previouslyCommentedMovieIds,
+        excludedMovieTitles: previouslyCommentedMovieTitles,
         personalizationSeed: user?.id || user?.email || 'guest'
     });
 

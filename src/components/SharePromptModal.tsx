@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useXP, type SharePromptEvent } from '../context/XPContext';
 import { useLanguage } from '../context/LanguageContext';
 import type { LanguageCode } from '../i18n/localization';
+import { buildFilmOgImageUrl, buildProfileOgImageUrl } from '../lib/ogCards';
 
 type SharePlatform = 'instagram' | 'tiktok' | 'x';
 type ShareGoal = 'comment' | 'streak';
@@ -162,6 +163,29 @@ export const SharePromptModal: React.FC<SharePromptModalProps> = ({ event, onClo
         return `${raw.slice(0, 120).trimEnd()}...`;
     }, [activeRitual?.text, event.commentPreview, shareCopy.emptyCommentHint]);
 
+    const profileOgUrl = useMemo(
+        () =>
+            buildProfileOgImageUrl({
+                handle,
+                name: displayName,
+                league: currentLeagueLabel,
+                xp: Math.floor(xp),
+                streak: effectiveStreak
+            }),
+        [currentLeagueLabel, displayName, effectiveStreak, handle, xp]
+    );
+
+    const filmOgUrl = useMemo(
+        () =>
+            buildFilmOgImageUrl({
+                title: activeRitual?.movieTitle || latestRitual?.movieTitle || 'Daily Selection',
+                genre: activeRitual?.genre || latestRitual?.genre || '',
+                author: handle,
+                quote: latestCommentPreview
+            }),
+        [activeRitual?.genre, activeRitual?.movieTitle, handle, latestCommentPreview, latestRitual?.genre, latestRitual?.movieTitle]
+    );
+
     const buildPayload = (platform: SharePlatform, goal: ShareGoal): string => {
         const platformTag = platform === 'x' ? '#X' : platform === 'tiktok' ? '#TikTok' : '#Instagram';
 
@@ -204,8 +228,7 @@ export const SharePromptModal: React.FC<SharePromptModalProps> = ({ event, onClo
         }
 
         const payload = buildPayload(platform, goal);
-        const originUrl = typeof window !== 'undefined' ? window.location.origin : '';
-        const pageUrl = `${originUrl}/`;
+        const pageUrl = goal === 'streak' ? profileOgUrl : filmOgUrl;
 
         try {
             if (platform === 'x') {
