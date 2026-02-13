@@ -45,6 +45,9 @@ type ImportCopy = {
     colImdb: string;
     colWatched: string;
     colRating: string;
+    rowsLabel: string;
+    idsLabel: string;
+    titleKeysLabel: string;
 };
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
@@ -92,7 +95,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 colTmdb: 'TMDB',
                 colImdb: 'IMDb',
                 colWatched: 'Izleme',
-                colRating: 'Puan'
+                colRating: 'Puan',
+                rowsLabel: 'satir',
+                idsLabel: 'id',
+                titleKeysLabel: 'baslik anahtari'
             };
         }
         if (language === 'es') {
@@ -117,7 +123,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 colTmdb: 'TMDB',
                 colImdb: 'IMDb',
                 colWatched: 'Visto',
-                colRating: 'Puntuacion'
+                colRating: 'Puntuacion',
+                rowsLabel: 'filas',
+                idsLabel: 'ids',
+                titleKeysLabel: 'claves de titulo'
             };
         }
         if (language === 'fr') {
@@ -142,7 +151,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 colTmdb: 'TMDB',
                 colImdb: 'IMDb',
                 colWatched: 'Vu le',
-                colRating: 'Note'
+                colRating: 'Note',
+                rowsLabel: 'lignes',
+                idsLabel: 'ids',
+                titleKeysLabel: 'cles de titre'
             };
         }
         return {
@@ -166,7 +178,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             colTmdb: 'TMDB',
             colImdb: 'IMDb',
             colWatched: 'Watched',
-            colRating: 'Rating'
+            colRating: 'Rating',
+            rowsLabel: 'rows',
+            idsLabel: 'ids',
+            titleKeysLabel: 'title keys'
         };
     }, [language]);
 
@@ -286,11 +301,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         setLetterboxdSnapshot(saved);
         setStatusMessage(importCopy.importSuccess);
         clearPendingLetterboxdImport();
-        if (saved) {
-            setLetterboxdSummary(
-                `${importCopy.statsPrefix}: ${saved.importedRows} rows, ${saved.movieIds.length} ids, ${saved.titleKeys.length} title keys`
-            );
-        }
+            if (saved) {
+                setLetterboxdSummary(
+                    `${importCopy.statsPrefix}: ${saved.importedRows} ${importCopy.rowsLabel}, ${saved.movieIds.length} ${importCopy.idsLabel}, ${saved.titleKeys.length} ${importCopy.titleKeysLabel}`
+                );
+            }
     };
 
     const handleLogout = async () => {
@@ -495,7 +510,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                             <div>
                                                 <p className="text-[10px] uppercase tracking-[0.16em] text-sage/85">{importCopy.previewTitle}</p>
                                                 <p className="mt-1 text-[10px] text-gray-500">
-                                                    {pendingImportFileName || 'letterboxd.csv'} · {pendingLetterboxdImport.parse.totalRows} rows
+                                                    {pendingImportFileName || 'letterboxd.csv'} · {pendingLetterboxdImport.parse.totalRows} {importCopy.rowsLabel}
                                                 </p>
                                             </div>
                                             <button

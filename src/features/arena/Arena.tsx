@@ -153,32 +153,48 @@ const RITUAL_SELECT_VARIANTS = [
     }
 ] as const;
 
-const toRelativeTimestamp = (rawTimestamp: string): string => {
+const toRelativeTimestamp = (
+    rawTimestamp: string,
+    labels: {
+        timeToday: string;
+        timeJustNow: string;
+        timeHoursAgo: string;
+        timeDaysAgo: string;
+    }
+): string => {
     const parsed = Date.parse(rawTimestamp);
     if (Number.isNaN(parsed)) return rawTimestamp;
 
     const now = Date.now();
     const diffMs = now - parsed;
-    if (diffMs < 0) return 'Today';
+    if (diffMs < 0) return labels.timeToday;
 
     const hourMs = 60 * 60 * 1000;
     const dayMs = 24 * hourMs;
     const diffHours = Math.floor(diffMs / hourMs);
-    if (diffHours < 1) return 'Just Now';
-    if (diffHours < 24) return `${diffHours}h ago`;
-    return `${Math.floor(diffMs / dayMs)}d ago`;
+    if (diffHours < 1) return labels.timeJustNow;
+    if (diffHours < 24) return labels.timeHoursAgo.replace('{count}', String(diffHours));
+    return labels.timeDaysAgo.replace('{count}', String(Math.floor(diffMs / dayMs)));
 };
 
 type RitualReply = NonNullable<Ritual['replies']>[number];
 
-const normalizeReplyRow = (row: ReplyRow): RitualReply | null => {
+const normalizeReplyRow = (
+    row: ReplyRow,
+    labels: {
+        timeToday: string;
+        timeJustNow: string;
+        timeHoursAgo: string;
+        timeDaysAgo: string;
+    }
+): RitualReply | null => {
     if (!row.id || typeof row.id !== 'string') return null;
     if (!row.author || !row.text) return null;
     return {
         id: row.id,
         author: row.author,
         text: row.text,
-        timestamp: row.created_at ? toRelativeTimestamp(row.created_at) : 'Just Now'
+        timestamp: row.created_at ? toRelativeTimestamp(row.created_at, labels) : labels.timeJustNow
     };
 };
 
@@ -189,9 +205,17 @@ const mapDbRitual = (
         echoes: number;
         isEchoedByMe: boolean;
         replies: RitualReply[];
+        authorFallback: string;
+        movieTitleFallback: string;
+        timeLabels: {
+            timeToday: string;
+            timeJustNow: string;
+            timeHoursAgo: string;
+            timeDaysAgo: string;
+        };
     }
 ): Ritual => {
-    const movieTitle = row.movie_title || 'Unknown Title';
+    const movieTitle = row.movie_title || options.movieTitleFallback;
     const rawTimestamp = row.timestamp || new Date().toISOString();
     return {
         id: row.id,
@@ -200,11 +224,11 @@ const mapDbRitual = (
         movieTitle,
         year: parseYear(row.year),
         posterPath: row.poster_path || undefined,
-        author: row.author || 'Observer',
+        author: row.author || options.authorFallback,
         text: row.text || '',
         echoes: options.echoes,
         isEchoedByMe: options.isEchoedByMe,
-        timestamp: toRelativeTimestamp(rawTimestamp),
+        timestamp: toRelativeTimestamp(rawTimestamp, options.timeLabels),
         league: row.league || 'Bronze',
         createdAt: Date.parse(rawTimestamp),
         isCustom: Boolean(options.currentUserId && row.user_id && row.user_id === options.currentUserId),
@@ -234,7 +258,57 @@ const getRitualTimeScore = (ritual: Ritual): number => {
     return Number.isNaN(parsed) ? 0 : parsed;
 };
 
-const formatDateAsRitualTimestamp = (dateStr: string): string => {
+const parseEnglishRelativeTimestampMs = (rawTimestamp: string): number | null => {
+    const normalized = rawTimestamp.trim().toLowerCase();
+    if (normalized === 'just now' || normalized === 'today') return Date.now();
+
+    const hoursMatch = normalized.match(/^(\d+)h ago$/);
+    if (hoursMatch) {
+        return Date.now() - Number(hoursMatch[1]) * 60 * 60 * 1000;
+    }
+
+    const daysMatch = normalized.match(/^(\d+)d ago$/);
+    if (daysMatch) {
+        return Date.now() - Number(daysMatch[1]) * 24 * 60 * 60 * 1000;
+    }
+
+    const parsed = Date.parse(rawTimestamp);
+    return Number.isNaN(parsed) ? null : parsed;
+};
+
+const localizeEnglishRelativeTimestamp = (
+    rawTimestamp: string,
+    labels: {
+        timeToday: string;
+        timeJustNow: string;
+        timeHoursAgo: string;
+        timeDaysAgo: string;
+    }
+): string => {
+    const normalized = rawTimestamp.trim().toLowerCase();
+    if (normalized === 'today') return labels.timeToday;
+    if (normalized === 'just now') return labels.timeJustNow;
+
+    const hoursMatch = normalized.match(/^(\d+)h ago$/);
+    if (hoursMatch) {
+        return labels.timeHoursAgo.replace('{count}', hoursMatch[1]);
+    }
+
+    const daysMatch = normalized.match(/^(\d+)d ago$/);
+    if (daysMatch) {
+        return labels.timeDaysAgo.replace('{count}', daysMatch[1]);
+    }
+
+    return rawTimestamp;
+};
+
+const formatDateAsRitualTimestamp = (
+    dateStr: string,
+    labels: {
+        timeToday: string;
+        timeDaysAgo: string;
+    }
+): string => {
     const date = new Date(`${dateStr}T00:00:00`);
     if (Number.isNaN(date.getTime())) return dateStr;
 
@@ -243,8 +317,8 @@ const formatDateAsRitualTimestamp = (dateStr: string): string => {
     const ritualDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
     const diffDays = Math.floor((todayStart - ritualDay) / (24 * 60 * 60 * 1000));
 
-    if (diffDays <= 0) return 'Today';
-    return `${diffDays}d ago`;
+    if (diffDays <= 0) return labels.timeToday;
+    return labels.timeDaysAgo.replace('{count}', String(diffDays));
 };
 
 const normalizeRitualText = (value: string): string => value.trim().toLowerCase();
@@ -269,7 +343,7 @@ const buildArenaDedupKey = (ritual: Ritual): string => {
 };
 
 export const Arena: React.FC = () => {
-    const { text } = useLanguage();
+    const { text, format } = useLanguage();
     const { dailyRituals, user, username, league, deleteRitual } = useXP();
     const { addNotification } = useNotifications();
     const [filter, setFilter] = useState<'all' | 'today'>('all');
@@ -284,6 +358,15 @@ export const Arena: React.FC = () => {
     const [feedError, setFeedError] = useState<string | null>(null);
     const [hotStreakNowMs, setHotStreakNowMs] = useState(0);
     const lastNotifiedErrorRef = useRef<string | null>(null);
+    const relativeTimeLabels = useMemo(
+        () => ({
+            timeToday: text.profile.timeToday,
+            timeJustNow: text.profile.timeJustNow,
+            timeHoursAgo: text.profile.timeHoursAgo,
+            timeDaysAgo: text.profile.timeDaysAgo
+        }),
+        [text.profile.timeDaysAgo, text.profile.timeHoursAgo, text.profile.timeJustNow, text.profile.timeToday]
+    );
 
     const reportFeedError = useCallback((message: string) => {
         setFeedError(message);
@@ -410,7 +493,7 @@ export const Arena: React.FC = () => {
 
             const repliesByRitual = new Map<string, RitualReply[]>();
             for (const row of replyRows) {
-                const normalized = normalizeReplyRow(row);
+                const normalized = normalizeReplyRow(row, relativeTimeLabels);
                 if (!normalized) continue;
                 const current = repliesByRitual.get(row.ritual_id) || [];
                 current.push(normalized);
@@ -423,7 +506,10 @@ export const Arena: React.FC = () => {
                         currentUserId: user?.id,
                         echoes: echoCountByRitual.get(row.id) || 0,
                         isEchoedByMe: echoedByMe.has(row.id),
-                        replies: repliesByRitual.get(row.id) || []
+                        replies: repliesByRitual.get(row.id) || [],
+                        authorFallback: text.profileWidget.observer,
+                        movieTitleFallback: format(text.profile.filmFallback, { id: row.id }),
+                        timeLabels: relativeTimeLabels
                     })
                 )
             );
@@ -458,7 +544,7 @@ export const Arena: React.FC = () => {
             window.clearInterval(pollId);
             void client.removeChannel(channel);
         };
-    }, [canUseRemoteFeed, reportFeedError, text, user?.id]);
+    }, [canUseRemoteFeed, relativeTimeLabels, reportFeedError, text, user?.id]);
 
     const handleDelete = (ritualId: string) => {
         if (canUseRemoteFeed && supabase) {
@@ -486,13 +572,16 @@ export const Arena: React.FC = () => {
             id: `log-${ritual.id}`,
             userId: user?.id || null,
             movieId: ritual.movieId,
-            movieTitle: ritual.movieTitle || `Film #${ritual.movieId}`,
+            movieTitle: ritual.movieTitle || format(text.profile.filmFallback, { id: ritual.movieId }),
             posterPath: ritual.posterPath,
-            author: user?.name || 'You',
+            author: user?.name || text.ritualCard.you,
             text: ritual.text,
             echoes: 0,
             isEchoedByMe: false,
-            timestamp: formatDateAsRitualTimestamp(ritual.date),
+            timestamp: formatDateAsRitualTimestamp(ritual.date, {
+                timeToday: text.profile.timeToday,
+                timeDaysAgo: text.profile.timeDaysAgo
+            }),
             league,
             createdAt: new Date(`${ritual.date}T12:00:00`).getTime(),
             isCustom: true,
@@ -514,8 +603,17 @@ export const Arena: React.FC = () => {
             return [...localOnlyMine, ...remoteRituals];
         }
 
-        return [...mine, ...MOCK_ARENA_RITUALS];
-    }, [canUseRemoteFeed, dailyRituals, league, localRepliesByRitualId, remoteRituals, user?.id, user?.name]);
+        const localizedMockRituals = MOCK_ARENA_RITUALS.map((ritual) => {
+            const fallbackCreatedAt = parseEnglishRelativeTimestampMs(ritual.timestamp);
+            return {
+                ...ritual,
+                timestamp: localizeEnglishRelativeTimestamp(ritual.timestamp, relativeTimeLabels),
+                createdAt: ritual.createdAt ?? fallbackCreatedAt ?? undefined
+            };
+        });
+
+        return [...mine, ...localizedMockRituals];
+    }, [canUseRemoteFeed, dailyRituals, format, league, localRepliesByRitualId, relativeTimeLabels, remoteRituals, text.profile.filmFallback, text.profile.timeDaysAgo, text.profile.timeToday, text.ritualCard.you, user?.id, user?.name]);
 
     const filteredRituals = useMemo(() => {
         const queryText = query.trim().toLowerCase();
@@ -558,7 +656,7 @@ export const Arena: React.FC = () => {
         );
     }, [hotStreakNowMs, rituals]);
 
-    const selfHandle = (username || user?.name || 'You').trim();
+    const selfHandle = (username || user?.name || text.ritualCard.you).trim();
 
     const handleOpenAuthorProfile = (target: ProfileTarget) => {
         if (!target.username?.trim()) return;
@@ -586,7 +684,7 @@ export const Arena: React.FC = () => {
 
             <div className="mb-4 px-4 sm:px-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <p className="text-[10px] uppercase tracking-[0.16em] text-sage/85 break-all">
-                    Your handle: <span className="font-bold text-[#E5E4E2]">@{selfHandle}</span>
+                    {format(text.arena.selfHandleLabel, { handle: selfHandle })}
                 </p>
                 <button
                     type="button"
@@ -596,7 +694,7 @@ export const Arena: React.FC = () => {
                     }}
                     className="text-[10px] uppercase tracking-[0.16em] text-gray-400 hover:text-sage transition-colors self-start sm:self-auto"
                 >
-                    Find my comments
+                    {text.arena.findMyComments}
                 </button>
             </div>
 

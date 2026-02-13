@@ -964,8 +964,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                                 </div>
 
                                 <div className="mb-5 flex flex-wrap items-center justify-center gap-2.5 sm:gap-3.5 text-[10px] uppercase tracking-[0.14em]">
-                                    <span className="text-[#E5E4E2]/80">Following: {followCounts.following}</span>
-                                    <span className="text-[#E5E4E2]/80">Followers: {followCounts.followers}</span>
+                                    <span className="text-[#E5E4E2]/80">{text.profile.following}: {followCounts.following}</span>
+                                    <span className="text-[#E5E4E2]/80">{text.profile.followers}: {followCounts.followers}</span>
                                 </div>
 
                                 {isEditing ? (
@@ -1120,11 +1120,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                                 </div>
                                 <div className="flex flex-col gap-1.5">
                                     <span className="text-3xl sm:text-4xl font-bold text-sage">{followCounts.following}</span>
-                                    <span className="text-[9px] tracking-wider text-gray-500 uppercase">Following</span>
+                                    <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profile.following}</span>
                                 </div>
                                 <div className="flex flex-col gap-1.5">
                                     <span className="text-3xl sm:text-4xl font-bold text-sage">{followCounts.followers}</span>
-                                    <span className="text-[9px] tracking-wider text-gray-500 uppercase">Followers</span>
+                                    <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profile.followers}</span>
                                 </div>
                             </div>
                         </div>

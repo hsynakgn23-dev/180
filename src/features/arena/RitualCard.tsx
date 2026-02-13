@@ -32,20 +32,28 @@ const formatRitualTimestamp = (timestamp: string): string => {
     return timestamp;
 };
 
-const toRelativeTimestamp = (rawTimestamp: string): string => {
+const toRelativeTimestamp = (
+    rawTimestamp: string,
+    labels: {
+        timeToday: string;
+        timeJustNow: string;
+        timeHoursAgo: string;
+        timeDaysAgo: string;
+    }
+): string => {
     const parsed = Date.parse(rawTimestamp);
     if (Number.isNaN(parsed)) return rawTimestamp;
 
     const now = Date.now();
     const diffMs = now - parsed;
-    if (diffMs < 0) return 'Today';
+    if (diffMs < 0) return labels.timeToday;
 
     const hourMs = 60 * 60 * 1000;
     const dayMs = 24 * hourMs;
     const diffHours = Math.floor(diffMs / hourMs);
-    if (diffHours < 1) return 'Just Now';
-    if (diffHours < 24) return `${diffHours}h ago`;
-    return `${Math.floor(diffMs / dayMs)}d ago`;
+    if (diffHours < 1) return labels.timeJustNow;
+    if (diffHours < 24) return labels.timeHoursAgo.replace('{count}', String(diffHours));
+    return labels.timeDaysAgo.replace('{count}', String(Math.floor(diffMs / dayMs)));
 };
 
 const isRateLimitError = (error: { message?: string | null } | null | undefined): boolean => {
@@ -93,6 +101,15 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, isHotStreak = fa
     const [imageLoaded, setImageLoaded] = useState(false);
     const [candidates, setCandidates] = useState<string[]>([]);
     const [candidateIndex, setCandidateIndex] = useState(0);
+    const relativeTimeLabels = useMemo(
+        () => ({
+            timeToday: ui.profile.timeToday,
+            timeJustNow: ui.profile.timeJustNow,
+            timeHoursAgo: ui.profile.timeHoursAgo,
+            timeDaysAgo: ui.profile.timeDaysAgo
+        }),
+        [ui.profile.timeDaysAgo, ui.profile.timeHoursAgo, ui.profile.timeJustNow, ui.profile.timeToday]
+    );
     const shouldSyncLocalRepliesRef = React.useRef(false);
 
     React.useEffect(() => {
@@ -255,16 +272,16 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, isHotStreak = fa
         const tempId = `tmp-${Date.now()}`;
         const newReply: ReplyRecord = {
             id: tempId,
-            author: 'You',
+            author: ui.ritualCard.you,
             text,
-            timestamp: 'Just Now'
+            timestamp: ui.profile.timeJustNow
         };
 
         updateReplies((prev) => [...prev, newReply]);
         setReplyText('');
 
         if (canSyncRitual && supabase && user?.id) {
-            const authorName = user.name || 'You';
+            const authorName = user.name || ui.ritualCard.you;
             void (async () => {
                 try {
                     const { data, error } = await supabase
@@ -299,7 +316,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, isHotStreak = fa
                         id: row.id,
                         author: row.author || authorName,
                         text: row.text || text,
-                        timestamp: row.created_at ? toRelativeTimestamp(row.created_at) : 'Just Now'
+                        timestamp: row.created_at ? toRelativeTimestamp(row.created_at, relativeTimeLabels) : ui.profile.timeJustNow
                     };
 
                     updateReplies((prev) => prev.map((reply) => (reply.id === tempId ? syncedReply : reply)));
@@ -388,7 +405,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, isHotStreak = fa
                                 type="button"
                                 onClick={handleOpenProfile}
                                 className="text-[10px] sm:text-[11px] tracking-widest uppercase text-[#E5E4E2]/70 font-bold relative group/author cursor-pointer hover:text-sage transition-colors break-all max-w-full text-left"
-                                title="Open profile"
+                                title={ui.ritualCard.openProfile}
                             >
                                 {ritual.author ? `@${ritual.author}` : ui.ritualCard.anonymous}
 
@@ -408,13 +425,13 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, isHotStreak = fa
                                         : 'text-gray-400 hover:text-sage'
                                         }`}
                                 >
-                                    {isFollowing ? 'Following' : 'Follow'}
+                                    {isFollowing ? ui.ritualCard.following : ui.ritualCard.follow}
                                 </button>
                             )}
 
                             {isOwnAuthor && (
                                 <span className="text-[9px] uppercase tracking-[0.18em] text-sage/90 font-bold">
-                                    You
+                                    {ui.ritualCard.you}
                                 </span>
                             )}
 
@@ -424,7 +441,7 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, isHotStreak = fa
 
                             {isHotStreak && (
                                 <span className="inline-flex items-center rounded-full border border-clay/40 bg-clay/15 px-2 py-0.5 text-[8px] uppercase tracking-[0.18em] text-clay/90 shadow-[0_0_10px_rgba(165,113,100,0.35)]">
-                                    Hot Streak
+                                    {ui.arena.hotStreakBadge}
                                 </span>
                             )}
                         </div>

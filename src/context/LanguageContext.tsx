@@ -3,6 +3,7 @@ import {
     LANGUAGE_DICTIONARY,
     LANGUAGE_STORAGE_KEY,
     LANGUAGE_CHANGE_EVENT,
+    PRIMARY_LANGUAGE,
     type FormatParams,
     formatTemplate,
     getDictionaryForLanguage,
@@ -25,13 +26,14 @@ interface LanguageContextType {
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
-const getInitialLanguage = (): LanguageCode => {
-    const stored = localStorage.getItem(LANGUAGE_STORAGE_KEY);
-    return isLanguageCode(stored) ? stored : 'en';
-};
+const getInitialLanguage = (): LanguageCode => PRIMARY_LANGUAGE;
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [language, setLanguageState] = useState<LanguageCode>(() => getInitialLanguage());
+
+    useEffect(() => {
+        localStorage.setItem(LANGUAGE_STORAGE_KEY, PRIMARY_LANGUAGE);
+    }, []);
 
     const setLanguage = (nextLanguage: LanguageCode) => {
         setLanguageState(nextLanguage);

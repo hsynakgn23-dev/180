@@ -73,18 +73,26 @@ const normalizeHandle = (value: string | null | undefined): string => (value || 
 
 const getMovieIdByTitle = (title: string): number => MOVIE_ID_BY_TITLE.get(title.trim().toLowerCase()) || 0;
 
-const toRelativeTimestamp = (rawTimestamp: string): string => {
+const toRelativeTimestamp = (
+    rawTimestamp: string,
+    labels: {
+        timeToday: string;
+        timeJustNow: string;
+        timeHoursAgo: string;
+        timeDaysAgo: string;
+    }
+): string => {
     const parsed = Date.parse(rawTimestamp);
     if (Number.isNaN(parsed)) return rawTimestamp;
     const diffMs = Date.now() - parsed;
-    if (diffMs < 0) return 'Today';
+    if (diffMs < 0) return labels.timeToday;
 
     const hourMs = 60 * 60 * 1000;
     const dayMs = 24 * hourMs;
     const diffHours = Math.floor(diffMs / hourMs);
-    if (diffHours < 1) return 'Just Now';
-    if (diffHours < 24) return `${diffHours}h ago`;
-    return `${Math.floor(diffMs / dayMs)}d ago`;
+    if (diffHours < 1) return labels.timeJustNow;
+    if (diffHours < 24) return labels.timeHoursAgo.replace('{count}', String(diffHours));
+    return labels.timeDaysAgo.replace('{count}', String(Math.floor(diffMs / dayMs)));
 };
 
 const toDateKey = (rawTimestamp: string | null | undefined): string | null => {
@@ -188,13 +196,22 @@ const RITUAL_SELECT_VARIANTS = [
 ] as const;
 
 export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, onClose, onHome }) => {
-    const { text } = useLanguage();
+    const { text, format } = useLanguage();
     const { user, isFollowingUser, toggleFollowUser } = useXP();
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [profile, setProfile] = useState<PublicProfileData | null>(null);
     const [isFollowBusy, setIsFollowBusy] = useState(false);
     const commentsSectionRef = useRef<HTMLDivElement | null>(null);
+    const relativeTimeLabels = useMemo(
+        () => ({
+            timeToday: text.profile.timeToday,
+            timeJustNow: text.profile.timeJustNow,
+            timeHoursAgo: text.profile.timeHoursAgo,
+            timeDaysAgo: text.profile.timeDaysAgo
+        }),
+        [text.profile.timeDaysAgo, text.profile.timeHoursAgo, text.profile.timeJustNow, text.profile.timeToday]
+    );
 
     useEffect(() => {
         let active = true;
@@ -202,7 +219,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
         const fetchProfile = async () => {
             if (!isSupabaseLive() || !supabase) {
                 if (!active) return;
-                setError('Public profile requires Supabase.');
+                setError(text.profile.publicProfileRequiresSupabase);
                 setIsLoading(false);
                 return;
             }
@@ -260,22 +277,22 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
 
             if (lastError && ritualRows.length === 0) {
                 if (!active) return;
-                setError('Profile data could not be loaded.');
+                setError(text.profile.profileLoadFailed);
                 setIsLoading(false);
                 return;
             }
 
             const resolvedUserId = target.userId || ritualRows.find((row) => row.user_id)?.user_id || null;
-            const displayName = ritualRows[0]?.author || normalizedUsername || 'Observer';
+            const displayName = ritualRows[0]?.author || normalizedUsername || text.profileWidget.observer;
             const rituals: PublicRitual[] = ritualRows.map((row) => {
                 const rawTimestamp = row.timestamp || new Date().toISOString();
                 return {
                     id: row.id,
                     movieId: getMovieIdByTitle(row.movie_title || ''),
-                    movieTitle: row.movie_title || 'Unknown Title',
+                    movieTitle: row.movie_title || format(text.profile.filmFallback, { id: 0 }),
                     posterPath: row.poster_path || undefined,
                     text: row.text || '',
-                    timestamp: toRelativeTimestamp(rawTimestamp),
+                    timestamp: toRelativeTimestamp(rawTimestamp, relativeTimeLabels),
                     createdAt: Date.parse(rawTimestamp),
                     league: row.league || 'Bronze'
                 };
@@ -285,7 +302,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
             let username = normalizedUsername || displayName;
             let gender = '';
             let birthDate = '';
-            let bio = 'A silent observer.';
+            let bio = '';
             let avatarId = 'geo_1';
             let avatarUrl: string | undefined;
             let xp = 0;
@@ -385,7 +402,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
         return () => {
             active = false;
         };
-    }, [target.userId, target.username]);
+    }, [format, relativeTimeLabels, target.userId, target.username, text.profile.filmFallback, text.profile.profileLoadFailed, text.profile.publicProfileRequiresSupabase, text.profileWidget.observer]);
 
     const isOwnProfile = useMemo(() => {
         if (!profile || !user) return false;
@@ -506,11 +523,11 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
 
                 {isLoading ? (
                     <div className="text-center py-20 text-[11px] uppercase tracking-[0.2em] text-gray-500 border border-white/10 rounded-xl">
-                        Loading profile...
+                        {text.profile.loadingProfile}
                     </div>
                 ) : error || !profile ? (
                     <div className="text-center py-20 text-[11px] uppercase tracking-[0.2em] text-red-300 border border-red-300/30 rounded-xl">
-                        {error || 'Profile could not be loaded.'}
+                        {error || text.profile.profileLoadFailed}
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 lg:grid-cols-[350px_1fr] gap-8 xl:gap-10">
@@ -551,7 +568,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                                                     : 'border-white/15 text-white/80 hover:border-sage/40 hover:text-sage'
                                                     } disabled:opacity-60`}
                                             >
-                                                {isFollowing ? 'Following' : 'Follow'}
+                                                {isFollowing ? text.profile.following : text.profile.follow}
                                             </button>
                                         )}
                                         <button
@@ -564,8 +581,8 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                                     </div>
 
                                     <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3.5 mb-5 text-[10px] uppercase tracking-[0.14em]">
-                                        <span className="text-[#E5E4E2]/80">Following: {profile.followCounts.following}</span>
-                                        <span className="text-[#E5E4E2]/80">Followers: {profile.followCounts.followers}</span>
+                                        <span className="text-[#E5E4E2]/80">{text.profile.following}: {profile.followCounts.following}</span>
+                                        <span className="text-[#E5E4E2]/80">{text.profile.followers}: {profile.followCounts.followers}</span>
                                     </div>
 
                                     <p className="text-xs font-serif italic text-sage/60 text-center max-w-xs leading-relaxed">
@@ -591,11 +608,11 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                                     </div>
                                     <div className="flex flex-col gap-1.5">
                                         <span className="text-2xl sm:text-3xl font-bold text-sage">{profile.followCounts.following}</span>
-                                        <span className="text-[9px] tracking-wider text-gray-500 uppercase">Following</span>
+                                        <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profile.following}</span>
                                     </div>
                                     <div className="flex flex-col gap-1.5">
                                         <span className="text-2xl sm:text-3xl font-bold text-sage">{profile.followCounts.followers}</span>
-                                        <span className="text-[9px] tracking-wider text-gray-500 uppercase">Followers</span>
+                                        <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profile.followers}</span>
                                     </div>
                                 </div>
                             </div>
@@ -617,7 +634,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                                         <div className="text-2xl font-bold text-sage">{uniqueFilmsCount}</div>
                                     </div>
                                     <div className="bg-white/5 border border-white/10 rounded-lg px-3.5 py-3.5">
-                                        <div className="text-[9px] uppercase tracking-[0.18em] text-gray-500 mb-1.5">League</div>
+                                        <div className="text-[9px] uppercase tracking-[0.18em] text-gray-500 mb-1.5">{text.profile.leagueLabel}</div>
                                         <div className="text-sm font-bold text-[#E5E4E2] uppercase">
                                             {leagueInfo?.name || profile.league}
                                         </div>

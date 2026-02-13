@@ -160,12 +160,15 @@ export type UiDictionary = {
         subtitle: string;
         all: string;
         today: string;
+        selfHandleLabel: string;
+        findMyComments: string;
         searchPlaceholder: string;
         sortLatest: string;
         sortMostLiked: string;
         loading: string;
         empty: string;
         end: string;
+        hotStreakBadge: string;
         feedFallback: string;
         feedLoadFailed: string;
         reactionLoadFailed: string;
@@ -186,6 +189,10 @@ export type UiDictionary = {
         replySyncFailed: string;
         rateLimitReached: string;
         replyNotification: string;
+        follow: string;
+        following: string;
+        you: string;
+        openProfile: string;
         now: string;
     };
     notifications: {
@@ -251,6 +258,13 @@ export type UiDictionary = {
         filmCount: string;
         commentCount: string;
         filmFallback: string;
+        follow: string;
+        following: string;
+        followers: string;
+        leagueLabel: string;
+        loadingProfile: string;
+        profileLoadFailed: string;
+        publicProfileRequiresSupabase: string;
         timeToday: string;
         timeJustNow: string;
         timeHoursAgo: string;
@@ -325,8 +339,9 @@ export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
         writeOverlay: { title: 'Yorum', placeholder: 'Dusunceni yaz...', cancel: 'Vazgec', save: 'Kaydet' },
         arena: {
             title: 'Yorum Akisi', subtitle: 'Yorumlar film kartlari uzerinden gonderilir.', all: 'Tum', today: 'Bugun',
+            selfHandleLabel: 'Senin kullanici adin: @{handle}', findMyComments: 'Yorumlarimi bul',
             searchPlaceholder: 'Yorum ara...', sortLatest: 'En Yeni', sortMostLiked: 'En Cok Tepki',
-            loading: 'Genel yorum akisi yukleniyor...', empty: 'Bu filtrede yorum bulunamadi.', end: 'Yorum akisinin sonu',
+            loading: 'Genel yorum akisi yukleniyor...', empty: 'Bu filtrede yorum bulunamadi.', end: 'Yorum akisinin sonu', hotStreakBadge: 'Sicak Seri',
             feedFallback: 'Genel yorum akisi su an kullanilamiyor. Yerel akis gosteriliyor.',
             feedLoadFailed: 'Yorum akisi yuklenemiyor. Baglantiyi kontrol edip tekrar dene.',
             reactionLoadFailed: 'Tepki verileri senkronize edilemedi. Akisi yenileyip tekrar dene.',
@@ -339,6 +354,7 @@ export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
             reactionSyncFailed: 'Tepki senkronize edilemedi. Akisi yenileyip tekrar dene.',
             replySyncFailed: 'Yanit senkronize edilemedi. Akisi yenileyip tekrar dene.',
             rateLimitReached: 'Hiz limiti asildi. Biraz bekleyip tekrar dene.',
+            follow: 'Takip Et', following: 'Takipte', you: 'Sen', openProfile: 'Profili ac',
             replyNotification: '{author} yorumuna yanit: "{text}"', now: 'Simdi'
         },
         notifications: { title: 'Bildirimler', panelTitle: 'Bildirim Merkezi', empty: 'Bildirim yok.' },
@@ -356,7 +372,9 @@ export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
             closeMovieModal: 'Film penceresini kapat', unknownGenre: 'Tur bilinmiyor', commentsAndReplies: 'Yorumlar ve Yanitlar', commentRecords: '{count} yorum kaydi',
             close: 'Kapat', repliesLoading: 'Yanitlar yukleniyor...', replies: 'Yanitlar ({count})', deleteComment: 'Yorumu sil', noReplies: 'Bu yoruma henuz yanit yok.',
             openFilmDetails: '{title} yorum ve yanitlarini ac', observerHandle: 'gozlemci', curatorFallback: 'KURATOR', filmCount: '{count} Film', commentCount: '{count} yorum',
-            filmFallback: 'Film #{id}', timeToday: 'Bugun', timeJustNow: 'Simdi', timeHoursAgo: '{count}s once', timeDaysAgo: '{count}g once'
+            filmFallback: 'Film #{id}', follow: 'Takip Et', following: 'Takipte', followers: 'Takipciler', leagueLabel: 'Lig',
+            loadingProfile: 'Profil yukleniyor...', profileLoadFailed: 'Profil verisi yuklenemedi.', publicProfileRequiresSupabase: 'Genel profil Supabase gerektirir.',
+            timeToday: 'Bugun', timeJustNow: 'Simdi', timeHoursAgo: '{count}s once', timeDaysAgo: '{count}g once'
         },
         xp: { markUnlockedFallback: 'Yeni isaret acildi.' }
     },
@@ -423,8 +441,9 @@ export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
         writeOverlay: { title: 'Comment', placeholder: 'Write your thoughts...', cancel: 'Cancel', save: 'Save' },
         arena: {
             title: 'Comment Feed', subtitle: 'Comments are posted from film cards.', all: 'All', today: 'Today',
+            selfHandleLabel: 'Your handle: @{handle}', findMyComments: 'Find my comments',
             searchPlaceholder: 'Search comments...', sortLatest: 'Latest', sortMostLiked: 'Most Liked',
-            loading: 'Loading global comment feed...', empty: 'No comments found for this filter.', end: 'End of comment feed',
+            loading: 'Loading global comment feed...', empty: 'No comments found for this filter.', end: 'End of comment feed', hotStreakBadge: 'Hot Streak',
             feedFallback: 'Global comment feed is unavailable. Local feed is shown.',
             feedLoadFailed: 'Comment feed cannot be loaded. Check your connection and retry.',
             reactionLoadFailed: 'Reaction data could not be synced. Refresh and try again.',
@@ -437,6 +456,7 @@ export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
             reactionSyncFailed: 'Reaction sync failed. Refresh the feed and retry.',
             replySyncFailed: 'Reply sync failed. Refresh the feed and retry.',
             rateLimitReached: 'Rate limit reached. Please wait and try again shortly.',
+            follow: 'Follow', following: 'Following', you: 'You', openProfile: 'Open profile',
             replyNotification: 'Reply sent to {author}: "{text}"', now: 'Now'
         },
         notifications: { title: 'Notifications', panelTitle: 'Notification Center', empty: 'No notifications.' },
@@ -454,7 +474,9 @@ export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
             closeMovieModal: 'Close film modal', unknownGenre: 'Unknown genre', commentsAndReplies: 'Comments and Replies', commentRecords: '{count} comment records',
             close: 'Close', repliesLoading: 'Loading replies...', replies: 'Replies ({count})', deleteComment: 'Delete comment', noReplies: 'No replies for this comment yet.',
             openFilmDetails: 'Open comments and replies for {title}', observerHandle: 'observer', curatorFallback: 'CURATOR', filmCount: '{count} Films', commentCount: '{count} comments',
-            filmFallback: 'Film #{id}', timeToday: 'Today', timeJustNow: 'Just now', timeHoursAgo: '{count}h ago', timeDaysAgo: '{count}d ago'
+            filmFallback: 'Film #{id}', follow: 'Follow', following: 'Following', followers: 'Followers', leagueLabel: 'League',
+            loadingProfile: 'Loading profile...', profileLoadFailed: 'Profile could not be loaded.', publicProfileRequiresSupabase: 'Public profile requires Supabase.',
+            timeToday: 'Today', timeJustNow: 'Just now', timeHoursAgo: '{count}h ago', timeDaysAgo: '{count}d ago'
         },
         xp: { markUnlockedFallback: 'Mark unlocked.' }
     },
@@ -570,12 +592,22 @@ UI_DICTIONARY.es = {
         subtitle: 'Los comentarios se publican desde las tarjetas de pelicula.',
         all: 'Todos',
         today: 'Hoy',
+        selfHandleLabel: 'Tu usuario: @{handle}',
+        findMyComments: 'Buscar mis comentarios',
         searchPlaceholder: 'Buscar comentarios...',
         sortLatest: 'Mas recientes',
         sortMostLiked: 'Mas valorados',
         loading: 'Cargando feed global...',
         empty: 'No se encontraron comentarios.',
-        end: 'Fin del feed'
+        end: 'Fin del feed',
+        hotStreakBadge: 'Racha Activa'
+    },
+    ritualCard: {
+        ...EN_UI_BASE.ritualCard,
+        follow: 'Seguir',
+        following: 'Siguiendo',
+        you: 'Tu',
+        openProfile: 'Abrir perfil'
     },
     notifications: {
         ...EN_UI_BASE.notifications,
@@ -637,6 +669,13 @@ UI_DICTIONARY.es = {
         filmCount: '{count} peliculas',
         commentCount: '{count} comentarios',
         filmFallback: 'Pelicula #{id}',
+        follow: 'Seguir',
+        following: 'Siguiendo',
+        followers: 'Seguidores',
+        leagueLabel: 'Liga',
+        loadingProfile: 'Cargando perfil...',
+        profileLoadFailed: 'No se pudo cargar el perfil.',
+        publicProfileRequiresSupabase: 'El perfil publico requiere Supabase.',
         timeToday: 'Hoy',
         timeJustNow: 'Ahora',
         timeHoursAgo: 'hace {count}h',
@@ -754,12 +793,22 @@ UI_DICTIONARY.fr = {
         subtitle: 'Les commentaires viennent des cartes film.',
         all: 'Tous',
         today: 'Aujourd hui',
+        selfHandleLabel: 'Ton identifiant: @{handle}',
+        findMyComments: 'Trouver mes commentaires',
         searchPlaceholder: 'Rechercher des commentaires...',
         sortLatest: 'Plus recents',
         sortMostLiked: 'Plus aimes',
         loading: 'Chargement du flux global...',
         empty: 'Aucun commentaire trouve.',
-        end: 'Fin du flux'
+        end: 'Fin du flux',
+        hotStreakBadge: 'Serie Active'
+    },
+    ritualCard: {
+        ...EN_UI_BASE.ritualCard,
+        follow: 'Suivre',
+        following: 'Abonne',
+        you: 'Toi',
+        openProfile: 'Ouvrir le profil'
     },
     notifications: {
         ...EN_UI_BASE.notifications,
@@ -821,6 +870,13 @@ UI_DICTIONARY.fr = {
         filmCount: '{count} films',
         commentCount: '{count} commentaires',
         filmFallback: 'Film #{id}',
+        follow: 'Suivre',
+        following: 'Abonne',
+        followers: 'Abonnes',
+        leagueLabel: 'Ligue',
+        loadingProfile: 'Chargement du profil...',
+        profileLoadFailed: 'Le profil n a pas pu etre charge.',
+        publicProfileRequiresSupabase: 'Le profil public necessite Supabase.',
         timeToday: 'Aujourd hui',
         timeJustNow: 'A l instant',
         timeHoursAgo: 'il y a {count}h',

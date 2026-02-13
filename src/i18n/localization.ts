@@ -12,6 +12,7 @@ export type { LanguageCode };
 
 export const LANGUAGE_STORAGE_KEY = '180_lang_pref';
 export const LANGUAGE_CHANGE_EVENT = 'app-language-change';
+export const PRIMARY_LANGUAGE: LanguageCode = 'en';
 
 export const LANGUAGE_DICTIONARY = UI_DICTIONARY;
 
@@ -84,23 +85,23 @@ export const formatTemplate = (template: string, params?: FormatParams): string 
     });
 };
 
-export const getDictionaryForLanguage = (language: LanguageCode) => UI_DICTIONARY[language];
+export const getDictionaryForLanguage = (language: LanguageCode) => UI_DICTIONARY[language] || UI_DICTIONARY[PRIMARY_LANGUAGE];
 
 export const getMarkCopy = (language: LanguageCode, markId: string): MarkCopy => {
-    const section = MARK_DICTIONARY[language];
+    const section = MARK_DICTIONARY[language] || MARK_DICTIONARY[PRIMARY_LANGUAGE];
     return (
         section[markId] || {
             title: markId,
             description: '',
-            whisper: UI_DICTIONARY[language].xp.markUnlockedFallback
+            whisper: UI_DICTIONARY[language]?.xp.markUnlockedFallback || UI_DICTIONARY[PRIMARY_LANGUAGE].xp.markUnlockedFallback
         }
     );
 };
 
 export const getMarkCategoryLabel = (language: LanguageCode, category: string): string => {
-    return MARK_CATEGORY_DICTIONARY[language][category] || category;
+    return MARK_CATEGORY_DICTIONARY[language]?.[category] || MARK_CATEGORY_DICTIONARY[PRIMARY_LANGUAGE][category] || category;
 };
 
 export const getLeagueCopy = (language: LanguageCode, leagueKey: string): LeagueCopy | undefined => {
-    return LEAGUE_DICTIONARY[language][leagueKey];
+    return LEAGUE_DICTIONARY[language]?.[leagueKey] || LEAGUE_DICTIONARY[PRIMARY_LANGUAGE][leagueKey];
 };
