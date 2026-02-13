@@ -130,12 +130,17 @@ const readDailyShowcaseFromPublic = async (dateKey: string): Promise<Movie[] | n
     }
 };
 
-const readDailyShowcaseFromEdgeCache = async (dateKey: string): Promise<Movie[] | null> => {
+const readDailyShowcaseFromEdgeCache = async (
+    dateKey: string,
+    options: { noStore?: boolean } = {}
+): Promise<Movie[] | null> => {
     try {
-        const response = await fetch(`/api/daily?date=${encodeURIComponent(dateKey)}`, {
+        const cacheBust = options.noStore ? `&_=${Date.now()}` : '';
+        const response = await fetch(`/api/daily?date=${encodeURIComponent(dateKey)}${cacheBust}`, {
             headers: {
                 Accept: 'application/json'
-            }
+            },
+            cache: options.noStore ? 'no-store' : undefined
         });
         if (!response.ok) return null;
 
@@ -148,6 +153,57 @@ const readDailyShowcaseFromEdgeCache = async (dateKey: string): Promise<Movie[] 
             .filter(isMovieEligibleForDaily);
 
         return normalized.length ? normalized : null;
+    } catch {
+        return null;
+    }
+};
+
+const readCurrentDailyDateFromEdge = async (): Promise<string | null> => {
+    try {
+        const cacheBust = Date.now();
+        const response = await fetch(`/api/daily?ping=1&_=${cacheBust}`, {
+            headers: {
+                Accept: 'application/json'
+            },
+            cache: 'no-store'
+        });
+        if (!response.ok) return null;
+
+        const payload = (await response.json()) as { date?: unknown };
+        const date = typeof payload?.date === 'string' ? payload.date : '';
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+        return date;
+    } catch {
+        return null;
+    }
+};
+
+const readCurrentDailyShowcaseFromEdge = async (
+    dateKey: string
+): Promise<{ date: string; movies: Movie[] } | null> => {
+    try {
+        const cacheBust = Date.now();
+        const response = await fetch(`/api/daily?date=${encodeURIComponent(dateKey)}&_=${cacheBust}`, {
+            headers: {
+                Accept: 'application/json'
+            },
+            cache: 'no-store'
+        });
+        if (!response.ok) return null;
+
+        const payload = (await response.json()) as { date?: unknown; movies?: unknown[] };
+        const date = typeof payload?.date === 'string' ? payload.date : '';
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+
+        const rawMovies = Array.isArray(payload?.movies) ? payload.movies : [];
+        if (rawMovies.length === 0) return null;
+
+        const normalized = rawMovies
+            .map((movie) => normalizeMovie(movie))
+            .filter(isMovieEligibleForDaily);
+
+        if (normalized.length !== DAILY_MOVIE_COUNT) return null;
+        return { date, movies: normalized };
     } catch {
         return null;
     }
@@ -667,9 +723,13 @@ export const useDailyMovies = ({
 
     useEffect(() => {
         let dateKeyTimer: number | null = null;
+        let isMounted = true;
 
-        const syncDateKey = () => {
-            const nextDateKey = getDailyDateKey();
+        const syncDateKey = async () => {
+            const localDateKey = getDailyDateKey();
+            const serverDateKey = await readCurrentDailyDateFromEdge();
+            const nextDateKey = serverDateKey || localDateKey;
+            if (!isMounted) return;
             setDateKey((prev) => (prev === nextDateKey ? prev : nextDateKey));
         };
 
@@ -677,27 +737,31 @@ export const useDailyMovies = ({
             const nowMs = Date.now();
             const waitMs = Math.max(500, 60000 - (nowMs % 60000) + 200);
             dateKeyTimer = window.setTimeout(() => {
-                syncDateKey();
+                void syncDateKey();
                 scheduleDateKeyTick();
             }, waitMs);
         };
 
         const handleVisibility = () => {
             if (document.visibilityState === 'visible') {
-                syncDateKey();
+                void syncDateKey();
             }
         };
 
-        syncDateKey();
+        void syncDateKey();
         scheduleDateKeyTick();
-        window.addEventListener('focus', syncDateKey);
+        const handleFocus = () => {
+            void syncDateKey();
+        };
+        window.addEventListener('focus', handleFocus);
         document.addEventListener('visibilitychange', handleVisibility);
 
         return () => {
+            isMounted = false;
             if (dateKeyTimer !== null) {
                 window.clearTimeout(dateKeyTimer);
             }
-            window.removeEventListener('focus', syncDateKey);
+            window.removeEventListener('focus', handleFocus);
             document.removeEventListener('visibilitychange', handleVisibility);
         };
     }, []);
@@ -705,7 +769,13 @@ export const useDailyMovies = ({
     useEffect(() => {
         const fetchDaily5 = async () => {
             setLoading(true);
-            const todayKey = dateKey;
+            let todayKey = dateKey;
+            const serverDateKey = await readCurrentDailyDateFromEdge();
+            if (serverDateKey && serverDateKey !== todayKey) {
+                todayKey = serverDateKey;
+                setDateKey((prev) => (prev === serverDateKey ? prev : serverDateKey));
+            }
+            const serverCurrentDaily = await readCurrentDailyShowcaseFromEdge(todayKey);
             const previousKey = getPreviousDateKey(todayKey);
             const isDev = import.meta.env.DEV;
             // Client write path is restricted to local/dev. Production write source should be cron/service role.
@@ -750,7 +820,9 @@ export const useDailyMovies = ({
             // 0. EDGE-FRIENDLY CACHE STRATEGY (CDN/Redis-backed API path)
             try {
                 const [todayCached, previousCached] = await Promise.all([
-                    readDailyShowcaseFromEdgeCache(todayKey),
+                    serverCurrentDaily?.movies?.length === DAILY_MOVIE_COUNT
+                        ? Promise.resolve(serverCurrentDaily.movies)
+                        : readDailyShowcaseFromEdgeCache(todayKey, { noStore: true }),
                     readDailyShowcaseFromEdgeCache(previousKey)
                 ]);
 

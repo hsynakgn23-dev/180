@@ -14,18 +14,9 @@ interface DailyShowcaseProps {
     onMovieSelect: (movie: Movie) => void;
 }
 
-const getLocalDateKey = (): string => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-};
-
 export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) => {
     const { text } = useLanguage();
     const { dailyRituals, dailyRitualsCount, user } = useXP();
-    const [todayKey, setTodayKey] = useState<string>(getLocalDateKey);
     const [importRevision, setImportRevision] = useState(0);
 
     useEffect(() => {
@@ -41,72 +32,40 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
         [user?.id, user?.email, importRevision]
     );
 
-    useEffect(() => {
-        let midnightTimer: number | null = null;
+    const [todaysCommentedMovieIds, setTodaysCommentedMovieIds] = useState<number[]>([]);
+    const [previouslyCommentedMovieIds, setPreviouslyCommentedMovieIds] = useState<number[]>([]);
+    const [previouslyCommentedMovieTitles, setPreviouslyCommentedMovieTitles] = useState<string[]>([]);
 
-        const syncTodayKey = () => {
-            const next = getLocalDateKey();
-            setTodayKey((prev) => (prev === next ? prev : next));
-        };
-
-        const scheduleMidnightTick = () => {
-            const now = new Date();
-            const nextMidnight = new Date(now);
-            nextMidnight.setHours(24, 0, 0, 120);
-            const waitMs = Math.max(100, nextMidnight.getTime() - now.getTime());
-            midnightTimer = window.setTimeout(() => {
-                syncTodayKey();
-                scheduleMidnightTick();
-            }, waitMs);
-        };
-
-        syncTodayKey();
-        scheduleMidnightTick();
-        window.addEventListener('focus', syncTodayKey);
-
-        return () => {
-            if (midnightTimer !== null) {
-                window.clearTimeout(midnightTimer);
-            }
-            window.removeEventListener('focus', syncTodayKey);
-        };
-    }, []);
-
-    const todaysCommentedMovieIds = useMemo(
-        () =>
-            Array.from(
-                new Set(
-                    dailyRituals
-                        .filter((ritual) => ritual.date === todayKey)
-                        .map((ritual) => ritual.movieId)
-                        .filter((movieId) => Number.isInteger(movieId) && movieId > 0)
-                )
-            ),
-        [dailyRituals, todayKey]
-    );
-
-    const previouslyCommentedMovieIds = useMemo(() => {
-        const fromRituals = dailyRituals
-            .filter((ritual) => ritual.date < todayKey)
-            .map((ritual) => ritual.movieId)
-            .filter((movieId) => Number.isInteger(movieId) && movieId > 0);
-        return Array.from(new Set([...fromRituals, ...(importedHistory?.movieIds || [])]));
-    }, [dailyRituals, todayKey, importedHistory?.movieIds]);
-
-    const previouslyCommentedMovieTitles = useMemo(() => {
-        const fromRituals = dailyRituals
-            .filter((ritual) => ritual.date < todayKey)
-            .map((ritual) => ritual.movieTitle || '')
-            .map((value) => value.trim())
-            .filter(Boolean);
-        return Array.from(new Set([...fromRituals, ...(importedHistory?.titleKeys || [])]));
-    }, [dailyRituals, todayKey, importedHistory?.titleKeys]);
-
-    const { movies, loading } = useDailyMovies({
+    const { movies, loading, dateKey } = useDailyMovies({
         excludedMovieIds: previouslyCommentedMovieIds,
         excludedMovieTitles: previouslyCommentedMovieTitles,
         personalizationSeed: user?.id || user?.email || 'guest'
     });
+
+    useEffect(() => {
+        const nextTodaysCommentedMovieIds = Array.from(
+            new Set(
+                dailyRituals
+                    .filter((ritual) => ritual.date === dateKey)
+                    .map((ritual) => ritual.movieId)
+                    .filter((movieId) => Number.isInteger(movieId) && movieId > 0)
+            )
+        );
+        setTodaysCommentedMovieIds(nextTodaysCommentedMovieIds);
+
+        const fromRitualMovieIds = dailyRituals
+            .filter((ritual) => ritual.date < dateKey)
+            .map((ritual) => ritual.movieId)
+            .filter((movieId) => Number.isInteger(movieId) && movieId > 0);
+        setPreviouslyCommentedMovieIds(Array.from(new Set([...fromRitualMovieIds, ...(importedHistory?.movieIds || [])])));
+
+        const fromRitualTitles = dailyRituals
+            .filter((ritual) => ritual.date < dateKey)
+            .map((ritual) => ritual.movieTitle || '')
+            .map((value) => value.trim())
+            .filter(Boolean);
+        setPreviouslyCommentedMovieTitles(Array.from(new Set([...fromRitualTitles, ...(importedHistory?.titleKeys || [])])));
+    }, [dailyRituals, dateKey, importedHistory?.movieIds, importedHistory?.titleKeys]);
 
     const dailyStructuredData = useMemo(() => {
         if (!movies.length) return null;
@@ -146,13 +105,13 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
         return {
             '@context': 'https://schema.org',
             '@type': 'ItemList',
-            name: `180 Daily 5 - ${todayKey}`,
+            name: `180 Daily 5 - ${dateKey}`,
             description: 'Curated Daily 5 movie selection.',
             numberOfItems: itemListElement.length,
             itemListOrder: 'http://schema.org/ItemListOrderAscending',
             itemListElement
         };
-    }, [movies, todayKey]);
+    }, [dateKey, movies]);
 
     const scrollerRef = useRef<HTMLDivElement | null>(null);
     const [canScrollLeft, setCanScrollLeft] = useState(false);
