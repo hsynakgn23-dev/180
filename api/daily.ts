@@ -1,4 +1,4 @@
-import { getCachedDailyMovies, setCachedDailyMovies } from './lib/dailyCache';
+import { getCachedDailyMovies, setCachedDailyMovies } from './lib/dailyCache.js';
 
 export const config = {
     runtime: 'nodejs'

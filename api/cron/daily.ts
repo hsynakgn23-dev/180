@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { setCachedDailyMovies } from '../lib/dailyCache';
+import { setCachedDailyMovies } from '../lib/dailyCache.js';
 
 export const config = {
     runtime: 'nodejs'
