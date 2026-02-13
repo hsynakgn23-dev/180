@@ -217,9 +217,7 @@ const buildDailyDateProbeKeys = (
     const ordered = [
         serverDateKey,
         localDateKey,
-        currentDateKey,
-        serverDateKey ? getPreviousDateKey(serverDateKey) : null,
-        getPreviousDateKey(localDateKey)
+        currentDateKey
     ];
 
     const unique = new Set<string>();
