@@ -209,6 +209,47 @@ const readCurrentDailyShowcaseFromEdge = async (
     }
 };
 
+const buildDailyDateProbeKeys = (
+    currentDateKey: string,
+    localDateKey: string,
+    serverDateKey: string | null
+): string[] => {
+    const ordered = [
+        serverDateKey,
+        localDateKey,
+        currentDateKey,
+        serverDateKey ? getPreviousDateKey(serverDateKey) : null,
+        getPreviousDateKey(localDateKey)
+    ];
+
+    const unique = new Set<string>();
+    for (const value of ordered) {
+        if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) continue;
+        unique.add(value);
+    }
+    return Array.from(unique);
+};
+
+const resolveCurrentDailyFromEdge = async (
+    currentDateKey: string
+): Promise<{ dateKey: string; movies: Movie[] | null }> => {
+    const localDateKey = getDailyDateKey();
+    const serverDateKey = await readCurrentDailyDateFromEdge();
+    const probeKeys = buildDailyDateProbeKeys(currentDateKey, localDateKey, serverDateKey);
+
+    for (const key of probeKeys) {
+        const probe = await readCurrentDailyShowcaseFromEdge(key);
+        if (probe?.movies?.length === DAILY_MOVIE_COUNT) {
+            return { dateKey: key, movies: probe.movies };
+        }
+    }
+
+    return {
+        dateKey: serverDateKey || localDateKey || currentDateKey,
+        movies: null
+    };
+};
+
 const hashString = (value: string): number => {
     let hash = 2166136261;
     for (let i = 0; i < value.length; i += 1) {
@@ -769,13 +810,13 @@ export const useDailyMovies = ({
     useEffect(() => {
         const fetchDaily5 = async () => {
             setLoading(true);
-            let todayKey = dateKey;
-            const serverDateKey = await readCurrentDailyDateFromEdge();
-            if (serverDateKey && serverDateKey !== todayKey) {
-                todayKey = serverDateKey;
-                setDateKey((prev) => (prev === serverDateKey ? prev : serverDateKey));
-            }
-            const serverCurrentDaily = await readCurrentDailyShowcaseFromEdge(todayKey);
+            const resolvedDaily = await resolveCurrentDailyFromEdge(dateKey);
+            const todayKey = resolvedDaily.dateKey;
+            const serverCurrentDaily =
+                resolvedDaily.movies?.length === DAILY_MOVIE_COUNT
+                    ? { date: todayKey, movies: resolvedDaily.movies }
+                    : null;
+            setDateKey((prev) => (prev === todayKey ? prev : todayKey));
             const previousKey = getPreviousDateKey(todayKey);
             const isDev = import.meta.env.DEV;
             // Client write path is restricted to local/dev. Production write source should be cron/service role.
