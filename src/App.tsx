@@ -297,6 +297,26 @@ const AppContent = () => {
             </button>
           </header>
 
+          <section className="mb-6 sm:mb-8 rounded-xl border border-white/10 bg-white/[0.03] px-4 sm:px-5 py-4">
+            <p className="text-[10px] sm:text-[11px] uppercase tracking-[0.2em] text-sage/80 mb-3">
+              Editorial Discoveries
+            </p>
+            <div className="flex flex-wrap gap-2 sm:gap-3">
+              <a
+                href="/discover/mood-films/"
+                className="inline-flex items-center rounded-md border border-white/15 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-white/80 hover:text-sage hover:border-sage/50 transition-colors"
+              >
+                Best Films by Mood
+              </a>
+              <a
+                href="/discover/director-deep-dives/"
+                className="inline-flex items-center rounded-md border border-white/15 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-white/80 hover:text-sage hover:border-sage/50 transition-colors"
+              >
+                Director Deep Dives
+              </a>
+            </div>
+          </section>
+
           <Suspense fallback={<section className="rounded-2xl border border-white/10 bg-white/5 px-4 py-6 text-sm text-white/60">Loading daily showcase...</section>}>
             <SectionErrorBoundary
               title="Daily Showcase"

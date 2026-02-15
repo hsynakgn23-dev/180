@@ -77,3 +77,7 @@ Optional edge-friendly cache (`api/daily.ts`, Redis/KV REST):
 - `vercel.json` cron is set to `21:00 UTC` to align with `Europe/Istanbul` midnight rollover.
 - If you change rollover timezone, update cron schedule to the matching UTC hour.
 - Debug panel is dynamically imported only in dev mode.
+- SEO evergreen landing pages:
+  - `/discover/mood-films/`
+  - `/discover/director-deep-dives/`
+- SEO package notes: `docs/SEO_PACKAGE_2.md`

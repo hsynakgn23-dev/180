@@ -24,6 +24,17 @@ const SOCIAL_LINKS = [
     }
 ] as const;
 
+const SEO_LINKS = [
+    {
+        label: 'Mood Films',
+        href: '/discover/mood-films/'
+    },
+    {
+        label: 'Director Deep Dives',
+        href: '/discover/director-deep-dives/'
+    }
+] as const;
+
 const renderSocialIcon = (label: string) => {
     if (label === 'X') {
         return (
@@ -169,6 +180,15 @@ export const InfoFooter: React.FC<InfoFooterProps> = ({
                     >
                         {text.landing.footerRules}
                     </button>
+                    {SEO_LINKS.map((link) => (
+                        <a
+                            key={link.href}
+                            href={link.href}
+                            className="transition-colors hover:text-sage"
+                        >
+                            {link.label}
+                        </a>
+                    ))}
                     <div className="flex items-center gap-2 sm:gap-3">
                         {SOCIAL_LINKS.map((social) => (
                             <a
