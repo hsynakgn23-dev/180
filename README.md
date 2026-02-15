@@ -66,10 +66,12 @@ Optional edge-friendly cache (`api/daily.ts`, Redis/KV REST):
 - Social migration SQL: `sql/migrations/20260207_social_model_v2.sql`
 - Rate limit migration SQL: `sql/migrations/20260213_rate_limits.sql`
 - Analytics migration SQL: `sql/migrations/20260215_analytics_events.sql`
+- Referral migration SQL: `sql/migrations/20260216_referral_program.sql`
 - Rollout checklist: `docs/ROLLOUT_SOCIAL_MODEL.md`
 - Test checklist: `docs/TEST_PLAN_SOCIAL_SYNC.md`
 - Integration plan: `PLAN_SUPABASE_INTEGRATION.md`
 - Analytics package notes: `docs/ANALYTICS_PACKAGE_1.md`
+- Referral package notes: `docs/REFERRAL_PACKAGE_3.md`
 
 ## Notes
 - Social interactions use relational tables (`ritual_echoes`, `ritual_replies`).

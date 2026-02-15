@@ -128,7 +128,9 @@ export const SharePromptModal: React.FC<SharePromptModalProps> = ({ event, onClo
         xp,
         league,
         user,
-        username
+        username,
+        inviteLink,
+        inviteCode
     } = useXP();
     const { language, text, leagueCopy } = useLanguage();
     const [shareGoal, setShareGoal] = useState<ShareGoal>(event.preferredGoal);
@@ -246,13 +248,22 @@ export const SharePromptModal: React.FC<SharePromptModalProps> = ({ event, onClo
 
         const payload = buildPayload(platform, goal);
         const pageUrl = goal === 'streak' ? profileOgUrl : filmOgUrl;
+        const shareUrl = new URL(inviteLink || window.location.origin);
+        shareUrl.searchParams.set('utm_source', 'invite_share');
+        shareUrl.searchParams.set('utm_medium', platform);
+        shareUrl.searchParams.set('utm_campaign', 'referral_mvp');
+        shareUrl.searchParams.set('utm_content', `${platform}_${goal}`);
+        if (inviteCode) {
+            shareUrl.searchParams.set('invite', inviteCode);
+        }
+        const destinationUrl = shareUrl.toString();
 
         try {
             if (platform === 'x') {
-                const shareUrl = `https://x.com/intent/tweet?text=${encodeURIComponent(payload)}&url=${encodeURIComponent(pageUrl)}`;
-                window.open(shareUrl, '_blank', 'noopener,noreferrer');
+                const xIntentUrl = `https://x.com/intent/tweet?text=${encodeURIComponent(payload)}&url=${encodeURIComponent(destinationUrl)}`;
+                window.open(xIntentUrl, '_blank', 'noopener,noreferrer');
             } else {
-                await copyToClipboard(`${payload}\n${pageUrl}`);
+                await copyToClipboard(`${payload}\n${destinationUrl}\n${pageUrl}`);
                 const target = platform === 'instagram'
                     ? 'https://www.instagram.com/'
                     : 'https://www.tiktok.com/';
@@ -262,7 +273,9 @@ export const SharePromptModal: React.FC<SharePromptModalProps> = ({ event, onClo
                 platform,
                 goal,
                 targetUrlType: platform === 'x' ? 'x_intent' : 'platform_home',
-                hasClipboardPayload: platform !== 'x'
+                hasClipboardPayload: platform !== 'x',
+                inviteCode,
+                destinationUrl
             }, {
                 userId: user?.id || null
             });

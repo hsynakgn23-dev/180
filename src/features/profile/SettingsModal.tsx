@@ -15,6 +15,7 @@ import {
     type LetterboxdCsvAnalysis,
     type StoredLetterboxdImport
 } from '../../lib/letterboxdImport';
+import { trackEvent } from '../../lib/analytics';
 
 interface SettingsModalProps {
     isOpen: boolean;
@@ -51,7 +52,27 @@ type ImportCopy = {
 };
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
-    const { user, updateIdentity, updatePersonalInfo, logout, bio, avatarUrl, updateAvatar, avatarId, fullName, username, gender, birthDate } = useXP();
+    const {
+        user,
+        updateIdentity,
+        updatePersonalInfo,
+        logout,
+        bio,
+        avatarUrl,
+        updateAvatar,
+        avatarId,
+        fullName,
+        username,
+        gender,
+        birthDate,
+        inviteCode,
+        inviteLink,
+        invitedByCode,
+        inviteClaimsCount,
+        inviteRewardsEarned,
+        inviteRewardConfig,
+        claimInviteCode
+    } = useXP();
     const { text, language, setLanguage } = useLanguage();
     const [activeTab, setActiveTab] = useState<SettingsTab>('identity');
     const [bioDraft, setBioDraft] = useState(bio);
@@ -67,6 +88,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     const [letterboxdSnapshot, setLetterboxdSnapshot] = useState<StoredLetterboxdImport | null>(null);
     const [pendingLetterboxdImport, setPendingLetterboxdImport] = useState<LetterboxdCsvAnalysis | null>(null);
     const [pendingImportFileName, setPendingImportFileName] = useState('');
+    const [inviteCodeDraft, setInviteCodeDraft] = useState('');
+    const [inviteStatus, setInviteStatus] = useState('');
     const genderOptions: Array<{ value: RegistrationGender; label: string }> = getRegistrationGenderOptions(language);
 
     const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -185,6 +208,63 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         };
     }, [language]);
 
+    const inviteCopy = React.useMemo(() => {
+        if (language === 'tr') {
+            return {
+                title: 'Davet Programi',
+                subtitle: 'Linkini paylas, yeni kullanici gelirse ikiniz de XP kazanirsiniz.',
+                yourCode: 'Kodun',
+                copyLink: 'Linki Kopyala',
+                pasteCode: 'Davet Kodu Gir',
+                applyCode: 'Kodu Uygula',
+                alreadyClaimed: 'Bu hesap zaten bir davet kodu kullandi.',
+                claimSuccess: `Kod uygulandi. +${inviteRewardConfig.inviteeXp} XP`,
+                copied: 'Davet linki kopyalandi.',
+                stats: `Kazandirilan: ${inviteClaimsCount} davet / ${inviteRewardsEarned} XP`
+            };
+        }
+        if (language === 'es') {
+            return {
+                title: 'Programa de Invitacion',
+                subtitle: 'Comparte tu enlace y, cuando llegue un nuevo usuario, ambos ganan XP.',
+                yourCode: 'Tu Codigo',
+                copyLink: 'Copiar Enlace',
+                pasteCode: 'Ingresar Codigo',
+                applyCode: 'Aplicar Codigo',
+                alreadyClaimed: 'Esta cuenta ya uso un codigo de invitacion.',
+                claimSuccess: `Codigo aplicado. +${inviteRewardConfig.inviteeXp} XP`,
+                copied: 'Enlace de invitacion copiado.',
+                stats: `Ganado: ${inviteClaimsCount} invitaciones / ${inviteRewardsEarned} XP`
+            };
+        }
+        if (language === 'fr') {
+            return {
+                title: 'Programme Invitation',
+                subtitle: 'Partage ton lien. Si un nouveau compte rejoint, vous gagnez tous les deux du XP.',
+                yourCode: 'Ton Code',
+                copyLink: 'Copier le Lien',
+                pasteCode: 'Entrer un Code',
+                applyCode: 'Appliquer le Code',
+                alreadyClaimed: 'Ce compte a deja utilise un code invitation.',
+                claimSuccess: `Code applique. +${inviteRewardConfig.inviteeXp} XP`,
+                copied: 'Lien invitation copie.',
+                stats: `Gagne: ${inviteClaimsCount} invitations / ${inviteRewardsEarned} XP`
+            };
+        }
+        return {
+            title: 'Invite Program',
+            subtitle: 'Share your link. If a new account joins, both of you earn XP.',
+            yourCode: 'Your Code',
+            copyLink: 'Copy Link',
+            pasteCode: 'Enter Invite Code',
+            applyCode: 'Apply Code',
+            alreadyClaimed: 'This account already used an invite code.',
+            claimSuccess: `Code applied. +${inviteRewardConfig.inviteeXp} XP`,
+            copied: 'Invite link copied.',
+            stats: `Earned: ${inviteClaimsCount} invites / ${inviteRewardsEarned} XP`
+        };
+    }, [inviteClaimsCount, inviteRewardConfig.inviteeXp, inviteRewardsEarned, language]);
+
     useEffect(() => {
         if (!isOpen) return;
 
@@ -198,6 +278,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         setLetterboxdSummary('');
         setPendingLetterboxdImport(null);
         setPendingImportFileName('');
+        setInviteCodeDraft('');
+        setInviteStatus('');
 
         setTheme(resolveThemeMode());
         setLetterboxdSnapshot(readStoredLetterboxdImport(user?.id || user?.email || ''));
@@ -209,6 +291,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         const timeout = setTimeout(() => setStatusMessage(''), 2000);
         return () => clearTimeout(timeout);
     }, [statusMessage]);
+
+    useEffect(() => {
+        if (!inviteStatus) return;
+        const timeout = setTimeout(() => setInviteStatus(''), 2800);
+        return () => clearTimeout(timeout);
+    }, [inviteStatus]);
 
     const applyTheme = (nextTheme: ThemeMode) => {
         setTheme(nextTheme);
@@ -306,6 +394,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     `${importCopy.statsPrefix}: ${saved.importedRows} ${importCopy.rowsLabel}, ${saved.movieIds.length} ${importCopy.idsLabel}, ${saved.titleKeys.length} ${importCopy.titleKeysLabel}`
                 );
             }
+    };
+
+    const copyInviteLink = async () => {
+        if (!inviteLink) return;
+        try {
+            if (!navigator.clipboard?.writeText) {
+                setInviteStatus('Clipboard unavailable.');
+                return;
+            }
+            await navigator.clipboard.writeText(inviteLink);
+            trackEvent('invite_created', {
+                inviteCode,
+                source: 'settings_copy_link'
+            }, {
+                userId: user?.id || null
+            });
+            setInviteStatus(inviteCopy.copied);
+        } catch {
+            setInviteStatus('Clipboard failed.');
+        }
+    };
+
+    const handleApplyInviteCode = () => {
+        if (invitedByCode) {
+            setInviteStatus(inviteCopy.alreadyClaimed);
+            return;
+        }
+        const result = claimInviteCode(inviteCodeDraft);
+        if (result.ok) {
+            setInviteCodeDraft('');
+            setInviteStatus(inviteCopy.claimSuccess);
+        } else {
+            setInviteStatus(result.message || 'Invite code failed.');
+        }
     };
 
     const handleLogout = async () => {
@@ -635,6 +757,62 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                 <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-2">{text.settings.activeAccount}</p>
                                 <p className="text-sm font-bold text-[#E5E4E2]">{user?.name || text.profileWidget.observer}</p>
                                 <p className="text-xs text-gray-500 mt-1">{user?.email || text.settings.unknown}</p>
+                            </div>
+
+                            <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+                                <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-2">{inviteCopy.title}</p>
+                                <p className="text-xs text-gray-500 mb-4">{inviteCopy.subtitle}</p>
+
+                                <div className="rounded border border-white/10 bg-[#141414] px-3 py-2 mb-3">
+                                    <p className="text-[9px] uppercase tracking-[0.14em] text-gray-500 mb-1">{inviteCopy.yourCode}</p>
+                                    <p className="text-sm tracking-[0.14em] font-bold text-sage">{inviteCode || '-'}</p>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() => void copyInviteLink()}
+                                    className="w-full text-[10px] uppercase tracking-[0.18em] border border-sage/30 rounded px-3 py-2 text-sage hover:border-sage/60 transition-colors"
+                                >
+                                    {inviteCopy.copyLink}
+                                </button>
+
+                                <p className="mt-3 text-[10px] uppercase tracking-[0.12em] text-gray-500">
+                                    {inviteCopy.stats}
+                                </p>
+                                <p className="mt-1 text-[10px] uppercase tracking-[0.12em] text-gray-500">
+                                    Inviter: +{inviteRewardConfig.inviterXp} XP | Invitee: +{inviteRewardConfig.inviteeXp} XP
+                                </p>
+
+                                {invitedByCode ? (
+                                    <p className="mt-3 text-[10px] uppercase tracking-[0.12em] text-sage/80">
+                                        Claimed code: {invitedByCode}
+                                    </p>
+                                ) : (
+                                    <div className="mt-4 space-y-2">
+                                        <label className="text-[10px] uppercase tracking-[0.12em] text-gray-500 block">
+                                            {inviteCopy.pasteCode}
+                                        </label>
+                                        <div className="flex gap-2">
+                                            <input
+                                                value={inviteCodeDraft}
+                                                onChange={(e) => setInviteCodeDraft(e.target.value.toUpperCase())}
+                                                placeholder="ABCD1234"
+                                                className="flex-1 bg-[#141414] border border-white/10 rounded px-3 py-2 text-sm tracking-[0.14em] text-[#E5E4E2] placeholder:text-gray-600 focus:border-sage/40 outline-none"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={handleApplyInviteCode}
+                                                className="text-[10px] uppercase tracking-[0.16em] border border-white/15 rounded px-3 py-2 text-white/80 hover:text-sage hover:border-sage/40 transition-colors"
+                                            >
+                                                {inviteCopy.applyCode}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {inviteStatus && (
+                                    <p className="mt-3 text-[10px] uppercase tracking-[0.12em] text-sage/90">{inviteStatus}</p>
+                                )}
                             </div>
 
                             <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-5">

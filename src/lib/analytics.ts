@@ -24,7 +24,12 @@ export type AnalyticsEventName =
     | 'share_opened'
     | 'share_failed'
     | 'share_reward_claimed'
-    | 'share_reward_denied';
+    | 'share_reward_denied'
+    | 'invite_created'
+    | 'invite_clicked'
+    | 'invite_accepted'
+    | 'invite_reward_granted'
+    | 'invite_claim_failed';
 
 export interface AttributionTouch {
     source: string;

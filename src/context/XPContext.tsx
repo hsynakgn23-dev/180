@@ -51,6 +51,12 @@ interface XPState {
     avatarId: string; // e.g. 'geo_1', 'geo_2'
     avatarUrl?: string; // Custom uploaded image (Data URL)
     lastShareRewardDate: string | null;
+    inviteCode: string;
+    invitedByCode: string | null;
+    inviteClaimsCount: number;
+    inviteRewardsEarned: number;
+    inviteClaimedAt: string | null;
+    referralAcceptedKeys: string[];
 }
 
 interface AuthResult {
@@ -146,6 +152,16 @@ interface XPContextType {
     updatePersonalInfo: (profile: RegistrationProfileInput) => Promise<AuthResult>;
     toggleFollowUser: (target: { userId?: string | null; username: string }) => Promise<AuthResult>;
     awardShareXP: (platform: 'instagram' | 'tiktok' | 'x', trigger: ShareRewardTrigger) => AuthResult;
+    inviteCode: string;
+    inviteLink: string;
+    invitedByCode: string | null;
+    inviteClaimsCount: number;
+    inviteRewardsEarned: number;
+    inviteRewardConfig: {
+        inviterXp: number;
+        inviteeXp: number;
+    };
+    claimInviteCode: (code: string) => AuthResult;
     submitRitual: (movieId: number, text: string, rating: number, genre: string, title?: string, posterPath?: string) => AuthResult;
     deleteRitual: (ritualId: string) => void;
     echoRitual: (ritualId: string) => void;
@@ -177,6 +193,15 @@ const USER_XP_STORAGE_KEY_PREFIX = '180_xp_data_';
 const USER_RITUAL_BACKUP_KEY_PREFIX = '180_ritual_backup_';
 const MAX_PERSISTED_AVATAR_URL_LENGTH = 180_000;
 const STORAGE_RECOVERY_KEYS = ['DAILY_CANDIDATE_POOL_V2', 'DAILY_SELECTION_V18'] as const;
+const INVITE_CODE_REGEX = /^[A-Z0-9]{6,12}$/;
+const INVITE_CODE_LENGTH = 8;
+const INVITER_REWARD_XP = 40;
+const INVITEE_REWARD_XP = 24;
+const MAX_DAILY_DEVICE_INVITE_CLAIMS = 3;
+const MAX_REFERRAL_ACCEPTED_KEYS = 200;
+const INVITE_REGISTRY_STORAGE_KEY = '180_invite_registry_v1';
+const PENDING_INVITE_CODE_STORAGE_KEY = '180_pending_invite_code_v1';
+const INVITE_DEVICE_GUARD_STORAGE_KEY = '180_invite_device_guard_v1';
 export const LEAGUE_NAMES = Object.keys(LEAGUES_DATA);
 type PendingRegistrationProfile = RegistrationProfileInput & { email: string };
 const getLeagueIndexFromXp = (xp: number): number =>
@@ -195,6 +220,22 @@ const KNOWN_MOVIES_BY_ID = new Map(
 const KNOWN_MOVIE_ID_BY_TITLE = new Map(
     TMDB_SEEDS.map((movie) => [movie.title.trim().toLowerCase(), movie.id] as const)
 );
+
+type InviteRegistryEntry = {
+    ownerEmail: string;
+    ownerUserId: string | null;
+    createdAt: string;
+    claimCount: number;
+    lastClaimAt: string | null;
+};
+
+type InviteRegistry = Record<string, InviteRegistryEntry>;
+
+type InviteDeviceGuard = {
+    date: string;
+    count: number;
+    claimedCodes: string[];
+};
 
 const getLocalDateKey = (value = new Date()): string => {
     const year = value.getFullYear();
@@ -264,7 +305,13 @@ const buildInitialXPState = (bio = "A silent observer."): XPState => ({
     birthDate: '',
     bio,
     avatarId: "geo_1",
-    lastShareRewardDate: null
+    lastShareRewardDate: null,
+    inviteCode: '',
+    invitedByCode: null,
+    inviteClaimsCount: 0,
+    inviteRewardsEarned: 0,
+    inviteClaimedAt: null,
+    referralAcceptedKeys: []
 });
 
 const normalizeXPState = (input: Partial<XPState> | null | undefined): XPState => {
@@ -295,8 +342,186 @@ const normalizeXPState = (input: Partial<XPState> | null | undefined): XPState =
         birthDate: input.birthDate || '',
         bio: input.bio || fallback.bio,
         avatarId: input.avatarId || fallback.avatarId,
-        lastShareRewardDate: input.lastShareRewardDate || null
+        lastShareRewardDate: input.lastShareRewardDate || null,
+        inviteCode: isValidInviteCode(String(input.inviteCode || '')) ? normalizeInviteCode(String(input.inviteCode)) : '',
+        invitedByCode: isValidInviteCode(String(input.invitedByCode || ''))
+            ? normalizeInviteCode(String(input.invitedByCode))
+            : null,
+        inviteClaimsCount: input.inviteClaimsCount || 0,
+        inviteRewardsEarned: input.inviteRewardsEarned || 0,
+        inviteClaimedAt: input.inviteClaimedAt || null,
+        referralAcceptedKeys: Array.isArray(input.referralAcceptedKeys)
+            ? input.referralAcceptedKeys
+                .map((value) => String(value || '').trim())
+                .filter((value) => Boolean(value))
+                .slice(-MAX_REFERRAL_ACCEPTED_KEYS)
+            : []
     };
+};
+
+const normalizeInviteCode = (value: string | null | undefined): string => {
+    return String(value || '')
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '');
+};
+
+const isValidInviteCode = (value: string): boolean => INVITE_CODE_REGEX.test(normalizeInviteCode(value));
+
+const readInviteRegistry = (): InviteRegistry => {
+    try {
+        const raw = localStorage.getItem(INVITE_REGISTRY_STORAGE_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw) as InviteRegistry;
+        if (!parsed || typeof parsed !== 'object') return {};
+        return parsed;
+    } catch {
+        return {};
+    }
+};
+
+const writeInviteRegistry = (registry: InviteRegistry) => {
+    try {
+        localStorage.setItem(INVITE_REGISTRY_STORAGE_KEY, JSON.stringify(registry));
+    } catch {
+        // no-op
+    }
+};
+
+const persistPendingInviteCode = (rawCode: string) => {
+    const normalized = normalizeInviteCode(rawCode);
+    if (!isValidInviteCode(normalized)) return;
+    try {
+        localStorage.setItem(PENDING_INVITE_CODE_STORAGE_KEY, normalized);
+    } catch {
+        // no-op
+    }
+};
+
+const readPendingInviteCode = (): string | null => {
+    try {
+        const raw = localStorage.getItem(PENDING_INVITE_CODE_STORAGE_KEY);
+        const normalized = normalizeInviteCode(raw);
+        return isValidInviteCode(normalized) ? normalized : null;
+    } catch {
+        return null;
+    }
+};
+
+const clearPendingInviteCode = () => {
+    try {
+        localStorage.removeItem(PENDING_INVITE_CODE_STORAGE_KEY);
+    } catch {
+        // no-op
+    }
+};
+
+const readInviteDeviceGuard = (): InviteDeviceGuard => {
+    try {
+        const raw = localStorage.getItem(INVITE_DEVICE_GUARD_STORAGE_KEY);
+        if (!raw) return { date: '', count: 0, claimedCodes: [] };
+        const parsed = JSON.parse(raw) as Partial<InviteDeviceGuard>;
+        return {
+            date: typeof parsed.date === 'string' ? parsed.date : '',
+            count: Number.isFinite(parsed.count) ? Number(parsed.count) : 0,
+            claimedCodes: Array.isArray(parsed.claimedCodes)
+                ? parsed.claimedCodes.map((code) => normalizeInviteCode(String(code))).filter((code) => isValidInviteCode(code))
+                : []
+        };
+    } catch {
+        return { date: '', count: 0, claimedCodes: [] };
+    }
+};
+
+const writeInviteDeviceGuard = (guard: InviteDeviceGuard) => {
+    try {
+        localStorage.setItem(INVITE_DEVICE_GUARD_STORAGE_KEY, JSON.stringify(guard));
+    } catch {
+        // no-op
+    }
+};
+
+const buildInviteLink = (inviteCode: string): string => {
+    const normalized = normalizeInviteCode(inviteCode);
+    const baseOrigin =
+        typeof window !== 'undefined' && window.location?.origin
+            ? window.location.origin
+            : 'https://180absolutecinema.com';
+    const url = new URL('/', baseOrigin);
+
+    if (!isValidInviteCode(normalized)) {
+        return url.toString();
+    }
+
+    url.searchParams.set('invite', normalized);
+    url.searchParams.set('utm_source', 'invite');
+    url.searchParams.set('utm_medium', 'referral');
+    url.searchParams.set('utm_campaign', 'user_invite');
+    return url.toString();
+};
+
+const buildInviteCodeCandidate = (seed: string): string => {
+    const normalizedSeed = String(seed || '')
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '')
+        .slice(0, 4)
+        .padEnd(4, 'X');
+    const randomPart = Math.random().toString(36).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4).padEnd(4, '0');
+    return `${normalizedSeed}${randomPart}`.slice(0, INVITE_CODE_LENGTH);
+};
+
+const ensureInviteCodeForOwner = (
+    currentCode: string,
+    ownerEmail: string,
+    ownerUserId?: string
+): string => {
+    const normalizedEmail = String(ownerEmail || '').trim().toLowerCase();
+    const normalizedUserId = String(ownerUserId || '').trim() || null;
+    const registry = readInviteRegistry();
+    const preferredCode = normalizeInviteCode(currentCode);
+    if (isValidInviteCode(preferredCode)) {
+        const existing = registry[preferredCode];
+        if (!existing || existing.ownerEmail === normalizedEmail) {
+            registry[preferredCode] = {
+                ownerEmail: normalizedEmail,
+                ownerUserId: normalizedUserId,
+                createdAt: existing?.createdAt || new Date().toISOString(),
+                claimCount: existing?.claimCount || 0,
+                lastClaimAt: existing?.lastClaimAt || null
+            };
+            writeInviteRegistry(registry);
+            return preferredCode;
+        }
+    }
+
+    const seed = normalizedEmail.split('@')[0] || normalizedUserId || 'cine';
+    for (let index = 0; index < 20; index += 1) {
+        const candidate = buildInviteCodeCandidate(seed);
+        const existing = registry[candidate];
+        if (existing && existing.ownerEmail !== normalizedEmail) {
+            continue;
+        }
+        registry[candidate] = {
+            ownerEmail: normalizedEmail,
+            ownerUserId: normalizedUserId,
+            createdAt: existing?.createdAt || new Date().toISOString(),
+            claimCount: existing?.claimCount || 0,
+            lastClaimAt: existing?.lastClaimAt || null
+        };
+        writeInviteRegistry(registry);
+        return candidate;
+    }
+
+    const fallback = `${Date.now().toString(36)}0000`.toUpperCase().slice(0, INVITE_CODE_LENGTH);
+    registry[fallback] = {
+        ownerEmail: normalizedEmail,
+        ownerUserId: normalizedUserId,
+        createdAt: new Date().toISOString(),
+        claimCount: 0,
+        lastClaimAt: null
+    };
+    writeInviteRegistry(registry);
+    return fallback;
 };
 
 const normalizeFollowKey = (value: string | null | undefined): string => (value || '').trim().toLowerCase();
@@ -664,6 +889,7 @@ const mergeXPStates = (states: Array<XPState | null | undefined>): XPState | nul
     const latestStreakDate = maxDateKey(normalizedStates.map((state) => state.lastStreakDate));
     const latestDwellDate = maxDateKey(normalizedStates.map((state) => state.lastDwellDate));
     const latestShareRewardDate = maxDateKey(normalizedStates.map((state) => state.lastShareRewardDate));
+    const latestInviteClaimedAt = maxDateKey(normalizedStates.map((state) => state.inviteClaimedAt));
 
     const mergedRituals = mergeRitualLogs(...priority.map((state) => state.dailyRituals || []));
     const mergedMarks = mergeStringLists(...priority.map((state) => state.marks || []));
@@ -698,6 +924,12 @@ const mergeXPStates = (states: Array<XPState | null | undefined>): XPState | nul
     merged.following = mergeStringLists(...priority.map((state) => state.following || []));
     merged.nonConsecutiveCount = Math.max(...normalizedStates.map((state) => state.nonConsecutiveCount || 0));
     merged.lastShareRewardDate = latestShareRewardDate;
+    merged.inviteClaimsCount = Math.max(...normalizedStates.map((state) => state.inviteClaimsCount || 0));
+    merged.inviteRewardsEarned = Math.max(...normalizedStates.map((state) => state.inviteRewardsEarned || 0));
+    merged.inviteClaimedAt = latestInviteClaimedAt;
+    merged.referralAcceptedKeys = mergeStringLists(
+        ...priority.map((state) => state.referralAcceptedKeys || [])
+    ).slice(-MAX_REFERRAL_ACCEPTED_KEYS);
 
     const pickPreferredText = (selector: (state: XPState) => string): string => {
         for (const state of priority) {
@@ -716,6 +948,12 @@ const mergeXPStates = (states: Array<XPState | null | undefined>): XPState | nul
     merged.birthDate = pickPreferredText((state) => state.birthDate);
     merged.bio = pickPreferredText((state) => state.bio) || merged.bio;
     merged.avatarId = pickPreferredText((state) => state.avatarId) || merged.avatarId;
+    const inviteCodeCandidate = pickPreferredText((state) => state.inviteCode);
+    merged.inviteCode = isValidInviteCode(inviteCodeCandidate) ? normalizeInviteCode(inviteCodeCandidate) : '';
+    const invitedByCodeCandidate = pickPreferredText((state) => state.invitedByCode || '');
+    merged.invitedByCode = isValidInviteCode(invitedByCodeCandidate)
+        ? normalizeInviteCode(invitedByCodeCandidate)
+        : null;
     merged.avatarUrl = priority.find((state) => typeof state.avatarUrl === 'string' && state.avatarUrl.trim())
         ?.avatarUrl;
 
@@ -849,6 +1087,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     const previousLeagueIndexRef = useRef(getLeagueIndexFromXp(state.totalXP));
     const pendingWelcomeWhisperRef = useRef(false);
     const pendingRegistrationProfileRef = useRef<PendingRegistrationProfile | null>(null);
+    const pendingInviteAttemptRef = useRef<string>('');
     const canReadProfileStateRef = useRef(true);
     const canWriteProfileStateRef = useRef(true);
     const canWriteRitualRef = useRef(true);
@@ -911,6 +1150,23 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         };
     }, []);
 
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const params = new URLSearchParams(window.location.search);
+        const inviteCode = normalizeInviteCode(params.get('invite') || params.get('ref'));
+        if (!isValidInviteCode(inviteCode)) return;
+
+        persistPendingInviteCode(inviteCode);
+        const clickedSessionKey = `180_invite_clicked_${inviteCode}`;
+        if (window.sessionStorage.getItem(clickedSessionKey) !== '1') {
+            window.sessionStorage.setItem(clickedSessionKey, '1');
+            trackEvent('invite_clicked', {
+                inviteCode,
+                source: 'url_query'
+            });
+        }
+    }, []);
+
     // Load data when user changes
     useEffect(() => {
         setIsXpHydrated(false);
@@ -923,6 +1179,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         canWriteRitualRef.current = true;
         canReadFollowRef.current = true;
         canWriteFollowRef.current = true;
+        pendingInviteAttemptRef.current = '';
 
         if (!user) {
             setState(buildInitialXPState("Orbiting nearby..."));
@@ -1024,6 +1281,25 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 uniqueGenres: mergeStringLists(resolvedState.uniqueGenres || [], ritualGenres),
                 following: mergeStringLists(resolvedState.following || [], cloudFollowingKeys)
             };
+
+            const previousInviteCode = normalizeInviteCode(resolvedState.inviteCode);
+            const ensuredInviteCode = ensureInviteCodeForOwner(
+                previousInviteCode,
+                user.email,
+                user.id
+            );
+            resolvedState = {
+                ...resolvedState,
+                inviteCode: ensuredInviteCode
+            };
+            if (ensuredInviteCode && ensuredInviteCode !== previousInviteCode) {
+                trackEvent('invite_created', {
+                    inviteCode: ensuredInviteCode,
+                    source: 'auto_generate'
+                }, {
+                    userId: user.id || null
+                });
+            }
 
             if (!active) return;
 
@@ -1578,6 +1854,153 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         };
     };
 
+    const inviteLink = buildInviteLink(state.inviteCode);
+
+    const claimInviteCode = (rawCode: string): AuthResult => {
+        if (!user) {
+            return { ok: false, message: 'Davet kodu kullanmak icin giris yap.' };
+        }
+
+        const inviteCode = normalizeInviteCode(rawCode);
+        const today = getToday();
+        const currentEmail = (user.email || '').trim().toLowerCase();
+
+        if (!isValidInviteCode(inviteCode)) {
+            trackEvent('invite_claim_failed', { reason: 'invalid_code_format', inviteCode });
+            return { ok: false, message: 'Davet kodu gecersiz.' };
+        }
+
+        if (state.invitedByCode) {
+            trackEvent('invite_claim_failed', {
+                reason: 'already_claimed_on_account',
+                inviteCode,
+                invitedByCode: state.invitedByCode
+            }, {
+                userId: user.id || null
+            });
+            return { ok: false, message: 'Bu hesap zaten bir davet kodu kullandi.' };
+        }
+
+        if (inviteCode === state.inviteCode) {
+            trackEvent('invite_claim_failed', { reason: 'self_invite_blocked', inviteCode }, { userId: user.id || null });
+            return { ok: false, message: 'Kendi davet kodunu kullanamazsin.' };
+        }
+
+        const guard = readInviteDeviceGuard();
+        const normalizedGuard: InviteDeviceGuard = guard.date === today
+            ? guard
+            : { date: today, count: 0, claimedCodes: [] };
+
+        if (normalizedGuard.claimedCodes.includes(inviteCode)) {
+            trackEvent('invite_claim_failed', {
+                reason: 'code_already_used_on_device',
+                inviteCode
+            }, {
+                userId: user.id || null
+            });
+            return { ok: false, message: 'Bu cihazda bu davet kodu zaten kullanildi.' };
+        }
+
+        if (normalizedGuard.count >= MAX_DAILY_DEVICE_INVITE_CLAIMS) {
+            trackEvent('invite_claim_failed', {
+                reason: 'device_daily_limit_reached',
+                inviteCode,
+                dailyLimit: MAX_DAILY_DEVICE_INVITE_CLAIMS
+            }, {
+                userId: user.id || null
+            });
+            return { ok: false, message: 'Gunluk davet limiti doldu. Yarim gun sonra tekrar dene.' };
+        }
+
+        const registry = readInviteRegistry();
+        const registryEntry = registry[inviteCode];
+        if (!registryEntry || !registryEntry.ownerEmail) {
+            trackEvent('invite_claim_failed', { reason: 'code_not_found', inviteCode }, { userId: user.id || null });
+            return { ok: false, message: 'Davet kodu bulunamadi.' };
+        }
+
+        const inviterEmail = registryEntry.ownerEmail.trim().toLowerCase();
+        if (inviterEmail === currentEmail) {
+            trackEvent('invite_claim_failed', { reason: 'self_invite_blocked', inviteCode }, { userId: user.id || null });
+            return { ok: false, message: 'Kendi davet kodunu kullanamazsin.' };
+        }
+
+        const inviteeRewardedXp = state.totalXP + INVITEE_REWARD_XP;
+        const claimantKey = user.id ? `id:${user.id}` : `email:${currentEmail}`;
+
+        let inviterRewardGranted = false;
+        const inviterState = readUserXpStateFromLocal(inviterEmail);
+        if (inviterState) {
+            const acceptedKeys = Array.isArray(inviterState.referralAcceptedKeys)
+                ? inviterState.referralAcceptedKeys
+                : [];
+            if (!acceptedKeys.includes(claimantKey)) {
+                const inviterUpdatedState = normalizeXPState({
+                    ...inviterState,
+                    totalXP: inviterState.totalXP + INVITER_REWARD_XP,
+                    inviteClaimsCount: (inviterState.inviteClaimsCount || 0) + 1,
+                    inviteRewardsEarned: (inviterState.inviteRewardsEarned || 0) + INVITER_REWARD_XP,
+                    referralAcceptedKeys: [...acceptedKeys, claimantKey].slice(-MAX_REFERRAL_ACCEPTED_KEYS)
+                });
+                persistUserXpStateToLocal(inviterEmail, inviterUpdatedState);
+                inviterRewardGranted = true;
+            }
+        }
+
+        registry[inviteCode] = {
+            ...registryEntry,
+            claimCount: (registryEntry.claimCount || 0) + 1,
+            lastClaimAt: new Date().toISOString()
+        };
+        writeInviteRegistry(registry);
+
+        writeInviteDeviceGuard({
+            date: today,
+            count: normalizedGuard.count + 1,
+            claimedCodes: [...normalizedGuard.claimedCodes, inviteCode].slice(-20)
+        });
+
+        updateState({
+            totalXP: inviteeRewardedXp,
+            invitedByCode: inviteCode,
+            inviteClaimedAt: today
+        });
+        clearPendingInviteCode();
+
+        trackEvent('invite_accepted', {
+            inviteCode,
+            inviteeRewardXp: INVITEE_REWARD_XP,
+            inviterRewardGranted,
+            inviterRewardXp: inviterRewardGranted ? INVITER_REWARD_XP : 0
+        }, {
+            userId: user.id || null
+        });
+
+        trackEvent('invite_reward_granted', {
+            role: 'invitee',
+            inviteCode,
+            rewardXp: INVITEE_REWARD_XP
+        }, {
+            userId: user.id || null
+        });
+
+        if (inviterRewardGranted) {
+            trackEvent('invite_reward_granted', {
+                role: 'inviter',
+                inviteCode,
+                rewardXp: INVITER_REWARD_XP
+            });
+        }
+
+        triggerWhisper(`Davet odulu +${INVITEE_REWARD_XP} XP`);
+        return {
+            ok: true,
+            message: inviterRewardGranted
+                ? `Davet kodu uygulandi. +${INVITEE_REWARD_XP} XP kazandin.`
+                : `Davet kodu uygulandi. +${INVITEE_REWARD_XP} XP kazandin.`
+        };
+    };
+
     // Trigger Whisper
     const triggerWhisper = (message: string) => {
         setWhisper(message);
@@ -1679,6 +2102,29 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         pendingWelcomeWhisperRef.current = false;
         triggerWhisper("Welcome back.");
     }, [state.lastLoginDate]);
+
+    useEffect(() => {
+        if (!user || !isXpHydrated) return;
+        if (state.invitedByCode) return;
+
+        const pendingCode = readPendingInviteCode();
+        if (!pendingCode) return;
+
+        const attemptKey = `${user.email}|${pendingCode}`;
+        if (pendingInviteAttemptRef.current === attemptKey) return;
+        pendingInviteAttemptRef.current = attemptKey;
+
+        const claimResult = claimInviteCode(pendingCode);
+        if (!claimResult.ok) {
+            if (
+                claimResult.message?.includes('gecersiz') ||
+                claimResult.message?.includes('bulunamadi') ||
+                claimResult.message?.includes('zaten bir davet')
+            ) {
+                clearPendingInviteCode();
+            }
+        }
+    }, [isXpHydrated, state.invitedByCode, user?.email, user?.id]);
 
     // 2. Dwell Time
     useEffect(() => {
@@ -2238,6 +2684,16 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             updatePersonalInfo,
             toggleFollowUser,
             awardShareXP,
+            inviteCode: state.inviteCode || '',
+            inviteLink,
+            invitedByCode: state.invitedByCode || null,
+            inviteClaimsCount: state.inviteClaimsCount || 0,
+            inviteRewardsEarned: state.inviteRewardsEarned || 0,
+            inviteRewardConfig: {
+                inviterXp: INVITER_REWARD_XP,
+                inviteeXp: INVITEE_REWARD_XP
+            },
+            claimInviteCode,
             submitRitual,
             deleteRitual,
             echoRitual,
