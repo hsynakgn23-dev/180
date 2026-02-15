@@ -17,6 +17,7 @@
 - Debug panelin production bundle'a girmemesi.
 - Legacy dosyalarin temizlenmesi.
 - Rollout/test dokumantasyonu ve migration SQL eklenmesi.
+- Growth ve mobil uygulama plani eklendi (`docs/GROWTH_AND_MOBILE_PLAN_2026Q1.md`).
 4. Dayaniklilik:
 - Bazı localStorage parse ve fallback akislari sertlestirildi.
 - Kullaniciya gorunur sistem bildirimleri eklendi.
@@ -50,6 +51,8 @@
 5. `legacy-cleanup`:
 - `src/features/landing/LandingPage.locked.tsx` (silindi)
 - `src/features/profile/ProfileView.old.tsx` (silindi)
+6. `growth-plan`:
+- `docs/GROWTH_AND_MOBILE_PLAN_2026Q1.md`
 
 ## Bundan Sonra Calisma Kurali
 1. Her turda tek paket veya alt-paket.
