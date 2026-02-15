@@ -32,7 +32,7 @@ type RegistrationGenderOptionValue = 'female' | 'male' | 'non_binary' | 'prefer_
 
 const REGISTRATION_GENDER_LABELS: Record<LanguageCode, Record<RegistrationGenderOptionValue, string>> = {
     tr: {
-        female: 'Kadin',
+        female: 'Kadın',
         male: 'Erkek',
         non_binary: 'Non-binary',
         prefer_not_to_say: 'Belirtmek istemiyorum'
@@ -53,7 +53,7 @@ const REGISTRATION_GENDER_LABELS: Record<LanguageCode, Record<RegistrationGender
         female: 'Femme',
         male: 'Homme',
         non_binary: 'Non binaire',
-        prefer_not_to_say: 'Je prefere ne pas le dire'
+        prefer_not_to_say: 'Je préfère ne pas le dire'
     }
 };
 

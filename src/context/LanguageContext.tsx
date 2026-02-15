@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
     LANGUAGE_DICTIONARY,
     LANGUAGE_STORAGE_KEY,
@@ -26,20 +26,26 @@ interface LanguageContextType {
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
-const getInitialLanguage = (): LanguageCode => PRIMARY_LANGUAGE;
+const getInitialLanguage = (): LanguageCode => {
+    if (typeof window === 'undefined') return PRIMARY_LANGUAGE;
+    const storedLanguage = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
+    return isLanguageCode(storedLanguage) ? storedLanguage : PRIMARY_LANGUAGE;
+};
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [language, setLanguageState] = useState<LanguageCode>(() => getInitialLanguage());
 
     useEffect(() => {
-        localStorage.setItem(LANGUAGE_STORAGE_KEY, PRIMARY_LANGUAGE);
-    }, []);
+        localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
+    }, [language]);
 
-    const setLanguage = (nextLanguage: LanguageCode) => {
-        setLanguageState(nextLanguage);
-        localStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguage);
-        window.dispatchEvent(new CustomEvent(LANGUAGE_CHANGE_EVENT, { detail: nextLanguage }));
-    };
+    const setLanguage = useCallback((nextLanguage: LanguageCode) => {
+        setLanguageState((currentLanguage) => {
+            if (nextLanguage === currentLanguage) return currentLanguage;
+            window.dispatchEvent(new CustomEvent(LANGUAGE_CHANGE_EVENT, { detail: nextLanguage }));
+            return nextLanguage;
+        });
+    }, []);
 
     useEffect(() => {
         document.documentElement.lang = language;
@@ -79,7 +85,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             markCategory: (category: string) => getMarkCategoryLabel(language, category),
             leagueCopy: (leagueKey: string) => getLeagueCopy(language, leagueKey)
         }),
-        [language, text]
+        [language, setLanguage, text]
     );
 
     return (

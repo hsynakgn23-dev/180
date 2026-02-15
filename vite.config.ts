@@ -22,5 +22,27 @@ export default defineConfig(({ mode }) => {
           ]
         : []),
     ],
+    build: {
+      chunkSizeWarningLimit: 550,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            const normalizedId = id.replace(/\\/g, '/')
+
+            if (normalizedId.includes('node_modules')) {
+              if (normalizedId.includes('/react/')) return 'vendor-react'
+              if (normalizedId.includes('/react-dom/')) return 'vendor-react'
+              if (normalizedId.includes('/@supabase/')) return 'vendor-supabase'
+              return 'vendor'
+            }
+
+            if (normalizedId.includes('/src/features/profile/')) return 'feature-profile'
+            if (normalizedId.includes('/src/features/arena/')) return 'feature-arena'
+            if (normalizedId.includes('/src/features/daily-showcase/')) return 'feature-daily'
+            if (normalizedId.includes('/src/context/XPContext.tsx')) return 'core-xp'
+          },
+        },
+      },
+    },
   }
 })

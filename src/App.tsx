@@ -1,25 +1,44 @@
-import { useEffect, useState, type ComponentType } from 'react'
+import { Suspense, lazy, useEffect, useState, type ComponentType } from 'react'
 import './App.css'
 import { XPProvider, useXP } from './context/XPContext'
 import { NotificationProvider } from './context/NotificationContext'
 import { ProfileWidget } from './components/ProfileWidget'
 import { NotificationCenter } from './features/notifications/NotificationCenter'
-import { DailyShowcase } from './features/daily-showcase/DailyShowcase'
-import { MovieDetailModal } from './features/daily-showcase/MovieDetailModal'
-import { Arena } from './features/arena/Arena'
-import { WriteOverlay } from './features/ritual/WriteOverlay'
-import { ProfileView } from './features/profile/ProfileView'
-import { PublicProfileView, type PublicProfileTarget } from './features/profile/PublicProfileView'
 import { LeagueTransition } from './components/LeagueTransition'
 import { StreakCelebration } from './components/StreakCelebration'
-import { SharePromptModal } from './components/SharePromptModal'
 import { InfoFooter } from './components/InfoFooter'
 import { SectionErrorBoundary } from './components/SectionErrorBoundary'
 import type { Movie } from './data/mockMovies'
 import { LanguageProvider, useLanguage } from './context/LanguageContext'
+import type { PublicProfileTarget } from './features/profile/PublicProfileView'
 
-import { LoginView } from './features/auth/LoginView'
-import { LandingPage } from './features/landing/LandingPage'
+const DailyShowcase = lazy(() =>
+  import('./features/daily-showcase/DailyShowcase').then((mod) => ({ default: mod.DailyShowcase }))
+)
+const MovieDetailModal = lazy(() =>
+  import('./features/daily-showcase/MovieDetailModal').then((mod) => ({ default: mod.MovieDetailModal }))
+)
+const Arena = lazy(() =>
+  import('./features/arena/Arena').then((mod) => ({ default: mod.Arena }))
+)
+const WriteOverlay = lazy(() =>
+  import('./features/ritual/WriteOverlay').then((mod) => ({ default: mod.WriteOverlay }))
+)
+const ProfileView = lazy(() =>
+  import('./features/profile/ProfileView').then((mod) => ({ default: mod.ProfileView }))
+)
+const PublicProfileView = lazy(() =>
+  import('./features/profile/PublicProfileView').then((mod) => ({ default: mod.PublicProfileView }))
+)
+const SharePromptModal = lazy(() =>
+  import('./components/SharePromptModal').then((mod) => ({ default: mod.SharePromptModal }))
+)
+const LoginView = lazy(() =>
+  import('./features/auth/LoginView').then((mod) => ({ default: mod.LoginView }))
+)
+const LandingPage = lazy(() =>
+  import('./features/landing/LandingPage').then((mod) => ({ default: mod.LandingPage }))
+)
 
 const parsePublicProfileHash = (hash: string): PublicProfileTarget | null => {
   const normalized = (hash || '').trim()
@@ -127,11 +146,21 @@ const AppContent = () => {
     };
   }, [showDebugPanel]);
 
+  const fullScreenFallback = <div className="min-h-screen" aria-hidden="true" />;
+
   if (!user || isPasswordRecoveryMode) {
     if (showLanding && !isPasswordRecoveryMode) {
-      return <LandingPage onStart={() => setShowLanding(false)} />;
+      return (
+        <Suspense fallback={fullScreenFallback}>
+          <LandingPage onStart={() => setShowLanding(false)} />
+        </Suspense>
+      );
     }
-    return <LoginView />;
+    return (
+      <Suspense fallback={fullScreenFallback}>
+        <LoginView />
+      </Suspense>
+    );
   }
 
   return (
@@ -152,10 +181,12 @@ const AppContent = () => {
       )}
 
       {sharePromptEvent && !showProfile && (
-        <SharePromptModal
-          event={sharePromptEvent}
-          onClose={dismissSharePrompt}
-        />
+        <Suspense fallback={null}>
+          <SharePromptModal
+            event={sharePromptEvent}
+            onClose={dismissSharePrompt}
+          />
+        </Suspense>
       )}
 
       {showDebugPanel && DebugPanelComponent ? <DebugPanelComponent /> : null}
@@ -208,37 +239,45 @@ const AppContent = () => {
       </div>
 
       {detailMovie && (
-        <MovieDetailModal
-          movie={detailMovie}
-          onClose={() => setDetailMovie(null)}
-          onStartRitual={() => {
-            setDetailMovie(null);
-            setActiveMovie(detailMovie);
-          }}
-        />
+        <Suspense fallback={null}>
+          <MovieDetailModal
+            movie={detailMovie}
+            onClose={() => setDetailMovie(null)}
+            onStartRitual={() => {
+              setDetailMovie(null);
+              setActiveMovie(detailMovie);
+            }}
+          />
+        </Suspense>
       )}
 
       {activeMovie && (
-        <WriteOverlay
-          movie={activeMovie}
-          onClose={() => setActiveMovie(null)}
-        />
+        <Suspense fallback={null}>
+          <WriteOverlay
+            movie={activeMovie}
+            onClose={() => setActiveMovie(null)}
+          />
+        </Suspense>
       )}
 
       {showProfile && (
-        <ProfileView
-          onClose={openHome}
-          onHome={openHome}
-          startInSettings={startProfileInSettings}
-        />
+        <Suspense fallback={null}>
+          <ProfileView
+            onClose={openHome}
+            onHome={openHome}
+            startInSettings={startProfileInSettings}
+          />
+        </Suspense>
       )}
 
       {publicProfileTarget && (
-        <PublicProfileView
-          target={publicProfileTarget}
-          onClose={openHome}
-          onHome={openHome}
-        />
+        <Suspense fallback={null}>
+          <PublicProfileView
+            target={publicProfileTarget}
+            onClose={openHome}
+            onHome={openHome}
+          />
+        </Suspense>
       )}
 
       <div className={`min-h-screen font-sans selection:bg-sage selection:text-white transition-opacity duration-500 ${activeMovie || showProfile || detailMovie || publicProfileTarget ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
@@ -258,19 +297,23 @@ const AppContent = () => {
             </button>
           </header>
 
-          <SectionErrorBoundary
-            title="Daily Showcase"
-            fallbackMessage="Daily list is temporarily unavailable. Please refresh in a moment."
-          >
-            <DailyShowcase onMovieSelect={setDetailMovie} />
-          </SectionErrorBoundary>
+          <Suspense fallback={<section className="rounded-2xl border border-white/10 bg-white/5 px-4 py-6 text-sm text-white/60">Loading daily showcase...</section>}>
+            <SectionErrorBoundary
+              title="Daily Showcase"
+              fallbackMessage="Daily list is temporarily unavailable. Please refresh in a moment."
+            >
+              <DailyShowcase onMovieSelect={setDetailMovie} />
+            </SectionErrorBoundary>
+          </Suspense>
 
-          <SectionErrorBoundary
-            title="Arena"
-            fallbackMessage="Arena is temporarily unavailable. Your session is still active."
-          >
-            <Arena />
-          </SectionErrorBoundary>
+          <Suspense fallback={<section className="mt-6 rounded-2xl border border-white/10 bg-white/5 px-4 py-6 text-sm text-white/60">Loading arena...</section>}>
+            <SectionErrorBoundary
+              title="Arena"
+              fallbackMessage="Arena is temporarily unavailable. Your session is still active."
+            >
+              <Arena />
+            </SectionErrorBoundary>
+          </Suspense>
         </main>
 
         <InfoFooter className="mt-8" panelWrapperClassName="px-4 sm:px-6 pb-4" footerClassName="py-8 px-4 sm:px-6 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4 text-[10px] uppercase tracking-widest text-white/20" />
