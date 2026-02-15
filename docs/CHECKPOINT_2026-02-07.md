@@ -28,6 +28,9 @@
 6. Referral e2e test plani:
 - `docs/TEST_PLAN_REFERRAL_3_1.md` eklendi.
 - Invite create/claim, anti-abuse ve SQL dogrulama senaryolari tanimlandi.
+7. Referral smoke runner:
+- `test-referral-smoke.js` eklendi (create/claim/e2e modlari).
+- `package.json` scriptleri ve `.env.example` test env alanlari guncellendi.
 
 ## Bu Asamada Bilerek Yapilmayanlar
 - Yeni sayfa / yeni ana feature / yeni is akisi yok.
@@ -70,6 +73,11 @@
 - `docs/REFERRAL_PACKAGE_3_1.md`
 8. `referral-test-plan-3.1`:
 - `docs/TEST_PLAN_REFERRAL_3_1.md`
+9. `referral-smoke-runner`:
+- `test-referral-smoke.js`
+- `package.json`
+- `.env.example`
+- `README.md`
 
 ## Bundan Sonra Calisma Kurali
 1. Her turda tek paket veya alt-paket.

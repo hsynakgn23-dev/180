@@ -98,6 +98,18 @@ curl -X POST "https://<app-domain>/api/referral/claim" \
   -d '{"code":"<INVITE_CODE>","deviceKey":"dev-smoke-001"}'
 ```
 
+## Scripted Smoke Runner
+```bash
+# create only
+npm run test:referral:smoke:create
+
+# claim only (requires code)
+npm run test:referral:smoke:claim -- --code=ABC12345
+
+# full create + claim + duplicate rejection probe
+npm run test:referral:smoke:e2e
+```
+
 ## SQL Verification Snippets
 ```sql
 -- Invite codes

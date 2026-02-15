@@ -28,6 +28,9 @@ npm run dev
 - `npm run analyze` - build with bundle visualizer output (`dist/bundle-analysis.html`)
 - `npm run preview` - preview production build locally
 - `node test-supabase-connection.js` - quick Supabase read/write capability check
+- `npm run test:referral:smoke:create` - sign in inviter + verify `/api/referral/create`
+- `npm run test:referral:smoke:claim -- --code=ABC12345` - sign in invitee + verify `/api/referral/claim`
+- `npm run test:referral:smoke:e2e` - create + claim + duplicate-claim rejection (`ALREADY_CLAIMED`)
 
 ## Environment
 Client:
@@ -65,6 +68,15 @@ Server referral API (`api/referral/create.ts`, `api/referral/claim.ts`):
 - `SUPABASE_ANON_KEY` (or `VITE_SUPABASE_ANON_KEY` fallback)
 - `PUBLIC_APP_URL` (optional absolute origin for invite links)
 
+Referral smoke runner (`test-referral-smoke.js`, optional):
+- `REFERRAL_API_BASE` (e.g. `https://your-app-domain`)
+- `REFERRAL_TEST_INVITER_EMAIL`
+- `REFERRAL_TEST_INVITER_PASSWORD`
+- `REFERRAL_TEST_INVITEE_EMAIL`
+- `REFERRAL_TEST_INVITEE_PASSWORD`
+- `REFERRAL_TEST_DEVICE_KEY` (optional; deterministic device simulation)
+- `REFERRAL_TEST_CODE` (optional for claim-only mode)
+
 Optional edge-friendly cache (`api/daily.ts`, Redis/KV REST):
 - `KV_REST_API_URL` or `UPSTASH_REDIS_REST_URL`
 - `KV_REST_API_TOKEN` or `UPSTASH_REDIS_REST_TOKEN`
@@ -83,6 +95,7 @@ Optional edge-friendly cache (`api/daily.ts`, Redis/KV REST):
 - Analytics package notes: `docs/ANALYTICS_PACKAGE_1.md`
 - Referral package notes: `docs/REFERRAL_PACKAGE_3.md`
 - Referral hardening notes: `docs/REFERRAL_PACKAGE_3_1.md`
+- Referral 3.1 test checklist: `docs/TEST_PLAN_REFERRAL_3_1.md`
 
 ## Notes
 - Social interactions use relational tables (`ritual_echoes`, `ritual_replies`).

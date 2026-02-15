@@ -8,7 +8,10 @@
     "build": "tsc -b && vite build",
     "analyze": "tsc -b && vite build --mode analyze",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:referral:smoke:create": "node test-referral-smoke.js create",
+    "test:referral:smoke:claim": "node test-referral-smoke.js claim",
+    "test:referral:smoke:e2e": "node test-referral-smoke.js e2e"
   },
   "dependencies": {
     "@vercel/og": "^0.8.5",
