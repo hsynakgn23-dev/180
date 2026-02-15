@@ -43,6 +43,8 @@ Client:
 - `VITE_ENABLE_MOCK_NOTIFICATIONS` (`1` enables seeded notifications in dev)
 - `VITE_ALLOW_CLIENT_DAILY_WRITE` (`1` enables client write path in dev only)
 - `VITE_DAILY_ROLLOVER_TIMEZONE` (optional, default `Europe/Istanbul`)
+- `VITE_ANALYTICS_ENABLED` (`0` disables analytics event tracking)
+- `VITE_ANALYTICS_ENDPOINT` (optional, default `/api/analytics`)
 
 Server/cron (`api/cron/daily.ts`):
 - `SUPABASE_URL`
@@ -50,6 +52,10 @@ Server/cron (`api/cron/daily.ts`):
 - `SUPABASE_STORAGE_BUCKET` (optional, default `posters`)
 - `TMDB_API_KEY`
 - `DAILY_ROLLOVER_TIMEZONE` (optional, default `Europe/Istanbul`)
+
+Server analytics ingest (`api/analytics.ts`):
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
 
 Optional edge-friendly cache (`api/daily.ts`, Redis/KV REST):
 - `KV_REST_API_URL` or `UPSTASH_REDIS_REST_URL`
@@ -59,9 +65,11 @@ Optional edge-friendly cache (`api/daily.ts`, Redis/KV REST):
 - Base setup SQL: `supabase_setup.sql`
 - Social migration SQL: `sql/migrations/20260207_social_model_v2.sql`
 - Rate limit migration SQL: `sql/migrations/20260213_rate_limits.sql`
+- Analytics migration SQL: `sql/migrations/20260215_analytics_events.sql`
 - Rollout checklist: `docs/ROLLOUT_SOCIAL_MODEL.md`
 - Test checklist: `docs/TEST_PLAN_SOCIAL_SYNC.md`
 - Integration plan: `PLAN_SUPABASE_INTEGRATION.md`
+- Analytics package notes: `docs/ANALYTICS_PACKAGE_1.md`
 
 ## Notes
 - Social interactions use relational tables (`ritual_echoes`, `ritual_replies`).

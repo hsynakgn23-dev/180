@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useXP, type RegistrationGender } from '../../context/XPContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { getRegistrationGenderOptions } from '../../i18n/localization';
+import { trackEvent } from '../../lib/analytics';
 
 export const LoginView: React.FC = () => {
     const {
@@ -64,6 +65,14 @@ export const LoginView: React.FC = () => {
         setErrorMessage('');
     }, [isPasswordRecoveryMode]);
 
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const key = '180_analytics_auth_view_seen_v1';
+        if (window.sessionStorage.getItem(key) === '1') return;
+        window.sessionStorage.setItem(key, '1');
+        trackEvent('auth_view', { authMode });
+    }, [authMode]);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (isSubmitting) return;
@@ -71,15 +80,25 @@ export const LoginView: React.FC = () => {
         setIsSubmitting(true);
         setErrorMessage('');
         setStatusMessage('');
+        const flow = isResettingPassword
+            ? 'reset_password'
+            : isForgotPassword
+                ? 'forgot_password'
+                : isRegistering
+                    ? 'register'
+                    : 'login';
+        trackEvent('auth_submit', { flow, method: 'password', authMode });
 
         try {
             if (isResettingPassword) {
                 if (password.length < 6) {
                     setErrorMessage(text.login.passwordPlaceholder);
+                    trackEvent('auth_failure', { flow, method: 'password', reason: 'password_too_short' });
                     return;
                 }
                 if (password !== confirmPassword) {
                     setErrorMessage(text.login.passwordMismatch);
+                    trackEvent('auth_failure', { flow, method: 'password', reason: 'password_mismatch' });
                     return;
                 }
 
@@ -134,6 +153,7 @@ export const LoginView: React.FC = () => {
         setIsGoogleLoading(true);
         setErrorMessage('');
         setStatusMessage('');
+        trackEvent('oauth_start', { provider: 'google', authMode });
 
         try {
             const result = await loginWithGoogle();

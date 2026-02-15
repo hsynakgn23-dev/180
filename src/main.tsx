@@ -4,8 +4,10 @@ import './index.css'
 import App from './App.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
 import { applyThemeMode, resolveThemeMode } from './lib/themeMode.ts'
+import { initAnalytics } from './lib/analytics.ts'
 
 applyThemeMode(resolveThemeMode())
+initAnalytics()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

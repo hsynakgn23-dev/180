@@ -3,6 +3,7 @@ import { MAJOR_MARKS } from '../data/marksData';
 import { TMDB_SEEDS } from '../data/tmdbSeeds';
 import { supabase, isSupabaseLive } from '../lib/supabase';
 import { moderateComment } from '../lib/commentModeration';
+import { trackEvent } from '../lib/analytics';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 // Types
@@ -1097,6 +1098,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 birthDate: (registrationProfile?.birthDate || '').trim()
             }
             : null;
+        const flow = isRegistering ? 'register' : 'login';
 
         if (isRegistering) {
             if (!normalizedRegistration?.fullName || normalizedRegistration.fullName.length < 2) {
@@ -1138,6 +1140,11 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             };
             setSessionUser(fallbackUser);
             triggerWhisper("Welcome to the Ritual.");
+            trackEvent(isRegistering ? 'signup_success' : 'login_success', {
+                flow,
+                method: 'password',
+                authMode: 'local'
+            });
             return { ok: true, message: 'Supabase kapali oldugu icin local session acildi.' };
         }
 
@@ -1166,17 +1173,33 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                     }
                 });
 
-                if (error) return { ok: false, message: normalizeAuthError(error.message) };
+                if (error) {
+                    const reason = normalizeAuthError(error.message);
+                    trackEvent('auth_failure', { flow, method: 'password', reason });
+                    return { ok: false, message: reason };
+                }
                 if (data.session?.user) {
                     const mapped = toSessionUser(data.session.user);
                     if (mapped) {
                         setSessionUser(mapped);
                     }
+                    trackEvent('signup_success', {
+                        flow,
+                        method: 'password',
+                        authMode: 'supabase'
+                    }, {
+                        userId: data.session.user.id
+                    });
                     triggerWhisper("Account created.");
                     return { ok: true, message: 'Kayit tamamlandi. Oturum acildi.' };
                 }
 
                 setSessionUser(null);
+                trackEvent('signup_pending_confirmation', {
+                    flow,
+                    method: 'password',
+                    authMode: 'supabase'
+                });
                 return {
                     ok: true,
                     message: 'Kayit tamamlandi. E-posta onayi sonrasi giris yap.'
@@ -1188,21 +1211,39 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 password
             });
 
-            if (error) return { ok: false, message: normalizeAuthError(error.message) };
+            if (error) {
+                const reason = normalizeAuthError(error.message);
+                trackEvent('auth_failure', { flow, method: 'password', reason });
+                return { ok: false, message: reason };
+            }
             const mapped = toSessionUser(data.user ?? data.session?.user ?? null);
             if (mapped) {
                 setSessionUser(mapped);
             }
+            const resolvedUserId = data.user?.id || data.session?.user?.id || mapped?.id || null;
+            trackEvent('login_success', {
+                flow,
+                method: 'password',
+                authMode: 'supabase'
+            }, {
+                userId: resolvedUserId
+            });
             triggerWhisper("Welcome to the Ritual.");
             return { ok: true };
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Login failed.';
-            return { ok: false, message: normalizeAuthError(message) };
+            const reason = normalizeAuthError(message);
+            trackEvent('auth_failure', { flow, method: 'password', reason });
+            return { ok: false, message: reason };
         }
     };
 
     const loginWithGoogle = async (): Promise<AuthResult> => {
         if (!isSupabaseLive() || !supabase) {
+            trackEvent('oauth_failure', {
+                provider: 'google',
+                reason: 'supabase_not_available'
+            });
             return { ok: false, message: 'Google login icin Supabase gerekli.' };
         }
 
@@ -1213,21 +1254,41 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 options: { redirectTo }
             });
 
-            if (error) return { ok: false, message: normalizeAuthError(error.message) };
+            if (error) {
+                const reason = normalizeAuthError(error.message);
+                trackEvent('oauth_failure', { provider: 'google', reason });
+                return { ok: false, message: reason };
+            }
+            trackEvent('oauth_redirect_started', {
+                provider: 'google',
+                authMode: 'supabase'
+            });
             return { ok: true };
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Google login failed.';
-            return { ok: false, message: normalizeAuthError(message) };
+            const reason = normalizeAuthError(message);
+            trackEvent('oauth_failure', { provider: 'google', reason });
+            return { ok: false, message: reason };
         }
     };
 
     const requestPasswordReset = async (email: string): Promise<AuthResult> => {
         const normalizedEmail = email.trim().toLowerCase();
         if (!normalizedEmail) {
+            trackEvent('auth_failure', {
+                flow: 'forgot_password',
+                method: 'email',
+                reason: 'email_required'
+            });
             return { ok: false, message: 'E-posta gerekli.' };
         }
 
         if (!isSupabaseLive() || !supabase) {
+            trackEvent('auth_failure', {
+                flow: 'forgot_password',
+                method: 'email',
+                reason: 'supabase_not_available'
+            });
             return { ok: false, message: 'Sifre sifirlama icin Supabase gerekli.' };
         }
 
@@ -1235,35 +1296,75 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
                 redirectTo: buildAuthRedirectTo()
             });
-            if (error) return { ok: false, message: normalizeAuthError(error.message) };
+            if (error) {
+                const reason = normalizeAuthError(error.message);
+                trackEvent('auth_failure', {
+                    flow: 'forgot_password',
+                    method: 'email',
+                    reason
+                });
+                return { ok: false, message: reason };
+            }
+            trackEvent('password_reset_requested', { method: 'email' });
             return { ok: true, message: 'Sifre yenileme baglantisi e-posta adresine gonderildi.' };
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Password reset failed.';
-            return { ok: false, message: normalizeAuthError(message) };
+            const reason = normalizeAuthError(message);
+            trackEvent('auth_failure', {
+                flow: 'forgot_password',
+                method: 'email',
+                reason
+            });
+            return { ok: false, message: reason };
         }
     };
 
     const completePasswordReset = async (newPassword: string): Promise<AuthResult> => {
         const normalizedPassword = newPassword.trim();
         if (normalizedPassword.length < 6) {
+            trackEvent('auth_failure', {
+                flow: 'reset_password',
+                method: 'password',
+                reason: 'password_too_short'
+            });
             return { ok: false, message: 'Sifre en az 6 karakter olmali.' };
         }
 
         if (!isSupabaseLive() || !supabase) {
+            trackEvent('auth_failure', {
+                flow: 'reset_password',
+                method: 'password',
+                reason: 'supabase_not_available'
+            });
             return { ok: false, message: 'Sifre guncelleme icin Supabase gerekli.' };
         }
 
         try {
             const { error } = await supabase.auth.updateUser({ password: normalizedPassword });
-            if (error) return { ok: false, message: normalizeAuthError(error.message) };
+            if (error) {
+                const reason = normalizeAuthError(error.message);
+                trackEvent('auth_failure', {
+                    flow: 'reset_password',
+                    method: 'password',
+                    reason
+                });
+                return { ok: false, message: reason };
+            }
 
             setIsPasswordRecoveryMode(false);
             clearRecoveryUrlState();
+            trackEvent('password_reset_completed', { method: 'password' }, { userId: user?.id || null });
             triggerWhisper("Password updated.");
             return { ok: true, message: 'Sifre guncellendi.' };
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Password update failed.';
-            return { ok: false, message: normalizeAuthError(message) };
+            const reason = normalizeAuthError(message);
+            trackEvent('auth_failure', {
+                flow: 'reset_password',
+                method: 'password',
+                reason
+            });
+            return { ok: false, message: reason };
         }
     };
 
@@ -1418,6 +1519,13 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         if (trigger === 'comment') {
             const hasCommentToday = state.dailyRituals.some((ritual) => ritual.date === today);
             if (!hasCommentToday) {
+                trackEvent('share_reward_denied', {
+                    platform,
+                    trigger,
+                    reason: 'comment_not_ready'
+                }, {
+                    userId: user?.id || null
+                });
                 return { ok: false, message: 'Yorum paylasim bonusu icin once bugun yorum yaz.' };
             }
         }
@@ -1425,11 +1533,25 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         if (trigger === 'streak') {
             const isStreakCompletedToday = state.streak > 0 && state.lastStreakDate === today;
             if (!isStreakCompletedToday) {
+                trackEvent('share_reward_denied', {
+                    platform,
+                    trigger,
+                    reason: 'streak_not_ready'
+                }, {
+                    userId: user?.id || null
+                });
                 return { ok: false, message: 'Streak paylasim bonusu icin once bugunku rituelini tamamla.' };
             }
         }
 
         if (state.lastShareRewardDate === today) {
+            trackEvent('share_reward_denied', {
+                platform,
+                trigger,
+                reason: 'already_claimed_today'
+            }, {
+                userId: user?.id || null
+            });
             return { ok: false, message: 'Bugun paylasim bonusu zaten alindi.' };
         }
 
@@ -1437,6 +1559,14 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         updateState({
             totalXP: nextXP,
             lastShareRewardDate: today
+        });
+        trackEvent('share_reward_claimed', {
+            platform,
+            trigger,
+            rewardXp: SHARE_REWARD_XP,
+            resultingXp: nextXP
+        }, {
+            userId: user?.id || null
         });
         triggerWhisper(`Paylasim bonusi +${SHARE_REWARD_XP} XP`);
 
@@ -1580,6 +1710,13 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         const moderation = moderateComment(text, { maxChars: 180, maxEmojiCount: 6, maxEmojiRatio: 0.2 });
         if (!moderation.ok) {
             const message = moderation.message || 'Yorum gonderilemedi.';
+            trackEvent('ritual_submit_failed', {
+                reason: 'moderation_failed',
+                movieId,
+                message
+            }, {
+                userId: user?.id || null
+            });
             triggerWhisper(message);
             return { ok: false, message };
         }
@@ -1587,6 +1724,12 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         const sanitizedText = text.trim();
         const today = getToday();
         if (state.dailyRituals.some(r => r.date === today && r.movieId === movieId)) {
+            trackEvent('ritual_submit_failed', {
+                reason: 'duplicate_for_movie_today',
+                movieId
+            }, {
+                userId: user?.id || null
+            });
             triggerWhisper("Memory stored.");
             return { ok: false, message: 'Bu filme bugun zaten yorum yazildi.' };
         }
@@ -1705,6 +1848,18 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             commentPreview: sanitizedText,
             streak: newStreak,
             date: today
+        });
+        trackEvent('ritual_submitted', {
+            movieId,
+            movieTitle: newRitual.movieTitle,
+            genre,
+            textLength: sanitizedText.length,
+            earnedXp: earnedXP,
+            resultingXp: newTotalXP,
+            streak: newStreak,
+            preferredShareGoal: preferredGoal
+        }, {
+            userId: user?.id || null
         });
 
         if (isSupabaseLive() && supabase && user?.id && canWriteRitualRef.current) {

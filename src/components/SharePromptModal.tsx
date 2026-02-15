@@ -3,6 +3,7 @@ import { useXP, type SharePromptEvent } from '../context/XPContext';
 import { useLanguage } from '../context/LanguageContext';
 import type { LanguageCode } from '../i18n/localization';
 import { buildFilmOgImageUrl, buildProfileOgImageUrl } from '../lib/ogCards';
+import { trackEvent } from '../lib/analytics';
 
 type SharePlatform = 'instagram' | 'tiktok' | 'x';
 type ShareGoal = 'comment' | 'streak';
@@ -222,7 +223,23 @@ export const SharePromptModal: React.FC<SharePromptModalProps> = ({ event, onClo
 
     const handleShare = async (platform: SharePlatform, goal: ShareGoal) => {
         const isReady = goal === 'comment' ? hasCommentToday : isStreakCompletedToday;
+        trackEvent('share_click', {
+            platform,
+            goal,
+            isReady,
+            hasCommentToday,
+            isStreakCompletedToday
+        }, {
+            userId: user?.id || null
+        });
         if (!isReady) {
+            trackEvent('share_failed', {
+                platform,
+                goal,
+                reason: 'goal_not_ready'
+            }, {
+                userId: user?.id || null
+            });
             setShareStatus(goal === 'comment' ? shareCopy.commentLocked : shareCopy.streakLocked);
             return;
         }
@@ -241,6 +258,14 @@ export const SharePromptModal: React.FC<SharePromptModalProps> = ({ event, onClo
                     : 'https://www.tiktok.com/';
                 window.open(target, '_blank', 'noopener,noreferrer');
             }
+            trackEvent('share_opened', {
+                platform,
+                goal,
+                targetUrlType: platform === 'x' ? 'x_intent' : 'platform_home',
+                hasClipboardPayload: platform !== 'x'
+            }, {
+                userId: user?.id || null
+            });
 
             const rewardResult = awardShareXP(platform, goal);
             if (rewardResult.ok) {
@@ -249,6 +274,13 @@ export const SharePromptModal: React.FC<SharePromptModalProps> = ({ event, onClo
                 setShareStatus(shareCopy.claimedHint);
             }
         } catch {
+            trackEvent('share_failed', {
+                platform,
+                goal,
+                reason: 'exception_thrown'
+            }, {
+                userId: user?.id || null
+            });
             setShareStatus(shareCopy.failedHint);
         }
     };
