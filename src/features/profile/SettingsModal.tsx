@@ -416,12 +416,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         }
     };
 
-    const handleApplyInviteCode = () => {
+    const handleApplyInviteCode = async () => {
         if (invitedByCode) {
             setInviteStatus(inviteCopy.alreadyClaimed);
             return;
         }
-        const result = claimInviteCode(inviteCodeDraft);
+        const result = await claimInviteCode(inviteCodeDraft);
         if (result.ok) {
             setInviteCodeDraft('');
             setInviteStatus(inviteCopy.claimSuccess);

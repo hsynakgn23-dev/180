@@ -4,6 +4,7 @@ import { TMDB_SEEDS } from '../data/tmdbSeeds';
 import { supabase, isSupabaseLive } from '../lib/supabase';
 import { moderateComment } from '../lib/commentModeration';
 import { trackEvent } from '../lib/analytics';
+import { claimInviteCodeViaApi, ensureInviteCodeViaApi, getReferralDeviceKey } from '../lib/referralApi';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 // Types
@@ -161,7 +162,7 @@ interface XPContextType {
         inviterXp: number;
         inviteeXp: number;
     };
-    claimInviteCode: (code: string) => AuthResult;
+    claimInviteCode: (code: string) => Promise<AuthResult>;
     submitRitual: (movieId: number, text: string, rating: number, genre: string, title?: string, posterPath?: string) => AuthResult;
     deleteRitual: (ritualId: string) => void;
     echoRitual: (ritualId: string) => void;
@@ -1283,16 +1284,43 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             };
 
             const previousInviteCode = normalizeInviteCode(resolvedState.inviteCode);
-            const ensuredInviteCode = ensureInviteCodeForOwner(
-                previousInviteCode,
-                user.email,
-                user.id
-            );
+            let ensuredInviteCode = previousInviteCode;
+            let ensuredClaimCount = resolvedState.inviteClaimsCount || 0;
+            let inviteCodeCreated = false;
+
+            if (isSupabaseLive() && supabase && user.id) {
+                const ensureResult = await ensureInviteCodeViaApi(
+                    previousInviteCode || user.username || user.fullName || user.email
+                );
+                if (ensureResult.ok && ensureResult.data) {
+                    ensuredInviteCode = normalizeInviteCode(ensureResult.data.code);
+                    ensuredClaimCount = Math.max(
+                        ensuredClaimCount,
+                        Number(ensureResult.data.claimCount || 0)
+                    );
+                    inviteCodeCreated = Boolean(ensureResult.data.created);
+                }
+            }
+
+            if (!isValidInviteCode(ensuredInviteCode)) {
+                ensuredInviteCode = ensureInviteCodeForOwner(
+                    previousInviteCode,
+                    user.email,
+                    user.id
+                );
+                inviteCodeCreated = ensuredInviteCode !== previousInviteCode;
+            }
+
             resolvedState = {
                 ...resolvedState,
-                inviteCode: ensuredInviteCode
+                inviteCode: ensuredInviteCode,
+                inviteClaimsCount: ensuredClaimCount,
+                inviteRewardsEarned: Math.max(
+                    resolvedState.inviteRewardsEarned || 0,
+                    ensuredClaimCount * INVITER_REWARD_XP
+                )
             };
-            if (ensuredInviteCode && ensuredInviteCode !== previousInviteCode) {
+            if (inviteCodeCreated && ensuredInviteCode) {
                 trackEvent('invite_created', {
                     inviteCode: ensuredInviteCode,
                     source: 'auto_generate'
@@ -1856,7 +1884,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
     const inviteLink = buildInviteLink(state.inviteCode);
 
-    const claimInviteCode = (rawCode: string): AuthResult => {
+    const claimInviteCode = async (rawCode: string): Promise<AuthResult> => {
         if (!user) {
             return { ok: false, message: 'Davet kodu kullanmak icin giris yap.' };
         }
@@ -1884,6 +1912,100 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         if (inviteCode === state.inviteCode) {
             trackEvent('invite_claim_failed', { reason: 'self_invite_blocked', inviteCode }, { userId: user.id || null });
             return { ok: false, message: 'Kendi davet kodunu kullanamazsin.' };
+        }
+
+        if (isSupabaseLive() && supabase && user.id) {
+            const deviceKey = getReferralDeviceKey();
+            const apiResult = await claimInviteCodeViaApi(inviteCode, deviceKey);
+
+            if (apiResult.ok && apiResult.data) {
+                const inviteeRewardXp = Math.max(0, Number(apiResult.data.inviteeRewardXp || INVITEE_REWARD_XP));
+                const inviterRewardXp = Math.max(0, Number(apiResult.data.inviterRewardXp || 0));
+                const inviteeRewardedXp = state.totalXP + inviteeRewardXp;
+                const inviterRewardGranted = inviterRewardXp > 0;
+
+                updateState({
+                    totalXP: inviteeRewardedXp,
+                    invitedByCode: inviteCode,
+                    inviteClaimedAt: today
+                });
+                clearPendingInviteCode();
+
+                trackEvent('invite_accepted', {
+                    inviteCode,
+                    inviteeRewardXp,
+                    inviterRewardGranted,
+                    inviterRewardXp
+                }, {
+                    userId: user.id || null
+                });
+
+                trackEvent('invite_reward_granted', {
+                    role: 'invitee',
+                    inviteCode,
+                    rewardXp: inviteeRewardXp
+                }, {
+                    userId: user.id || null
+                });
+
+                if (inviterRewardGranted) {
+                    trackEvent('invite_reward_granted', {
+                        role: 'inviter',
+                        inviteCode,
+                        rewardXp: inviterRewardXp,
+                        inviterUserId: apiResult.data.inviterUserId || null
+                    });
+                }
+
+                triggerWhisper(`Davet odulu +${inviteeRewardXp} XP`);
+                return {
+                    ok: true,
+                    message: `Davet kodu uygulandi. +${inviteeRewardXp} XP kazandin.`
+                };
+            }
+
+            if (apiResult.errorCode && apiResult.errorCode !== 'SERVER_ERROR') {
+                const apiFailureReasonByCode: Record<string, string> = {
+                    UNAUTHORIZED: 'api_unauthorized',
+                    INVALID_CODE: 'invalid_code_format',
+                    INVITE_NOT_FOUND: 'code_not_found',
+                    SELF_INVITE: 'self_invite_blocked',
+                    ALREADY_CLAIMED: 'already_claimed_on_account',
+                    DEVICE_DAILY_LIMIT: 'device_daily_limit_reached',
+                    DEVICE_CODE_REUSE: 'code_already_used_on_device'
+                };
+                const apiMessageByCode: Record<string, string> = {
+                    UNAUTHORIZED: 'Oturum dogrulanamadi. Yeniden giris yap ve tekrar dene.',
+                    INVALID_CODE: 'Davet kodu gecersiz.',
+                    INVITE_NOT_FOUND: 'Davet kodu bulunamadi.',
+                    SELF_INVITE: 'Kendi davet kodunu kullanamazsin.',
+                    ALREADY_CLAIMED: 'Bu hesap zaten bir davet kodu kullandi.',
+                    DEVICE_DAILY_LIMIT: 'Gunluk davet limiti doldu. Yarim gun sonra tekrar dene.',
+                    DEVICE_CODE_REUSE: 'Bu cihazda bu davet kodu zaten kullanildi.'
+                };
+                const failureReason = apiFailureReasonByCode[apiResult.errorCode] || 'api_claim_rejected';
+                trackEvent('invite_claim_failed', {
+                    reason: failureReason,
+                    inviteCode,
+                    errorCode: apiResult.errorCode,
+                    apiMessage: apiResult.message || null
+                }, {
+                    userId: user.id || null
+                });
+                return {
+                    ok: false,
+                    message: apiMessageByCode[apiResult.errorCode] || (apiResult.message || 'Davet kodu uygulanamadi.')
+                };
+            }
+
+            trackEvent('invite_claim_failed', {
+                reason: 'api_unavailable',
+                inviteCode,
+                errorCode: apiResult.errorCode || 'SERVER_ERROR',
+                apiMessage: apiResult.message || null
+            }, {
+                userId: user.id || null
+            });
         }
 
         const guard = readInviteDeviceGuard();
@@ -2114,16 +2236,17 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         if (pendingInviteAttemptRef.current === attemptKey) return;
         pendingInviteAttemptRef.current = attemptKey;
 
-        const claimResult = claimInviteCode(pendingCode);
-        if (!claimResult.ok) {
-            if (
-                claimResult.message?.includes('gecersiz') ||
-                claimResult.message?.includes('bulunamadi') ||
-                claimResult.message?.includes('zaten bir davet')
-            ) {
-                clearPendingInviteCode();
+        void claimInviteCode(pendingCode).then((claimResult) => {
+            if (!claimResult.ok) {
+                if (
+                    claimResult.message?.includes('gecersiz') ||
+                    claimResult.message?.includes('bulunamadi') ||
+                    claimResult.message?.includes('zaten bir davet')
+                ) {
+                    clearPendingInviteCode();
+                }
             }
-        }
+        });
     }, [isXpHydrated, state.invitedByCode, user?.email, user?.id]);
 
     // 2. Dwell Time

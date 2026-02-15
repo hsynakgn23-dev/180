@@ -2,7 +2,7 @@
 
 ## Durum Ozeti
 - Yeni urun ozelligi eklenmedi.
-- Calisma odağı teknik saglamlastirma, veri modeli sertlestirme, hata gorunurlugu ve temizlik.
+- Calisma odagi teknik saglamlastirma, veri modeli sertlestirme, hata gorunurlugu ve temizlik.
 - Kod tabani su an `lint` ve `build` geciyor.
 
 ## Ne Yaptik (Feature Degil)
@@ -19,8 +19,12 @@
 - Rollout/test dokumantasyonu ve migration SQL eklenmesi.
 - Growth ve mobil uygulama plani eklendi (`docs/GROWTH_AND_MOBILE_PLAN_2026Q1.md`).
 4. Dayaniklilik:
-- Bazı localStorage parse ve fallback akislari sertlestirildi.
+- Bazi localStorage parse ve fallback akislari sertlestirildi.
 - Kullaniciya gorunur sistem bildirimleri eklendi.
+5. Referral hardening (package 3.1):
+- Davet akisi API-first modele tasindi (lokal fallback sadece API ulasilamazsa).
+- `api/referral/create` ve `api/referral/claim` endpointleri eklendi.
+- `sql/migrations/20260217_referral_hardening_rpc.sql` ile RPC + device guard eklendi.
 
 ## Bu Asamada Bilerek Yapilmayanlar
 - Yeni sayfa / yeni ana feature / yeni is akisi yok.
@@ -53,6 +57,14 @@
 - `src/features/profile/ProfileView.old.tsx` (silindi)
 6. `growth-plan`:
 - `docs/GROWTH_AND_MOBILE_PLAN_2026Q1.md`
+7. `referral-hardening-3.1`:
+- `src/context/XPContext.tsx`
+- `src/features/profile/SettingsModal.tsx`
+- `src/lib/referralApi.ts`
+- `api/referral/create.ts`
+- `api/referral/claim.ts`
+- `sql/migrations/20260217_referral_hardening_rpc.sql`
+- `docs/REFERRAL_PACKAGE_3_1.md`
 
 ## Bundan Sonra Calisma Kurali
 1. Her turda tek paket veya alt-paket.

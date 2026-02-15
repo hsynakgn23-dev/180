@@ -45,6 +45,8 @@ Client:
 - `VITE_DAILY_ROLLOVER_TIMEZONE` (optional, default `Europe/Istanbul`)
 - `VITE_ANALYTICS_ENABLED` (`0` disables analytics event tracking)
 - `VITE_ANALYTICS_ENDPOINT` (optional, default `/api/analytics`)
+- `VITE_PUBLIC_APP_URL` (optional canonical app origin for share/invite links)
+- `VITE_REFERRAL_API_BASE` (optional, default same-origin API)
 
 Server/cron (`api/cron/daily.ts`):
 - `SUPABASE_URL`
@@ -57,6 +59,12 @@ Server analytics ingest (`api/analytics.ts`):
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
+Server referral API (`api/referral/create.ts`, `api/referral/claim.ts`):
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_ANON_KEY` (or `VITE_SUPABASE_ANON_KEY` fallback)
+- `PUBLIC_APP_URL` (optional absolute origin for invite links)
+
 Optional edge-friendly cache (`api/daily.ts`, Redis/KV REST):
 - `KV_REST_API_URL` or `UPSTASH_REDIS_REST_URL`
 - `KV_REST_API_TOKEN` or `UPSTASH_REDIS_REST_TOKEN`
@@ -67,11 +75,13 @@ Optional edge-friendly cache (`api/daily.ts`, Redis/KV REST):
 - Rate limit migration SQL: `sql/migrations/20260213_rate_limits.sql`
 - Analytics migration SQL: `sql/migrations/20260215_analytics_events.sql`
 - Referral migration SQL: `sql/migrations/20260216_referral_program.sql`
+- Referral hardening SQL: `sql/migrations/20260217_referral_hardening_rpc.sql`
 - Rollout checklist: `docs/ROLLOUT_SOCIAL_MODEL.md`
 - Test checklist: `docs/TEST_PLAN_SOCIAL_SYNC.md`
 - Integration plan: `PLAN_SUPABASE_INTEGRATION.md`
 - Analytics package notes: `docs/ANALYTICS_PACKAGE_1.md`
 - Referral package notes: `docs/REFERRAL_PACKAGE_3.md`
+- Referral hardening notes: `docs/REFERRAL_PACKAGE_3_1.md`
 
 ## Notes
 - Social interactions use relational tables (`ritual_echoes`, `ritual_replies`).
