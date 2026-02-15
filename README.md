@@ -108,4 +108,5 @@ Optional edge-friendly cache (`api/daily.ts`, Redis/KV REST):
 - SEO evergreen landing pages:
   - `/discover/mood-films/`
   - `/discover/director-deep-dives/`
+  - `/discover/daily-curated-picks/`
 - SEO package notes: `docs/SEO_PACKAGE_2.md`

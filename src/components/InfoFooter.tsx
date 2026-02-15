@@ -32,6 +32,10 @@ const SEO_LINKS = [
     {
         label: 'Director Deep Dives',
         href: '/discover/director-deep-dives/'
+    },
+    {
+        label: 'Daily Curated Picks',
+        href: '/discover/daily-curated-picks/'
     }
 ] as const;
 

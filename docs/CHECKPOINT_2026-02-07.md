@@ -34,6 +34,10 @@
 8. Growth KPI gorunurlugu:
 - `sql/migrations/20260218_analytics_kpi_views.sql` ile KPI view'lari eklendi.
 - `docs/KPI_DASHBOARD_2026Q1.md` ile dashboard/query runbook eklendi.
+9. SEO landing expansion:
+- Ucuncu crawlable landing page eklendi: `/discover/daily-curated-picks/`.
+- Root structured data ve sitemap bu sayfayi kapsayacak sekilde guncellendi.
+- App + footer ic linkleri yeni landing page'i include edecek sekilde guncellendi.
 
 ## Bu Asamada Bilerek Yapilmayanlar
 - Yeni sayfa / yeni ana feature / yeni is akisi yok.
@@ -84,6 +88,15 @@
 10. `growth-kpi-views-2026q1`:
 - `sql/migrations/20260218_analytics_kpi_views.sql`
 - `docs/KPI_DASHBOARD_2026Q1.md`
+- `README.md`
+11. `seo-package-3`:
+- `public/discover/daily-curated-picks/index.html`
+- `index.html`
+- `public/sitemap.xml`
+- `src/App.tsx`
+- `src/components/InfoFooter.tsx`
+- `src/features/daily-showcase/DailyShowcase.tsx`
+- `docs/SEO_PACKAGE_3.md`
 - `README.md`
 
 ## Bundan Sonra Calisma Kurali

@@ -108,7 +108,7 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
             name: `180 Daily 5 - ${dateKey}`,
             description: 'Curated Daily 5 movie selection.',
             numberOfItems: itemListElement.length,
-            itemListOrder: 'http://schema.org/ItemListOrderAscending',
+            itemListOrder: 'https://schema.org/ItemListOrderAscending',
             itemListElement
         };
     }, [dateKey, movies]);

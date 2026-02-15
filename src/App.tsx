@@ -314,6 +314,12 @@ const AppContent = () => {
               >
                 Director Deep Dives
               </a>
+              <a
+                href="/discover/daily-curated-picks/"
+                className="inline-flex items-center rounded-md border border-white/15 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-white/80 hover:text-sage hover:border-sage/50 transition-colors"
+              >
+                Daily Curated Picks
+              </a>
             </div>
           </section>
 
