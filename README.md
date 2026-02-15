@@ -78,6 +78,7 @@ Optional edge-friendly cache (`api/daily.ts`, Redis/KV REST):
 - Referral hardening SQL: `sql/migrations/20260217_referral_hardening_rpc.sql`
 - Rollout checklist: `docs/ROLLOUT_SOCIAL_MODEL.md`
 - Test checklist: `docs/TEST_PLAN_SOCIAL_SYNC.md`
+- Referral test checklist: `docs/TEST_PLAN_REFERRAL_3_1.md`
 - Integration plan: `PLAN_SUPABASE_INTEGRATION.md`
 - Analytics package notes: `docs/ANALYTICS_PACKAGE_1.md`
 - Referral package notes: `docs/REFERRAL_PACKAGE_3.md`

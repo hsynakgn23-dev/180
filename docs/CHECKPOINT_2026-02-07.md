@@ -25,6 +25,9 @@
 - Davet akisi API-first modele tasindi (lokal fallback sadece API ulasilamazsa).
 - `api/referral/create` ve `api/referral/claim` endpointleri eklendi.
 - `sql/migrations/20260217_referral_hardening_rpc.sql` ile RPC + device guard eklendi.
+6. Referral e2e test plani:
+- `docs/TEST_PLAN_REFERRAL_3_1.md` eklendi.
+- Invite create/claim, anti-abuse ve SQL dogrulama senaryolari tanimlandi.
 
 ## Bu Asamada Bilerek Yapilmayanlar
 - Yeni sayfa / yeni ana feature / yeni is akisi yok.
@@ -65,6 +68,8 @@
 - `api/referral/claim.ts`
 - `sql/migrations/20260217_referral_hardening_rpc.sql`
 - `docs/REFERRAL_PACKAGE_3_1.md`
+8. `referral-test-plan-3.1`:
+- `docs/TEST_PLAN_REFERRAL_3_1.md`
 
 ## Bundan Sonra Calisma Kurali
 1. Her turda tek paket veya alt-paket.
