@@ -31,6 +31,9 @@
 7. Referral smoke runner:
 - `test-referral-smoke.js` eklendi (create/claim/e2e modlari).
 - `package.json` scriptleri ve `.env.example` test env alanlari guncellendi.
+8. Growth KPI gorunurlugu:
+- `sql/migrations/20260218_analytics_kpi_views.sql` ile KPI view'lari eklendi.
+- `docs/KPI_DASHBOARD_2026Q1.md` ile dashboard/query runbook eklendi.
 
 ## Bu Asamada Bilerek Yapilmayanlar
 - Yeni sayfa / yeni ana feature / yeni is akisi yok.
@@ -77,6 +80,10 @@
 - `test-referral-smoke.js`
 - `package.json`
 - `.env.example`
+- `README.md`
+10. `growth-kpi-views-2026q1`:
+- `sql/migrations/20260218_analytics_kpi_views.sql`
+- `docs/KPI_DASHBOARD_2026Q1.md`
 - `README.md`
 
 ## Bundan Sonra Calisma Kurali

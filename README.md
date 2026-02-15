@@ -86,6 +86,7 @@ Optional edge-friendly cache (`api/daily.ts`, Redis/KV REST):
 - Social migration SQL: `sql/migrations/20260207_social_model_v2.sql`
 - Rate limit migration SQL: `sql/migrations/20260213_rate_limits.sql`
 - Analytics migration SQL: `sql/migrations/20260215_analytics_events.sql`
+- Analytics KPI views SQL: `sql/migrations/20260218_analytics_kpi_views.sql`
 - Referral migration SQL: `sql/migrations/20260216_referral_program.sql`
 - Referral hardening SQL: `sql/migrations/20260217_referral_hardening_rpc.sql`
 - Rollout checklist: `docs/ROLLOUT_SOCIAL_MODEL.md`
@@ -93,6 +94,7 @@ Optional edge-friendly cache (`api/daily.ts`, Redis/KV REST):
 - Referral test checklist: `docs/TEST_PLAN_REFERRAL_3_1.md`
 - Integration plan: `PLAN_SUPABASE_INTEGRATION.md`
 - Analytics package notes: `docs/ANALYTICS_PACKAGE_1.md`
+- KPI dashboard notes: `docs/KPI_DASHBOARD_2026Q1.md`
 - Referral package notes: `docs/REFERRAL_PACKAGE_3.md`
 - Referral hardening notes: `docs/REFERRAL_PACKAGE_3_1.md`
 - Referral 3.1 test checklist: `docs/TEST_PLAN_REFERRAL_3_1.md`
