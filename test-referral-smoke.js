@@ -1,4 +1,21 @@
+import fs from 'node:fs';
 import { createClient } from '@supabase/supabase-js';
+
+const loadDotEnvFile = (path = '.env') => {
+    if (!fs.existsSync(path)) return;
+    const raw = fs.readFileSync(path, 'utf8');
+    for (const line of raw.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const idx = trimmed.indexOf('=');
+        if (idx < 1) continue;
+        const key = trimmed.slice(0, idx).trim();
+        if (!key || process.env[key] !== undefined) continue;
+        process.env[key] = trimmed.slice(idx + 1).trim();
+    }
+};
+
+loadDotEnvFile('.env');
 
 const SUPABASE_URL = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
 const SUPABASE_ANON_KEY = (process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '').trim();
