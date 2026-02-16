@@ -6,6 +6,7 @@ Operationalize Growth Plan KPI framework with direct SQL views and repeatable da
 ## Source
 - Events table: `public.analytics_events`
 - KPI view migration: `sql/migrations/20260218_analytics_kpi_views.sql`
+- Web-to-app prompt KPI migration: `sql/migrations/20260219_web_to_app_prompt_kpis.sql`
 
 ## North-Star
 - Weekly active ritual creators:
@@ -29,6 +30,9 @@ Key columns:
 - `visit_to_signup_pct`
 - `signup_to_first_ritual_pct`
 - `share_rate_per_active_pct`
+- `prompt_ctr_pct`
+- `prompt_open_app_share_pct`
+- `prompt_dismiss_rate_pct`
 
 ## Retention
 - D7 retention by signup cohort day:
@@ -66,6 +70,41 @@ order by 1 desc
 limit 30;
 ```
 
+## Web-to-App Prompt KPI Slice
+- Prompt trend (views, clicks, open-app, dismiss):
+```sql
+select
+  day,
+  prompt_views,
+  prompt_clicks,
+  prompt_open_app_clicks,
+  prompt_waitlist_clicks,
+  prompt_dismissals,
+  prompt_ctr_pct,
+  prompt_open_app_share_pct,
+  prompt_dismiss_rate_pct
+from public.analytics_kpi_daily
+order by day desc
+limit 30;
+```
+
+- Prompt performance by reason:
+```sql
+select
+  day,
+  reason,
+  prompt_views,
+  prompt_clicks,
+  prompt_open_app_clicks,
+  prompt_waitlist_clicks,
+  prompt_dismissals,
+  prompt_ctr_pct,
+  prompt_dismiss_rate_pct
+from public.analytics_web_to_app_prompt_reason_daily
+order by day desc, reason
+limit 60;
+```
+
 ## Experiment Cadence Support
 - Variant level conversion (requires variant data in `properties.variant` and test id in `properties.experiment_id`):
 ```sql
@@ -96,7 +135,8 @@ order by day desc, experiment_id, variant;
 
 ## Rollout Checklist
 1. Run `sql/migrations/20260218_analytics_kpi_views.sql`.
-2. Verify views:
+2. Run `sql/migrations/20260219_web_to_app_prompt_kpis.sql`.
+3. Verify views:
 ```sql
 select table_name
 from information_schema.views
@@ -104,7 +144,8 @@ where table_schema = 'public'
   and table_name in (
     'analytics_kpi_daily',
     'analytics_northstar_weekly',
-    'analytics_d7_retention_daily'
+    'analytics_d7_retention_daily',
+    'analytics_web_to_app_prompt_reason_daily'
   );
 ```
-3. Pin 3 queries in Supabase SQL editor or BI tool of choice.
+4. Pin 3 queries in Supabase SQL editor or BI tool of choice.

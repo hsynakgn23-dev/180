@@ -59,6 +59,11 @@
 - Prompt tetikleme kurallari ortak domain kontratina tasindi.
 - Prompt goruntuleme/tiklama/erteleme event'leri analytics'e eklendi.
 - `docs/MOBILE_PHASE0_PACKAGE_4_4.md` eklendi.
+15. Mobile web-to-app KPI bridge (phase-0.5):
+- Prompt event'leri (`viewed/clicked/dismissed`) KPI view katmanina eklendi.
+- Prompt CTR, open-app payi ve dismiss rate metrikleri `analytics_kpi_daily` icine alindi.
+- `analytics_web_to_app_prompt_reason_daily` view'i ile reason bazli trend sorgulari eklendi.
+- `docs/MOBILE_PHASE0_PACKAGE_4_5.md` eklendi.
 
 ## Bu Asamada Bilerek Yapilmayanlar
 - Yeni sayfa / yeni ana feature / yeni is akisi yok.
@@ -150,6 +155,11 @@
 - `src/App.tsx`
 - `.env.example`
 - `docs/MOBILE_PHASE0_PACKAGE_4_4.md`
+- `README.md`
+17. `mobile-phase0-web-to-app-kpi-bridge`:
+- `sql/migrations/20260219_web_to_app_prompt_kpis.sql`
+- `docs/KPI_DASHBOARD_2026Q1.md`
+- `docs/MOBILE_PHASE0_PACKAGE_4_5.md`
 - `README.md`
 
 ## Bundan Sonra Calisma Kurali

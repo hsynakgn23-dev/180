@@ -89,6 +89,7 @@ Optional edge-friendly cache (`api/daily.ts`, Redis/KV REST):
 - Rate limit migration SQL: `sql/migrations/20260213_rate_limits.sql`
 - Analytics migration SQL: `sql/migrations/20260215_analytics_events.sql`
 - Analytics KPI views SQL: `sql/migrations/20260218_analytics_kpi_views.sql`
+- Web-to-app prompt KPI SQL: `sql/migrations/20260219_web_to_app_prompt_kpis.sql`
 - Referral migration SQL: `sql/migrations/20260216_referral_program.sql`
 - Referral hardening SQL: `sql/migrations/20260217_referral_hardening_rpc.sql`
 - Rollout checklist: `docs/ROLLOUT_SOCIAL_MODEL.md`
@@ -105,6 +106,7 @@ Optional edge-friendly cache (`api/daily.ts`, Redis/KV REST):
 - Mobile phase-0 route-map package notes: `docs/MOBILE_PHASE0_PACKAGE_4_2.md`
 - Mobile phase-0 screen-map package notes: `docs/MOBILE_PHASE0_PACKAGE_4_3.md`
 - Mobile phase-0 web-to-app prompt package notes: `docs/MOBILE_PHASE0_PACKAGE_4_4.md`
+- Mobile phase-0 prompt KPI package notes: `docs/MOBILE_PHASE0_PACKAGE_4_5.md`
 
 ## Notes
 - Social interactions use relational tables (`ritual_echoes`, `ritual_replies`).
