@@ -65,6 +65,11 @@
 - `analytics_web_to_app_prompt_reason_daily` view'i ile reason bazli trend sorgulari eklendi.
 - `analytics_kpi_daily` kolon sirasi Postgres `CREATE OR REPLACE VIEW` uyumu icin sabitlendi.
 - `docs/MOBILE_PHASE0_PACKAGE_4_5.md` eklendi.
+16. Mobile deep-link app-store fallback (phase-0.6):
+- `Open In App` aksiyonuna platform bazli fallback eklendi (iOS/Android store URL veya waitlist).
+- Deep-link acilisinda sayfa hidden olmazsa kisa gecikme sonrasi fallback redirect tetikleniyor.
+- Fallback tiklari `web_to_app_prompt_clicked` (`action = open_app_fallback`) olarak loglaniyor.
+- `docs/MOBILE_PHASE0_PACKAGE_4_6.md` eklendi.
 
 ## Bu Asamada Bilerek Yapilmayanlar
 - Yeni sayfa / yeni ana feature / yeni is akisi yok.
@@ -162,6 +167,11 @@
 - `docs/KPI_DASHBOARD_2026Q1.md`
 - `docs/MOBILE_PHASE0_PACKAGE_4_5.md`
 - `README.md`
+18. `mobile-phase0-deeplink-store-fallback`:
+- `src/components/WebToAppPrompt.tsx`
+- `.env.example`
+- `README.md`
+- `docs/MOBILE_PHASE0_PACKAGE_4_6.md`
 
 ## Bundan Sonra Calisma Kurali
 1. Her turda tek paket veya alt-paket.

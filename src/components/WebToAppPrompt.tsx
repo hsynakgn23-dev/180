@@ -11,6 +11,9 @@ type WebToAppPromptProps = {
 
 const DISMISS_STORAGE_KEY = '180_web_to_app_prompt_dismiss_until_v1';
 const DISMISS_WINDOW_HOURS = 48;
+const APP_OPEN_FALLBACK_DELAY_MS = 1400;
+const IOS_USER_AGENT_REGEX = /(iphone|ipad|ipod)/i;
+const ANDROID_USER_AGENT_REGEX = /android/i;
 
 const readDismissUntil = (): string | null => {
     try {
@@ -32,6 +35,40 @@ const writeDismissUntil = (value: string) => {
 
 const getWaitlistUrl = (): string => {
     return String(import.meta.env.VITE_MOBILE_WAITLIST_URL || '').trim();
+};
+
+const getStoreUrls = (): { ios: string; android: string } => ({
+    ios: String(import.meta.env.VITE_MOBILE_APP_STORE_IOS_URL || '').trim(),
+    android: String(import.meta.env.VITE_MOBILE_APP_STORE_ANDROID_URL || '').trim()
+});
+
+const resolveOpenAppFallback = (
+    waitlistUrl: string
+): { url: string; source: 'ios_store' | 'android_store' | 'waitlist' | 'none' } => {
+    const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+    const stores = getStoreUrls();
+
+    if (IOS_USER_AGENT_REGEX.test(userAgent) && stores.ios) {
+        return { url: stores.ios, source: 'ios_store' };
+    }
+
+    if (ANDROID_USER_AGENT_REGEX.test(userAgent) && stores.android) {
+        return { url: stores.android, source: 'android_store' };
+    }
+
+    if (stores.ios) {
+        return { url: stores.ios, source: 'ios_store' };
+    }
+
+    if (stores.android) {
+        return { url: stores.android, source: 'android_store' };
+    }
+
+    if (waitlistUrl) {
+        return { url: waitlistUrl, source: 'waitlist' };
+    }
+
+    return { url: '', source: 'none' };
 };
 
 export const WebToAppPrompt = ({ streak, dailyRitualsCount, inviteCode }: WebToAppPromptProps) => {
@@ -78,6 +115,45 @@ export const WebToAppPrompt = ({ streak, dailyRitualsCount, inviteCode }: WebToA
     if (!decision.shouldShow || isDismissed) return null;
 
     const handleOpenApp = () => {
+        const fallback = resolveOpenAppFallback(waitlistUrl);
+        let fallbackDone = false;
+        let fallbackTimer: number | null = null;
+
+        const cleanup = () => {
+            if (fallbackTimer !== null) {
+                window.clearTimeout(fallbackTimer);
+                fallbackTimer = null;
+            }
+            document.removeEventListener('visibilitychange', onVisibilityChange);
+        };
+
+        const onVisibilityChange = () => {
+            if (document.visibilityState === 'hidden') {
+                fallbackDone = true;
+                cleanup();
+            }
+        };
+
+        if (fallback.url) {
+            document.addEventListener('visibilitychange', onVisibilityChange);
+            fallbackTimer = window.setTimeout(() => {
+                if (fallbackDone || document.visibilityState === 'hidden') {
+                    cleanup();
+                    return;
+                }
+
+                trackEvent('web_to_app_prompt_clicked', {
+                    action: 'open_app_fallback',
+                    reason: decision.reason,
+                    routeTarget: decision.routeIntent.target,
+                    fallbackSource: fallback.source
+                });
+                fallbackDone = true;
+                cleanup();
+                window.location.assign(fallback.url);
+            }, APP_OPEN_FALLBACK_DELAY_MS);
+        }
+
         trackEvent('web_to_app_prompt_clicked', {
             action: 'open_app',
             reason: decision.reason,

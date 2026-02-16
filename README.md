@@ -52,6 +52,8 @@ Client:
 - `VITE_REFERRAL_API_BASE` (optional, default same-origin API)
 - `VITE_MOBILE_DEEP_LINK_BASE` (optional, default `absolutecinema://open`)
 - `VITE_MOBILE_WAITLIST_URL` (optional, used by web-to-app mobile prompt CTA)
+- `VITE_MOBILE_APP_STORE_IOS_URL` (optional iOS fallback URL when deep link open fails)
+- `VITE_MOBILE_APP_STORE_ANDROID_URL` (optional Android fallback URL when deep link open fails)
 
 Server/cron (`api/cron/daily.ts`):
 - `SUPABASE_URL`
@@ -107,6 +109,7 @@ Optional edge-friendly cache (`api/daily.ts`, Redis/KV REST):
 - Mobile phase-0 screen-map package notes: `docs/MOBILE_PHASE0_PACKAGE_4_3.md`
 - Mobile phase-0 web-to-app prompt package notes: `docs/MOBILE_PHASE0_PACKAGE_4_4.md`
 - Mobile phase-0 prompt KPI package notes: `docs/MOBILE_PHASE0_PACKAGE_4_5.md`
+- Mobile phase-0 app-store fallback package notes: `docs/MOBILE_PHASE0_PACKAGE_4_6.md`
 
 ## Notes
 - Social interactions use relational tables (`ritual_echoes`, `ritual_replies`).
