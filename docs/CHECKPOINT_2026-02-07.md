@@ -54,6 +54,11 @@
 - Route intent'lerden sabit ekran id ureten ortak screen mapper eklendi.
 - Deep-link payload'ina `screen` parametresi eklendi.
 - `docs/MOBILE_PHASE0_PACKAGE_4_3.md` eklendi.
+14. Mobile web-to-app prompt (phase-0.4):
+- Yuksek niyetli kullanicilar icin (streak/ritual bazli) app acilis promptu eklendi.
+- Prompt tetikleme kurallari ortak domain kontratina tasindi.
+- Prompt goruntuleme/tiklama/erteleme event'leri analytics'e eklendi.
+- `docs/MOBILE_PHASE0_PACKAGE_4_4.md` eklendi.
 
 ## Bu Asamada Bilerek Yapilmayanlar
 - Yeni sayfa / yeni ana feature / yeni is akisi yok.
@@ -136,6 +141,15 @@
 - `src/domain/mobileScreenMap.ts`
 - `src/domain/deepLinks.ts`
 - `docs/MOBILE_PHASE0_PACKAGE_4_3.md`
+- `README.md`
+16. `mobile-phase0-web-to-app-prompt`:
+- `src/domain/mobileWebPromptContract.ts`
+- `src/components/WebToAppPrompt.tsx`
+- `src/domain/deepLinks.ts`
+- `src/domain/analyticsEvents.ts`
+- `src/App.tsx`
+- `.env.example`
+- `docs/MOBILE_PHASE0_PACKAGE_4_4.md`
 - `README.md`
 
 ## Bundan Sonra Calisma Kurali

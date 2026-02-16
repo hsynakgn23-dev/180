@@ -1,5 +1,6 @@
 import {
     encodeMobileRouteIntentToParams,
+    normalizeMobileRouteIntent,
     parseMobileRouteIntentFromParams,
     type MobileRouteIntent
 } from './mobileRouteContract';
@@ -43,10 +44,14 @@ const toRouteIntent = (input: MobileDeepLinkInput): MobileRouteIntent => {
 };
 
 export const buildMobileDeepLink = (input: MobileDeepLinkInput): string => {
+    return buildMobileDeepLinkFromRouteIntent(toRouteIntent(input));
+};
+
+export const buildMobileDeepLinkFromRouteIntent = (routeIntent: MobileRouteIntent): string => {
     const base = getMobileDeepLinkBase();
-    const routeIntent = toRouteIntent(input);
-    const routeParams = encodeMobileRouteIntentToParams(routeIntent);
-    const screenPlan = resolveMobileScreenPlan(routeIntent);
+    const normalizedIntent = normalizeMobileRouteIntent(routeIntent);
+    const routeParams = encodeMobileRouteIntentToParams(normalizedIntent);
+    const screenPlan = resolveMobileScreenPlan(normalizedIntent);
     const params = {
         ...routeParams,
         screen: screenPlan.screen,

@@ -39,6 +39,9 @@ const LoginView = lazy(() =>
 const LandingPage = lazy(() =>
   import('./features/landing/LandingPage').then((mod) => ({ default: mod.LandingPage }))
 )
+const WebToAppPrompt = lazy(() =>
+  import('./components/WebToAppPrompt').then((mod) => ({ default: mod.WebToAppPrompt }))
+)
 
 const parsePublicProfileHash = (hash: string): PublicProfileTarget | null => {
   const normalized = (hash || '').trim()
@@ -85,7 +88,10 @@ const AppContent = () => {
     dismissSharePrompt,
     user,
     isPasswordRecoveryMode,
-    avatarUrl
+    avatarUrl,
+    streak,
+    dailyRitualsCount,
+    inviteCode
   } = useXP();
   const [activeMovie, setActiveMovie] = useState<Movie | null>(null);
   const [detailMovie, setDetailMovie] = useState<Movie | null>(null);
@@ -296,6 +302,14 @@ const AppContent = () => {
               <p className="text-clay font-medium tracking-[0.2em] text-sm md:text-base uppercase">{text.app.brandSubtitle}</p>
             </button>
           </header>
+
+          <Suspense fallback={null}>
+            <WebToAppPrompt
+              streak={streak}
+              dailyRitualsCount={dailyRitualsCount}
+              inviteCode={inviteCode}
+            />
+          </Suspense>
 
           <section className="mb-6 sm:mb-8 rounded-xl border border-white/10 bg-white/[0.03] px-4 sm:px-5 py-4">
             <p className="text-[10px] sm:text-[11px] uppercase tracking-[0.2em] text-sage/80 mb-3">

@@ -23,7 +23,10 @@ export const ANALYTICS_EVENT_NAMES = [
     'invite_clicked',
     'invite_accepted',
     'invite_reward_granted',
-    'invite_claim_failed'
+    'invite_claim_failed',
+    'web_to_app_prompt_viewed',
+    'web_to_app_prompt_clicked',
+    'web_to_app_prompt_dismissed'
 ] as const;
 
 export type AnalyticsEventName = (typeof ANALYTICS_EVENT_NAMES)[number];
