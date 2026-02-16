@@ -101,6 +101,7 @@ Optional edge-friendly cache (`api/daily.ts`, Redis/KV REST):
 - Referral 3.1 test checklist: `docs/TEST_PLAN_REFERRAL_3_1.md`
 - Mobile phase-0 package notes: `docs/MOBILE_PHASE0_PACKAGE_4.md`
 - Mobile phase-0 deep-link package notes: `docs/MOBILE_PHASE0_PACKAGE_4_1.md`
+- Mobile phase-0 route-map package notes: `docs/MOBILE_PHASE0_PACKAGE_4_2.md`
 
 ## Notes
 - Social interactions use relational tables (`ritual_echoes`, `ritual_replies`).
@@ -114,3 +115,4 @@ Optional edge-friendly cache (`api/daily.ts`, Redis/KV REST):
   - `/discover/daily-curated-picks/`
 - SEO package notes: `docs/SEO_PACKAGE_2.md`
 - Mobile/web shared analytics contract: `src/domain/analyticsEvents.ts`
+- Mobile route-map contract: `src/domain/mobileRouteContract.ts`

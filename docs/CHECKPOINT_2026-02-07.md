@@ -46,6 +46,10 @@
 - Invite/share linkleri app intent parametreleri (`app_target`, `app_link`) ile zenginlestirildi.
 - Deep-link helper ortak domain katmanina eklendi.
 - `docs/MOBILE_PHASE0_PACKAGE_4_1.md` eklendi.
+12. Mobile route-map contract (phase-0.2):
+- Deep-link hedef/parametre normalize ve parse kurallari ortak domain katmanina tasindi.
+- `src/domain/mobileRouteContract.ts` eklendi.
+- `docs/MOBILE_PHASE0_PACKAGE_4_2.md` eklendi.
 
 ## Bu Asamada Bilerek Yapilmayanlar
 - Yeni sayfa / yeni ana feature / yeni is akisi yok.
@@ -119,6 +123,11 @@
 - `.env.example`
 - `README.md`
 - `docs/MOBILE_PHASE0_PACKAGE_4_1.md`
+14. `mobile-phase0-route-map-contract`:
+- `src/domain/mobileRouteContract.ts`
+- `src/domain/deepLinks.ts`
+- `docs/MOBILE_PHASE0_PACKAGE_4_2.md`
+- `README.md`
 
 ## Bundan Sonra Calisma Kurali
 1. Her turda tek paket veya alt-paket.

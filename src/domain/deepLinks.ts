@@ -1,4 +1,8 @@
-type MobileDeepLinkType = 'daily' | 'invite' | 'share';
+import {
+    encodeMobileRouteIntentToParams,
+    parseMobileRouteIntentFromParams,
+    type MobileRouteIntent
+} from './mobileRouteContract';
 
 type MobileDeepLinkInput =
     | { type: 'daily' }
@@ -22,35 +26,40 @@ const appendQuery = (base: string, params: Record<string, string>): string => {
     return `${base}${base.includes('?') ? '&' : '?'}${query}`;
 };
 
+const toRouteIntent = (input: MobileDeepLinkInput): MobileRouteIntent => {
+    if (input.type === 'daily') {
+        return { target: 'daily' };
+    }
+    if (input.type === 'invite') {
+        return { target: 'invite', invite: input.inviteCode };
+    }
+    return {
+        target: 'share',
+        platform: input.platform as 'instagram' | 'tiktok' | 'x' | undefined,
+        goal: input.goal as 'comment' | 'streak' | undefined,
+        invite: input.inviteCode
+    };
+};
+
 export const buildMobileDeepLink = (input: MobileDeepLinkInput): string => {
     const base = getMobileDeepLinkBase();
-    const common: Record<string, string> = {
-        target: input.type
-    };
-
-    if (input.type === 'invite') {
-        const inviteCode = normalizeValue(input.inviteCode, 16).toUpperCase().replace(/[^A-Z0-9]/g, '');
-        if (inviteCode) {
-            common.invite = inviteCode;
-        }
-    }
-
-    if (input.type === 'share') {
-        const platform = normalizeValue(input.platform, 24).toLowerCase();
-        const goal = normalizeValue(input.goal, 24).toLowerCase();
-        const inviteCode = normalizeValue(input.inviteCode, 16).toUpperCase().replace(/[^A-Z0-9]/g, '');
-
-        if (platform) common.platform = platform;
-        if (goal) common.goal = goal;
-        if (inviteCode) common.invite = inviteCode;
-    }
-
-    return appendQuery(base, common);
+    return appendQuery(base, encodeMobileRouteIntentToParams(toRouteIntent(input)));
 };
 
 export const appendMobileDeepLinkParams = (url: URL, input: MobileDeepLinkInput): URL => {
-    const target: MobileDeepLinkType = input.type;
+    const target = toRouteIntent(input).target;
     url.searchParams.set('app_target', target);
     url.searchParams.set('app_link', buildMobileDeepLink(input));
     return url;
+};
+
+export const parseMobileDeepLink = (value: string): MobileRouteIntent | null => {
+    const raw = normalizeValue(value, 500);
+    if (!raw) return null;
+    try {
+        const parsed = new URL(raw);
+        return parseMobileRouteIntentFromParams(parsed.searchParams);
+    } catch {
+        return null;
+    }
 };
