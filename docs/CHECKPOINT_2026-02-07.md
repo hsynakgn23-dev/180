@@ -63,6 +63,7 @@
 - Prompt event'leri (`viewed/clicked/dismissed`) KPI view katmanina eklendi.
 - Prompt CTR, open-app payi ve dismiss rate metrikleri `analytics_kpi_daily` icine alindi.
 - `analytics_web_to_app_prompt_reason_daily` view'i ile reason bazli trend sorgulari eklendi.
+- `analytics_kpi_daily` kolon sirasi Postgres `CREATE OR REPLACE VIEW` uyumu icin sabitlendi.
 - `docs/MOBILE_PHASE0_PACKAGE_4_5.md` eklendi.
 
 ## Bu Asamada Bilerek Yapilmayanlar

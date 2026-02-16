@@ -26,3 +26,6 @@
 ## Validation
 - `npm run lint`
 - `npm run build`
+
+## Compatibility Note
+- `analytics_kpi_daily` keeps existing base column order and appends new prompt columns at the end to stay compatible with `CREATE OR REPLACE VIEW` updates.

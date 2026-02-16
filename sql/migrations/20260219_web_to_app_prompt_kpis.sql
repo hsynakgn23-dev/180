@@ -31,11 +31,6 @@ select
   ritual_creators,
   sharers,
   invite_acceptors,
-  prompt_views,
-  prompt_clicks,
-  prompt_dismissals,
-  prompt_open_app_clicks,
-  prompt_waitlist_clicks,
   case
     when sessions = 0 then 0
     else round((signups::numeric / sessions) * 100, 2)
@@ -48,6 +43,11 @@ select
     when ritual_creators = 0 then 0
     else round((sharers::numeric / ritual_creators) * 100, 2)
   end as share_rate_per_active_pct,
+  prompt_views,
+  prompt_clicks,
+  prompt_dismissals,
+  prompt_open_app_clicks,
+  prompt_waitlist_clicks,
   case
     when prompt_views = 0 then 0
     else round((prompt_clicks::numeric / prompt_views) * 100, 2)

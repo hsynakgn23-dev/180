@@ -136,6 +136,7 @@ order by day desc, experiment_id, variant;
 ## Rollout Checklist
 1. Run `sql/migrations/20260218_analytics_kpi_views.sql`.
 2. Run `sql/migrations/20260219_web_to_app_prompt_kpis.sql`.
+   If you hit `42P16` on `analytics_kpi_daily`, re-run with base KPI columns kept in their original order, and append prompt columns after `share_rate_per_active_pct`.
 3. Verify views:
 ```sql
 select table_name
