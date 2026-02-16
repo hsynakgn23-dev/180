@@ -50,6 +50,10 @@
 - Deep-link hedef/parametre normalize ve parse kurallari ortak domain katmanina tasindi.
 - `src/domain/mobileRouteContract.ts` eklendi.
 - `docs/MOBILE_PHASE0_PACKAGE_4_2.md` eklendi.
+13. Mobile screen-map contract (phase-0.3):
+- Route intent'lerden sabit ekran id ureten ortak screen mapper eklendi.
+- Deep-link payload'ina `screen` parametresi eklendi.
+- `docs/MOBILE_PHASE0_PACKAGE_4_3.md` eklendi.
 
 ## Bu Asamada Bilerek Yapilmayanlar
 - Yeni sayfa / yeni ana feature / yeni is akisi yok.
@@ -127,6 +131,11 @@
 - `src/domain/mobileRouteContract.ts`
 - `src/domain/deepLinks.ts`
 - `docs/MOBILE_PHASE0_PACKAGE_4_2.md`
+- `README.md`
+15. `mobile-phase0-screen-map-contract`:
+- `src/domain/mobileScreenMap.ts`
+- `src/domain/deepLinks.ts`
+- `docs/MOBILE_PHASE0_PACKAGE_4_3.md`
 - `README.md`
 
 ## Bundan Sonra Calisma Kurali

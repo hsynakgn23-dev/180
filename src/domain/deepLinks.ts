@@ -3,6 +3,7 @@ import {
     parseMobileRouteIntentFromParams,
     type MobileRouteIntent
 } from './mobileRouteContract';
+import { resolveMobileScreenPlan } from './mobileScreenMap';
 
 type MobileDeepLinkInput =
     | { type: 'daily' }
@@ -43,7 +44,15 @@ const toRouteIntent = (input: MobileDeepLinkInput): MobileRouteIntent => {
 
 export const buildMobileDeepLink = (input: MobileDeepLinkInput): string => {
     const base = getMobileDeepLinkBase();
-    return appendQuery(base, encodeMobileRouteIntentToParams(toRouteIntent(input)));
+    const routeIntent = toRouteIntent(input);
+    const routeParams = encodeMobileRouteIntentToParams(routeIntent);
+    const screenPlan = resolveMobileScreenPlan(routeIntent);
+    const params = {
+        ...routeParams,
+        screen: screenPlan.screen,
+        ...screenPlan.params
+    };
+    return appendQuery(base, params);
 };
 
 export const appendMobileDeepLinkParams = (url: URL, input: MobileDeepLinkInput): URL => {
