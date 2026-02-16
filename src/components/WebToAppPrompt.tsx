@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { buildMobileDeepLinkFromRouteIntent } from '../domain/deepLinks';
 import { resolveMobileWebPromptDecision } from '../domain/mobileWebPromptContract';
 import { trackEvent } from '../lib/analytics';
+import { useLanguage } from '../context/LanguageContext';
 
 type WebToAppPromptProps = {
     streak: number;
@@ -72,6 +73,7 @@ const resolveOpenAppFallback = (
 };
 
 export const WebToAppPrompt = ({ streak, dailyRitualsCount, inviteCode }: WebToAppPromptProps) => {
+    const { text } = useLanguage();
     const [dismissUntil, setDismissUntil] = useState<string | null>(() => readDismissUntil());
     const [nowMs, setNowMs] = useState(0);
     const [viewTrackedKey, setViewTrackedKey] = useState('');
@@ -186,20 +188,20 @@ export const WebToAppPrompt = ({ streak, dailyRitualsCount, inviteCode }: WebToA
         <section className="mb-6 sm:mb-8 rounded-xl border border-sage/30 bg-gradient-to-r from-sage/20 via-sage/10 to-transparent px-4 sm:px-5 py-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <p className="text-[10px] uppercase tracking-[0.2em] text-sage/90">Mobile Prompt</p>
-                    <h2 className="mt-1 text-base sm:text-lg font-semibold text-white">Continue in the app</h2>
+                    <p className="text-[10px] uppercase tracking-[0.2em] text-sage/90">{text.webToApp.badge}</p>
+                    <h2 className="mt-1 text-base sm:text-lg font-semibold text-white">{text.webToApp.title}</h2>
                     <p className="mt-1 text-xs sm:text-sm text-white/70">
-                        Open your next ritual flow on mobile and keep your momentum synced.
+                        {text.webToApp.subtitle}
                     </p>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end">
                     <button
                         type="button"
                         onClick={handleOpenApp}
-                        className="inline-flex items-center rounded-md border border-sage/50 bg-sage/20 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-sage hover:bg-sage/30 transition-colors"
+                        className="inline-flex w-full justify-center items-center rounded-md border border-sage/50 bg-sage/20 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-sage hover:bg-sage/30 transition-colors sm:w-auto"
                     >
-                        Open In App
+                        {text.webToApp.openInApp}
                     </button>
                     {waitlistUrl ? (
                         <a
@@ -207,17 +209,17 @@ export const WebToAppPrompt = ({ streak, dailyRitualsCount, inviteCode }: WebToA
                             target="_blank"
                             rel="noreferrer"
                             onClick={handleWaitlistClick}
-                            className="inline-flex items-center rounded-md border border-white/20 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-white/80 hover:text-sage hover:border-sage/50 transition-colors"
+                            className="inline-flex w-full justify-center items-center rounded-md border border-white/20 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-white/80 hover:text-sage hover:border-sage/50 transition-colors sm:w-auto"
                         >
-                            Join Mobile Beta
+                            {text.webToApp.joinBeta}
                         </a>
                     ) : null}
                     <button
                         type="button"
                         onClick={handleDismiss}
-                        className="inline-flex items-center rounded-md border border-white/20 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-white/70 hover:text-white transition-colors"
+                        className="inline-flex w-full justify-center items-center rounded-md border border-white/20 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-white/70 hover:text-white transition-colors sm:w-auto"
                     >
-                        Later
+                        {text.webToApp.later}
                     </button>
                 </div>
             </div>

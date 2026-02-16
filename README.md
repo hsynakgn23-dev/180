@@ -110,6 +110,7 @@ Optional edge-friendly cache (`api/daily.ts`, Redis/KV REST):
 - Mobile phase-0 web-to-app prompt package notes: `docs/MOBILE_PHASE0_PACKAGE_4_4.md`
 - Mobile phase-0 prompt KPI package notes: `docs/MOBILE_PHASE0_PACKAGE_4_5.md`
 - Mobile phase-0 app-store fallback package notes: `docs/MOBILE_PHASE0_PACKAGE_4_6.md`
+- UI i18n/mobile consistency audit notes: `docs/UI_I18N_MOBILE_AUDIT_2026Q1_P1.md`
 
 ## Notes
 - Social interactions use relational tables (`ritual_echoes`, `ritual_replies`).

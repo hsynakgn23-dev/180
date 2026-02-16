@@ -70,6 +70,12 @@
 - Deep-link acilisinda sayfa hidden olmazsa kisa gecikme sonrasi fallback redirect tetikleniyor.
 - Fallback tiklari `web_to_app_prompt_clicked` (`action = open_app_fallback`) olarak loglaniyor.
 - `docs/MOBILE_PHASE0_PACKAGE_4_6.md` eklendi.
+17. UI i18n + mobile consistency audit (p1):
+- App shell'deki hardcoded discover/loading/fallback metinleri dil sozlugune tasindi.
+- Footer SEO link label'lari i18n'e baglandi.
+- Web-to-app prompt metinleri i18n'e baglandi.
+- Mobilde prompt aksiyon butonlari full-width/stack davranisina alinarak tutarlilik iyilestirildi.
+- `docs/UI_I18N_MOBILE_AUDIT_2026Q1_P1.md` eklendi.
 
 ## Bu Asamada Bilerek Yapilmayanlar
 - Yeni sayfa / yeni ana feature / yeni is akisi yok.
@@ -172,6 +178,12 @@
 - `.env.example`
 - `README.md`
 - `docs/MOBILE_PHASE0_PACKAGE_4_6.md`
+19. `ui-i18n-mobile-audit-p1`:
+- `src/i18n/dictionary.ts`
+- `src/App.tsx`
+- `src/components/InfoFooter.tsx`
+- `src/components/WebToAppPrompt.tsx`
+- `docs/UI_I18N_MOBILE_AUDIT_2026Q1_P1.md`
 
 ## Bundan Sonra Calisma Kurali
 1. Her turda tek paket veya alt-paket.

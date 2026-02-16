@@ -16,6 +16,22 @@ export type UiDictionary = {
         brandSubtitle: string;
         profileTitle: string;
         profileAria: string;
+        discoverSectionTitle: string;
+        discoverMoodLink: string;
+        discoverDirectorLink: string;
+        discoverDailyLink: string;
+        loadingDailyShowcase: string;
+        loadingArena: string;
+        dailyUnavailable: string;
+        arenaUnavailable: string;
+    };
+    webToApp: {
+        badge: string;
+        title: string;
+        subtitle: string;
+        openInApp: string;
+        joinBeta: string;
+        later: string;
     };
     landing: {
         login: string;
@@ -277,7 +293,27 @@ export type UiDictionary = {
 
 export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
     tr: {
-        app: { brandSubtitle: 'Absolute Cinema', profileTitle: 'Profil', profileAria: 'Profili ac' },
+        app: {
+            brandSubtitle: 'Absolute Cinema',
+            profileTitle: 'Profil',
+            profileAria: 'Profili ac',
+            discoverSectionTitle: 'Editor Kesifleri',
+            discoverMoodLink: 'Ruh Haline Gore En Iyi Filmler',
+            discoverDirectorLink: 'Yonetmen Derin Incelemeleri',
+            discoverDailyLink: 'Gunluk Ozenli Secimler',
+            loadingDailyShowcase: 'Gunluk vitrin yukleniyor...',
+            loadingArena: 'Arena yukleniyor...',
+            dailyUnavailable: 'Gunluk liste gecici olarak kullanilamiyor. Lutfen biraz sonra yenileyin.',
+            arenaUnavailable: 'Arena gecici olarak kullanilamiyor. Oturumunuz aktif kalacak.'
+        },
+        webToApp: {
+            badge: 'Mobil Devam',
+            title: 'Uygulamada devam et',
+            subtitle: 'Bir sonraki rituel akisini mobilde ac ve ritmini koru.',
+            openInApp: 'Uygulamada Ac',
+            joinBeta: 'Mobil Betaya Katil',
+            later: 'Sonra'
+        },
         landing: {
             login: 'Giris Yap', refreshInfo: 'Her gun 00:00 yenilenir', titleLine1: 'GUNLUK', titleLine2: 'SINEMA LISTESI',
             subtitle: 'Her gün özenle secilen 5 filmden birine 180 karakterlik yorum yaz ve ilerlemeni sürdür', start: 'Basla',
@@ -379,7 +415,27 @@ export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
         xp: { markUnlockedFallback: 'Yeni isaret acildi.' }
     },
     en: {
-        app: { brandSubtitle: 'Absolute Cinema', profileTitle: 'Profile', profileAria: 'Open profile' },
+        app: {
+            brandSubtitle: 'Absolute Cinema',
+            profileTitle: 'Profile',
+            profileAria: 'Open profile',
+            discoverSectionTitle: 'Editorial Discoveries',
+            discoverMoodLink: 'Best Films by Mood',
+            discoverDirectorLink: 'Director Deep Dives',
+            discoverDailyLink: 'Daily Curated Picks',
+            loadingDailyShowcase: 'Loading daily showcase...',
+            loadingArena: 'Loading arena...',
+            dailyUnavailable: 'Daily list is temporarily unavailable. Please refresh in a moment.',
+            arenaUnavailable: 'Arena is temporarily unavailable. Your session is still active.'
+        },
+        webToApp: {
+            badge: 'Mobile Prompt',
+            title: 'Continue in the app',
+            subtitle: 'Open your next ritual flow on mobile and keep your momentum synced.',
+            openInApp: 'Open In App',
+            joinBeta: 'Join Mobile Beta',
+            later: 'Later'
+        },
         landing: {
             login: 'Login', refreshInfo: 'Refreshes every day at 00:00', titleLine1: 'DAILY', titleLine2: 'CINEMA LIST',
             subtitle: 'Write one focused 180-character comment on one of 5 curated daily films and keep your streak moving.', start: 'Start',

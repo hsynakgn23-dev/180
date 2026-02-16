@@ -26,18 +26,27 @@ const SOCIAL_LINKS = [
 
 const SEO_LINKS = [
     {
-        label: 'Mood Films',
+        key: 'mood',
         href: '/discover/mood-films/'
     },
     {
-        label: 'Director Deep Dives',
+        key: 'director',
         href: '/discover/director-deep-dives/'
     },
     {
-        label: 'Daily Curated Picks',
+        key: 'daily',
         href: '/discover/daily-curated-picks/'
     }
 ] as const;
+
+const getDiscoverLabel = (
+    key: (typeof SEO_LINKS)[number]['key'],
+    text: ReturnType<typeof useLanguage>['text']
+): string => {
+    if (key === 'mood') return text.app.discoverMoodLink;
+    if (key === 'director') return text.app.discoverDirectorLink;
+    return text.app.discoverDailyLink;
+};
 
 const renderSocialIcon = (label: string) => {
     if (label === 'X') {
@@ -190,7 +199,7 @@ export const InfoFooter: React.FC<InfoFooterProps> = ({
                             href={link.href}
                             className="transition-colors hover:text-sage"
                         >
-                            {link.label}
+                            {getDiscoverLabel(link.key, text)}
                         </a>
                     ))}
                     <div className="flex items-center gap-2 sm:gap-3">
