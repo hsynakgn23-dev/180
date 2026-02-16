@@ -38,6 +38,10 @@
 - Ucuncu crawlable landing page eklendi: `/discover/daily-curated-picks/`.
 - Root structured data ve sitemap bu sayfayi kapsayacak sekilde guncellendi.
 - App + footer ic linkleri yeni landing page'i include edecek sekilde guncellendi.
+10. Mobile phase-0 contract:
+- Analytics event isimleri ortak domain katmanina tasindi.
+- Web analytics bu ortak contract'i kullanacak sekilde guncellendi.
+- `docs/MOBILE_PHASE0_PACKAGE_4.md` eklendi.
 
 ## Bu Asamada Bilerek Yapilmayanlar
 - Yeni sayfa / yeni ana feature / yeni is akisi yok.
@@ -97,6 +101,11 @@
 - `src/components/InfoFooter.tsx`
 - `src/features/daily-showcase/DailyShowcase.tsx`
 - `docs/SEO_PACKAGE_3.md`
+- `README.md`
+12. `mobile-phase0-contract`:
+- `src/domain/analyticsEvents.ts`
+- `src/lib/analytics.ts`
+- `docs/MOBILE_PHASE0_PACKAGE_4.md`
 - `README.md`
 
 ## Bundan Sonra Calisma Kurali

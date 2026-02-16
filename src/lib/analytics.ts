@@ -1,35 +1,10 @@
+import type { AnalyticsEventName } from '../domain/analyticsEvents';
+
 type AnalyticsPrimitive = string | number | boolean | null;
 
 type JsonValue = AnalyticsPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
 export type AnalyticsProperties = Record<string, JsonValue | undefined>;
-
-export type AnalyticsEventName =
-    | 'session_start'
-    | 'page_view'
-    | 'auth_view'
-    | 'auth_submit'
-    | 'auth_failure'
-    | 'signup_success'
-    | 'signup_pending_confirmation'
-    | 'login_success'
-    | 'oauth_start'
-    | 'oauth_redirect_started'
-    | 'oauth_failure'
-    | 'password_reset_requested'
-    | 'password_reset_completed'
-    | 'ritual_submit_failed'
-    | 'ritual_submitted'
-    | 'share_click'
-    | 'share_opened'
-    | 'share_failed'
-    | 'share_reward_claimed'
-    | 'share_reward_denied'
-    | 'invite_created'
-    | 'invite_clicked'
-    | 'invite_accepted'
-    | 'invite_reward_granted'
-    | 'invite_claim_failed';
 
 export interface AttributionTouch {
     source: string;
