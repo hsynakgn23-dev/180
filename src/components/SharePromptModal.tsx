@@ -4,6 +4,7 @@ import { useLanguage } from '../context/LanguageContext';
 import type { LanguageCode } from '../i18n/localization';
 import { buildFilmOgImageUrl, buildProfileOgImageUrl } from '../lib/ogCards';
 import { trackEvent } from '../lib/analytics';
+import { appendMobileDeepLinkParams } from '../domain/deepLinks';
 
 type SharePlatform = 'instagram' | 'tiktok' | 'x';
 type ShareGoal = 'comment' | 'streak';
@@ -256,6 +257,12 @@ export const SharePromptModal: React.FC<SharePromptModalProps> = ({ event, onClo
         if (inviteCode) {
             shareUrl.searchParams.set('invite', inviteCode);
         }
+        appendMobileDeepLinkParams(shareUrl, {
+            type: 'share',
+            platform,
+            goal,
+            inviteCode: inviteCode || undefined
+        });
         const destinationUrl = shareUrl.toString();
 
         try {
@@ -275,6 +282,8 @@ export const SharePromptModal: React.FC<SharePromptModalProps> = ({ event, onClo
                 targetUrlType: platform === 'x' ? 'x_intent' : 'platform_home',
                 hasClipboardPayload: platform !== 'x',
                 inviteCode,
+                appTarget: 'share',
+                hasAppLink: shareUrl.searchParams.has('app_link'),
                 destinationUrl
             }, {
                 userId: user?.id || null

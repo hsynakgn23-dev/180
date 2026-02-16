@@ -12,6 +12,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { getRegistrationGenderLabel } from '../../i18n/localization';
 import { InfoFooter } from '../../components/InfoFooter';
 import { buildFilmOgImageUrl, buildProfileOgImageUrl } from '../../lib/ogCards';
+import { appendMobileDeepLinkParams } from '../../domain/deepLinks';
 
 interface ProfileViewProps {
     onClose: () => void;
@@ -524,6 +525,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
         if (inviteCode) {
             shareUrl.searchParams.set('invite', inviteCode);
         }
+        appendMobileDeepLinkParams(shareUrl, {
+            type: 'share',
+            platform,
+            goal,
+            inviteCode: inviteCode || undefined
+        });
         const destinationUrl = shareUrl.toString();
 
         try {

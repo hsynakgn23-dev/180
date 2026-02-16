@@ -50,6 +50,7 @@ Client:
 - `VITE_ANALYTICS_ENDPOINT` (optional, default `/api/analytics`)
 - `VITE_PUBLIC_APP_URL` (optional canonical app origin for share/invite links)
 - `VITE_REFERRAL_API_BASE` (optional, default same-origin API)
+- `VITE_MOBILE_DEEP_LINK_BASE` (optional, default `absolutecinema://open`)
 
 Server/cron (`api/cron/daily.ts`):
 - `SUPABASE_URL`
@@ -99,6 +100,7 @@ Optional edge-friendly cache (`api/daily.ts`, Redis/KV REST):
 - Referral hardening notes: `docs/REFERRAL_PACKAGE_3_1.md`
 - Referral 3.1 test checklist: `docs/TEST_PLAN_REFERRAL_3_1.md`
 - Mobile phase-0 package notes: `docs/MOBILE_PHASE0_PACKAGE_4.md`
+- Mobile phase-0 deep-link package notes: `docs/MOBILE_PHASE0_PACKAGE_4_1.md`
 
 ## Notes
 - Social interactions use relational tables (`ritual_echoes`, `ritual_replies`).

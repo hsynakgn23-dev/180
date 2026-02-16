@@ -5,6 +5,7 @@ import { supabase, isSupabaseLive } from '../lib/supabase';
 import { moderateComment } from '../lib/commentModeration';
 import { trackEvent } from '../lib/analytics';
 import { claimInviteCodeViaApi, ensureInviteCodeViaApi, getReferralDeviceKey } from '../lib/referralApi';
+import { appendMobileDeepLinkParams } from '../domain/deepLinks';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 // Types
@@ -458,6 +459,7 @@ const buildInviteLink = (inviteCode: string): string => {
     url.searchParams.set('utm_source', 'invite');
     url.searchParams.set('utm_medium', 'referral');
     url.searchParams.set('utm_campaign', 'user_invite');
+    appendMobileDeepLinkParams(url, { type: 'invite', inviteCode: normalized });
     return url.toString();
 };
 

@@ -42,6 +42,10 @@
 - Analytics event isimleri ortak domain katmanina tasindi.
 - Web analytics bu ortak contract'i kullanacak sekilde guncellendi.
 - `docs/MOBILE_PHASE0_PACKAGE_4.md` eklendi.
+11. Mobile deep-link contract (phase-0.1):
+- Invite/share linkleri app intent parametreleri (`app_target`, `app_link`) ile zenginlestirildi.
+- Deep-link helper ortak domain katmanina eklendi.
+- `docs/MOBILE_PHASE0_PACKAGE_4_1.md` eklendi.
 
 ## Bu Asamada Bilerek Yapilmayanlar
 - Yeni sayfa / yeni ana feature / yeni is akisi yok.
@@ -107,6 +111,14 @@
 - `src/lib/analytics.ts`
 - `docs/MOBILE_PHASE0_PACKAGE_4.md`
 - `README.md`
+13. `mobile-phase0-deeplink-contract`:
+- `src/domain/deepLinks.ts`
+- `src/context/XPContext.tsx`
+- `src/components/SharePromptModal.tsx`
+- `src/features/profile/ProfileView.tsx`
+- `.env.example`
+- `README.md`
+- `docs/MOBILE_PHASE0_PACKAGE_4_1.md`
 
 ## Bundan Sonra Calisma Kurali
 1. Her turda tek paket veya alt-paket.
