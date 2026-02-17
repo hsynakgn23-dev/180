@@ -174,35 +174,38 @@ export const InfoFooter: React.FC<InfoFooterProps> = ({
 
             <footer className={footerClassName}>
                 <p>{new Date().getFullYear()} 180 Absolute Cinema</p>
-                <div className="flex gap-6">
-                    <button
-                        type="button"
-                        onClick={() => toggleInfoSection('manifesto')}
-                        className={`transition-colors ${
-                            activeInfoSection === 'manifesto' ? 'text-sage' : 'hover:text-sage'
-                        }`}
-                    >
-                        {text.landing.footerManifesto}
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => toggleInfoSection('rules')}
-                        className={`transition-colors ${
-                            activeInfoSection === 'rules' ? 'text-sage' : 'hover:text-sage'
-                        }`}
-                    >
-                        {text.landing.footerRules}
-                    </button>
-                    {SEO_LINKS.map((link) => (
-                        <a
-                            key={link.href}
-                            href={link.href}
-                            className="transition-colors hover:text-sage"
+                <div className="flex flex-col items-center gap-3 md:flex-row md:items-center md:gap-6">
+                    <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 md:gap-6 text-center md:text-left">
+                        <button
+                            type="button"
+                            onClick={() => toggleInfoSection('manifesto')}
+                            className={`transition-colors ${
+                                activeInfoSection === 'manifesto' ? 'text-sage' : 'hover:text-sage'
+                            }`}
                         >
-                            {getDiscoverLabel(link.key, text)}
-                        </a>
-                    ))}
-                    <div className="flex items-center gap-2 sm:gap-3">
+                            {text.landing.footerManifesto}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => toggleInfoSection('rules')}
+                            className={`transition-colors ${
+                                activeInfoSection === 'rules' ? 'text-sage' : 'hover:text-sage'
+                            }`}
+                        >
+                            {text.landing.footerRules}
+                        </button>
+                        {SEO_LINKS.map((link) => (
+                            <a
+                                key={link.href}
+                                href={link.href}
+                                className="transition-colors hover:text-sage"
+                            >
+                                {getDiscoverLabel(link.key, text)}
+                            </a>
+                        ))}
+                    </div>
+
+                    <div className="flex items-center justify-center gap-2 sm:gap-3">
                         {SOCIAL_LINKS.map((social) => (
                             <a
                                 key={social.label}

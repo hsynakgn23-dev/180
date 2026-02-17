@@ -72,7 +72,7 @@ export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({ movie, onClo
                         className="absolute top-4 right-4 md:hidden text-white drop-shadow-md text-xl"
                         aria-label={text.movieDetail.close}
                     >
-                        ×
+                        &times;
                     </button>
                 </div>
 
@@ -81,7 +81,7 @@ export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({ movie, onClo
                         <div className="flex justify-between items-start">
                             <div>
                                 <h4 className="text-[10px] font-bold tracking-[0.2em] text-[#8A9A5B] uppercase mb-2 opacity-80">
-                                    {movie.genre} · {movie.year}
+                                    {movie.genre} / {movie.year}
                                 </h4>
                                 <h2 className="text-3xl md:text-4xl font-serif text-[#E5E4E2] leading-tight mb-2">
                                     {movie.title}
@@ -95,7 +95,7 @@ export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({ movie, onClo
                                 className="hidden md:block text-white/20 hover:text-white transition-colors"
                                 aria-label={text.movieDetail.close}
                             >
-                                ×
+                                &times;
                             </button>
                         </div>
                     </div>

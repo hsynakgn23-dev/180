@@ -19,7 +19,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStart }) => {
 
     return (
         <div className="min-h-screen bg-[#121212] text-[#E5E4E2] font-sans selection:bg-sage selection:text-white overflow-x-hidden flex flex-col">
-            <nav className="w-full z-50 px-6 py-8 flex justify-between items-center bg-[#121212]">
+            <nav className="w-full z-50 px-4 sm:px-6 py-5 sm:py-8 flex flex-wrap justify-between items-center gap-y-3 bg-[#121212]">
                 <div className="flex items-center gap-3">
                     <span className="text-2xl font-bold tracking-tighter text-sage">180</span>
                     <span className="h-4 w-px bg-white/10 hidden md:block" />
@@ -27,7 +27,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStart }) => {
                         {text.app.brandSubtitle.toUpperCase()}
                     </span>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 sm:gap-3 ml-auto">
                     <div
                         className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 p-1"
                         aria-label={text.settings.language}
@@ -39,7 +39,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStart }) => {
                                 onClick={() => setLanguage(option.code)}
                                 title={option.label}
                                 aria-label={option.label}
-                                className={`px-2 py-1 text-[9px] uppercase tracking-[0.16em] rounded transition-colors ${
+                                className={`px-1.5 sm:px-2 py-1 text-[9px] uppercase tracking-[0.16em] rounded transition-colors ${
                                     language === option.code
                                         ? 'bg-sage/20 text-sage font-bold'
                                         : 'text-white/55 hover:text-sage'
@@ -58,26 +58,26 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStart }) => {
                 </div>
             </nav>
 
-            <main className="flex-grow flex flex-col items-center justify-center max-w-4xl mx-auto w-full px-6 pt-12 pb-20 text-center">
+            <main className="flex-grow flex flex-col items-center justify-center max-w-4xl mx-auto w-full px-4 sm:px-6 pt-10 sm:pt-12 pb-20 text-center">
                 <div className="mb-8 flex flex-col items-center animate-fade-in">
                     <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-sage/20 bg-sage/5 mb-8">
                         <div className="w-1.5 h-1.5 rounded-full bg-sage animate-pulse" />
                         <span className="text-[10px] uppercase tracking-widest text-sage font-bold">{text.landing.refreshInfo}</span>
                     </div>
 
-                    <h1 className="text-5xl md:text-8xl font-bold tracking-tighter text-white mb-6 leading-[0.9]">
+                    <h1 className="text-4xl sm:text-5xl md:text-8xl font-bold tracking-tighter text-white mb-6 leading-[0.9] break-words">
                         {text.landing.titleLine1}
                         <br />
                         <span className="text-sage">{text.landing.titleLine2}</span>
                     </h1>
 
-                    <p className="text-xl md:text-2xl text-[#E5E4E2]/80 font-light leading-relaxed max-w-2xl mb-10">
+                    <p className="text-lg sm:text-xl md:text-2xl text-[#E5E4E2]/80 font-light leading-relaxed max-w-2xl mb-10">
                         {text.landing.subtitle}
                     </p>
 
                     <button
                         onClick={onStart}
-                        className="px-10 py-4 bg-sage text-[#121212] font-bold uppercase tracking-widest text-xs rounded hover:bg-[#9AB06B] transition-all hover:shadow-[0_0_30px_rgba(163,177,138,0.4)] hover:scale-105 active:scale-95"
+                        className="w-full sm:w-auto px-8 sm:px-10 py-4 bg-sage text-[#121212] font-bold uppercase tracking-widest text-xs rounded hover:bg-[#9AB06B] transition-all hover:shadow-[0_0_30px_rgba(163,177,138,0.4)] hover:scale-105 active:scale-95"
                     >
                         {text.landing.start}
                     </button>

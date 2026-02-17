@@ -286,7 +286,7 @@ const AppContent = () => {
         </Suspense>
       )}
 
-      <div className={`min-h-screen font-sans selection:bg-sage selection:text-white transition-opacity duration-500 ${activeMovie || showProfile || detailMovie || publicProfileTarget ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+      <div className={`min-h-screen overflow-x-hidden font-sans selection:bg-sage selection:text-white transition-opacity duration-500 ${activeMovie || showProfile || detailMovie || publicProfileTarget ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
         <div className="h-[72px] sm:h-[160px] w-full bg-transparent flex items-end justify-center pb-2 sm:pb-8 pointer-events-none" />
 
         <main className="container mx-auto px-4 sm:px-6 relative z-10">

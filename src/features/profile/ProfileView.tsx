@@ -863,7 +863,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
 
     return (
         <div
-            className={`fixed inset-0 z-50 bg-[var(--color-bg)] text-[var(--color-text)] flex flex-col items-center overflow-y-auto transition-opacity duration-500 ${isVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+            className={`fixed inset-0 z-50 bg-[var(--color-bg)] text-[var(--color-text)] flex flex-col items-center overflow-y-auto overflow-x-hidden transition-opacity duration-500 ${isVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         >
             {/* Top Right Controls */}
             <div className="absolute top-3 right-3 sm:top-8 sm:right-8 z-50 flex items-center gap-2 sm:gap-2.5">
