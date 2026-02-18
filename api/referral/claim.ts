@@ -23,6 +23,18 @@ type AuthUser = {
     email: string;
 };
 
+type ClaimSuccessData = {
+    code: string;
+    inviterUserId: string | null;
+    inviterRewardXp: number;
+    inviteeRewardXp: number;
+    claimCount: number;
+};
+
+type ClaimFallbackResult =
+    | { ok: true; data: ClaimSuccessData }
+    | { ok: false; status: number; errorCode: string; message: string };
+
 const INVITE_CODE_REGEX = /^[A-Z0-9]{6,12}$/;
 const DEVICE_KEY_REGEX = /^[a-zA-Z0-9:_-]{8,80}$/;
 
@@ -195,6 +207,228 @@ const mapClaimError = (
     return { errorCode: 'SERVER_ERROR', status: 500, message: 'Invite claim failed.' };
 };
 
+const isAmbiguousClaimCountError = (rawMessage: string): boolean => {
+    const text = rawMessage.toLowerCase();
+    return text.includes('claim_count') && text.includes('ambiguous');
+};
+
+const parseDbError = (value: unknown): { code: string; message: string; details: string } => {
+    const objectValue = toObject(value);
+    return {
+        code: toText(objectValue?.code, 40),
+        message: toText(objectValue?.message || objectValue?.error, 320),
+        details: toText(objectValue?.details, 320)
+    };
+};
+
+const serviceHeaders = (config: { serviceRoleKey: string }, extra: Record<string, string> = {}) => ({
+    apikey: config.serviceRoleKey,
+    Authorization: `Bearer ${config.serviceRoleKey}`,
+    'content-type': 'application/json',
+    ...extra
+});
+
+const fallbackClaimReferralInvite = async (
+    config: { url: string; serviceRoleKey: string },
+    input: {
+        inviteCode: string;
+        inviteeUserId: string;
+        inviteeEmail: string;
+        deviceKey: string;
+    }
+): Promise<ClaimFallbackResult> => {
+    const inviteCode = normalizeInviteCode(input.inviteCode);
+    const inviteeUserId = toText(input.inviteeUserId, 80);
+    const inviteeEmail = normalizeEmail(input.inviteeEmail, inviteeUserId);
+    const deviceKey = normalizeDeviceKey(input.deviceKey);
+    const today = new Date().toISOString().slice(0, 10);
+
+    const inviteResp = await fetch(
+        `${config.url}/rest/v1/referral_invites?code=eq.${encodeURIComponent(inviteCode)}&select=code,inviter_user_id,inviter_email,claim_count&limit=1`,
+        {
+            method: 'GET',
+            headers: serviceHeaders(config)
+        }
+    );
+    if (!inviteResp.ok) {
+        return { ok: false, status: 500, errorCode: 'SERVER_ERROR', message: 'Invite claim failed.' };
+    }
+
+    const inviteRows = (await inviteResp.json().catch(() => [])) as unknown;
+    const inviteRow = Array.isArray(inviteRows) ? toObject(inviteRows[0]) : null;
+    if (!inviteRow) {
+        return { ok: false, status: 404, errorCode: 'INVITE_NOT_FOUND', message: 'Invite code was not found.' };
+    }
+
+    const inviterUserId = toText(inviteRow.inviter_user_id, 80) || null;
+    const inviterEmail = normalizeEmail(toText(inviteRow.inviter_email, 240), inviterUserId || 'unknown');
+    const currentClaimCount = Number(inviteRow.claim_count || 0);
+
+    if (inviterUserId && inviterUserId === inviteeUserId) {
+        return { ok: false, status: 400, errorCode: 'SELF_INVITE', message: 'Self invite is not allowed.' };
+    }
+
+    if (inviterEmail === inviteeEmail) {
+        return { ok: false, status: 400, errorCode: 'SELF_INVITE', message: 'Self invite is not allowed.' };
+    }
+
+    const alreadyClaimedResp = await fetch(
+        `${config.url}/rest/v1/referral_claims?invitee_user_id=eq.${encodeURIComponent(inviteeUserId)}&select=id&limit=1`,
+        {
+            method: 'GET',
+            headers: serviceHeaders(config)
+        }
+    );
+    if (!alreadyClaimedResp.ok) {
+        return { ok: false, status: 500, errorCode: 'SERVER_ERROR', message: 'Invite claim failed.' };
+    }
+    const alreadyClaimedRows = (await alreadyClaimedResp.json().catch(() => [])) as unknown;
+    if (Array.isArray(alreadyClaimedRows) && alreadyClaimedRows.length > 0) {
+        return {
+            ok: false,
+            status: 409,
+            errorCode: 'ALREADY_CLAIMED',
+            message: 'Account already used an invite code.'
+        };
+    }
+
+    const deviceRowsResp = await fetch(
+        `${config.url}/rest/v1/referral_device_claims?device_key=eq.${encodeURIComponent(deviceKey)}&claim_date=eq.${encodeURIComponent(today)}&select=code,id&limit=10`,
+        {
+            method: 'GET',
+            headers: serviceHeaders(config)
+        }
+    );
+    if (!deviceRowsResp.ok) {
+        return { ok: false, status: 500, errorCode: 'SERVER_ERROR', message: 'Invite claim failed.' };
+    }
+
+    const deviceRows = (await deviceRowsResp.json().catch(() => [])) as unknown;
+    const normalizedDeviceRows = Array.isArray(deviceRows)
+        ? deviceRows.map((row) => toObject(row)).filter(Boolean) as Record<string, unknown>[]
+        : [];
+
+    if (normalizedDeviceRows.length >= 3) {
+        return {
+            ok: false,
+            status: 429,
+            errorCode: 'DEVICE_DAILY_LIMIT',
+            message: 'Device daily invite limit reached.'
+        };
+    }
+
+    const codeAlreadyUsedOnDevice = normalizedDeviceRows.some((row) => normalizeInviteCode(row.code) === inviteCode);
+    if (codeAlreadyUsedOnDevice) {
+        return {
+            ok: false,
+            status: 409,
+            errorCode: 'DEVICE_CODE_REUSE',
+            message: 'This device already claimed this code today.'
+        };
+    }
+
+    const insertClaimResp = await fetch(`${config.url}/rest/v1/referral_claims`, {
+        method: 'POST',
+        headers: serviceHeaders(config, { Prefer: 'return=minimal' }),
+        body: JSON.stringify({
+            code: inviteCode,
+            invitee_user_id: inviteeUserId,
+            invitee_email: inviteeEmail,
+            inviter_reward_xp: 40,
+            invitee_reward_xp: 24
+        })
+    });
+
+    if (!insertClaimResp.ok) {
+        const claimDbError = parseDbError(await insertClaimResp.json().catch(() => ({})));
+        const upper = `${claimDbError.code} ${claimDbError.message} ${claimDbError.details}`.toUpperCase();
+        if (upper.includes('23505') || upper.includes('UNIQUE') || upper.includes('INVITEE_USER_ID')) {
+            return {
+                ok: false,
+                status: 409,
+                errorCode: 'ALREADY_CLAIMED',
+                message: 'Account already used an invite code.'
+            };
+        }
+        return { ok: false, status: 500, errorCode: 'SERVER_ERROR', message: 'Invite claim failed.' };
+    }
+
+    const insertDeviceResp = await fetch(`${config.url}/rest/v1/referral_device_claims`, {
+        method: 'POST',
+        headers: serviceHeaders(config, { Prefer: 'return=minimal' }),
+        body: JSON.stringify({
+            device_key: deviceKey,
+            claim_date: today,
+            code: inviteCode,
+            invitee_user_id: inviteeUserId
+        })
+    });
+
+    if (!insertDeviceResp.ok) {
+        await fetch(
+            `${config.url}/rest/v1/referral_claims?invitee_user_id=eq.${encodeURIComponent(inviteeUserId)}&code=eq.${encodeURIComponent(inviteCode)}`,
+            {
+                method: 'DELETE',
+                headers: serviceHeaders(config)
+            }
+        ).catch(() => undefined);
+
+        const deviceDbError = parseDbError(await insertDeviceResp.json().catch(() => ({})));
+        const upper = `${deviceDbError.code} ${deviceDbError.message} ${deviceDbError.details}`.toUpperCase();
+        if (upper.includes('DEVICE_DAILY_LIMIT')) {
+            return {
+                ok: false,
+                status: 429,
+                errorCode: 'DEVICE_DAILY_LIMIT',
+                message: 'Device daily invite limit reached.'
+            };
+        }
+        if (upper.includes('23505') || upper.includes('UNIQUE') || upper.includes('DEVICE_KEY')) {
+            return {
+                ok: false,
+                status: 409,
+                errorCode: 'DEVICE_CODE_REUSE',
+                message: 'This device already claimed this code today.'
+            };
+        }
+        return { ok: false, status: 500, errorCode: 'SERVER_ERROR', message: 'Invite claim failed.' };
+    }
+
+    const nextClaimCount = (Number.isFinite(currentClaimCount) ? Math.max(0, currentClaimCount) : 0) + 1;
+    const patchInviteResp = await fetch(
+        `${config.url}/rest/v1/referral_invites?code=eq.${encodeURIComponent(inviteCode)}&select=claim_count`,
+        {
+            method: 'PATCH',
+            headers: serviceHeaders(config, { Prefer: 'return=representation' }),
+            body: JSON.stringify({
+                claim_count: nextClaimCount,
+                updated_at: new Date().toISOString()
+            })
+        }
+    );
+
+    let finalClaimCount = nextClaimCount;
+    if (patchInviteResp.ok) {
+        const patchedRows = (await patchInviteResp.json().catch(() => [])) as unknown;
+        const patchedRow = Array.isArray(patchedRows) ? toObject(patchedRows[0]) : null;
+        const patchedClaimCount = Number(patchedRow?.claim_count);
+        if (Number.isFinite(patchedClaimCount)) {
+            finalClaimCount = Math.max(0, patchedClaimCount);
+        }
+    }
+
+    return {
+        ok: true,
+        data: {
+            code: inviteCode,
+            inviterUserId,
+            inviterRewardXp: 40,
+            inviteeRewardXp: 24,
+            claimCount: finalClaimCount
+        }
+    };
+};
+
 export default async function handler(req: ApiRequest, res: ApiResponse) {
     const corsHeaders = {
         'access-control-allow-origin': '*',
@@ -282,6 +516,39 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     if (!rpcResponse.ok) {
         const rpcError = toObject(rawPayload);
         const rawMessage = toText(rpcError?.message || rpcError?.error || '', 320);
+
+        if (isAmbiguousClaimCountError(rawMessage)) {
+            const fallback = await fallbackClaimReferralInvite(config, {
+                inviteCode,
+                inviteeUserId: authUser.id,
+                inviteeEmail: authUser.email,
+                deviceKey
+            });
+
+            if (fallback.ok) {
+                return sendJson(
+                    res,
+                    200,
+                    {
+                        ok: true,
+                        data: fallback.data
+                    },
+                    corsHeaders
+                );
+            }
+
+            return sendJson(
+                res,
+                fallback.status,
+                {
+                    ok: false,
+                    errorCode: fallback.errorCode,
+                    message: fallback.message
+                },
+                corsHeaders
+            );
+        }
+
         const mapped = mapClaimError(rawMessage);
         return sendJson(
             res,
