@@ -196,9 +196,13 @@ create table if not exists public.profiles (
   email text,
   display_name text,
   xp_state jsonb not null default '{}'::jsonb,
+  mobile_push_state jsonb not null default '{}'::jsonb,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
+
+alter table public.profiles
+  add column if not exists mobile_push_state jsonb not null default '{}'::jsonb;
 
 -- 3. Row Level Security (RLS) Policies
 -- Essential for securing the data.

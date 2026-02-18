@@ -175,13 +175,13 @@ export const LoginView: React.FC = () => {
     };
 
     return (
-        <div className="fixed inset-0 z-[100] bg-[#121212] flex flex-col items-center justify-center animate-fade-in p-6 overflow-hidden">
+        <div className="fixed inset-0 z-[100] bg-[#121212] flex flex-col items-center justify-center animate-fade-in p-4 sm:p-6 overflow-x-hidden overflow-y-auto">
             <div className="w-full max-w-sm flex flex-col items-center">
                 <div className="mb-12 text-center pointer-events-none select-none">
-                    <h1 className="text-6xl md:text-8xl font-bold tracking-tighter text-sage mb-4 drop-shadow-sm opacity-90">
+                    <h1 className="text-5xl sm:text-6xl md:text-8xl font-bold tracking-tighter text-sage mb-4 drop-shadow-sm opacity-90">
                         180
                     </h1>
-                    <p className="text-[#E5E4E2] font-medium tracking-[0.4em] text-xs uppercase opacity-60">
+                    <p className="px-2 text-[#E5E4E2] font-medium tracking-[0.24em] sm:tracking-[0.4em] text-[10px] sm:text-xs uppercase opacity-60 text-center leading-relaxed break-words">
                         {text.app.brandSubtitle}
                     </p>
                     <div className="mt-6 text-[10px] font-bold text-sage/70 tracking-widest border-b border-sage/10 pb-1 inline-block uppercase">
