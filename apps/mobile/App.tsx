@@ -40,6 +40,14 @@ import { isSupabaseConfigured, supabase } from './src/lib/supabase';
 
 const MOBILE_DEEP_LINK_BASE = 'absolutecinema://open';
 
+const isEnvFlagEnabled = (value: string | undefined, defaultValue = true): boolean => {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (!normalized) return defaultValue;
+  return !['0', 'false', 'off', 'no', 'disabled'].includes(normalized);
+};
+
+const PUSH_FEATURE_ENABLED = isEnvFlagEnabled(process.env.EXPO_PUBLIC_PUSH_ENABLED, true);
+
 type DailyState =
   | { status: 'idle' | 'loading' }
   | { status: 'error'; message: string; endpoint: string }
@@ -346,6 +354,7 @@ const ProfileSnapshotCard = ({
 };
 
 const PushStatusCard = ({
+  pushEnabled,
   state,
   testState,
   localSimState,
@@ -354,6 +363,7 @@ const PushStatusCard = ({
   onSendTest,
   onSimulateLocal,
 }: {
+  pushEnabled: boolean;
   state: PushState;
   testState: PushTestState;
   localSimState: LocalPushSimState;
@@ -392,7 +402,7 @@ const PushStatusCard = ({
       : testState.receiptStatus === 'ok'
         ? styles.ritualStateOk
         : styles.screenMeta;
-  const canSendTest = isSignedIn && state.cloudStatus === 'synced' && !isBusy;
+  const canSendTest = pushEnabled && isSignedIn && state.cloudStatus === 'synced' && !isBusy;
 
   return (
     <View style={styles.screenCard}>
@@ -400,6 +410,11 @@ const PushStatusCard = ({
       <Text style={styles.screenBody}>
         Expo push token kaydi ve izin durumu. Bildirim datasi icinde `deepLink` varsa mobil routinge aktarilir.
       </Text>
+      {!pushEnabled ? (
+        <Text style={[styles.screenMeta, styles.ritualStateWarn]}>
+          Push modulu su an gecici olarak devre disi. EXPO_PUBLIC_PUSH_ENABLED=1 ile tekrar acilir.
+        </Text>
+      ) : null}
       {!isSignedIn ? (
         <Text style={[styles.screenMeta, styles.ritualStateWarn]}>
           Push kaydi icin once Session kartindan giris yap.
@@ -461,8 +476,11 @@ const PushStatusCard = ({
 
       <View style={styles.ritualActionRow}>
         <Pressable
-          style={[styles.retryButton, isBusy || !isSignedIn ? styles.claimButtonDisabled : null]}
-          disabled={isBusy || !isSignedIn}
+          style={[
+            styles.retryButton,
+            isBusy || !isSignedIn || !pushEnabled ? styles.claimButtonDisabled : null,
+          ]}
+          disabled={isBusy || !isSignedIn || !pushEnabled}
           onPress={onRegister}
         >
           <Text style={styles.retryText}>
@@ -473,9 +491,9 @@ const PushStatusCard = ({
         <Pressable
           style={[
             styles.retryButton,
-            isTestBusy || !canSendTest ? styles.claimButtonDisabled : null,
+            isTestBusy || !canSendTest || !pushEnabled ? styles.claimButtonDisabled : null,
           ]}
-          disabled={isTestBusy || !canSendTest}
+          disabled={isTestBusy || !canSendTest || !pushEnabled}
           onPress={onSendTest}
         >
           <Text style={styles.retryText}>
@@ -486,9 +504,9 @@ const PushStatusCard = ({
         <Pressable
           style={[
             styles.retryButton,
-            isLocalSimBusy ? styles.claimButtonDisabled : null,
+            isLocalSimBusy || !pushEnabled ? styles.claimButtonDisabled : null,
           ]}
-          disabled={isLocalSimBusy}
+          disabled={isLocalSimBusy || !pushEnabled}
           onPress={onSimulateLocal}
         >
           <Text style={styles.retryText}>
@@ -868,8 +886,10 @@ export default function App() {
     message: 'Profil metrikleri hazir degil.',
   });
   const [pushState, setPushState] = useState<PushState>({
-    status: 'idle',
-    message: 'Push kaydi bekleniyor.',
+    status: PUSH_FEATURE_ENABLED ? 'idle' : 'unsupported',
+    message: PUSH_FEATURE_ENABLED
+      ? 'Push kaydi bekleniyor.'
+      : 'Push modulu gecici olarak devre disi.',
     permissionStatus: 'unknown',
     token: '',
     projectId: null,
@@ -1163,6 +1183,15 @@ export default function App() {
   );
 
   const refreshPushRegistration = useCallback(async () => {
+    if (!PUSH_FEATURE_ENABLED) {
+      setPushState((prev) => ({
+        ...prev,
+        status: 'unsupported',
+        message: 'Push modulu gecici olarak devre disi.',
+      }));
+      return;
+    }
+
     setPushState((prev) => ({
       ...prev,
       status: 'loading',
@@ -1217,6 +1246,15 @@ export default function App() {
   }, [authState.status, syncPushTokenCloud]);
 
   const handleSendPushTest = useCallback(async () => {
+    if (!PUSH_FEATURE_ENABLED) {
+      setPushTestState((prev) => ({
+        ...prev,
+        status: 'idle',
+        message: 'Push modulu gecici olarak devre disi.',
+      }));
+      return;
+    }
+
     if (authState.status !== 'signed_in') {
       setPushTestState({
         status: 'error',
@@ -1378,6 +1416,14 @@ export default function App() {
   }, [authState.status, pushState.cloudStatus, pushState.token]);
 
   const handleSimulateLocalPush = useCallback(async () => {
+    if (!PUSH_FEATURE_ENABLED) {
+      setLocalPushSimState({
+        status: 'idle',
+        message: 'Push modulu gecici olarak devre disi.',
+      });
+      return;
+    }
+
     setLocalPushSimState({
       status: 'loading',
       message: 'Local test bildirimi hazirlaniyor...',
@@ -1541,6 +1587,15 @@ export default function App() {
   }, [refreshPushInbox]);
 
   useEffect(() => {
+    if (!PUSH_FEATURE_ENABLED) {
+      setPushTestState((prev) => ({
+        ...prev,
+        status: 'idle',
+        message: 'Push modulu gecici olarak devre disi.',
+      }));
+      return;
+    }
+
     if (authState.status === 'signed_in') {
       setPushTestState((prev) => {
         if (prev.status !== 'idle') return prev;
@@ -1570,6 +1625,10 @@ export default function App() {
   }, [authState.status]);
 
   useEffect(() => {
+    if (!PUSH_FEATURE_ENABLED) {
+      return () => undefined;
+    }
+
     configureDefaultNotificationHandler();
     let active = true;
 
@@ -1623,6 +1682,8 @@ export default function App() {
   }, [appendPushInbox, describePushNotification, handleIncomingUrl]);
 
   useEffect(() => {
+    if (!PUSH_FEATURE_ENABLED) return;
+
     if (authState.status !== 'signed_in') {
       setPushState((prev) => {
         if (
@@ -1928,6 +1989,7 @@ export default function App() {
           />
 
           <PushStatusCard
+            pushEnabled={PUSH_FEATURE_ENABLED}
             state={pushState}
             testState={pushTestState}
             localSimState={localPushSimState}

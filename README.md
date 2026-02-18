@@ -98,6 +98,7 @@ Mobile client (`apps/mobile`):
 - `EXPO_PUBLIC_SUPABASE_URL` (required for mobile invite claim auth session checks)
 - `EXPO_PUBLIC_SUPABASE_ANON_KEY` (required for mobile invite claim auth session checks)
 - `EXPO_PUBLIC_REFERRAL_API_BASE` (optional absolute API base; if empty mobile derives from analytics/daily endpoint)
+- `EXPO_PUBLIC_PUSH_ENABLED` (optional, default `0`; set `1` to enable push register/test flow)
 - `EXPO_PUBLIC_PUSH_API_BASE` (optional absolute API base for `/api/push/test`; if empty mobile falls back to referral/analytics/daily-derived base)
 - `EXPO_PUBLIC_EXPO_PROJECT_ID` (recommended on SDK 53+ for Expo push token registration in dev client builds)
 
