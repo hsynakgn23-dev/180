@@ -1,0 +1,59 @@
+name: mobile-phase1-qa
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/mobile/**"
+      - "packages/shared/src/mobile/**"
+      - "scripts/mobile-*.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - "README.md"
+      - ".github/workflows/mobile-phase1-qa.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/mobile/**"
+      - "packages/shared/src/mobile/**"
+      - "scripts/mobile-*.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - "README.md"
+      - ".github/workflows/mobile-phase1-qa.yml"
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: |
+            package-lock.json
+            apps/mobile/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install mobile dependencies
+        run: npm --prefix apps/mobile ci
+
+      - name: Prepare CI env
+        shell: bash
+        run: |
+          cat > .env <<'EOF'
+          VITE_SUPABASE_URL=https://example.supabase.co
+          VITE_SUPABASE_ANON_KEY=ci_dummy_anon_key
+          SUPABASE_SERVICE_ROLE_KEY=ci_dummy_service_role_key
+          EOF
+
+      - name: Run mobile phase-1 QA
+        run: npm run mobile:phase1:qa

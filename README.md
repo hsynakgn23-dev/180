@@ -195,6 +195,7 @@ Optional edge-friendly cache (`api/daily.ts`, Redis/KV REST):
 - Mobile phase-1 dev-client port alignment notes: `docs/MOBILE_PHASE1_PACKAGE_5_22.md`
 - Mobile phase-1 push-haric final QA notes: `docs/MOBILE_PHASE1_PACKAGE_5_23.md`
 - Mobile phase-1 Firebase init guardrails notes: `docs/MOBILE_PHASE1_PACKAGE_5_24.md`
+- Mobile phase-1 GitHub Actions QA automation notes: `docs/MOBILE_PHASE1_PACKAGE_5_25.md`
 - UI i18n/mobile consistency audit notes: `docs/UI_I18N_MOBILE_AUDIT_2026Q1_P1.md`
 
 ## Notes
