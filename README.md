@@ -38,12 +38,13 @@ npm run dev
 - `npm run mobile:eas:projectid:sync` - read EAS project id and write it to `apps/mobile/.env` + `apps/mobile/app.json`
 - `npm run mobile:ready` - run full mobile readiness chain (`env:sync`, `projectid:sync`, `env:doctor`, final checklist)
 - `npm run mobile:phase1:qa` - run push-haric phase-1 QA chain (`mobile:ready`, mobile typecheck, lint, build)
-- `npm run mobile:phase1:smoke:no-push` - run push-haric QA + referral e2e smoke (fresh invitee)
+- `npm run mobile:phase1:smoke:no-push` - run push-haric QA + deep-link runtime smoke + referral e2e smoke (fresh invitee)
 - `node test-supabase-connection.js` - quick Supabase read/write capability check
 - `npm run test:referral:smoke:create` - sign in inviter + verify `/api/referral/create`
 - `npm run test:referral:smoke:claim -- --code=ABC12345` - sign in invitee + verify `/api/referral/claim`
 - `npm run test:referral:smoke:e2e` - create + claim + duplicate-claim rejection (`ALREADY_CLAIMED`)
 - `npm run test:referral:smoke:e2e:fresh` - create temporary invitee, then run e2e claim flow
+- `npm run test:mobile:deeplink:smoke` - dispatch mobile deep links via `adb` and scan runtime logs for crash signals
 
 ## Mobile (Expo)
 - Expo app root: `apps/mobile`
