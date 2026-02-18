@@ -1,15 +1,11 @@
 import {
-    encodeMobileRouteIntentToParams,
-    normalizeMobileRouteIntent,
-    parseMobileRouteIntentFromParams,
-    type MobileRouteIntent
-} from './mobileRouteContract';
-import { resolveMobileScreenPlan } from './mobileScreenMap';
-
-type MobileDeepLinkInput =
-    | { type: 'daily' }
-    | { type: 'invite'; inviteCode?: string }
-    | { type: 'share'; platform?: string; goal?: string; inviteCode?: string };
+    appendMobileDeepLinkParams as appendMobileDeepLinkParamsShared,
+    buildMobileDeepLink as buildMobileDeepLinkShared,
+    buildMobileDeepLinkFromRouteIntent as buildMobileDeepLinkFromRouteIntentShared,
+    parseMobileDeepLink,
+    type MobileDeepLinkInput
+} from '../../packages/shared/src/mobile/deepLinks';
+import type { MobileRouteIntent } from './mobileRouteContract';
 
 const DEFAULT_MOBILE_DEEP_LINK_BASE = 'absolutecinema://open';
 
@@ -21,59 +17,24 @@ const getMobileDeepLinkBase = (): string => {
     return configured || DEFAULT_MOBILE_DEEP_LINK_BASE;
 };
 
-const appendQuery = (base: string, params: Record<string, string>): string => {
-    const urlSearchParams = new URLSearchParams(params);
-    const query = urlSearchParams.toString();
-    if (!query) return base;
-    return `${base}${base.includes('?') ? '&' : '?'}${query}`;
-};
-
-const toRouteIntent = (input: MobileDeepLinkInput): MobileRouteIntent => {
-    if (input.type === 'daily') {
-        return { target: 'daily' };
-    }
-    if (input.type === 'invite') {
-        return { target: 'invite', invite: input.inviteCode };
-    }
-    return {
-        target: 'share',
-        platform: input.platform as 'instagram' | 'tiktok' | 'x' | undefined,
-        goal: input.goal as 'comment' | 'streak' | undefined,
-        invite: input.inviteCode
-    };
-};
+export type { MobileDeepLinkInput } from '../../packages/shared/src/mobile/deepLinks';
 
 export const buildMobileDeepLink = (input: MobileDeepLinkInput): string => {
-    return buildMobileDeepLinkFromRouteIntent(toRouteIntent(input));
+    return buildMobileDeepLinkShared(input, {
+        base: getMobileDeepLinkBase()
+    });
 };
 
 export const buildMobileDeepLinkFromRouteIntent = (routeIntent: MobileRouteIntent): string => {
-    const base = getMobileDeepLinkBase();
-    const normalizedIntent = normalizeMobileRouteIntent(routeIntent);
-    const routeParams = encodeMobileRouteIntentToParams(normalizedIntent);
-    const screenPlan = resolveMobileScreenPlan(normalizedIntent);
-    const params = {
-        ...routeParams,
-        screen: screenPlan.screen,
-        ...screenPlan.params
-    };
-    return appendQuery(base, params);
+    return buildMobileDeepLinkFromRouteIntentShared(routeIntent, {
+        base: getMobileDeepLinkBase()
+    });
 };
 
 export const appendMobileDeepLinkParams = (url: URL, input: MobileDeepLinkInput): URL => {
-    const target = toRouteIntent(input).target;
-    url.searchParams.set('app_target', target);
-    url.searchParams.set('app_link', buildMobileDeepLink(input));
-    return url;
+    return appendMobileDeepLinkParamsShared(url, input, {
+        base: getMobileDeepLinkBase()
+    });
 };
 
-export const parseMobileDeepLink = (value: string): MobileRouteIntent | null => {
-    const raw = normalizeValue(value, 500);
-    if (!raw) return null;
-    try {
-        const parsed = new URL(raw);
-        return parseMobileRouteIntentFromParams(parsed.searchParams);
-    } catch {
-        return null;
-    }
-};
+export { parseMobileDeepLink };
