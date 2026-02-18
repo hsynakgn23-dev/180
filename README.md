@@ -37,7 +37,7 @@ npm run dev
 - `npm run mobile:env:doctor` - validate mobile env and detect forbidden secret keys
 - `npm run mobile:eas:projectid:sync` - read EAS project id and write it to `apps/mobile/.env` + `apps/mobile/app.json`
 - `npm run mobile:ready` - run full mobile readiness chain (`env:sync`, `projectid:sync`, `env:doctor`, final checklist)
-- `npm run mobile:phase1:qa` - run push-haric phase-1 QA chain (`mobile:ready`, mobile typecheck, lint, build)
+- `npm run mobile:phase1:qa` - run push-haric phase-1 QA chain (`mobile:ready`, mobile typecheck, mobile contract smoke, lint, build)
 - `npm run mobile:phase1:smoke:no-push` - run push-haric QA + deep-link runtime smoke + referral e2e smoke (fresh invitee)
 - `node test-supabase-connection.js` - quick Supabase read/write capability check
 - `npm run test:referral:smoke:create` - sign in inviter + verify `/api/referral/create`
@@ -45,6 +45,7 @@ npm run dev
 - `npm run test:referral:smoke:e2e` - create + claim + duplicate-claim rejection (`ALREADY_CLAIMED`)
 - `npm run test:referral:smoke:e2e:fresh` - create temporary invitee, then run e2e claim flow
 - `npm run test:mobile:deeplink:smoke` - dispatch mobile deep links via `adb` and scan runtime logs for crash signals
+- `npm run test:mobile:contracts` - validate shared mobile route/deep-link/prompt contracts via Node smoke cases
 
 ## Mobile (Expo)
 - Expo app root: `apps/mobile`
@@ -196,6 +197,7 @@ Optional edge-friendly cache (`api/daily.ts`, Redis/KV REST):
 - Mobile phase-1 push-haric final QA notes: `docs/MOBILE_PHASE1_PACKAGE_5_23.md`
 - Mobile phase-1 Firebase init guardrails notes: `docs/MOBILE_PHASE1_PACKAGE_5_24.md`
 - Mobile phase-1 GitHub Actions QA automation notes: `docs/MOBILE_PHASE1_PACKAGE_5_25.md`
+- Mobile phase-1 shared contract smoke gate notes: `docs/MOBILE_PHASE1_PACKAGE_5_26.md`
 - UI i18n/mobile consistency audit notes: `docs/UI_I18N_MOBILE_AUDIT_2026Q1_P1.md`
 
 ## Notes
