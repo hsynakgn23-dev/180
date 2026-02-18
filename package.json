@@ -20,9 +20,11 @@
     "mobile:eas:projectid:sync": "node scripts/mobile-eas-projectid-sync.mjs",
     "mobile:ready": "npm run mobile:env:sync && npm run mobile:eas:projectid:sync && npm run mobile:env:doctor && node scripts/mobile-ready.mjs",
     "mobile:phase1:qa": "npm run mobile:ready && npm --prefix apps/mobile exec -- tsc --noEmit && npm run lint && npm run build",
+    "mobile:phase1:smoke:no-push": "npm run mobile:phase1:qa && npm run test:referral:smoke:e2e:fresh",
     "test:referral:smoke:create": "node test-referral-smoke.js create",
     "test:referral:smoke:claim": "node test-referral-smoke.js claim",
-    "test:referral:smoke:e2e": "node test-referral-smoke.js e2e"
+    "test:referral:smoke:e2e": "node test-referral-smoke.js e2e",
+    "test:referral:smoke:e2e:fresh": "node scripts/referral-smoke-e2e-fresh.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.94.1",
