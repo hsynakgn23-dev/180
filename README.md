@@ -53,6 +53,10 @@ npm run dev
 - Android remote push icin Firebase `google-services.json` zorunlu:
   - `apps/mobile/google-services.json` dosyasini koy
   - Android package adi Firebase'de `com.hsyna.absolutecinema` olmali
+- Troubleshooting (Firebase init):
+  - Hata: `Default FirebaseApp is not initialized`
+  - Push'i gecici kapat: `EXPO_PUBLIC_PUSH_ENABLED=0`
+  - Push acik akisa don: `google-services.json` + `app.json/android.googleServicesFile` + `npm run mobile:devclient:android` ile native rebuild
 - Run:
 ```bash
 npm run mobile:stack
@@ -190,6 +194,7 @@ Optional edge-friendly cache (`api/daily.ts`, Redis/KV REST):
 - Mobile phase-1 notification types notes: `docs/MOBILE_PHASE1_PACKAGE_5_21.md`
 - Mobile phase-1 dev-client port alignment notes: `docs/MOBILE_PHASE1_PACKAGE_5_22.md`
 - Mobile phase-1 push-haric final QA notes: `docs/MOBILE_PHASE1_PACKAGE_5_23.md`
+- Mobile phase-1 Firebase init guardrails notes: `docs/MOBILE_PHASE1_PACKAGE_5_24.md`
 - UI i18n/mobile consistency audit notes: `docs/UI_I18N_MOBILE_AUDIT_2026Q1_P1.md`
 
 ## Notes

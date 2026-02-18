@@ -24,6 +24,8 @@ export type PushRegistrationResult =
       projectId: string | null;
     };
 
+type PushRegistrationFailureReason = Exclude<PushRegistrationResult, { ok: true }>['reason'];
+
 export type PushNotificationSnapshot = {
   title: string;
   body: string;
@@ -58,6 +60,46 @@ const normalizeText = (value: unknown, maxLength = 300): string => {
   const text = String(value ?? '').trim();
   if (!text) return '';
   return text.length > maxLength ? text.slice(0, maxLength) : text;
+};
+
+const normalizePushRegistrationFailure = (
+  rawMessage: string,
+  projectId: string | null
+): {
+  reason: PushRegistrationFailureReason;
+  message: string;
+} => {
+  const compact = normalizeText(rawMessage, 260);
+  const lower = compact.toLowerCase();
+  const hasProjectId = Boolean(normalizeText(projectId, 80));
+
+  const firebaseInitMissing =
+    lower.includes('default firebaseapp is not initialized') ||
+    lower.includes('firebaseapp.initializeapp');
+  if (firebaseInitMissing) {
+    return {
+      reason: 'config_missing',
+      message:
+        'Firebase init eksik. Push kapali devam etmek icin EXPO_PUBLIC_PUSH_ENABLED=0 kullan; push acacaksan apps/mobile/google-services.json ekleyip dev clienti tekrar build et.',
+    };
+  }
+
+  const projectIdMissing =
+    lower.includes('project id') ||
+    lower.includes('projectid') ||
+    lower.includes('eas project');
+  if (projectIdMissing && !hasProjectId) {
+    return {
+      reason: 'config_missing',
+      message:
+        'EXPO_PUBLIC_EXPO_PROJECT_ID eksik. mobile:ready sonrasi dev clienti tekrar baslat.',
+    };
+  }
+
+  return {
+    reason: hasProjectId ? 'unknown' : 'config_missing',
+    message: compact || 'Push token hatasi.',
+  };
 };
 
 const isExpoGoClient = (): boolean => {
@@ -251,12 +293,12 @@ export const registerForPushNotifications = async (): Promise<PushRegistrationRe
       projectId,
     };
   } catch (error) {
-    const message = normalizeText(error instanceof Error ? error.message : 'Push token error', 220);
-    const reason = projectId ? 'unknown' : 'config_missing';
+    const rawMessage = normalizeText(error instanceof Error ? error.message : 'Push token error', 240);
+    const normalizedFailure = normalizePushRegistrationFailure(rawMessage, projectId);
     return {
       ok: false,
-      reason,
-      message,
+      reason: normalizedFailure.reason,
+      message: normalizedFailure.message,
       permissionStatus,
       projectId,
     };
