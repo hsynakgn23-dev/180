@@ -210,7 +210,7 @@ export const styles = StyleSheet.create({
     fontWeight: '600',
   },
   navScene: {
-    backgroundColor: 'transparent',
+    backgroundColor: '#121212',
   },
   navTabBar: {
     position: 'absolute',
