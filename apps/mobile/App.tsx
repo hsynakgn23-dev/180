@@ -14,7 +14,7 @@ import {
 } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useEffect, useState, type ComponentProps } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ComponentProps } from 'react';
 import {
   Animated,
   Linking,
@@ -36,6 +36,10 @@ import {
   submitRitualDraftWithQueue,
 } from './src/lib/mobileRitualQueue';
 import { fetchMobileProfileStats } from './src/lib/mobileProfileStats';
+import {
+  fetchMobileCommentFeed,
+  type CommentFeedScope,
+} from './src/lib/mobileCommentsFeed';
 import {
   configureDefaultNotificationHandler,
   readStoredPushToken,
@@ -61,6 +65,7 @@ import { UiButton } from './src/ui/primitives';
 import { styles } from './src/ui/appStyles';
 import {
   type AuthState,
+  type CommentFeedState,
   type DailyState,
   type InviteClaimState,
   type LocalPushSimState,
@@ -75,18 +80,26 @@ import {
   ArenaChallengeCard,
   ArenaLeaderboardCard,
   AuthCard,
+  CommentFeedCard,
   DailyHomeScreen,
   DiscoverRoutesCard,
   InviteClaimScreen,
   PlatformRulesCard,
+  ProfileMarksCard,
   PublicProfileBridgeCard,
   ProfileSnapshotCard,
   PushInboxCard,
   PushStatusCard,
   RitualDraftCard,
   ShareHubScreen,
+  ThemeModeCard,
 } from './src/ui/appScreens';
 import { normalizeBaseUrl, resolveMobileWebBaseUrl } from './src/lib/mobileEnv';
+import {
+  readStoredMobileThemeMode,
+  writeStoredMobileThemeMode,
+  type MobileThemeMode,
+} from './src/lib/mobileThemeMode';
 
 const isEnvFlagEnabled = (value: string | undefined, defaultValue = true): boolean => {
   const normalized = String(value ?? '').trim().toLowerCase();
@@ -159,7 +172,6 @@ type MainTabParamList = {
   Explore: undefined;
   Inbox: undefined;
   Profile: undefined;
-  Account: undefined;
 };
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -168,51 +180,44 @@ const MAIN_TAB_BY_KEY = {
   explore: 'Explore',
   inbox: 'Inbox',
   profile: 'Profile',
-  account: 'Account',
-} as const satisfies Record<'daily' | 'explore' | 'inbox' | 'profile' | 'account', keyof MainTabParamList>;
+} as const satisfies Record<'daily' | 'explore' | 'inbox' | 'profile', keyof MainTabParamList>;
 
 const MAIN_KEY_BY_TAB = {
   Daily: 'daily',
   Explore: 'explore',
   Inbox: 'inbox',
   Profile: 'profile',
-  Account: 'account',
 } as const satisfies Record<
   keyof MainTabParamList,
-  'daily' | 'explore' | 'inbox' | 'profile' | 'account'
+  'daily' | 'explore' | 'inbox' | 'profile'
 >;
 
 const MAIN_TAB_BY_SCREEN = {
   daily_home: 'Daily',
-  invite_claim: 'Account',
-  share_hub: 'Account',
+  invite_claim: 'Profile',
+  share_hub: 'Profile',
 } as const satisfies Record<'daily_home' | 'invite_claim' | 'share_hub', keyof MainTabParamList>;
 const TAB_ICON_BY_ROUTE = {
   Daily: { active: 'today', inactive: 'today-outline' },
   Explore: { active: 'compass', inactive: 'compass-outline' },
   Inbox: { active: 'mail', inactive: 'mail-outline' },
   Profile: { active: 'person-circle', inactive: 'person-circle-outline' },
-  Account: { active: 'settings', inactive: 'settings-outline' },
 } as const satisfies Record<keyof MainTabParamList, { active: IoniconName; inactive: IoniconName }>;
-const TAB_LABEL_BY_ROUTE = {
-  Daily: 'Gunluk',
-  Explore: 'Kesif',
-  Inbox: 'Kutu',
-  Profile: 'Profil',
-  Account: 'Hesap',
-} as const satisfies Record<keyof MainTabParamList, string>;
 
-const TAB_THEME: NavigationTheme = {
-  ...NavigationDefaultTheme,
-  colors: {
-    ...NavigationDefaultTheme.colors,
-    background: '#121212',
-    card: '#171717',
-    text: '#E5E4E2',
-    border: 'rgba(255, 255, 255, 0.12)',
-    primary: '#8A9A5B',
-    notification: '#A57164',
-  },
+const createTabTheme = (mode: MobileThemeMode): NavigationTheme => {
+  const isDawn = mode === 'dawn';
+  return {
+    ...NavigationDefaultTheme,
+    colors: {
+      ...NavigationDefaultTheme.colors,
+      background: isDawn ? '#F4F1EA' : '#121212',
+      card: isDawn ? '#F1ECE1' : '#171717',
+      text: isDawn ? '#1F1D1A' : '#E5E4E2',
+      border: isDawn ? 'rgba(44, 44, 44, 0.16)' : 'rgba(255, 255, 255, 0.12)',
+      primary: isDawn ? '#A57164' : '#8A9A5B',
+      notification: isDawn ? '#8A9A5B' : '#A57164',
+    },
+  };
 };
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -243,7 +248,7 @@ const inviteMessageByCode: Record<string, string> = {
 
 
 export default function App() {
-  type MainTabKey = 'daily' | 'explore' | 'inbox' | 'profile' | 'account';
+  type MainTabKey = 'daily' | 'explore' | 'inbox' | 'profile';
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -308,6 +313,18 @@ export default function App() {
   const [pushInboxState, setPushInboxState] = useState<PushInboxState>({
     status: 'idle',
     message: 'Notification inbox yuklenmedi.',
+    items: [],
+  });
+  const [themeMode, setThemeMode] = useState<MobileThemeMode>('midnight');
+  const [commentFeedScope, setCommentFeedScope] = useState<CommentFeedScope>('all');
+  const [commentFeedQuery, setCommentFeedQuery] = useState('');
+  const [debouncedCommentFeedQuery, setDebouncedCommentFeedQuery] = useState('');
+  const [commentFeedState, setCommentFeedState] = useState<CommentFeedState>({
+    status: 'idle',
+    message: 'Genel yorum akisi hazir degil.',
+    source: 'fallback',
+    scope: 'all',
+    query: '',
     items: [],
   });
   const [arenaState, setArenaState] = useState<{
@@ -414,6 +431,8 @@ export default function App() {
       daysPresent: result.stats.daysPresent,
       followingCount: result.stats.followingCount,
       followersCount: result.stats.followersCount,
+      marksCount: result.stats.marks.length,
+      featuredMarksCount: result.stats.featuredMarks.length,
     });
   }, []);
 
@@ -446,6 +465,43 @@ export default function App() {
       entries: entriesWithProfile.length,
     });
   }, []);
+
+  const refreshCommentFeed = useCallback(
+    async (scope: CommentFeedScope, query: string) => {
+      const normalizedQuery = String(query || '').trim();
+      setCommentFeedState((prev) => ({
+        ...prev,
+        status: 'loading',
+        message: 'Genel yorum akisi yukleniyor...',
+        scope,
+        query: normalizedQuery,
+      }));
+
+      const result = await fetchMobileCommentFeed({
+        scope,
+        query: normalizedQuery,
+        limit: 120,
+      });
+
+      setCommentFeedState({
+        status: result.ok ? 'ready' : 'error',
+        message: result.message,
+        source: result.source,
+        scope,
+        query: normalizedQuery,
+        items: result.items,
+      });
+
+      void trackMobileEvent('page_view', {
+        reason: result.ok ? 'mobile_comment_feed_loaded' : 'mobile_comment_feed_failed',
+        source: result.source,
+        scope,
+        queryLength: normalizedQuery.length,
+        items: result.items.length,
+      });
+    },
+    []
+  );
 
   const describePushNotification = useCallback((snapshot: PushNotificationSnapshot): string => {
     const title = snapshot.title || '(no-title)';
@@ -985,12 +1041,49 @@ export default function App() {
     }
   }, []);
 
+  const isDawnTheme = themeMode === 'dawn';
+  const tabTheme = useMemo(() => createTabTheme(themeMode), [themeMode]);
+
+  const handleSetThemeMode = useCallback(
+    (nextMode: MobileThemeMode) => {
+      setThemeMode(nextMode);
+      void writeStoredMobileThemeMode(nextMode);
+      void trackMobileEvent('page_view', {
+        reason: 'mobile_theme_mode_changed',
+        mode: nextMode,
+      });
+    },
+    []
+  );
+
   useEffect(() => {
     void trackMobileEvent('session_start', {
       platform: Platform.OS,
       appSurface: 'mobile_native',
     });
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    void readStoredMobileThemeMode().then((storedMode) => {
+      if (!active) return;
+      setThemeMode(storedMode);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedCommentFeedQuery(commentFeedQuery);
+    }, 260);
+    return () => clearTimeout(timer);
+  }, [commentFeedQuery]);
+
+  useEffect(() => {
+    void refreshCommentFeed(commentFeedScope, debouncedCommentFeedQuery);
+  }, [authState.status, commentFeedScope, debouncedCommentFeedQuery, refreshCommentFeed]);
 
   useEffect(() => {
     void refreshAuthState();
@@ -1328,11 +1421,6 @@ export default function App() {
     : isShareRouteActive
       ? 'Paylas'
       : 'Gunluk';
-  const accountRouteLabel = isInviteRouteActive
-    ? 'Davet'
-    : isShareRouteActive
-      ? 'Paylas'
-      : 'Oturum';
   const isDevSurfaceEnabled = INTERNAL_OPS_VISIBLE;
   const handleTabNavigationStateChange = useCallback(() => {
     const currentRouteName = tabNavigationRef.getCurrentRoute()?.name;
@@ -1373,15 +1461,34 @@ export default function App() {
   const streakSummary = profileState.status === 'success' ? String(profileState.streak) : '--';
   const ritualsCountSummary =
     profileState.status === 'success' ? String(profileState.ritualsCount) : '--';
-  const profileSourceLabel =
-    profileState.status === 'success'
-      ? profileState.source === 'xp_state'
-        ? 'Canli'
-        : 'Yedek'
-      : 'Hazir degil';
   const canOpenManualProfile = Boolean(String(publicProfileInput || '').trim() && MOBILE_WEB_BASE_URL);
+  const commentFeedSummary =
+    commentFeedState.status === 'ready'
+      ? `${commentFeedState.items.length} yorum`
+      : commentFeedState.status === 'error'
+        ? 'hata'
+        : commentFeedState.status === 'loading'
+          ? 'yukleniyor'
+          : 'hazir degil';
   const inboxTabBadge =
     unreadDeepLinkCount > 0 ? (unreadDeepLinkCount > 9 ? '9+' : unreadDeepLinkCount) : undefined;
+  const themeModeLabel = isDawnTheme ? 'Gunduz' : 'Gece';
+
+  const handleCommentFeedScopeChange = useCallback((scope: CommentFeedScope) => {
+    setCommentFeedScope(scope);
+    setCommentFeedState((prev) => ({
+      ...prev,
+      scope,
+    }));
+  }, []);
+
+  const handleCommentFeedQueryChange = useCallback((query: string) => {
+    setCommentFeedQuery(query);
+    setCommentFeedState((prev) => ({
+      ...prev,
+      query,
+    }));
+  }, []);
 
   useEffect(() => {
     setInviteClaimState({ status: 'idle' });
@@ -1735,8 +1842,8 @@ export default function App() {
   if (!fontsLoaded) {
     return (
       <SafeAreaProvider>
-        <SafeAreaView style={styles.safeArea}>
-          <StatusBar style="light" />
+        <SafeAreaView style={[styles.safeArea, isDawnTheme ? styles.safeAreaDawn : null]}>
+          <StatusBar style={isDawnTheme ? 'dark' : 'light'} />
         </SafeAreaView>
       </SafeAreaProvider>
     );
@@ -1744,15 +1851,11 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={styles.safeArea}>
-        <View pointerEvents="none" style={styles.backdropLayer}>
-          <View style={styles.backdropBandTop} />
-          <View style={styles.backdropBandBottom} />
-          <View style={styles.backdropRuleVerticalA} />
-          <View style={styles.backdropRuleVerticalB} />
-          <View style={styles.backdropRuleHorizontalA} />
-          <View style={styles.backdropRuleHorizontalB} />
-        </View>
+      <SafeAreaView style={[styles.safeArea, isDawnTheme ? styles.safeAreaDawn : null]}>
+        <View
+          pointerEvents="none"
+          style={[styles.backdropLayer, isDawnTheme ? styles.backdropLayerDawn : null]}
+        />
         <Animated.View
           style={[
             styles.pageMotion,
@@ -1764,7 +1867,7 @@ export default function App() {
         >
           <NavigationContainer
             ref={tabNavigationRef}
-            theme={TAB_THEME}
+            theme={tabTheme}
             onReady={handleTabNavigationReady}
             onStateChange={handleTabNavigationStateChange}
           >
@@ -1772,13 +1875,12 @@ export default function App() {
               initialRouteName={MAIN_TAB_BY_KEY.daily}
               screenOptions={({ route }) => ({
                 headerShown: false,
-                sceneStyle: styles.navScene,
-                tabBarStyle: styles.navTabBar,
+                sceneStyle: [styles.navScene, isDawnTheme ? styles.navSceneDawn : null],
+                tabBarStyle: [styles.navTabBar, isDawnTheme ? styles.navTabBarDawn : null],
                 tabBarItemStyle: styles.navTabItem,
-                tabBarLabelStyle: styles.navTabLabel,
-                tabBarLabel: TAB_LABEL_BY_ROUTE[route.name],
-                tabBarActiveTintColor: '#8A9A5B',
-                tabBarInactiveTintColor: '#8e8b84',
+                tabBarShowLabel: false,
+                tabBarActiveTintColor: isDawnTheme ? '#A57164' : '#8A9A5B',
+                tabBarInactiveTintColor: isDawnTheme ? '#6f665c' : '#8e8b84',
                 tabBarBadgeStyle: styles.navTabBadge,
                 tabBarBadge: route.name === MAIN_TAB_BY_KEY.inbox ? inboxTabBadge : undefined,
                 tabBarIcon: ({ color, focused, size }) => (
@@ -1893,6 +1995,7 @@ export default function App() {
                       body: 'Webdeki kesif, arena leaderboard ve public profile gecisleri mobile tasindi.',
                       badges: [
                         { label: `${DISCOVER_ROUTES.length} kesif rotasi` },
+                        { label: `${commentFeedSummary}` },
                         { label: 'Arena + Profile + Kurallar', muted: true },
                       ],
                     })}
@@ -1920,6 +2023,15 @@ export default function App() {
                       }}
                       onOpenProfile={(item) => {
                         void handleOpenArenaProfile(item);
+                      }}
+                    />
+                    <CommentFeedCard
+                      state={commentFeedState}
+                      showOpsMeta={isDevSurfaceEnabled}
+                      onScopeChange={handleCommentFeedScopeChange}
+                      onQueryChange={handleCommentFeedQueryChange}
+                      onRefresh={() => {
+                        void refreshCommentFeed(commentFeedScope, debouncedCommentFeedQuery);
                       }}
                     />
                     <PublicProfileBridgeCard
@@ -1990,19 +2102,21 @@ export default function App() {
                     showsVerticalScrollIndicator={false}
                   >
                     {renderSurfaceIntro({
-                      title: 'Profil Ozeti',
-                      body: 'Seri, XP ve sosyal metrikleri tek bakista takip et.',
+                      title: 'Profil ve Hesap',
+                      body: 'Seri, XP metrikleri ile hesap yonetimini tek noktadan yap.',
                       badges: [
                         { label: `Seri ${streakSummary}` },
-                        { label: `Kaynak ${profileSourceLabel}`, muted: true },
+                        { label: `Tema ${themeModeLabel}` },
+                        { label: isSignedIn ? 'Oturum hazir' : 'Oturum gerekli', muted: !isSignedIn },
                       ],
                     })}
                     <View style={styles.sectionAnchor}>
                       <View style={styles.sectionHeaderRow}>
                         <Text style={styles.sectionHeader}>Profil</Text>
-                        <Text style={styles.sectionHeaderMeta}>Seri {streakSummary}</Text>
+                        <Text style={styles.sectionHeaderMeta}>Metrikler</Text>
                       </View>
                     </View>
+                    <ThemeModeCard mode={themeMode} onSetMode={handleSetThemeMode} />
                     <ProfileSnapshotCard
                       state={profileState}
                       isSignedIn={isSignedIn}
@@ -2010,31 +2124,12 @@ export default function App() {
                         void refreshProfileStats();
                       }}
                     />
-                  </ScrollView>
-                )}
-              </Tab.Screen>
+                    <ProfileMarksCard state={profileState} isSignedIn={isSignedIn} />
 
-              <Tab.Screen name={MAIN_TAB_BY_KEY.account}>
-                {() => (
-                  <ScrollView
-                    contentContainerStyle={[styles.container, styles.containerWithTabs]}
-                    keyboardShouldPersistTaps="handled"
-                    keyboardDismissMode="on-drag"
-                    showsVerticalScrollIndicator={false}
-                  >
-                    {renderSurfaceIntro({
-                      title: 'Hesap ve Oturum',
-                      body: 'Oturumu yonet ve gelen davet/paylasim akislarini bu sekmeden tamamla.',
-                      tone: 'clay',
-                      badges: [
-                        { label: isSignedIn ? 'Oturum hazir' : 'Oturum gerekli' },
-                        { label: `Akis ${accountRouteLabel}`, muted: true },
-                      ],
-                    })}
                     <View style={styles.sectionAnchor}>
                       <View style={styles.sectionHeaderRow}>
                         <Text style={styles.sectionHeader}>Hesap</Text>
-                        <Text style={styles.sectionHeaderMeta}>{accountRouteLabel}</Text>
+                        <Text style={styles.sectionHeaderMeta}>Kullanici islemleri</Text>
                       </View>
                     </View>
                     <AuthCard
@@ -2132,7 +2227,7 @@ export default function App() {
             </Tab.Navigator>
           </NavigationContainer>
         </Animated.View>
-        <StatusBar style="light" />
+        <StatusBar style={isDawnTheme ? 'dark' : 'light'} />
       </SafeAreaView>
     </SafeAreaProvider>
   );
