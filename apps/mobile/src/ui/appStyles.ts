@@ -1027,13 +1027,13 @@ export const styles = StyleSheet.create({
   },
   /* Theme Mode Classes (Dawn support & Glassmorphic Toggle) */
   safeAreaDawn: {
-    backgroundColor: '#1E1E1E',
+    backgroundColor: '#171717',
   },
   backdropLayerDawn: {
-    backgroundColor: '#FAF9F6',
+    backgroundColor: '#e5e4e2',
   },
   navSceneDawn: {
-    backgroundColor: '#FAF9F6',
+    backgroundColor: '#e5e4e2',
   },
   navTabBarDawn: {
     backgroundColor: 'rgba(250, 249, 246, 0.95)',
@@ -1059,7 +1059,7 @@ export const styles = StyleSheet.create({
   },
   themeModeSegmentActiveMidnight: {
     backgroundColor: 'rgba(31, 31, 31, 0.9)',
-    shadowColor: '#000000',
+    shadowColor: '#121212',
     shadowOpacity: 0.3,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
@@ -1069,7 +1069,7 @@ export const styles = StyleSheet.create({
   },
   themeModeSegmentActiveDawn: {
     backgroundColor: 'rgba(165, 113, 100, 0.9)', // Clay accent for Dawn
-    shadowColor: '#A57164',
+    shadowColor: '#121212',
     shadowOpacity: 0.4,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
@@ -1089,7 +1089,7 @@ export const styles = StyleSheet.create({
     fontWeight: '700',
   },
   themeModeSegmentTextActiveDawn: {
-    color: '#FFFFFF',
+    color: '#e5e4e2',
     fontFamily: 'Inter_700Bold',
     fontWeight: '700',
   },
@@ -1172,11 +1172,54 @@ export const styles = StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     lineHeight: 20,
     marginTop: 2,
-    marginBottom: 2,
+    marginBottom: 4,
   },
   commentFeedActionRow: {
     marginTop: 4,
-    alignItems: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.04)',
+    paddingTop: 8,
+  },
+  commentFeedActionText: {
+    color: '#8A9A5B',
+    fontSize: 11,
+    fontFamily: 'Inter_600SemiBold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  commentFeedSegmentContainer: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderRadius: 12,
+    padding: 4,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  commentFeedSegmentOption: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    backgroundColor: 'transparent',
+  },
+  commentFeedSegmentActive: {
+    backgroundColor: 'rgba(138, 154, 91, 0.2)',
+    borderColor: '#8A9A5B',
+    borderWidth: 1,
+  },
+  commentFeedSegmentText: {
+    color: '#8e8b84',
+    fontSize: 12,
+    fontFamily: 'Inter_500Medium',
+  },
+  commentFeedSegmentTextActive: {
+    color: '#E5E4E2',
+    fontFamily: 'Inter_600SemiBold',
   },
 
   /* Profile Mark Classes */
@@ -1214,23 +1257,23 @@ export const styles = StyleSheet.create({
   },
   markPillFeatured: {
     borderWidth: 1,
-    borderColor: '#D4AF37', // Gold Premium Outline
-    backgroundColor: 'rgba(212, 175, 55, 0.15)', // Light Gold fill
+    borderColor: '#8A9A5B',
+    backgroundColor: 'rgba(138, 154, 91, 0.18)',
     borderRadius: 999,
     paddingHorizontal: 16,
     paddingVertical: 8,
-    shadowColor: '#D4AF37',
+    shadowColor: '#8A9A5B',
     shadowOpacity: 0.4,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
   },
   markPillFeaturedText: {
-    color: '#fef08a', // vibrant gold text
+    color: '#d9e2bf',
     fontSize: 13,
     fontFamily: 'Inter_600SemiBold',
     fontWeight: '600',
-    textShadowColor: 'rgba(212, 175, 55, 0.5)',
+    textShadowColor: 'rgba(138, 154, 91, 0.4)',
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 8,
   },

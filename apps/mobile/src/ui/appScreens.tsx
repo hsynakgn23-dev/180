@@ -8,7 +8,7 @@ import {
 import { type PushInboxItem } from '../lib/mobilePushInbox';
 import { isSupabaseConfigured } from '../lib/supabase';
 import type { MobileThemeMode } from '../lib/mobileThemeMode';
-import { UiButton, UiChip } from './primitives';
+import { UiButton } from './primitives';
 import { styles } from './appStyles';
 import {
   type AuthState,
@@ -933,37 +933,81 @@ const CommentFeedCard = ({
       </Text>
 
       <View style={styles.commentFeedFilterRow}>
-        <UiChip
-          label="Tum"
-          tone="amber"
-          selected={state.scope === 'all'}
-          onPress={() => onScopeChange('all')}
-          accessibilityLabel="Tum yorumlari goster"
-        />
-        <UiChip
-          label="Bugun"
-          tone="sky"
-          selected={state.scope === 'today'}
-          onPress={() => onScopeChange('today')}
-          accessibilityLabel="Sadece bugun yorumlarini goster"
-        />
+        <View style={styles.commentFeedSegmentContainer}>
+          <Pressable
+            style={[
+              styles.commentFeedSegmentOption,
+              state.scope === 'all' && styles.commentFeedSegmentActive,
+            ]}
+            onPress={() => onScopeChange('all')}
+            accessibilityLabel="Tum yorumlari goster"
+          >
+            <Text
+              style={[
+                styles.commentFeedSegmentText,
+                state.scope === 'all' && styles.commentFeedSegmentTextActive,
+              ]}
+            >
+              Tum Akis
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.commentFeedSegmentOption,
+              state.scope === 'today' && styles.commentFeedSegmentActive,
+            ]}
+            onPress={() => onScopeChange('today')}
+            accessibilityLabel="Sadece bugun yorumlarini goster"
+          >
+            <Text
+              style={[
+                styles.commentFeedSegmentText,
+                state.scope === 'today' && styles.commentFeedSegmentTextActive,
+              ]}
+            >
+              Sadece Bugun
+            </Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.commentFeedSortRow}>
-        <UiChip
-          label="En Yeni"
-          tone="amber"
-          selected={state.sort === 'latest'}
-          onPress={() => onSortChange('latest')}
-          accessibilityLabel="Yorumlari en yeniye gore sirala"
-        />
-        <UiChip
-          label="En Cok Echo"
-          tone="sky"
-          selected={state.sort === 'echoes'}
-          onPress={() => onSortChange('echoes')}
-          accessibilityLabel="Yorumlari en cok echoya gore sirala"
-        />
+        <View style={styles.commentFeedSegmentContainer}>
+          <Pressable
+            style={[
+              styles.commentFeedSegmentOption,
+              state.sort === 'latest' && styles.commentFeedSegmentActive,
+            ]}
+            onPress={() => onSortChange('latest')}
+            accessibilityLabel="Yorumlari en yeniye gore sirala"
+          >
+            <Text
+              style={[
+                styles.commentFeedSegmentText,
+                state.sort === 'latest' && styles.commentFeedSegmentTextActive,
+              ]}
+            >
+              En Yeni
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.commentFeedSegmentOption,
+              state.sort === 'echoes' && styles.commentFeedSegmentActive,
+            ]}
+            onPress={() => onSortChange('echoes')}
+            accessibilityLabel="Yorumlari en cok echoya gore sirala"
+          >
+            <Text
+              style={[
+                styles.commentFeedSegmentText,
+                state.sort === 'echoes' && styles.commentFeedSegmentTextActive,
+              ]}
+            >
+              En Cok Echo
+            </Text>
+          </Pressable>
+        </View>
       </View>
 
       <TextInput
@@ -995,14 +1039,9 @@ const CommentFeedCard = ({
                   Echo: {item.echoCount} • Reply: {item.replyCount}
                   {showOpsMeta ? `  |  ops::day:${item.dayKey || '?'}` : ''}
                 </Text>
-              </View>
-              <View style={styles.commentFeedActionRow}>
-                <UiButton
-                  label="Profiline Git"
-                  tone="neutral"
-                  onPress={() => onOpenAuthorProfile(item)}
-                  accessibilityLabel={`${item.author} profilini ac`}
-                />
+                <Pressable hitSlop={PRESSABLE_HIT_SLOP} onPress={() => onOpenAuthorProfile(item)}>
+                  <Text style={styles.commentFeedActionText}>@{item.author} Profil</Text>
+                </Pressable>
               </View>
             </View>
           ))}
