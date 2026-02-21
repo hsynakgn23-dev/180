@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { resolveMobileDailyApiUrl } from './mobileEnv';
 
 type DailyMovie = {
   id: number;
@@ -23,8 +24,6 @@ type DailyCacheRecord = {
   movies: DailyMovie[];
 };
 
-const ANALYTICS_ENDPOINT = process.env.EXPO_PUBLIC_ANALYTICS_ENDPOINT || '';
-const DAILY_ENDPOINT = process.env.EXPO_PUBLIC_DAILY_API_URL || '';
 const DAILY_CACHE_KEY = '180_mobile_daily_cache_v1';
 const DAILY_CACHE_MAX_AGE_MS = 18 * 60 * 60 * 1000;
 
@@ -52,19 +51,6 @@ const normalizeMovie = (raw: unknown, index: number): DailyMovie | null => {
     voteAverage: normalizeNumber(movie.voteAverage ?? movie.vote_average),
     genre: normalizeText(movie.genre, 120) || null,
   };
-};
-
-const resolveDailyEndpoint = (): string => {
-  const direct = normalizeText(DAILY_ENDPOINT, 500);
-  if (direct) return direct;
-
-  const analytics = normalizeText(ANALYTICS_ENDPOINT, 500);
-  if (!analytics) return '';
-
-  if (analytics.endsWith('/api/analytics')) {
-    return `${analytics.slice(0, -'/api/analytics'.length)}/api/daily`;
-  }
-  return '';
 };
 
 const withTimeout = async (promise: Promise<Response>, timeoutMs = 8000): Promise<Response> => {
@@ -157,7 +143,7 @@ export const fetchDailyMovies = async (): Promise<{
   stale: boolean;
   warning: string | null;
 }> => {
-  const endpoint = resolveDailyEndpoint();
+  const endpoint = resolveMobileDailyApiUrl();
   if (!endpoint) {
     const cached = await readDailyCache();
     if (cached) {

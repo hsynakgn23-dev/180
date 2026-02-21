@@ -71,7 +71,7 @@ export const UiButton = ({
         styles.buttonBase,
         toneStyle.container,
         stretch ? styles.buttonStretch : null,
-        pressed && !disabled ? styles.buttonPressed : null,
+        pressed && !disabled ? { opacity: 0.86, transform: [{ scale: 0.96 }] } : null,
         disabled ? styles.buttonDisabled : null,
         style,
       ]}
@@ -146,10 +146,11 @@ export const UiChip = ({
   const text = typeof count === 'number' ? `${label} (${count})` : label;
   return (
     <Pressable
-      style={[
+      style={({ pressed }) => [
         styles.chipBase,
         toneStyle.base,
         selected ? toneStyle.active : null,
+        pressed ? { opacity: 0.86, transform: [{ scale: 0.94 }] } : null,
       ]}
       onPress={onPress}
       hitSlop={TAP_HIT_SLOP}
@@ -176,9 +177,7 @@ const styles = StyleSheet.create({
   buttonStretch: {
     flex: 1,
   },
-  buttonPressed: {
-    opacity: 0.86,
-  },
+
   buttonDisabled: {
     opacity: 0.62,
   },

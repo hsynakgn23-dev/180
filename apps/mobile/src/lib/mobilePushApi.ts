@@ -1,4 +1,5 @@
 import { isSupabaseLive, supabase } from './supabase';
+import { resolveMobilePushApiBase } from './mobileEnv';
 
 type PushApiErrorCode =
   | 'UNAUTHORIZED'
@@ -46,28 +47,8 @@ const normalizeText = (value: unknown, maxLength: number): string => {
   return text.length > maxLength ? text.slice(0, maxLength) : text;
 };
 
-const resolveApiBase = (): string => {
-  const explicitPushBase = normalizeText(process.env.EXPO_PUBLIC_PUSH_API_BASE, 500);
-  if (explicitPushBase) return explicitPushBase.replace(/\/+$/, '');
-
-  const referralBase = normalizeText(process.env.EXPO_PUBLIC_REFERRAL_API_BASE, 500);
-  if (referralBase) return referralBase.replace(/\/+$/, '');
-
-  const analyticsEndpoint = normalizeText(process.env.EXPO_PUBLIC_ANALYTICS_ENDPOINT, 500);
-  if (analyticsEndpoint.includes('/api/analytics')) {
-    return analyticsEndpoint.slice(0, analyticsEndpoint.indexOf('/api/analytics'));
-  }
-
-  const dailyEndpoint = normalizeText(process.env.EXPO_PUBLIC_DAILY_API_URL, 500);
-  if (dailyEndpoint.includes('/api/daily')) {
-    return dailyEndpoint.slice(0, dailyEndpoint.indexOf('/api/daily'));
-  }
-
-  return '';
-};
-
 const getApiUrl = (path: string): string => {
-  const base = resolveApiBase();
+  const base = resolveMobilePushApiBase();
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   return `${base}${normalizedPath}`;
 };

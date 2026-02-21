@@ -86,6 +86,7 @@ import {
   RitualDraftCard,
   ShareHubScreen,
 } from './src/ui/appScreens';
+import { normalizeBaseUrl, resolveMobileWebBaseUrl } from './src/lib/mobileEnv';
 
 const isEnvFlagEnabled = (value: string | undefined, defaultValue = true): boolean => {
   const normalized = String(value ?? '').trim().toLowerCase();
@@ -98,35 +99,6 @@ const INTERNAL_OPS_VISIBLE =
   __DEV__ && isEnvFlagEnabled(process.env.EXPO_PUBLIC_MOBILE_INTERNAL_SURFACES, false);
 const MOBILE_DEEP_LINK_BASE = 'absolutecinema://open';
 const MOBILE_UI_PACKAGE_LABEL = 'UI Package 6.26';
-
-const normalizeBaseUrl = (value: string | undefined): string => String(value || '').trim().replace(/\/+$/, '');
-
-const deriveOriginFromEndpoint = (value: string | undefined, marker: string): string => {
-  const normalized = normalizeBaseUrl(value);
-  if (!normalized) return '';
-  const markerIndex = normalized.indexOf(marker);
-  if (markerIndex < 0) return '';
-  return normalized.slice(0, markerIndex).replace(/\/+$/, '');
-};
-
-const resolveMobileWebBaseUrl = (): string => {
-  const explicitWebBase = normalizeBaseUrl(process.env.EXPO_PUBLIC_WEB_APP_URL);
-  if (explicitWebBase) return explicitWebBase;
-
-  const referralBase = normalizeBaseUrl(process.env.EXPO_PUBLIC_REFERRAL_API_BASE);
-  if (referralBase) return referralBase;
-
-  const analyticsBase = deriveOriginFromEndpoint(
-    process.env.EXPO_PUBLIC_ANALYTICS_ENDPOINT,
-    '/api/analytics'
-  );
-  if (analyticsBase) return analyticsBase;
-
-  const dailyBase = deriveOriginFromEndpoint(process.env.EXPO_PUBLIC_DAILY_API_URL, '/api/daily');
-  if (dailyBase) return dailyBase;
-
-  return '';
-};
 
 const MOBILE_WEB_BASE_URL = resolveMobileWebBaseUrl();
 

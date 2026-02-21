@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { isSupabaseLive, supabase } from './supabase';
+import { resolveMobileReferralApiBase } from './mobileEnv';
 
 type ReferralApiErrorCode =
   | 'UNAUTHORIZED'
@@ -40,25 +41,8 @@ const normalizeDeviceKey = (value: string): string =>
 const normalizeInviteCode = (value: unknown): string =>
   normalizeText(value, 12).toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-const resolveApiBase = (): string => {
-  const explicitBase = normalizeText(process.env.EXPO_PUBLIC_REFERRAL_API_BASE, 500);
-  if (explicitBase) return explicitBase.replace(/\/+$/, '');
-
-  const analyticsEndpoint = normalizeText(process.env.EXPO_PUBLIC_ANALYTICS_ENDPOINT, 500);
-  if (analyticsEndpoint.includes('/api/analytics')) {
-    return analyticsEndpoint.slice(0, analyticsEndpoint.indexOf('/api/analytics'));
-  }
-
-  const dailyEndpoint = normalizeText(process.env.EXPO_PUBLIC_DAILY_API_URL, 500);
-  if (dailyEndpoint.includes('/api/daily')) {
-    return dailyEndpoint.slice(0, dailyEndpoint.indexOf('/api/daily'));
-  }
-
-  return '';
-};
-
 const getApiUrl = (path: string): string => {
-  const base = resolveApiBase();
+  const base = resolveMobileReferralApiBase();
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   return `${base}${normalizedPath}`;
 };
@@ -150,17 +134,25 @@ const postReferralApi = async <T>(
 };
 
 export const getReferralDeviceKey = async (): Promise<string> => {
+  const buildGeneratedDeviceKey = (): string => {
+    const maybeCrypto = globalThis.crypto as { randomUUID?: () => string } | undefined;
+    const randomSuffix = maybeCrypto?.randomUUID
+      ? maybeCrypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    const normalized = normalizeDeviceKey(`dev-${randomSuffix}`);
+    return normalized || `dev-${Date.now().toString(36)}-fallback`;
+  };
+
   try {
     const existing = await AsyncStorage.getItem(REFERRAL_DEVICE_KEY_STORAGE);
-    if (existing) return normalizeDeviceKey(existing);
+    const normalizedExisting = normalizeDeviceKey(String(existing || ''));
+    if (normalizedExisting) return normalizedExisting;
 
-    const generated = normalizeDeviceKey(
-      `dev-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-    );
+    const generated = buildGeneratedDeviceKey();
     await AsyncStorage.setItem(REFERRAL_DEVICE_KEY_STORAGE, generated);
     return generated;
   } catch {
-    return normalizeDeviceKey(`dev-${Date.now().toString(36)}-fallback`);
+    return buildGeneratedDeviceKey();
   }
 };
 
@@ -168,6 +160,13 @@ export const claimInviteCodeViaApi = async (
   rawCode: string
 ): Promise<ReferralApiResponse<ClaimInvitePayload>> => {
   const inviteCode = normalizeInviteCode(rawCode);
+  if (!inviteCode) {
+    return {
+      ok: false,
+      errorCode: 'INVALID_CODE',
+      message: 'Davet kodu gecersiz.',
+    };
+  }
   const deviceKey = await getReferralDeviceKey();
   return postReferralApi<ClaimInvitePayload>('/api/referral/claim', {
     code: inviteCode,

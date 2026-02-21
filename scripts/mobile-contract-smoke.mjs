@@ -5,6 +5,7 @@ const screenModule = await import('../packages/shared/src/mobile/mobileScreenMap
 const deepLinkModule = await import('../packages/shared/src/mobile/deepLinks.ts');
 const promptModule = await import('../packages/shared/src/mobile/mobileWebPromptContract.ts');
 const analyticsModule = await import('../packages/shared/src/mobile/analyticsEvents.ts');
+const envModule = await import('../apps/mobile/src/lib/mobileEnv.ts');
 
 const {
   normalizeInviteCode,
@@ -16,6 +17,13 @@ const { resolveMobileScreenPlan } = screenModule;
 const { buildMobileDeepLinkFromRouteIntent, parseMobileDeepLink } = deepLinkModule;
 const { resolveMobileWebPromptDecision } = promptModule;
 const { ANALYTICS_EVENT_NAMES } = analyticsModule;
+const {
+  normalizeBaseUrl,
+  resolveMobileDailyApiUrl,
+  resolveMobileReferralApiBase,
+  resolveMobilePushApiBase,
+  resolveMobileWebBaseUrl,
+} = envModule;
 
 let failed = false;
 
@@ -135,6 +143,32 @@ runCase('web prompt decision prioritizes streak and ritual goals', () => {
     reason: 'none',
     routeIntent: { target: 'daily' },
   });
+});
+
+runCase('mobile env resolver derives daily endpoint from analytics endpoint', () => {
+  const dailyUrl = resolveMobileDailyApiUrl({
+    EXPO_PUBLIC_ANALYTICS_ENDPOINT: 'https://cinema.example.com/api/analytics?mode=debug',
+  });
+  assert.equal(dailyUrl, 'https://cinema.example.com/api/daily');
+});
+
+runCase('mobile env resolver keeps explicit web base and strips query/hash', () => {
+  const webBase = resolveMobileWebBaseUrl({
+    EXPO_PUBLIC_WEB_APP_URL: 'https://cinema.example.com/app/?mode=dev#anchor',
+  });
+  assert.equal(webBase, 'https://cinema.example.com/app');
+});
+
+runCase('mobile env resolver falls back from daily endpoint to referral/push base', () => {
+  const env = {
+    EXPO_PUBLIC_DAILY_API_URL: 'https://cinema.example.com/api/daily',
+  };
+  assert.equal(resolveMobileReferralApiBase(env), 'https://cinema.example.com');
+  assert.equal(resolveMobilePushApiBase(env), 'https://cinema.example.com');
+});
+
+runCase('mobile env resolver rejects non-http URLs for base', () => {
+  assert.equal(normalizeBaseUrl('absolutecinema://open'), '');
 });
 
 runCase('analytics event names remain unique and include mobile funnel signals', () => {
