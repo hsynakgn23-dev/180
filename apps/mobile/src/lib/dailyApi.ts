@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { resolveMobileDailyApiUrl } from './mobileEnv';
+import { fetchWithTimeout } from './network';
 
 type DailyMovie = {
   id: number;
@@ -51,18 +52,6 @@ const normalizeMovie = (raw: unknown, index: number): DailyMovie | null => {
     voteAverage: normalizeNumber(movie.voteAverage ?? movie.vote_average),
     genre: normalizeText(movie.genre, 120) || null,
   };
-};
-
-const withTimeout = async (promise: Promise<Response>, timeoutMs = 8000): Promise<Response> => {
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  const timeoutPromise = new Promise<Response>((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error('Daily API timeout')), timeoutMs);
-  });
-  try {
-    return await Promise.race([promise, timeoutPromise]);
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
-  }
 };
 
 const sanitizeCachedMovies = (value: unknown): DailyMovie[] => {
@@ -176,7 +165,11 @@ export const fetchDailyMovies = async (): Promise<{
   }
 
   try {
-    const response = await withTimeout(fetch(endpoint));
+    const response = await fetchWithTimeout({
+      url: endpoint,
+      timeoutMs: 8000,
+      timeoutMessage: 'Daily API timeout',
+    });
     const payload = (await response.json()) as DailyResponse;
     const rawMovies = Array.isArray(payload.movies) ? payload.movies : [];
     const movies = rawMovies

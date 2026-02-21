@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { isSupabaseLive, supabase } from './supabase';
 import { resolveMobileReferralApiBase } from './mobileEnv';
+import { fetchWithTimeout } from './network';
 
 type ReferralApiErrorCode =
   | 'UNAUTHORIZED'
@@ -47,18 +48,6 @@ const getApiUrl = (path: string): string => {
   return `${base}${normalizedPath}`;
 };
 
-const withTimeout = async (promise: Promise<Response>, timeoutMs = 10000): Promise<Response> => {
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  const timeoutPromise = new Promise<Response>((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error('Referral API timeout')), timeoutMs);
-  });
-  try {
-    return await Promise.race([promise, timeoutPromise]);
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
-  }
-};
-
 const getAuthToken = async (): Promise<string | null> => {
   if (!isSupabaseLive() || !supabase) return null;
   try {
@@ -92,16 +81,19 @@ const postReferralApi = async <T>(
   }
 
   try {
-    const response = await withTimeout(
-      fetch(endpoint, {
+    const response = await fetchWithTimeout({
+      url: endpoint,
+      timeoutMs: 10000,
+      timeoutMessage: 'Referral API timeout',
+      init: {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
           Authorization: `Bearer ${accessToken}`
         },
         body: JSON.stringify(payload)
-      })
-    );
+      }
+    });
 
     const rawBody = (await response.json().catch(() => ({}))) as {
       ok?: boolean;
