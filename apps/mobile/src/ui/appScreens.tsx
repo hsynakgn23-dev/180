@@ -1,33 +1,30 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import * as Clipboard from 'expo-clipboard';
 import { FlatList, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import {
-  readPushInboxViewPrefs,
-  writePushInboxViewPrefs,
-  type PushInboxItem,
-} from '../lib/mobilePushInbox';
-import { trackMobileEvent } from '../lib/mobileAnalytics';
+  groupMobileMarksByCategory,
+  resolveMobileMarkTitle,
+} from '../lib/mobileMarksCatalog';
+import { type PushInboxItem } from '../lib/mobilePushInbox';
 import { isSupabaseConfigured } from '../lib/supabase';
+import type { MobileThemeMode } from '../lib/mobileThemeMode';
 import { UiButton, UiChip } from './primitives';
 import { styles } from './appStyles';
 import {
   type AuthState,
+  type CommentFeedScope,
+  type CommentFeedSort,
+  type CommentFeedState,
   type DailyState,
   type InviteClaimState,
   type LocalPushSimState,
   type ProfileState,
-  type PushInboxFilter,
-  type PushInboxSort,
   type PushInboxState,
   type PushState,
   type PushTestState,
   type RitualQueueState,
   type RitualSubmitState,
-  PUSH_INBOX_FILTER_OPTIONS,
   PUSH_INBOX_PAGE_SIZE,
-  PUSH_INBOX_SORT_OPTIONS,
-  isPushInboxFilterKey,
-  isPushInboxSortKey,
 } from './appTypes';
 
 const PRESSABLE_HIT_SLOP = { top: 8, right: 8, bottom: 8, left: 8 } as const;
@@ -227,6 +224,142 @@ const ProfileSnapshotCard = ({
       >
         <Text style={styles.retryText}>{isRefreshing ? 'Yukleniyor...' : 'Profili Yenile'}</Text>
       </Pressable>
+    </ScreenCard>
+  );
+};
+
+const ThemeModeCard = ({
+  mode,
+  onSetMode,
+}: {
+  mode: MobileThemeMode;
+  onSetMode: (mode: MobileThemeMode) => void;
+}) => (
+  <ScreenCard accent={mode === 'dawn' ? 'clay' : 'sage'}>
+    <Text style={styles.screenTitle}>Tema Modu</Text>
+    <Text style={styles.screenBody}>
+      Gece/Gunduz altyapisi mobile eklendi. Tasarim katmani bu secimi referans alacak.
+    </Text>
+    <View style={styles.themeModeSegmentContainer}>
+      <Pressable
+        style={[
+          styles.themeModeSegmentOption,
+          mode === 'midnight' && styles.themeModeSegmentActiveMidnight,
+        ]}
+        onPress={() => onSetMode('midnight')}
+        accessibilityLabel="Gece modunu sec"
+      >
+        <Text
+          style={[
+            styles.themeModeSegmentText,
+            mode === 'midnight' && styles.themeModeSegmentTextActiveMidnight,
+          ]}
+        >
+          Gece Modu
+        </Text>
+      </Pressable>
+      <Pressable
+        style={[
+          styles.themeModeSegmentOption,
+          mode === 'dawn' && styles.themeModeSegmentActiveDawn,
+        ]}
+        onPress={() => onSetMode('dawn')}
+        accessibilityLabel="Gunduz modunu sec"
+      >
+        <Text
+          style={[
+            styles.themeModeSegmentText,
+            mode === 'dawn' && styles.themeModeSegmentTextActiveDawn,
+          ]}
+        >
+          Gunduz Modu
+        </Text>
+      </Pressable>
+    </View>
+  </ScreenCard>
+);
+
+const ProfileMarksCard = ({
+  state,
+  isSignedIn,
+}: {
+  state: ProfileState;
+  isSignedIn: boolean;
+}) => {
+  const unlockedMarks = state.status === 'success' ? state.marks : [];
+  const featuredMarks = state.status === 'success' ? state.featuredMarks : [];
+  const hasMarks = unlockedMarks.length > 0;
+  const groupedMarks = useMemo(
+    () => groupMobileMarksByCategory(unlockedMarks),
+    [unlockedMarks]
+  );
+
+  return (
+    <ScreenCard accent="sage">
+      <Text style={styles.screenTitle}>Mark Arsivi</Text>
+      <Text style={styles.screenBody}>
+        Toplanan tum 180AC DNA parcalari ve onur nisani marklar burada listelenir.
+      </Text>
+      {!isSignedIn ? (
+        <Text style={[styles.screenMeta, styles.ritualStateWarn]}>
+          Koleksiyonunu gormek icin oturum acmalisin.
+        </Text>
+      ) : null}
+      {state.status === 'success' ? (
+        <>
+          <View style={styles.profileGrid}>
+            <View style={styles.profileMetricCard}>
+              <Text style={styles.profileMetricValue}>{unlockedMarks.length}</Text>
+              <Text style={styles.profileMetricLabel}>Koleksiyon</Text>
+            </View>
+            <View style={styles.profileMetricCard}>
+              <Text style={styles.profileMetricValue}>{featuredMarks.length}</Text>
+              <Text style={styles.profileMetricLabel}>Vitrin</Text>
+            </View>
+          </View>
+
+          <View style={styles.markCategoryBlock}>
+            <Text style={styles.markCategoryTitle}>Ozellesmis Vitrin</Text>
+            {featuredMarks.length === 0 ? (
+              <Text style={styles.screenMeta}>Vitrine hic mark secilmemis.</Text>
+            ) : (
+              <View style={styles.markPillRow}>
+                {featuredMarks.map((markId) => (
+                  <View key={`featured-${markId}`} style={styles.markPillFeatured}>
+                    <Text style={styles.markPillFeaturedText}>{resolveMobileMarkTitle(markId)}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+
+          <View style={styles.markCategoryBlock}>
+            <Text style={styles.markCategoryTitle}>Tum Marklar</Text>
+            {hasMarks ? (
+              <View style={styles.markCategoryList}>
+                {groupedMarks.map((group) => (
+                  <View key={`mark-category-${group.category}`} style={styles.markCategoryBlock}>
+                    <Text style={styles.markCategoryTitle}>{group.category}</Text>
+                    <View style={styles.markPillRow}>
+                      {group.marks.map((mark) => (
+                        <View key={`mark-${mark.id}`} style={styles.markPill}>
+                          <Text style={styles.markPillText}>{mark.title}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.screenMeta}>Henuz kazanilmis bir mark yok.</Text>
+            )}
+          </View>
+        </>
+      ) : (
+        <Text style={styles.screenMeta}>
+          {state.status === 'loading' ? 'Mark arsivi kalibre ediliyor...' : 'Mark verisi hazir degil.'}
+        </Text>
+      )}
     </ScreenCard>
   );
 };
@@ -549,171 +682,25 @@ const PushInboxCard = ({
   onMarkScopeOpened: (ids: string[]) => void;
   onRemoveScope: (ids: string[]) => void;
 }) => {
-  const [filter, setFilter] = useState<PushInboxFilter>('all');
-  const [sortBy, setSortBy] = useState<PushInboxSort>('newest');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [copiedItemId, setCopiedItemId] = useState('');
-  const [viewPrefsLoaded, setViewPrefsLoaded] = useState(false);
   const [page, setPage] = useState(1);
   const isBusy = state.status === 'loading';
   const unreadCount = state.items.filter((item) => !item.opened && Boolean(item.deepLink)).length;
-  const normalizedSearch = debouncedSearchQuery.trim().toLowerCase();
-  const searchTelemetryReadyRef = useRef(false);
-  const searchTelemetryLastRef = useRef('');
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearchQuery(searchQuery), 220);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
-  useEffect(() => {
-    let active = true;
-    void readPushInboxViewPrefs().then((prefs) => {
-      if (!active) return;
-      if (prefs) {
-        if (isPushInboxFilterKey(prefs.filterKey)) {
-          setFilter(prefs.filterKey);
-        }
-        if (isPushInboxSortKey(prefs.sortKey)) {
-          setSortBy(prefs.sortKey);
-        }
-        const restoredSearch = String(prefs.searchQuery || '');
-        setSearchQuery(restoredSearch);
-        setDebouncedSearchQuery(restoredSearch);
-      }
-      setViewPrefsLoaded(true);
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!viewPrefsLoaded) return;
-    void writePushInboxViewPrefs({
-      filterKey: filter,
-      sortKey: sortBy,
-      searchQuery,
-    });
-  }, [filter, searchQuery, sortBy, viewPrefsLoaded]);
-
-  const handleCopyDeepLink = useCallback(async (item: PushInboxItem) => {
-    const deepLink = String(item.deepLink || '').trim();
-    if (!deepLink) return;
-    try {
-      await Clipboard.setStringAsync(deepLink);
-      setCopiedItemId(item.id);
-      void trackMobileEvent('page_view', {
-        reason: 'mobile_push_inbox_link_copied',
-        hasDeepLink: true,
-        notificationType: item.kind,
-      });
-    } catch {
-      setCopiedItemId('');
-    }
-  }, []);
-
-  const matchesFilter = useCallback((item: PushInboxItem, filterKey: PushInboxFilter): boolean => {
-    if (filterKey === 'all') return true;
-    if (filterKey === 'unread_link') return !item.opened && Boolean(item.deepLink);
-    if (filterKey === 'with_link') return Boolean(item.deepLink);
-    return item.kind === filterKey;
-  }, []);
-
-  const filterCounts = useMemo(() => {
-    const counts: Record<PushInboxFilter, number> = {
-      all: state.items.length,
-      unread_link: 0,
-      with_link: 0,
-      reply: 0,
-      follow: 0,
-      streak: 0,
-      generic: 0,
-    };
-    for (const item of state.items) {
-      if (!item.opened && item.deepLink) counts.unread_link += 1;
-      if (item.deepLink) counts.with_link += 1;
-      counts[item.kind] += 1;
-    }
-    return counts;
-  }, [state.items]);
-
-  const filteredItems = useMemo(
-    () => state.items.filter((item) => matchesFilter(item, filter)),
-    [filter, matchesFilter, state.items]
-  );
-
-  const searchedItems = useMemo(() => {
-    if (!normalizedSearch) return filteredItems;
-    return filteredItems.filter((item) => {
-      const title = item.title.toLowerCase();
-      const body = item.body.toLowerCase();
-      const deepLink = String(item.deepLink || '').toLowerCase();
-      return (
-        title.includes(normalizedSearch) ||
-        body.includes(normalizedSearch) ||
-        deepLink.includes(normalizedSearch)
-      );
-    });
-  }, [filteredItems, normalizedSearch]);
 
   const sortedItems = useMemo(() => {
-    const byDateDesc = (a: PushInboxItem, b: PushInboxItem) =>
-      Date.parse(b.receivedAt) - Date.parse(a.receivedAt);
-    const next = [...searchedItems];
-    if (sortBy === 'newest') {
-      next.sort(byDateDesc);
-      return next;
-    }
-    if (sortBy === 'oldest') {
-      next.sort((a, b) => Date.parse(a.receivedAt) - Date.parse(b.receivedAt));
-      return next;
-    }
-    if (sortBy === 'unopened_first') {
-      next.sort((a, b) => {
-        if (a.opened !== b.opened) return a.opened ? 1 : -1;
-        return byDateDesc(a, b);
-      });
-      return next;
-    }
-    next.sort((a, b) => {
-      if (a.opened !== b.opened) return a.opened ? -1 : 1;
-      return byDateDesc(a, b);
-    });
-    return next;
-  }, [searchedItems, sortBy]);
+    return [...state.items].sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt));
+  }, [state.items]);
 
   const totalPages = Math.max(1, Math.ceil(sortedItems.length / PUSH_INBOX_PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const pageStart = (currentPage - 1) * PUSH_INBOX_PAGE_SIZE;
   const pagedItems = sortedItems.slice(pageStart, pageStart + PUSH_INBOX_PAGE_SIZE);
+
   const scopeIds = useMemo(() => sortedItems.map((item) => item.id), [sortedItems]);
   const unopenedScopeIds = useMemo(
     () => sortedItems.filter((item) => !item.opened).map((item) => item.id),
     [sortedItems]
   );
-
-  useEffect(() => {
-    setPage(1);
-  }, [filter, sortBy, normalizedSearch]);
-
-  useEffect(() => {
-    if (!viewPrefsLoaded) return;
-    if (!searchTelemetryReadyRef.current) {
-      searchTelemetryReadyRef.current = true;
-      searchTelemetryLastRef.current = normalizedSearch;
-      return;
-    }
-    if (searchTelemetryLastRef.current === normalizedSearch) return;
-    searchTelemetryLastRef.current = normalizedSearch;
-    void trackMobileEvent('page_view', {
-      reason: 'mobile_push_inbox_search_changed',
-      queryLength: normalizedSearch.length,
-      hasQuery: normalizedSearch.length > 0,
-      resultCount: searchedItems.length,
-    });
-  }, [normalizedSearch, searchedItems.length, viewPrefsLoaded]);
 
   useEffect(() => {
     if (!copiedItemId) return;
@@ -722,70 +709,42 @@ const PushInboxCard = ({
   }, [copiedItemId]);
 
   useEffect(() => {
-    setPage((prev) => Math.min(prev, totalPages));
+    setPage((prev) => Math.min(Math.max(1, prev), totalPages));
   }, [totalPages]);
 
-  const handleSelectFilter = useCallback(
-    (nextFilter: PushInboxFilter) => {
-      setFilter(nextFilter);
-      setPage(1);
-      void trackMobileEvent('page_view', {
-        reason: 'mobile_push_inbox_filter_changed',
-        filter: nextFilter,
-        filteredCount: filterCounts[nextFilter],
-      });
-    },
-    [filterCounts]
-  );
-
-  const handleSelectSort = useCallback(
-    (nextSort: PushInboxSort) => {
-      setSortBy(nextSort);
-      setPage(1);
-      void trackMobileEvent('page_view', {
-        reason: 'mobile_push_inbox_sort_changed',
-        sort: nextSort,
-      });
-    },
-    []
-  );
+  const handleCopyDeepLink = useCallback(async (item: PushInboxItem) => {
+    const deepLink = String(item.deepLink || '').trim();
+    if (!deepLink) return;
+    try {
+      await Clipboard.setStringAsync(deepLink);
+      setCopiedItemId(item.id);
+    } catch {
+      setCopiedItemId('');
+    }
+  }, []);
 
   const handlePrevPage = useCallback(() => {
     if (currentPage <= 1) return;
-    const nextPage = Math.max(1, currentPage - 1);
-    setPage(nextPage);
-    void trackMobileEvent('page_view', {
-      reason: 'mobile_push_inbox_page_changed',
-      direction: 'prev',
-      page: nextPage,
-      totalPages,
-    });
-  }, [currentPage, totalPages]);
+    setPage(Math.max(1, currentPage - 1));
+  }, [currentPage]);
 
   const handleNextPage = useCallback(() => {
     if (currentPage >= totalPages) return;
-    const nextPage = Math.min(totalPages, currentPage + 1);
-    setPage(nextPage);
-    void trackMobileEvent('page_view', {
-      reason: 'mobile_push_inbox_page_changed',
-      direction: 'next',
-      page: nextPage,
-      totalPages,
-    });
+    setPage(Math.min(totalPages, currentPage + 1));
   }, [currentPage, totalPages]);
 
   const renderInboxRow = useCallback(
     ({ item }: { item: PushInboxItem }) => (
       <PushInboxRowCard
         item={item}
-        normalizedSearch={normalizedSearch}
+        normalizedSearch=""
         showOpsMeta={showOpsMeta}
         isCopied={copiedItemId === item.id}
         onOpenDeepLink={onOpenDeepLink}
         onCopyDeepLink={handleCopyDeepLink}
       />
     ),
-    [copiedItemId, handleCopyDeepLink, normalizedSearch, onOpenDeepLink, showOpsMeta]
+    [copiedItemId, handleCopyDeepLink, onOpenDeepLink, showOpsMeta]
   );
 
   return (
@@ -795,8 +754,7 @@ const PushInboxCard = ({
         Son gelen bildirimleri saklar. Linkli olanlari tek tikla acabilirsin.
       </Text>
       <Text style={styles.screenMeta}>
-        Toplam: {state.items.length} | Yeni link: {unreadCount} | Filtre: {filteredItems.length} |
-        Arama: {searchedItems.length}
+        Toplam: {state.items.length} bildirimi | Yeni link: {unreadCount}
       </Text>
       <Text
         style={[
@@ -811,54 +769,11 @@ const PushInboxCard = ({
         {state.message}
       </Text>
 
-      <Text style={styles.subSectionLabel}>Filtrele</Text>
-      <View style={styles.inboxFilterRow}>
-        {PUSH_INBOX_FILTER_OPTIONS.map((option) => {
-          const selected = option.key === filter;
-          return (
-            <UiChip
-              key={option.key}
-              label={option.label}
-              count={filterCounts[option.key]}
-              selected={selected}
-              tone="amber"
-              accessibilityLabel={`Filtre ${option.label}`}
-              onPress={() => handleSelectFilter(option.key)}
-            />
-          );
-        })}
-      </View>
-      <TextInput
-        style={styles.inboxSearchInput}
-        value={searchQuery}
-        autoCapitalize="none"
-        placeholder="Kutuda ara (baslik/icerik/link)"
-        placeholderTextColor="#8e8b84"
-        onChangeText={setSearchQuery}
-        accessibilityLabel="Bildirim kutusunda ara"
-      />
-      <Text style={styles.subSectionLabel}>Sirala</Text>
-      <View style={styles.inboxSortRow}>
-        {PUSH_INBOX_SORT_OPTIONS.map((option) => {
-          const selected = option.key === sortBy;
-          return (
-            <UiChip
-              key={option.key}
-              label={option.label}
-              selected={selected}
-              tone="sky"
-              accessibilityLabel={`Siralama ${option.label}`}
-              onPress={() => handleSelectSort(option.key)}
-            />
-          );
-        })}
-      </View>
+
 
       {sortedItems.length === 0 ? (
         <Text style={styles.screenMeta}>
-          {normalizedSearch
-            ? 'Arama ile eslesen inbox bildirimi yok.'
-            : 'Henuz secili filtre icin inbox bildirimi yok.'}
+          Kutunda hic bildirim bulunmuyor.
         </Text>
       ) : (
         <FlatList
@@ -925,7 +840,7 @@ const PushInboxCard = ({
           accessibilityLabel="Secili bildirimleri acildi olarak isaretle"
           accessibilityState={{ disabled: isBusy || unopenedScopeIds.length === 0 }}
         >
-          <Text style={styles.retryText}>Filtredekileri Acildi Yap ({unopenedScopeIds.length})</Text>
+          <Text style={styles.retryText}>Okundu Yap ({unopenedScopeIds.length})</Text>
         </Pressable>
         <Pressable
           style={[
@@ -939,7 +854,7 @@ const PushInboxCard = ({
           accessibilityLabel="Secili bildirimleri temizle"
           accessibilityState={{ disabled: isBusy || scopeIds.length === 0 }}
         >
-          <Text style={styles.retryText}>Filtredekileri Temizle ({scopeIds.length})</Text>
+          <Text style={styles.retryText}>Hepsini Temizle ({scopeIds.length})</Text>
         </Pressable>
       </View>
 
@@ -971,6 +886,140 @@ const PushInboxCard = ({
           <Text style={styles.claimButtonText}>Kutuyu Temizle</Text>
         </Pressable>
       </View>
+    </ScreenCard>
+  );
+};
+
+const CommentFeedCard = ({
+  state,
+  showOpsMeta = false,
+  onScopeChange,
+  onSortChange,
+  onQueryChange,
+  onOpenAuthorProfile,
+  onRefresh,
+}: {
+  state: CommentFeedState;
+  showOpsMeta?: boolean;
+  onScopeChange: (scope: CommentFeedScope) => void;
+  onSortChange: (sort: CommentFeedSort) => void;
+  onQueryChange: (query: string) => void;
+  onOpenAuthorProfile: (item: CommentFeedState['items'][number]) => void;
+  onRefresh: () => void;
+}) => {
+  const isBusy = state.status === 'loading';
+  const visibleItems = state.items.slice(0, 40);
+
+  return (
+    <ScreenCard accent="clay">
+      <Text style={styles.screenTitle}>Tum Yorumlar</Text>
+      <Text style={styles.screenBody}>
+        Webdeki genel yorum akisinin mobil temeli. Supabase varsa canli, yoksa yerel fallback calisir.
+      </Text>
+      <Text style={styles.screenMeta}>
+        Kaynak: {state.source === 'live' ? 'canli' : 'fallback'} | Kayit: {state.items.length}
+      </Text>
+      <Text
+        style={[
+          styles.screenMeta,
+          state.status === 'error'
+            ? styles.ritualStateError
+            : state.status === 'ready'
+              ? styles.ritualStateOk
+              : styles.screenMeta,
+        ]}
+      >
+        {state.message}
+      </Text>
+
+      <View style={styles.commentFeedFilterRow}>
+        <UiChip
+          label="Tum"
+          tone="amber"
+          selected={state.scope === 'all'}
+          onPress={() => onScopeChange('all')}
+          accessibilityLabel="Tum yorumlari goster"
+        />
+        <UiChip
+          label="Bugun"
+          tone="sky"
+          selected={state.scope === 'today'}
+          onPress={() => onScopeChange('today')}
+          accessibilityLabel="Sadece bugun yorumlarini goster"
+        />
+      </View>
+
+      <View style={styles.commentFeedSortRow}>
+        <UiChip
+          label="En Yeni"
+          tone="amber"
+          selected={state.sort === 'latest'}
+          onPress={() => onSortChange('latest')}
+          accessibilityLabel="Yorumlari en yeniye gore sirala"
+        />
+        <UiChip
+          label="En Cok Echo"
+          tone="sky"
+          selected={state.sort === 'echoes'}
+          onPress={() => onSortChange('echoes')}
+          accessibilityLabel="Yorumlari en cok echoya gore sirala"
+        />
+      </View>
+
+      <TextInput
+        style={styles.commentFeedSearchInput}
+        value={state.query}
+        onChangeText={onQueryChange}
+        autoCapitalize="none"
+        placeholder="Yorum, film ya da yazar ara..."
+        placeholderTextColor="#8e8b84"
+        accessibilityLabel="Tum yorumlarda ara"
+      />
+
+      {visibleItems.length === 0 ? (
+        <Text style={styles.screenMeta}>Bu filtrede yorum bulunamadi.</Text>
+      ) : (
+        <View style={styles.commentFeedList}>
+          {visibleItems.map((item) => (
+            <View key={item.id} style={styles.commentFeedRow}>
+              <View style={styles.commentFeedRowHeader}>
+                <Text style={styles.commentFeedMovieTitle}>{item.movieTitle}</Text>
+                {item.isMine ? <Text style={styles.commentFeedMineBadge}>SENIN</Text> : null}
+              </View>
+              <Text style={styles.commentFeedMeta}>
+                @{item.author} | {item.timestampLabel}
+              </Text>
+              <Text style={styles.commentFeedBody}>{item.text}</Text>
+              <View style={styles.commentFeedActionRow}>
+                <Text style={styles.commentFeedMeta}>
+                  Echo: {item.echoCount} • Reply: {item.replyCount}
+                  {showOpsMeta ? `  |  ops::day:${item.dayKey || '?'}` : ''}
+                </Text>
+              </View>
+              <View style={styles.commentFeedActionRow}>
+                <UiButton
+                  label="Profiline Git"
+                  tone="neutral"
+                  onPress={() => onOpenAuthorProfile(item)}
+                  accessibilityLabel={`${item.author} profilini ac`}
+                />
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+
+      <Pressable
+        style={[styles.retryButton, isBusy ? styles.claimButtonDisabled : null]}
+        disabled={isBusy}
+        onPress={onRefresh}
+        hitSlop={PRESSABLE_HIT_SLOP}
+        accessibilityRole="button"
+        accessibilityLabel={isBusy ? 'Yorum akisi yenileniyor' : 'Yorum akisina yenile'}
+        accessibilityState={{ disabled: isBusy }}
+      >
+        <Text style={styles.retryText}>{isBusy ? 'Yukleniyor...' : 'Yorum Akisini Yenile'}</Text>
+      </Pressable>
     </ScreenCard>
   );
 };
@@ -1032,7 +1081,9 @@ const DailyHomeScreen = ({
       <Text style={styles.screenBody}>
         {successState.dataSource === 'cache'
           ? 'Baglanti sinirli, son basarili secim gosteriliyor.'
-          : 'Bugunun secimi hazir.'}
+          : successState.dataSource === 'fallback'
+            ? 'Servis erisimi olmadigi icin local fallback secim gosteriliyor.'
+            : 'Bugunun secimi hazir.'}
       </Text>
       <Text style={styles.screenMeta}>Tarih: {successState.date || 'unknown'}</Text>
       {showOpsMeta ? <Text style={styles.screenMeta}>Source: {successState.source || 'unknown'}</Text> : null}
@@ -1478,9 +1529,12 @@ const PlatformRulesCard = () => {
 
 export {
   AuthCard,
+  ThemeModeCard,
   ProfileSnapshotCard,
+  ProfileMarksCard,
   PushStatusCard,
   PushInboxCard,
+  CommentFeedCard,
   DailyHomeScreen,
   RitualDraftCard,
   InviteClaimScreen,
@@ -1491,4 +1545,3 @@ export {
   PublicProfileBridgeCard,
   PlatformRulesCard,
 };
-
