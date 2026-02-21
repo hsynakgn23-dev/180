@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type PushInboxItem = {
   id: string;
+  notificationId: string;
   title: string;
   body: string;
   deepLink: string | null;
@@ -12,10 +13,29 @@ export type PushInboxItem = {
   openedAt: string | null;
 };
 
-type PushInboxRawItem = Partial<PushInboxItem>;
+type PushInboxRawItem = {
+  id?: unknown;
+  notificationId?: unknown;
+  title?: unknown;
+  body?: unknown;
+  deepLink?: unknown;
+  kind?: unknown;
+  receivedAt?: unknown;
+  source?: unknown;
+  opened?: unknown;
+  openedAt?: unknown;
+};
 
 const PUSH_INBOX_STORAGE_KEY = '180_mobile_push_inbox_v1';
+const PUSH_INBOX_VIEW_PREFS_KEY = '180_mobile_push_inbox_view_prefs_v1';
 const MAX_ITEMS = 40;
+const DEDUPE_TIME_WINDOW_MS = 15 * 60 * 1000;
+
+export type PushInboxViewPrefs = {
+  filterKey: string;
+  sortKey: string;
+  searchQuery: string;
+};
 
 const normalizeText = (value: unknown, maxLength = 320): string => {
   const text = String(value ?? '').trim();
@@ -37,8 +57,28 @@ const normalizeIsoDate = (value: unknown): string => {
   return new Date(parsed).toISOString();
 };
 
-const toPushInboxItem = (raw: PushInboxRawItem): PushInboxItem | null => {
+const toTimeMs = (value: string): number => {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const buildComparableContent = (item: {
+  title: string;
+  body: string;
+  deepLink: string | null;
+  kind: PushInboxItem['kind'];
+}): { kind: string; title: string; body: string; deepLink: string } => {
+  return {
+    kind: normalizeText(item.kind, 20).toLowerCase(),
+    title: normalizeText(item.title, 160).toLowerCase(),
+    body: normalizeText(item.body, 320).toLowerCase(),
+    deepLink: normalizeText(item.deepLink, 500).toLowerCase(),
+  };
+};
+
+const toPushInboxItem = (raw: PushInboxRawItem): PushInboxItem => {
   const id = normalizeText(raw.id, 120) || generateId();
+  const notificationId = normalizeText(raw.notificationId, 120);
   const receivedAt = normalizeIsoDate(raw.receivedAt);
   const source = raw.source === 'opened' ? 'opened' : 'received';
   const deepLinkText = normalizeText(raw.deepLink, 500);
@@ -50,6 +90,7 @@ const toPushInboxItem = (raw: PushInboxRawItem): PushInboxItem | null => {
 
   return {
     id,
+    notificationId,
     title: normalizeText(raw.title, 160) || '(no-title)',
     body: normalizeText(raw.body, 320),
     deepLink: deepLinkText || null,
@@ -61,6 +102,61 @@ const toPushInboxItem = (raw: PushInboxRawItem): PushInboxItem | null => {
   };
 };
 
+const findDuplicateIndex = (
+  items: PushInboxItem[],
+  incoming: PushInboxItem
+): number => {
+  if (incoming.notificationId) {
+    const byNotificationId = items.findIndex(
+      (item) => item.notificationId && item.notificationId === incoming.notificationId
+    );
+    if (byNotificationId >= 0) return byNotificationId;
+  }
+
+  const incomingContent = buildComparableContent(incoming);
+  return items.findIndex((item) => {
+    const itemContent = buildComparableContent(item);
+    if (itemContent.kind !== incomingContent.kind) return false;
+    if (itemContent.title !== incomingContent.title) return false;
+    if (itemContent.body !== incomingContent.body) return false;
+    if (
+      itemContent.deepLink &&
+      incomingContent.deepLink &&
+      itemContent.deepLink !== incomingContent.deepLink
+    ) {
+      return false;
+    }
+    const delta = Math.abs(toTimeMs(item.receivedAt) - toTimeMs(incoming.receivedAt));
+    return delta <= DEDUPE_TIME_WINDOW_MS;
+  });
+};
+
+const mergeInboxItem = (existing: PushInboxItem, incoming: PushInboxItem): PushInboxItem => {
+  const existingMs = toTimeMs(existing.receivedAt);
+  const incomingMs = toTimeMs(incoming.receivedAt);
+  const mergedOpened = existing.opened || incoming.opened || incoming.source === 'opened';
+  const openedAtCandidate =
+    existing.openedAt ||
+    incoming.openedAt ||
+    (incoming.source === 'opened' ? incoming.receivedAt : null);
+
+  return {
+    ...existing,
+    notificationId: existing.notificationId || incoming.notificationId,
+    title: incoming.title || existing.title,
+    body: incoming.body || existing.body,
+    deepLink: incoming.deepLink || existing.deepLink,
+    kind: incoming.kind || existing.kind,
+    source: mergedOpened ? 'opened' : existing.source,
+    opened: mergedOpened,
+    openedAt: mergedOpened ? normalizeIsoDate(openedAtCandidate || new Date().toISOString()) : null,
+    receivedAt:
+      existingMs > 0 && incomingMs > 0
+        ? new Date(Math.min(existingMs, incomingMs)).toISOString()
+        : existing.receivedAt || incoming.receivedAt,
+  };
+};
+
 const parseInbox = (rawText: string): PushInboxItem[] => {
   if (!rawText.trim()) return [];
   try {
@@ -68,7 +164,6 @@ const parseInbox = (rawText: string): PushInboxItem[] => {
     if (!Array.isArray(parsed)) return [];
     return parsed
       .map((item) => toPushInboxItem((item || {}) as PushInboxRawItem))
-      .filter((item): item is PushInboxItem => Boolean(item))
       .sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt))
       .slice(0, MAX_ITEMS);
   } catch {
@@ -83,6 +178,13 @@ const saveInbox = async (items: PushInboxItem[]): Promise<void> => {
   await AsyncStorage.setItem(PUSH_INBOX_STORAGE_KEY, JSON.stringify(sorted));
 };
 
+const normalizeIdSet = (ids: string[]): Set<string> =>
+  new Set(
+    ids
+      .map((id) => normalizeText(id, 120))
+      .filter(Boolean)
+  );
+
 export const readPushInbox = async (): Promise<PushInboxItem[]> => {
   try {
     const raw = await AsyncStorage.getItem(PUSH_INBOX_STORAGE_KEY);
@@ -92,7 +194,40 @@ export const readPushInbox = async (): Promise<PushInboxItem[]> => {
   }
 };
 
+export const readPushInboxViewPrefs = async (): Promise<PushInboxViewPrefs | null> => {
+  try {
+    const raw = await AsyncStorage.getItem(PUSH_INBOX_VIEW_PREFS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null;
+    }
+    const record = parsed as Record<string, unknown>;
+    return {
+      filterKey: normalizeText(record.filterKey, 32),
+      sortKey: normalizeText(record.sortKey, 32),
+      searchQuery: normalizeText(record.searchQuery, 160),
+    };
+  } catch {
+    return null;
+  }
+};
+
+export const writePushInboxViewPrefs = async (prefs: PushInboxViewPrefs): Promise<void> => {
+  try {
+    const payload: PushInboxViewPrefs = {
+      filterKey: normalizeText(prefs.filterKey, 32),
+      sortKey: normalizeText(prefs.sortKey, 32),
+      searchQuery: normalizeText(prefs.searchQuery, 160),
+    };
+    await AsyncStorage.setItem(PUSH_INBOX_VIEW_PREFS_KEY, JSON.stringify(payload));
+  } catch {
+    // ignore prefs write errors
+  }
+};
+
 export const appendPushInboxItem = async (input: {
+  notificationId?: string | null;
   title: string;
   body: string;
   deepLink: string | null;
@@ -102,20 +237,34 @@ export const appendPushInboxItem = async (input: {
 }): Promise<{ item: PushInboxItem; items: PushInboxItem[] }> => {
   const item = toPushInboxItem({
     id: generateId(),
+    notificationId: input.notificationId,
     title: input.title,
     body: input.body,
     deepLink: input.deepLink,
     kind: input.kind,
     receivedAt: input.receivedAt,
     source: input.source,
-  }) as PushInboxItem;
+  });
 
   const current = await readPushInbox();
-  const next = [item, ...current]
-    .sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt))
-    .slice(0, MAX_ITEMS);
+  const duplicateIndex = findDuplicateIndex(current, item);
+  const next =
+    duplicateIndex >= 0
+      ? current
+          .map((existing, index) =>
+            index === duplicateIndex ? mergeInboxItem(existing, item) : existing
+          )
+          .sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt))
+          .slice(0, MAX_ITEMS)
+      : [item, ...current]
+          .sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt))
+          .slice(0, MAX_ITEMS);
+  const storedItem =
+    duplicateIndex >= 0
+      ? next.find((entry) => entry.id === current[duplicateIndex].id) || item
+      : item;
   await saveInbox(next);
-  return { item, items: next };
+  return { item: storedItem, items: next };
 };
 
 export const markPushInboxItemOpened = async (
@@ -127,11 +276,12 @@ export const markPushInboxItemOpened = async (
   const current = await readPushInbox();
   let updated = false;
   const nowIso = new Date().toISOString();
-  const next = current.map((item) => {
+  const next = current.map<PushInboxItem>((item) => {
     if (item.id !== normalizedId) return item;
     updated = true;
     return {
       ...item,
+      source: 'opened',
       opened: true,
       openedAt: item.openedAt || nowIso,
     };
@@ -139,6 +289,53 @@ export const markPushInboxItemOpened = async (
 
   if (updated) await saveInbox(next);
   return { updated, items: next };
+};
+
+export const markPushInboxItemsOpened = async (
+  ids: string[]
+): Promise<{ updatedCount: number; items: PushInboxItem[] }> => {
+  const idSet = normalizeIdSet(ids);
+  if (idSet.size === 0) {
+    return { updatedCount: 0, items: await readPushInbox() };
+  }
+
+  const current = await readPushInbox();
+  let updatedCount = 0;
+  const nowIso = new Date().toISOString();
+  const next = current.map<PushInboxItem>((item) => {
+    if (!idSet.has(item.id)) return item;
+    const shouldUpdate = !item.opened || item.source !== 'opened' || !item.openedAt;
+    if (!shouldUpdate) return item;
+    updatedCount += 1;
+    return {
+      ...item,
+      source: 'opened',
+      opened: true,
+      openedAt: item.openedAt || nowIso,
+    };
+  });
+
+  if (updatedCount > 0) {
+    await saveInbox(next);
+  }
+  return { updatedCount, items: next };
+};
+
+export const removePushInboxItems = async (
+  ids: string[]
+): Promise<{ removedCount: number; items: PushInboxItem[] }> => {
+  const idSet = normalizeIdSet(ids);
+  if (idSet.size === 0) {
+    return { removedCount: 0, items: await readPushInbox() };
+  }
+
+  const current = await readPushInbox();
+  const next = current.filter((item) => !idSet.has(item.id));
+  const removedCount = current.length - next.length;
+  if (removedCount > 0) {
+    await saveInbox(next);
+  }
+  return { removedCount, items: next };
 };
 
 export const clearPushInbox = async (): Promise<void> => {

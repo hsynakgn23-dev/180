@@ -97,7 +97,7 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, isWatchedTod
     return (
         <div
             onClick={onClick}
-            className="group relative aspect-[2/3] rounded-xl overflow-hidden cursor-pointer transition-all duration-500 hover:scale-[1.02] hover:shadow-2xl hover:shadow-black/20 bg-[#121212] border border-white/5"
+            className="group relative aspect-[2/3] rounded-xl overflow-hidden cursor-pointer transition-all duration-700 ease-[cubic-bezier(0.25,1,0.5,1)] hover:scale-[1.03] hover:-translate-y-1 hover:shadow-[0_20px_40px_-10px_rgba(0,0,0,0.5),0_0_20px_rgba(138,154,91,0.15)] bg-[#121212] border border-white/5 hover:border-sage/30 z-10 hover:z-20"
         >
             {/* Background / Poster */}
             <div className={`absolute inset-0 transition-all duration-700 bg-gradient-to-br ${movie.color}`}>

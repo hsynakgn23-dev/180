@@ -356,10 +356,10 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, isHotStreak = fa
 
     return (
         <div
-            className={`group relative pt-4 sm:pt-6 pb-4 sm:pb-6 border-b border-gray-100/5 flex flex-col sm:flex-row gap-3 sm:gap-4 md:gap-6 animate-fade-in hover:bg-transparent transition-all duration-500 px-4 sm:px-4 mx-0 sm:-mx-4 overflow-x-hidden
+            className={`group relative pt-4 sm:pt-6 pb-4 sm:pb-6 border-b border-white/5 flex flex-col sm:flex-row gap-3 sm:gap-4 md:gap-6 animate-fade-in transition-all duration-500 px-4 sm:px-5 mx-0 sm:-mx-5 overflow-x-hidden rounded-xl hover:bg-[#161616]/50 hover:shadow-[inset_0_0_20px_rgba(255,255,255,0.01)] hover:border-transparent
             ${isFollowing ? 'bg-gradient-to-r from-sage/5 to-transparent' : ''}
-            ${isOwnAuthor ? 'ring-1 ring-sage/25 bg-sage/10 rounded-lg' : ''}
-            ${isHotStreak ? 'ring-1 ring-clay/35 bg-gradient-to-r from-clay/10 to-transparent shadow-[0_0_26px_rgba(165,113,100,0.22)] rounded-lg' : ''}
+            ${isOwnAuthor ? 'ring-1 ring-sage/20 bg-sage/5 rounded-xl' : ''}
+            ${isHotStreak ? 'ring-1 ring-clay/35 bg-gradient-to-r from-clay/10 to-transparent shadow-[0_0_26px_rgba(165,113,100,0.15)] rounded-xl' : ''}
         `}
         >
             <div className="shrink-0 pt-0 sm:pt-1 self-start group-hover:scale-105 transition-transform duration-500">
@@ -472,21 +472,21 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, isHotStreak = fa
                     <button
                         onClick={handleEcho}
                         disabled={echoed}
-                        className={`w-full sm:w-auto justify-start px-0 py-1 sm:px-0 sm:py-0 rounded-none border-0 flex items-center gap-2 group/btn transition-colors ${echoed ? 'text-clay cursor-default' : 'text-gray-300 hover:text-clay'}`}
+                        className={`w-full sm:w-auto justify-start px-0 py-1 sm:px-0 sm:py-0 rounded-none border-0 flex items-center gap-2 group/btn transition-all duration-300 ${echoed ? 'text-clay cursor-default' : 'text-gray-300 hover:text-clay'}`}
                     >
-                        <div className={`transition-transform duration-500 ${echoed ? 'scale-110' : 'group-hover/btn:scale-110'}`}>
+                        <div className={`transition-all duration-500 ease-out flex items-center justify-center ${echoed ? 'scale-110 drop-shadow-[0_0_6px_rgba(165,113,100,0.5)]' : 'group-hover/btn:scale-110 group-hover/btn:drop-shadow-[0_0_4px_rgba(165,113,100,0.3)] active:scale-90'}`}>
                             <MarkIcons.Echo size={16} />
                         </div>
-                        <span className="text-[10px] tracking-widest font-medium">
+                        <span className="text-[10px] tracking-widest font-medium transition-colors duration-300 group-hover/btn:text-white">
                             {format(ui.ritualCard.reactions, { count: echoCount })}
                         </span>
                     </button>
 
                     <button
                         onClick={() => setShowReply(!showReply)}
-                        className="w-full sm:w-auto justify-start px-0 py-1 sm:px-0 sm:py-0 rounded-none border-0 flex items-center gap-2 group/btn transition-colors text-gray-300 hover:text-clay"
+                        className="w-full sm:w-auto justify-start px-0 py-1 sm:px-0 sm:py-0 rounded-none border-0 flex items-center gap-2 group/btn transition-all duration-300 text-gray-300 hover:text-clay"
                     >
-                        <span className="text-[10px] tracking-widest font-medium group-hover/btn:underline decoration-clay/50 underline-offset-4">
+                        <span className="text-[10px] tracking-widest font-medium transition-all duration-300 group-hover/btn:text-white">
                             {format(ui.ritualCard.reply, { count: replies.length })}
                         </span>
                     </button>

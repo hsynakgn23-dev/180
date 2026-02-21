@@ -698,17 +698,17 @@ export const Arena: React.FC = () => {
                 </button>
             </div>
 
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-6 border-b border-sage/10 pb-3 px-4 sm:px-0">
+            <div className="sticky top-14 sm:top-20 z-30 pt-4 pb-3 mb-6 px-4 sm:px-2 -mx-4 sm:mx-0 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 border-b border-sage/10 bg-[#121212]/85 backdrop-blur-md transition-all">
                 <div className="flex flex-wrap gap-4 sm:gap-6">
                     <button
                         onClick={() => setFilter('all')}
-                        className={`text-[10px] uppercase tracking-widest transition-colors ${filter === 'all' ? 'text-sage font-bold' : 'text-gray-500 hover:text-gray-300'}`}
+                        className={`text-[10px] uppercase tracking-widest transition-all duration-300 ${filter === 'all' ? 'text-sage font-bold drop-shadow-[0_0_8px_rgba(138,154,91,0.4)] relative after:content-[""] after:absolute after:-bottom-1 after:left-0 after:w-full after:h-[2px] after:bg-sage after:rounded-t-sm' : 'text-gray-500 hover:text-gray-300'}`}
                     >
                         {text.arena.all}
                     </button>
                     <button
                         onClick={() => setFilter('today')}
-                        className={`text-[10px] uppercase tracking-widest transition-colors ${filter === 'today' ? 'text-sage font-bold' : 'text-gray-500 hover:text-gray-300'}`}
+                        className={`text-[10px] uppercase tracking-widest transition-all duration-300 ${filter === 'today' ? 'text-sage font-bold drop-shadow-[0_0_8px_rgba(138,154,91,0.4)] relative after:content-[""] after:absolute after:-bottom-1 after:left-0 after:w-full after:h-[2px] after:bg-sage after:rounded-t-sm' : 'text-gray-500 hover:text-gray-300'}`}
                     >
                         {text.arena.today}
                     </button>
@@ -719,12 +719,12 @@ export const Arena: React.FC = () => {
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
                         placeholder={text.arena.searchPlaceholder}
-                        className="w-full sm:w-60 md:w-48 bg-[#121212] border border-white/10 text-[11px] text-[#E5E4E2] px-3 py-1.5 rounded outline-none focus:border-sage/40"
+                        className="w-full sm:w-60 md:w-48 bg-[#141414]/90 border border-white/10 text-[11px] text-[#E5E4E2] px-4 py-2 rounded-full outline-none focus:border-sage/50 focus:ring-1 focus:ring-sage/30 transition-all shadow-inner"
                     />
                     <select
                         value={sortMode}
                         onChange={(e) => setSortMode(e.target.value as 'latest' | 'echoes')}
-                        className="w-full sm:w-auto bg-[#141414] border border-white/10 text-[11px] text-[#E5E4E2] px-2 py-1.5 rounded outline-none focus:border-sage/40"
+                        className="w-full sm:w-auto bg-[#141414]/90 border border-white/10 text-[11px] text-[#E5E4E2] px-3 py-2 rounded-full outline-none focus:border-sage/50 focus:ring-1 focus:ring-sage/30 transition-all shadow-inner cursor-pointer appearance-none"
                     >
                         <option value="latest">{text.arena.sortLatest}</option>
                         <option value="echoes">{text.arena.sortMostLiked}</option>
@@ -739,8 +739,27 @@ export const Arena: React.FC = () => {
                     </div>
                 )}
                 {isRemoteLoading && canUseRemoteFeed ? (
-                    <div className="text-center py-10 text-[10px] text-gray-500 uppercase tracking-[0.18em] border border-white/5 rounded">
-                        {text.arena.loading}
+                    <div className="flex flex-col gap-6 animate-pulse px-4 sm:px-0 mt-4">
+                        {[1, 2, 3].map((i) => (
+                            <div key={i} className="flex flex-col sm:flex-row gap-4">
+                                <div className="w-10 h-14 bg-[#1a1a1a]/80 border border-white/5 rounded shrink-0" />
+                                <div className="grow space-y-3 py-2">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-24 h-3 bg-[#1a1a1a]/80 rounded" />
+                                        <div className="w-32 h-2 bg-[#1a1a1a]/40 rounded" />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <div className="w-full h-2.5 bg-[#1a1a1a]/50 rounded" />
+                                        <div className="w-11/12 h-2.5 bg-[#1a1a1a]/50 rounded" />
+                                        <div className="w-4/5 h-2.5 bg-[#1a1a1a]/50 rounded" />
+                                    </div>
+                                    <div className="flex gap-4 pt-2">
+                                        <div className="w-12 h-2 bg-[#1a1a1a]/60 rounded" />
+                                        <div className="w-12 h-2 bg-[#1a1a1a]/60 rounded" />
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 ) : filteredRituals.length > 0 ? (
                     filteredRituals.map((ritual) => (

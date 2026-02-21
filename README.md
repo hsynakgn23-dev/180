@@ -34,11 +34,15 @@ npm run dev
 - `npm run mobile:devclient:android` - build/run Android dev client locally (`expo run:android`)
 - `npm run mobile:eas:android:development` - trigger EAS Android development build (`apps/mobile/eas.json`)
 - `npm run mobile:env:sync` - sync public mobile env values from root `.env` into `apps/mobile/.env`
+- `npm run mobile:release:env:sync` - generate release-focused mobile env profile at `apps/mobile/.env.release`
 - `npm run mobile:env:doctor` - validate mobile env and detect forbidden secret keys
 - `npm run mobile:eas:projectid:sync` - read EAS project id and write it to `apps/mobile/.env` + `apps/mobile/app.json`
 - `npm run mobile:ready` - run full mobile readiness chain (`env:sync`, `projectid:sync`, `env:doctor`, final checklist)
-- `npm run mobile:phase1:qa` - run push-haric phase-1 QA chain (`mobile:ready`, mobile typecheck, mobile contract smoke, lint, build)
+- `npm run mobile:phase1:qa` - run push-haric phase-1 QA chain (`mobile:ready`, mobile typecheck, mobile contract smoke, push inbox smoke, design parity check, lint, build)
 - `npm run mobile:phase1:smoke:no-push` - run push-haric QA + deep-link runtime smoke + referral e2e smoke (fresh invitee)
+- `npm run mobile:phase1:release:check` - run phase-1 QA + release env sync + release-readiness validation (warn mode)
+- `npm run mobile:phase1:release:check:strict` - same as release check, but warnings fail the command
+- `npm run mobile:phase1:release:check:ci` - strict release gate + JSON report + markdown checklist artifact output under `artifacts/mobile-release`
 - `node test-supabase-connection.js` - quick Supabase read/write capability check
 - `npm run test:referral:smoke:create` - sign in inviter + verify `/api/referral/create`
 - `npm run test:referral:smoke:claim -- --code=ABC12345` - sign in invitee + verify `/api/referral/claim`
@@ -46,10 +50,14 @@ npm run dev
 - `npm run test:referral:smoke:e2e:fresh` - create temporary invitee, then run e2e claim flow
 - `npm run test:mobile:deeplink:smoke` - dispatch mobile deep links via `adb` and scan runtime logs for crash signals
 - `npm run test:mobile:contracts` - validate shared mobile route/deep-link/prompt contracts via Node smoke cases
+- `npm run test:mobile:push-inbox:smoke` - validate mobile notification inbox dedupe/merge behavior
+- `npm run test:mobile:design:parity` - enforce web/mobile design token parity for mobile UI files
 
 ## Mobile (Expo)
 - Expo app root: `apps/mobile`
 - Shared mobile contracts: `packages/shared/src/mobile`
+- Mobile UI design parity policy: web design tokens/colors are the source of truth; mobile palette changes require explicit product direction.
+- Mobile typography parity policy: Inter is used as the primary mobile font to match web.
 - Expo Go on SDK 53+ does not support remote push token flow. Use dev client for remote push tests.
 - Android remote push icin Firebase `google-services.json` zorunlu:
   - `apps/mobile/google-services.json` dosyasini koy
@@ -109,6 +117,20 @@ Mobile client (`apps/mobile`):
 - `EXPO_PUBLIC_PUSH_ENABLED` (optional, default `0`; set `1` to enable push register/test flow)
 - `EXPO_PUBLIC_PUSH_API_BASE` (optional absolute API base for `/api/push/test`; if empty mobile falls back to referral/analytics/daily-derived base)
 - `EXPO_PUBLIC_EXPO_PROJECT_ID` (recommended on SDK 53+ for Expo push token registration in dev client builds)
+- `EXPO_PUBLIC_WEB_APP_URL` (optional absolute web origin for mobile discover route links; if empty mobile derives base from referral/analytics/daily env)
+- `EXPO_PUBLIC_MOBILE_INTERNAL_SURFACES` (optional, default `0`; set `1` only in local dev to reveal internal QA/debug surfaces)
+
+Mobile release profile overrides (root `.env`, optional):
+- `MOBILE_RELEASE_BASE_URL` (fallback base URL for generated mobile release endpoints)
+- `MOBILE_RELEASE_ANALYTICS_ENDPOINT` (absolute override for `EXPO_PUBLIC_ANALYTICS_ENDPOINT`)
+- `MOBILE_RELEASE_DAILY_API_URL` (absolute override for `EXPO_PUBLIC_DAILY_API_URL`)
+- `MOBILE_RELEASE_REFERRAL_API_BASE` (absolute override for `EXPO_PUBLIC_REFERRAL_API_BASE`)
+- `MOBILE_RELEASE_PUSH_API_BASE` (absolute override for `EXPO_PUBLIC_PUSH_API_BASE`)
+- `MOBILE_RELEASE_ANALYTICS_ENABLED` (`0/1` override for `EXPO_PUBLIC_ANALYTICS_ENABLED`, default `1`)
+- `MOBILE_RELEASE_PUSH_ENABLED` (`0/1` override for `EXPO_PUBLIC_PUSH_ENABLED`, default `1`)
+- `MOBILE_RELEASE_EXPO_PROJECT_ID` (override for `EXPO_PUBLIC_EXPO_PROJECT_ID`)
+- `MOBILE_RELEASE_SUPABASE_URL` (override for `EXPO_PUBLIC_SUPABASE_URL`, falls back to `VITE_SUPABASE_URL`)
+- `MOBILE_RELEASE_SUPABASE_ANON_KEY` (override for `EXPO_PUBLIC_SUPABASE_ANON_KEY`, falls back to `VITE_SUPABASE_ANON_KEY`)
 
 Server/cron (`api/cron/daily.ts`):
 - `SUPABASE_URL`
@@ -198,6 +220,47 @@ Optional edge-friendly cache (`api/daily.ts`, Redis/KV REST):
 - Mobile phase-1 Firebase init guardrails notes: `docs/MOBILE_PHASE1_PACKAGE_5_24.md`
 - Mobile phase-1 GitHub Actions QA automation notes: `docs/MOBILE_PHASE1_PACKAGE_5_25.md`
 - Mobile phase-1 shared contract smoke gate notes: `docs/MOBILE_PHASE1_PACKAGE_5_26.md`
+- Mobile phase-1 notification inbox dedupe notes: `docs/MOBILE_PHASE1_PACKAGE_5_27.md`
+- Mobile phase-1 push inbox smoke notes: `docs/MOBILE_PHASE1_PACKAGE_5_28.md`
+- Mobile phase-1 inbox filter + pagination notes: `docs/MOBILE_PHASE1_PACKAGE_5_29.md`
+- Mobile phase-1 QA gate extension notes: `docs/MOBILE_PHASE1_PACKAGE_5_30.md`
+- Mobile phase-1 inbox search + sort notes: `docs/MOBILE_PHASE1_PACKAGE_5_31.md`
+- Mobile phase-1 inbox notification-id + copy action notes: `docs/MOBILE_PHASE1_PACKAGE_5_32.md`
+- Mobile phase-1 inbox debounced search + highlight notes: `docs/MOBILE_PHASE1_PACKAGE_5_33.md`
+- Mobile phase-1 inbox bulk actions notes: `docs/MOBILE_PHASE1_PACKAGE_5_34.md`
+- Mobile phase-1 inbox view-prefs persistence notes: `docs/MOBILE_PHASE1_PACKAGE_5_35.md`
+- Mobile phase-1 inbox row memoization notes: `docs/MOBILE_PHASE1_PACKAGE_5_36.md`
+- Mobile phase-1 inbox flatlist virtualization notes: `docs/MOBILE_PHASE1_PACKAGE_5_37.md`
+- Mobile phase-1 inbox interaction analytics notes: `docs/MOBILE_PHASE1_PACKAGE_5_38.md`
+- Mobile phase-1 release-readiness gate notes: `docs/MOBILE_PHASE1_PACKAGE_5_39.md`
+- Mobile phase-1 release env profile sync notes: `docs/MOBILE_PHASE1_PACKAGE_5_40.md`
+- Mobile phase-1 release CI strict gate notes: `docs/MOBILE_PHASE1_PACKAGE_5_41.md`
+- Mobile productization/UI package 6.1 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_1.md`
+- Mobile productization/UI package 6.2 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_2.md`
+- Mobile productization/UI package 6.3 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_3.md`
+- Mobile productization/UI package 6.4 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_4.md`
+- Mobile productization/UI package 6.5 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_5.md`
+- Mobile productization/UI package 6.6 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_6.md`
+- Mobile productization/UI package 6.7 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_7.md`
+- Mobile productization/UI package 6.8 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_8.md`
+- Mobile productization/UI package 6.9 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_9.md`
+- Mobile productization/UI package 6.10 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_10.md`
+- Mobile productization/UI package 6.11 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_11.md`
+- Mobile productization/UI package 6.12 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_12.md`
+- Mobile productization/UI package 6.13 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_13.md`
+- Mobile productization/UI package 6.14 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_14.md`
+- Mobile productization/UI package 6.15 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_15.md`
+- Mobile productization/UI package 6.16 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_16.md`
+- Mobile productization/UI package 6.17 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_17.md`
+- Mobile productization/UI package 6.18 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_18.md`
+- Mobile productization/UI package 6.19 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_19.md`
+- Mobile productization/UI package 6.20 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_20.md`
+- Mobile productization/UI package 6.21 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_21.md`
+- Mobile productization/UI package 6.22 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_22.md`
+- Mobile productization/UI package 6.23 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_23.md`
+- Mobile productization/UI package 6.24 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_24.md`
+- Mobile productization/UI package 6.25 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_25.md`
+- Mobile productization/UI package 6.26 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_26.md`
 - UI i18n/mobile consistency audit notes: `docs/UI_I18N_MOBILE_AUDIT_2026Q1_P1.md`
 
 ## Notes

@@ -27,6 +27,7 @@ export type PushRegistrationResult =
 type PushRegistrationFailureReason = Exclude<PushRegistrationResult, { ok: true }>['reason'];
 
 export type PushNotificationSnapshot = {
+  notificationId: string;
   title: string;
   body: string;
   deepLink: string | null;
@@ -191,7 +192,13 @@ const snapshotFromNotification = (
 ): PushNotificationSnapshot => {
   const content = notification.request.content;
   const data = (content.data || {}) as NotificationData;
+  const notificationId =
+    normalizeText((notification.request as { identifier?: string } | null)?.identifier, 120) ||
+    normalizeText(data.notificationId, 120) ||
+    normalizeText(data.notification_id, 120) ||
+    '';
   return {
+    notificationId,
     title: normalizeText(content.title, 140),
     body: normalizeText(content.body, 300),
     deepLink: extractDeepLinkFromData(data),

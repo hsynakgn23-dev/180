@@ -1,4 +1,4 @@
-name: mobile-phase1-qa
+name: mobile-phase1-release-gate
 
 on:
   pull_request:
@@ -23,7 +23,7 @@ on:
       - ".github/workflows/mobile-phase1-qa.yml"
 
 jobs:
-  qa:
+  release-gate:
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
@@ -55,5 +55,16 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY=ci_dummy_service_role_key
           EOF
 
-      - name: Run mobile phase-1 QA
-        run: npm run mobile:phase1:qa
+      - name: Run mobile phase-1 release strict gate
+        run: npm run mobile:phase1:release:check:ci
+
+      - name: Upload mobile release artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-phase1-release-gate-${{ github.run_number }}
+          path: |
+            artifacts/mobile-release/release-ready-report.json
+            artifacts/mobile-release/release-checklist.md
+            apps/mobile/.env.release
+          if-no-files-found: warn

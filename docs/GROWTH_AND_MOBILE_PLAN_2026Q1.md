@@ -63,11 +63,13 @@
   - cache daily list
   - queue ritual drafts for retry
 
-### Phase 2: Beta and optimization (4 weeks)
-- Closed beta with 200-500 users.
+### Phase 2: Release hardening and optimization (4 weeks)
+- Small closed beta (20-50 users) or internal tester pool, budget-light.
 - Fix crash-free rate to >99.5%.
 - Optimize onboarding and first ritual completion.
 - Add deep links from web share cards to app screens.
+- Complete Play Store release checklist before broad rollout.
+- Use staged rollout in Play Console (e.g., 5% -> 20% -> 100%) after crash/ANR validation.
 
 ### Phase 3: Launch and growth sync (ongoing)
 - App Store Optimization:

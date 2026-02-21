@@ -290,16 +290,16 @@ const AppContent = () => {
         <div className="h-[72px] sm:h-[160px] w-full bg-transparent flex items-end justify-center pb-2 sm:pb-8 pointer-events-none" />
 
         <main className="container mx-auto px-4 sm:px-6 relative z-10">
-          <header className="mb-8 sm:mb-16 text-center animate-fade-in">
+          <header className="mb-8 sm:mb-16 text-center animate-fade-in z-20 relative">
             <button
               type="button"
               onClick={openHome}
-              className="inline-flex flex-col items-center"
+              className="inline-flex flex-col items-center group outline-none"
               aria-label={text.profile.backHome}
               title={text.profile.backHome}
             >
-              <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold tracking-tighter text-sage mb-2 sm:mb-4 drop-shadow-sm">180</h1>
-              <p className="text-clay font-medium tracking-[0.2em] text-sm md:text-base uppercase">{text.app.brandSubtitle}</p>
+              <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold tracking-tighter text-sage mb-2 sm:mb-4 drop-shadow-[0_0_12px_rgba(138,154,91,0.2)] group-hover:drop-shadow-[0_0_24px_rgba(138,154,91,0.5)] group-hover:scale-105 transition-all duration-700 ease-[cubic-bezier(0.25,1,0.5,1)]">180</h1>
+              <p className="text-clay font-medium tracking-[0.2em] text-sm md:text-base uppercase group-hover:tracking-[0.3em] group-hover:text-sage transition-all duration-700 ease-[cubic-bezier(0.25,1,0.5,1)]">{text.app.brandSubtitle}</p>
             </button>
           </header>
 
@@ -311,26 +311,26 @@ const AppContent = () => {
             />
           </Suspense>
 
-          <section className="mb-6 sm:mb-8 rounded-xl border border-white/10 bg-white/[0.03] px-4 sm:px-5 py-4">
-            <p className="text-[10px] sm:text-[11px] uppercase tracking-[0.2em] text-sage/80 mb-3">
+          <section className="mb-6 sm:mb-8 rounded-xl border border-white/5 bg-gradient-to-br from-[#121212]/80 to-[#161616]/80 backdrop-blur-md px-4 sm:px-5 py-4 shadow-[0_4px_24px_rgba(0,0,0,0.2)]">
+            <p className="text-[10px] sm:text-[11px] uppercase tracking-[0.2em] text-sage/70 mb-4 font-semibold drop-shadow-sm">
               {text.app.discoverSectionTitle}
             </p>
             <div className="flex flex-wrap gap-2 sm:gap-3">
               <a
                 href="/discover/mood-films/"
-                className="inline-flex items-center rounded-md border border-white/15 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-white/80 hover:text-sage hover:border-sage/50 transition-colors"
+                className="inline-flex items-center rounded-lg border border-white/10 px-4 py-2.5 text-[10px] uppercase tracking-[0.18em] text-white/70 hover:text-sage hover:border-sage/40 hover:bg-sage/5 hover:scale-[1.02] hover:-translate-y-0.5 transition-all duration-300 shadow-sm"
               >
                 {text.app.discoverMoodLink}
               </a>
               <a
                 href="/discover/director-deep-dives/"
-                className="inline-flex items-center rounded-md border border-white/15 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-white/80 hover:text-sage hover:border-sage/50 transition-colors"
+                className="inline-flex items-center rounded-lg border border-white/10 px-4 py-2.5 text-[10px] uppercase tracking-[0.18em] text-white/70 hover:text-sage hover:border-sage/40 hover:bg-sage/5 hover:scale-[1.02] hover:-translate-y-0.5 transition-all duration-300 shadow-sm"
               >
                 {text.app.discoverDirectorLink}
               </a>
               <a
                 href="/discover/daily-curated-picks/"
-                className="inline-flex items-center rounded-md border border-white/15 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-white/80 hover:text-sage hover:border-sage/50 transition-colors"
+                className="inline-flex items-center rounded-lg border border-white/10 px-4 py-2.5 text-[10px] uppercase tracking-[0.18em] text-white/70 hover:text-sage hover:border-sage/40 hover:bg-sage/5 hover:scale-[1.02] hover:-translate-y-0.5 transition-all duration-300 shadow-sm"
               >
                 {text.app.discoverDailyLink}
               </a>

@@ -46,7 +46,7 @@ export const ProfileWidget: React.FC<ProfileWidgetProps> = ({ onClick, onOpenSet
         <div className="flex flex-col items-end gap-2 animate-fade-in pointer-events-auto">
             <div
                 onClick={onClick}
-                className="bg-[var(--color-bg)]/95 backdrop-blur-xl shadow-2xl border border-white/5 px-4 sm:px-5 py-4 rounded-2xl flex flex-col pointer-events-auto transition-all hover:border-sage/30 cursor-pointer w-[min(92vw,380px)] sm:min-w-[340px] sm:max-w-[380px] group"
+                className="bg-[var(--color-bg)]/95 backdrop-blur-xl shadow-2xl border border-white/5 px-4 sm:px-5 py-4 rounded-2xl flex flex-col pointer-events-auto transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] hover:border-sage/40 hover:shadow-[0_15px_40px_-10px_rgba(138,154,91,0.15)] hover:-translate-y-1 cursor-pointer w-[min(92vw,380px)] sm:min-w-[340px] sm:max-w-[380px] group"
             >
                 <div className="flex items-center justify-between gap-4 mb-3">
                     <div className="flex items-center gap-3 min-w-0">

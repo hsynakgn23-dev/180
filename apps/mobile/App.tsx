@@ -1,17 +1,35 @@
 import { StatusBar } from 'expo-status-bar';
-import * as Linking from 'expo-linking';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import {
-  buildMobileDeepLinkFromRouteIntent,
-  parseMobileDeepLink,
-  resolveMobileScreenPlan,
-  resolveMobileWebPromptDecision,
-  type MobileRouteIntent,
-} from '../../packages/shared/src/mobile';
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+  useFonts,
+} from '@expo-google-fonts/inter';
+import {
+  NavigationContainer,
+  DefaultTheme as NavigationDefaultTheme,
+  createNavigationContainerRef,
+  type Theme as NavigationTheme,
+} from '@react-navigation/native';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { Ionicons } from '@expo/vector-icons';
+import { useCallback, useEffect, useState, type ComponentProps } from 'react';
+import {
+  Animated,
+  Linking,
+  Platform,
+  ScrollView,
+  Text,
+  View,
+} from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { buildMobileDeepLinkFromRouteIntent } from '../../packages/shared/src/mobile';
 import { fetchDailyMovies } from './src/lib/dailyApi';
+import { useMobileRouteIntent } from './src/hooks/useMobileRouteIntent';
+import { usePageEntranceAnimation } from './src/hooks/usePageEntranceAnimation';
 import { trackMobileEvent } from './src/lib/mobileAnalytics';
+import { fetchMobileArenaSnapshot, type MobileArenaEntry } from './src/lib/mobileArenaSnapshot';
 import {
   flushQueuedRitualDrafts,
   getQueuedRitualDraftCounts,
@@ -30,15 +48,44 @@ import {
   appendPushInboxItem,
   clearPushInbox,
   markPushInboxItemOpened,
+  markPushInboxItemsOpened,
   readPushInbox,
+  removePushInboxItems,
   type PushInboxItem,
 } from './src/lib/mobilePushInbox';
 import { sendPushTestNotification } from './src/lib/mobilePushApi';
 import { syncPushTokenToProfileState } from './src/lib/mobilePushProfileSync';
 import { claimInviteCodeViaApi } from './src/lib/mobileReferralApi';
 import { isSupabaseConfigured, supabase } from './src/lib/supabase';
-
-const MOBILE_DEEP_LINK_BASE = 'absolutecinema://open';
+import { UiButton } from './src/ui/primitives';
+import { styles } from './src/ui/appStyles';
+import {
+  type AuthState,
+  type DailyState,
+  type InviteClaimState,
+  type LocalPushSimState,
+  type ProfileState,
+  type PushInboxState,
+  type PushState,
+  type PushTestState,
+  type RitualQueueState,
+  type RitualSubmitState,
+} from './src/ui/appTypes';
+import {
+  ArenaChallengeCard,
+  ArenaLeaderboardCard,
+  AuthCard,
+  DailyHomeScreen,
+  DiscoverRoutesCard,
+  InviteClaimScreen,
+  PlatformRulesCard,
+  PublicProfileBridgeCard,
+  ProfileSnapshotCard,
+  PushInboxCard,
+  PushStatusCard,
+  RitualDraftCard,
+  ShareHubScreen,
+} from './src/ui/appScreens';
 
 const isEnvFlagEnabled = (value: string | undefined, defaultValue = true): boolean => {
   const normalized = String(value ?? '').trim().toLowerCase();
@@ -47,122 +94,158 @@ const isEnvFlagEnabled = (value: string | undefined, defaultValue = true): boole
 };
 
 const PUSH_FEATURE_ENABLED = isEnvFlagEnabled(process.env.EXPO_PUBLIC_PUSH_ENABLED, true);
+const INTERNAL_OPS_VISIBLE =
+  __DEV__ && isEnvFlagEnabled(process.env.EXPO_PUBLIC_MOBILE_INTERNAL_SURFACES, false);
+const MOBILE_DEEP_LINK_BASE = 'absolutecinema://open';
+const MOBILE_UI_PACKAGE_LABEL = 'UI Package 6.26';
 
-type DailyState =
-  | { status: 'idle' | 'loading' }
-  | { status: 'error'; message: string; endpoint: string }
-  | {
-      status: 'success';
-      endpoint: string;
-      date: string | null;
-      source: string | null;
-      dataSource: 'live' | 'cache';
-      cacheAgeSeconds: number | null;
-      stale: boolean;
-      warning: string | null;
-      movies: Array<{ id: number; title: string; voteAverage: number | null; genre: string | null }>;
-    };
+const normalizeBaseUrl = (value: string | undefined): string => String(value || '').trim().replace(/\/+$/, '');
 
-type InviteClaimState =
-  | { status: 'idle' }
-  | { status: 'loading'; inviteCode: string }
-  | {
-      status: 'success';
-      inviteCode: string;
-      message: string;
-      inviteeRewardXp: number;
-      inviterRewardXp: number;
-      claimCount: number;
-    }
-  | { status: 'error'; inviteCode: string; message: string; errorCode: string };
-
-type AuthState =
-  | { status: 'idle'; message: string }
-  | { status: 'loading'; message: string }
-  | { status: 'signed_out'; message: string }
-  | { status: 'signed_in'; message: string; email: string }
-  | { status: 'error'; message: string };
-
-type RitualSubmitState = {
-  status: 'idle' | 'submitting' | 'synced' | 'queued' | 'error';
-  message: string;
+const deriveOriginFromEndpoint = (value: string | undefined, marker: string): string => {
+  const normalized = normalizeBaseUrl(value);
+  if (!normalized) return '';
+  const markerIndex = normalized.indexOf(marker);
+  if (markerIndex < 0) return '';
+  return normalized.slice(0, markerIndex).replace(/\/+$/, '');
 };
 
-type RitualQueueState = {
-  status: 'idle' | 'syncing' | 'done' | 'error';
-  message: string;
-  pendingCount: number;
+const resolveMobileWebBaseUrl = (): string => {
+  const explicitWebBase = normalizeBaseUrl(process.env.EXPO_PUBLIC_WEB_APP_URL);
+  if (explicitWebBase) return explicitWebBase;
+
+  const referralBase = normalizeBaseUrl(process.env.EXPO_PUBLIC_REFERRAL_API_BASE);
+  if (referralBase) return referralBase;
+
+  const analyticsBase = deriveOriginFromEndpoint(
+    process.env.EXPO_PUBLIC_ANALYTICS_ENDPOINT,
+    '/api/analytics'
+  );
+  if (analyticsBase) return analyticsBase;
+
+  const dailyBase = deriveOriginFromEndpoint(process.env.EXPO_PUBLIC_DAILY_API_URL, '/api/daily');
+  if (dailyBase) return dailyBase;
+
+  return '';
 };
 
-type ProfileState =
-  | { status: 'idle' | 'loading'; message: string }
-  | { status: 'error'; message: string }
-  | {
-      status: 'success';
-      message: string;
-      displayName: string;
-      totalXp: number;
-      streak: number;
-      ritualsCount: number;
-      daysPresent: number;
-      followersCount: number;
-      followingCount: number;
-      lastRitualDate: string | null;
-      source: 'xp_state' | 'fallback';
-    };
+const MOBILE_WEB_BASE_URL = resolveMobileWebBaseUrl();
 
-type PushState =
-  | {
-      status: 'idle' | 'loading';
-      message: string;
-      permissionStatus: string;
-      token: string;
-      projectId: string | null;
-      lastNotification: string;
-      cloudStatus: 'idle' | 'syncing' | 'synced' | 'error';
-      cloudMessage: string;
-      deviceKey: string;
-      lastSyncedToken: string;
-    }
-  | {
-      status: 'error' | 'ready' | 'unsupported';
-      message: string;
-      permissionStatus: string;
-      token: string;
-      projectId: string | null;
-      lastNotification: string;
-      cloudStatus: 'idle' | 'syncing' | 'synced' | 'error';
-      cloudMessage: string;
-      deviceKey: string;
-      lastSyncedToken: string;
-    };
+const buildPublicProfileUrl = ({
+  userId,
+  username,
+}: {
+  userId?: string | null;
+  username?: string | null;
+}): string => {
+  const normalizedBase = normalizeBaseUrl(MOBILE_WEB_BASE_URL);
+  if (!normalizedBase) return '';
 
-type PushTestState = {
-  status: 'idle' | 'loading' | 'success' | 'error';
-  message: string;
-  sentCount: number;
-  ticketCount: number;
-  errorCount: number;
-  ticketIdCount: number;
-  receiptStatus: 'idle' | 'ok' | 'unavailable';
-  receiptCheckedCount: number;
-  receiptOkCount: number;
-  receiptErrorCount: number;
-  receiptPendingCount: number;
-  receiptMessage: string;
-  receiptErrorPreview: string;
+  const normalizedUserId = String(userId || '').trim();
+  const normalizedUsername = String(username || '').trim();
+  const profileKey = normalizedUserId
+    ? `id:${normalizedUserId}`
+    : normalizedUsername
+      ? `name:${normalizedUsername}`
+      : '';
+  if (!profileKey) return '';
+
+  const encodedKey = encodeURIComponent(profileKey);
+  const query = normalizedUsername ? `?name=${encodeURIComponent(normalizedUsername)}` : '';
+  return `${normalizedBase}/#/u/${encodedKey}${query}`;
 };
 
-type LocalPushSimState = {
-  status: 'idle' | 'loading' | 'success' | 'error';
-  message: string;
+const DISCOVER_ROUTE_CONFIG = [
+  {
+    id: 'mood_films',
+    title: 'Mood Films',
+    description: 'Moda gore hizli secimler ve tematik listeler.',
+    path: '/discover/mood-films/',
+  },
+  {
+    id: 'director_deep_dives',
+    title: 'Director Deep Dives',
+    description: 'Yonetmen odakli arsiv ve derin okuma rotalari.',
+    path: '/discover/director-deep-dives/',
+  },
+  {
+    id: 'daily_curated_picks',
+    title: 'Daily Curated Picks',
+    description: 'Gunun secimi etrafinda kurulan editoryal akis.',
+    path: '/discover/daily-curated-picks/',
+  },
+] as const;
+
+const DISCOVER_ROUTES = DISCOVER_ROUTE_CONFIG.map((route) => ({
+  ...route,
+  href: MOBILE_WEB_BASE_URL ? `${MOBILE_WEB_BASE_URL}${route.path}` : '',
+}));
+
+type ArenaEntryView = MobileArenaEntry & { profileHref: string };
+
+type MainTabParamList = {
+  Daily: undefined;
+  Explore: undefined;
+  Inbox: undefined;
+  Profile: undefined;
+  Account: undefined;
+};
+type IoniconName = ComponentProps<typeof Ionicons>['name'];
+
+const MAIN_TAB_BY_KEY = {
+  daily: 'Daily',
+  explore: 'Explore',
+  inbox: 'Inbox',
+  profile: 'Profile',
+  account: 'Account',
+} as const satisfies Record<'daily' | 'explore' | 'inbox' | 'profile' | 'account', keyof MainTabParamList>;
+
+const MAIN_KEY_BY_TAB = {
+  Daily: 'daily',
+  Explore: 'explore',
+  Inbox: 'inbox',
+  Profile: 'profile',
+  Account: 'account',
+} as const satisfies Record<
+  keyof MainTabParamList,
+  'daily' | 'explore' | 'inbox' | 'profile' | 'account'
+>;
+
+const MAIN_TAB_BY_SCREEN = {
+  daily_home: 'Daily',
+  invite_claim: 'Account',
+  share_hub: 'Account',
+} as const satisfies Record<'daily_home' | 'invite_claim' | 'share_hub', keyof MainTabParamList>;
+const TAB_ICON_BY_ROUTE = {
+  Daily: { active: 'today', inactive: 'today-outline' },
+  Explore: { active: 'compass', inactive: 'compass-outline' },
+  Inbox: { active: 'mail', inactive: 'mail-outline' },
+  Profile: { active: 'person-circle', inactive: 'person-circle-outline' },
+  Account: { active: 'settings', inactive: 'settings-outline' },
+} as const satisfies Record<keyof MainTabParamList, { active: IoniconName; inactive: IoniconName }>;
+const TAB_LABEL_BY_ROUTE = {
+  Daily: 'Gunluk',
+  Explore: 'Kesif',
+  Inbox: 'Kutu',
+  Profile: 'Profil',
+  Account: 'Hesap',
+} as const satisfies Record<keyof MainTabParamList, string>;
+
+const TAB_THEME: NavigationTheme = {
+  ...NavigationDefaultTheme,
+  colors: {
+    ...NavigationDefaultTheme.colors,
+    background: '#121212',
+    card: '#171717',
+    text: '#E5E4E2',
+    border: 'rgba(255, 255, 255, 0.12)',
+    primary: '#8A9A5B',
+    notification: '#A57164',
+  },
 };
 
-type PushInboxState = {
-  status: 'idle' | 'loading' | 'ready' | 'error';
-  message: string;
-  items: PushInboxItem[];
-};
+const Tab = createBottomTabNavigator<MainTabParamList>();
+const tabNavigationRef = createNavigationContainerRef<MainTabParamList>();
+
 
 const inviteFailureReasonByCode: Record<string, string> = {
   UNAUTHORIZED: 'api_unauthorized',
@@ -186,683 +269,15 @@ const inviteMessageByCode: Record<string, string> = {
   SERVER_ERROR: 'Sunucuya ulasilamadi. Birazdan tekrar dene.',
 };
 
-const AuthCard = ({
-  authState,
-  email,
-  password,
-  onEmailChange,
-  onPasswordChange,
-  onSignIn,
-  onSignOut,
-}: {
-  authState: AuthState;
-  email: string;
-  password: string;
-  onEmailChange: (value: string) => void;
-  onPasswordChange: (value: string) => void;
-  onSignIn: () => void;
-  onSignOut: () => void;
-}) => {
-  const isBusy = authState.status === 'loading';
-  const isSignedIn = authState.status === 'signed_in';
-  const isConfigured = isSupabaseConfigured;
-
-  return (
-    <View style={styles.screenCard}>
-      <Text style={styles.screenTitle}>Session</Text>
-      <Text style={styles.screenBody}>
-        Invite claim icin mobilde Supabase oturumu gerekiyor.
-      </Text>
-      <Text style={styles.screenMeta}>Status: {authState.status}</Text>
-      <Text style={styles.screenMeta}>{authState.message}</Text>
-      {!isConfigured ? (
-        <Text style={styles.screenMeta}>
-          EXPO_PUBLIC_SUPABASE_URL ve EXPO_PUBLIC_SUPABASE_ANON_KEY ayarlanmali.
-        </Text>
-      ) : null}
-
-      {!isSignedIn ? (
-        <View style={styles.authForm}>
-          <TextInput
-            style={styles.input}
-            value={email}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            placeholder="Email"
-            placeholderTextColor="#64748b"
-            onChangeText={onEmailChange}
-          />
-          <TextInput
-            style={styles.input}
-            value={password}
-            autoCapitalize="none"
-            secureTextEntry
-            returnKeyType="done"
-            placeholder="Password"
-            placeholderTextColor="#64748b"
-            onChangeText={onPasswordChange}
-            onSubmitEditing={onSignIn}
-          />
-          <Pressable
-            style={[
-              styles.claimButton,
-              isBusy ? styles.claimButtonDisabled : null,
-              !isConfigured ? styles.claimButtonDisabled : null,
-            ]}
-            onPress={onSignIn}
-            disabled={isBusy || !isConfigured}
-          >
-            <Text style={styles.claimButtonText}>{isBusy ? 'Giris yapiliyor...' : 'Giris Yap'}</Text>
-          </Pressable>
-        </View>
-      ) : (
-        <View style={styles.authSignedInBox}>
-          <Text style={styles.screenMeta}>User: {authState.email}</Text>
-          <Pressable
-            style={[styles.signOutButton, isBusy ? styles.claimButtonDisabled : null]}
-            onPress={onSignOut}
-            disabled={isBusy}
-          >
-            <Text style={styles.claimButtonText}>Cikis Yap</Text>
-          </Pressable>
-        </View>
-      )}
-    </View>
-  );
-};
-
-const ProfileSnapshotCard = ({
-  state,
-  isSignedIn,
-  onRefresh,
-}: {
-  state: ProfileState;
-  isSignedIn: boolean;
-  onRefresh: () => void;
-}) => {
-  const isRefreshing = state.status === 'loading';
-
-  return (
-    <View style={styles.screenCard}>
-      <Text style={styles.screenTitle}>Profile Snapshot</Text>
-      <Text style={styles.screenBody}>
-        Mobilde streak ve profil metriklerinin cloud senkron durumunu hizli kontrol et.
-      </Text>
-
-      {!isSignedIn ? (
-        <Text style={[styles.screenMeta, styles.ritualStateWarn]}>
-          Profil metrikleri icin once Session kartindan giris yap.
-        </Text>
-      ) : null}
-
-      {state.status === 'success' ? (
-        <>
-          <Text style={styles.screenMeta}>User: {state.displayName}</Text>
-          <Text style={styles.screenMeta}>Source: {state.source}</Text>
-          <Text style={styles.screenMeta}>Last ritual day: {state.lastRitualDate || 'none'}</Text>
-          <View style={styles.profileGrid}>
-            <View style={styles.profileMetricCard}>
-              <Text style={styles.profileMetricValue}>{state.totalXp}</Text>
-              <Text style={styles.profileMetricLabel}>XP</Text>
-            </View>
-            <View style={styles.profileMetricCard}>
-              <Text style={styles.profileMetricValue}>{state.streak}</Text>
-              <Text style={styles.profileMetricLabel}>Streak</Text>
-            </View>
-            <View style={styles.profileMetricCard}>
-              <Text style={styles.profileMetricValue}>{state.ritualsCount}</Text>
-              <Text style={styles.profileMetricLabel}>Rituals</Text>
-            </View>
-            <View style={styles.profileMetricCard}>
-              <Text style={styles.profileMetricValue}>{state.daysPresent}</Text>
-              <Text style={styles.profileMetricLabel}>Days</Text>
-            </View>
-            <View style={styles.profileMetricCard}>
-              <Text style={styles.profileMetricValue}>{state.followingCount}</Text>
-              <Text style={styles.profileMetricLabel}>Following</Text>
-            </View>
-            <View style={styles.profileMetricCard}>
-              <Text style={styles.profileMetricValue}>{state.followersCount}</Text>
-              <Text style={styles.profileMetricLabel}>Followers</Text>
-            </View>
-          </View>
-        </>
-      ) : null}
-
-      <Text
-        style={[
-          styles.screenMeta,
-          state.status === 'error'
-            ? styles.ritualStateError
-            : state.status === 'success'
-              ? styles.ritualStateOk
-              : styles.screenMeta,
-        ]}
-      >
-        {state.message}
-      </Text>
-
-      <Pressable
-        style={[styles.retryButton, !isSignedIn || isRefreshing ? styles.claimButtonDisabled : null]}
-        disabled={!isSignedIn || isRefreshing}
-        onPress={onRefresh}
-      >
-        <Text style={styles.retryText}>{isRefreshing ? 'Yukleniyor...' : 'Profili Yenile'}</Text>
-      </Pressable>
-    </View>
-  );
-};
-
-const PushStatusCard = ({
-  pushEnabled,
-  state,
-  testState,
-  localSimState,
-  isSignedIn,
-  onRegister,
-  onSendTest,
-  onSimulateLocal,
-}: {
-  pushEnabled: boolean;
-  state: PushState;
-  testState: PushTestState;
-  localSimState: LocalPushSimState;
-  isSignedIn: boolean;
-  onRegister: () => void;
-  onSendTest: () => void;
-  onSimulateLocal: () => void;
-}) => {
-  const isBusy = state.status === 'loading';
-  const isTestBusy = testState.status === 'loading';
-  const isLocalSimBusy = localSimState.status === 'loading';
-  const tokenPreview =
-    state.token.length > 20
-      ? `${state.token.slice(0, 18)}...${state.token.slice(-10)}`
-      : state.token || 'none';
-  const deviceKeyPreview =
-    state.deviceKey.length > 20
-      ? `${state.deviceKey.slice(0, 12)}...${state.deviceKey.slice(-6)}`
-      : state.deviceKey || 'none';
-
-  const toneStyle =
-    state.status === 'error'
-      ? styles.ritualStateError
-      : state.status === 'unsupported'
-        ? styles.ritualStateWarn
-        : styles.ritualStateOk;
-  const testToneStyle =
-    testState.status === 'error'
-      ? styles.ritualStateError
-      : testState.status === 'success'
-        ? styles.ritualStateOk
-        : styles.screenMeta;
-  const receiptToneStyle =
-    testState.receiptStatus === 'unavailable'
-      ? styles.ritualStateWarn
-      : testState.receiptStatus === 'ok'
-        ? styles.ritualStateOk
-        : styles.screenMeta;
-  const canSendTest = pushEnabled && isSignedIn && state.cloudStatus === 'synced' && !isBusy;
-
-  return (
-    <View style={styles.screenCard}>
-      <Text style={styles.screenTitle}>Push Status</Text>
-      <Text style={styles.screenBody}>
-        Expo push token kaydi ve izin durumu. Bildirim datasi icinde `deepLink` varsa mobil routinge aktarilir.
-      </Text>
-      {!pushEnabled ? (
-        <Text style={[styles.screenMeta, styles.ritualStateWarn]}>
-          Push modulu su an gecici olarak devre disi. EXPO_PUBLIC_PUSH_ENABLED=1 ile tekrar acilir.
-        </Text>
-      ) : null}
-      {!isSignedIn ? (
-        <Text style={[styles.screenMeta, styles.ritualStateWarn]}>
-          Push kaydi icin once Session kartindan giris yap.
-        </Text>
-      ) : null}
-      <Text style={styles.screenMeta}>Permission: {state.permissionStatus || 'unknown'}</Text>
-      <Text style={styles.screenMeta}>ProjectId: {state.projectId || 'unset'}</Text>
-      <Text style={styles.screenMeta}>Token: {tokenPreview}</Text>
-      <Text style={styles.screenMeta}>Cloud sync: {state.cloudStatus}</Text>
-      <Text style={styles.screenMeta}>Device key: {deviceKeyPreview}</Text>
-      <Text style={styles.screenMeta}>Last notification: {state.lastNotification}</Text>
-      <Text style={[styles.screenMeta, toneStyle]}>{state.message}</Text>
-      <Text
-        style={[
-          styles.screenMeta,
-          state.cloudStatus === 'error'
-            ? styles.ritualStateError
-            : state.cloudStatus === 'synced'
-              ? styles.ritualStateOk
-              : styles.screenMeta,
-        ]}
-      >
-        {state.cloudMessage}
-      </Text>
-      <Text style={[styles.screenMeta, testToneStyle]}>Test push: {testState.message}</Text>
-      <Text
-        style={[
-          styles.screenMeta,
-          localSimState.status === 'error'
-            ? styles.ritualStateError
-            : localSimState.status === 'success'
-              ? styles.ritualStateOk
-              : styles.screenMeta,
-        ]}
-      >
-        Local sim: {localSimState.message}
-      </Text>
-      {testState.status === 'success' ? (
-        <>
-          <Text style={styles.screenMeta}>
-            Sent: {testState.sentCount} | Tickets: {testState.ticketCount} | Ticket IDs:{' '}
-            {testState.ticketIdCount} | Expo errors: {testState.errorCount}
-          </Text>
-          <Text style={[styles.screenMeta, receiptToneStyle]}>
-            Receipt: {testState.receiptStatus} | Checked: {testState.receiptCheckedCount} | Ok:{' '}
-            {testState.receiptOkCount} | Error: {testState.receiptErrorCount} | Pending:{' '}
-            {testState.receiptPendingCount}
-          </Text>
-          {testState.receiptMessage ? (
-            <Text style={[styles.screenMeta, receiptToneStyle]}>{testState.receiptMessage}</Text>
-          ) : null}
-          {testState.receiptErrorPreview ? (
-            <Text style={[styles.screenMeta, styles.ritualStateError]}>
-              Receipt error sample: {testState.receiptErrorPreview}
-            </Text>
-          ) : null}
-        </>
-      ) : null}
-
-      <View style={styles.ritualActionRow}>
-        <Pressable
-          style={[
-            styles.retryButton,
-            isBusy || !isSignedIn || !pushEnabled ? styles.claimButtonDisabled : null,
-          ]}
-          disabled={isBusy || !isSignedIn || !pushEnabled}
-          onPress={onRegister}
-        >
-          <Text style={styles.retryText}>
-            {isBusy ? 'Push Kaydi Suruyor...' : 'Push Izin + Token Yenile'}
-          </Text>
-        </Pressable>
-
-        <Pressable
-          style={[
-            styles.retryButton,
-            isTestBusy || !canSendTest || !pushEnabled ? styles.claimButtonDisabled : null,
-          ]}
-          disabled={isTestBusy || !canSendTest || !pushEnabled}
-          onPress={onSendTest}
-        >
-          <Text style={styles.retryText}>
-            {isTestBusy ? 'Test Push Gonderiliyor...' : 'Kendime Test Push Gonder'}
-          </Text>
-        </Pressable>
-
-        <Pressable
-          style={[
-            styles.retryButton,
-            isLocalSimBusy || !pushEnabled ? styles.claimButtonDisabled : null,
-          ]}
-          disabled={isLocalSimBusy || !pushEnabled}
-          onPress={onSimulateLocal}
-        >
-          <Text style={styles.retryText}>
-            {isLocalSimBusy ? 'Local Sim Gonderiliyor...' : 'Emulator Local Push Simule Et'}
-          </Text>
-        </Pressable>
-      </View>
-      {!canSendTest ? (
-        <Text style={[styles.screenMeta, styles.ritualStateWarn]}>
-          Test push icin cloud sync status "synced" olmali.
-        </Text>
-      ) : null}
-    </View>
-  );
-};
-
-const PushInboxCard = ({
-  state,
-  onReload,
-  onClear,
-  onOpenDeepLink,
-}: {
-  state: PushInboxState;
-  onReload: () => void;
-  onClear: () => void;
-  onOpenDeepLink: (item: PushInboxItem) => void;
-}) => {
-  const isBusy = state.status === 'loading';
-  const unreadCount = state.items.filter((item) => !item.opened && Boolean(item.deepLink)).length;
-  const previewItems = state.items.slice(0, 6);
-
-  return (
-    <View style={styles.screenCard}>
-      <Text style={styles.screenTitle}>Notification Inbox</Text>
-      <Text style={styles.screenBody}>
-        Son gelen bildirimleri saklar. Deep-link icerenleri tek tikla acabilirsin.
-      </Text>
-      <Text style={styles.screenMeta}>
-        Total: {state.items.length} | Unread deep-link: {unreadCount}
-      </Text>
-      <Text
-        style={[
-          styles.screenMeta,
-          state.status === 'error'
-            ? styles.ritualStateError
-            : state.status === 'ready'
-              ? styles.ritualStateOk
-              : styles.screenMeta,
-        ]}
-      >
-        {state.message}
-      </Text>
-
-      {previewItems.length === 0 ? (
-        <Text style={styles.screenMeta}>Henüz inbox bildirimi yok.</Text>
-      ) : (
-        <View style={styles.inboxList}>
-          {previewItems.map((item) => {
-            const isActionable = Boolean(item.deepLink);
-            return (
-              <View key={item.id} style={styles.inboxRow}>
-                <Text style={styles.inboxTitle}>
-                  {item.title} {item.opened ? '(opened)' : '(new)'}
-                </Text>
-                <Text style={styles.inboxMeta}>
-                  {item.receivedAt} | source: {item.source} | type: {item.kind}
-                </Text>
-                {item.body ? <Text style={styles.inboxBody}>{item.body}</Text> : null}
-                <Text style={styles.inboxMeta}>Deep-link: {item.deepLink || 'none'}</Text>
-                <Pressable
-                  style={[
-                    styles.inboxOpenButton,
-                    !isActionable ? styles.claimButtonDisabled : null,
-                  ]}
-                  disabled={!isActionable}
-                  onPress={() => onOpenDeepLink(item)}
-                >
-                  <Text style={styles.retryText}>
-                    {isActionable ? 'Deep-link Ac' : 'Deep-link Yok'}
-                  </Text>
-                </Pressable>
-              </View>
-            );
-          })}
-        </View>
-      )}
-
-      <View style={styles.ritualActionRow}>
-        <Pressable
-          style={[styles.retryButton, isBusy ? styles.claimButtonDisabled : null]}
-          disabled={isBusy}
-          onPress={onReload}
-        >
-          <Text style={styles.retryText}>{isBusy ? 'Yukleniyor...' : 'Inbox Yenile'}</Text>
-        </Pressable>
-        <Pressable
-          style={[
-            styles.signOutButton,
-            isBusy || state.items.length === 0 ? styles.claimButtonDisabled : null,
-          ]}
-          disabled={isBusy || state.items.length === 0}
-          onPress={onClear}
-        >
-          <Text style={styles.claimButtonText}>Inbox Temizle</Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-};
-
-const DailyHomeScreen = ({
-  state,
-  onRetry,
-}: {
-  state: DailyState;
-  onRetry: () => void;
-}) => {
-  const formatAge = (ageSeconds: number | null): string => {
-    if (ageSeconds === null || ageSeconds < 0) return 'unknown';
-    if (ageSeconds < 60) return `${ageSeconds}s`;
-    if (ageSeconds < 3600) return `${Math.floor(ageSeconds / 60)}m`;
-    return `${Math.floor(ageSeconds / 3600)}h`;
-  };
-
-  if (state.status === 'loading' || state.status === 'idle') {
-    return (
-      <View style={styles.screenCard}>
-        <Text style={styles.screenTitle}>Daily Home</Text>
-        <Text style={styles.screenBody}>Bugunun secimi yukleniyor...</Text>
-      </View>
-    );
-  }
-
-  if (state.status === 'error') {
-    return (
-      <View style={styles.screenCard}>
-        <Text style={styles.screenTitle}>Daily Home</Text>
-        <Text style={styles.screenBody}>Daily API ulasilamadi.</Text>
-        <Text style={styles.screenMeta}>Error: {state.message}</Text>
-        <Text style={styles.screenMeta}>Endpoint: {state.endpoint || 'unset'}</Text>
-        <Pressable style={styles.retryButton} onPress={onRetry}>
-          <Text style={styles.retryText}>Tekrar Dene</Text>
-        </Pressable>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.screenCard}>
-      <Text style={styles.screenTitle}>Daily Home</Text>
-      <Text style={styles.screenBody}>
-        {state.dataSource === 'cache'
-          ? 'Offline fallback: son basarili daily cache gosteriliyor.'
-          : 'Bugunun secimi API uzerinden yuklendi.'}
-      </Text>
-      <Text style={styles.screenMeta}>Date: {state.date || 'unknown'}</Text>
-      <Text style={styles.screenMeta}>Source: {state.source || 'unknown'}</Text>
-      <Text style={styles.screenMeta}>Endpoint: {state.endpoint}</Text>
-      <View style={styles.badgeRow}>
-        <Text style={styles.screenMeta}>Data: {state.dataSource}</Text>
-        <Text style={styles.screenMeta}>Stale: {state.stale ? 'yes' : 'no'}</Text>
-        {state.dataSource === 'cache' ? (
-          <Text style={styles.screenMeta}>Age: {formatAge(state.cacheAgeSeconds)}</Text>
-        ) : null}
-      </View>
-      {state.warning ? (
-        <View style={styles.warningBox}>
-          <Text style={styles.warningText}>Live fetch warning: {state.warning}</Text>
-        </View>
-      ) : null}
-
-      <View style={styles.movieList}>
-        {state.movies.slice(0, 5).map((movie, index) => (
-          <View key={`${movie.id}-${index}`} style={styles.movieRow}>
-            <Text style={styles.movieTitle}>
-              {index + 1}. {movie.title}
-            </Text>
-            <Text style={styles.movieMeta}>
-              {movie.voteAverage ? `Rating ${movie.voteAverage.toFixed(1)}` : 'Rating n/a'}
-              {movie.genre ? ` | ${movie.genre}` : ''}
-            </Text>
-          </View>
-        ))}
-      </View>
-    </View>
-  );
-};
-
-const RitualDraftCard = ({
-  primaryMovie,
-  draftText,
-  onDraftTextChange,
-  submitState,
-  queueState,
-  canSubmit,
-  isSignedIn,
-  onSubmit,
-  onFlushQueue,
-}: {
-  primaryMovie: { title: string; genre: string | null } | null;
-  draftText: string;
-  onDraftTextChange: (value: string) => void;
-  submitState: RitualSubmitState;
-  queueState: RitualQueueState;
-  canSubmit: boolean;
-  isSignedIn: boolean;
-  onSubmit: () => void;
-  onFlushQueue: () => void;
-}) => {
-  const textLength = draftText.length;
-  const canRetryQueue = queueState.pendingCount > 0 && queueState.status !== 'syncing' && isSignedIn;
-
-  const submitToneStyle =
-    submitState.status === 'error'
-      ? styles.ritualStateError
-      : submitState.status === 'queued'
-        ? styles.ritualStateWarn
-        : styles.ritualStateOk;
-
-  const queueToneStyle = queueState.status === 'error' ? styles.ritualStateError : styles.ritualStateOk;
-
-  return (
-    <View style={styles.screenCard}>
-      <Text style={styles.screenTitle}>Ritual Draft</Text>
-      <Text style={styles.screenBody}>
-        Daily listesinden bir filme kisa yorum yaz. Baglanti hatasinda taslak otomatik kuyruga alinir.
-      </Text>
-      <Text style={styles.screenMeta}>Movie: {primaryMovie?.title || 'Daily data bekleniyor'}</Text>
-      <Text style={styles.screenMeta}>Genre: {primaryMovie?.genre || 'unknown'}</Text>
-
-      <TextInput
-        style={styles.ritualInput}
-        multiline
-        textAlignVertical="top"
-        editable={Boolean(primaryMovie)}
-        placeholder="180 karakterlik ritual notunu yaz..."
-        placeholderTextColor="#64748b"
-        value={draftText}
-        maxLength={180}
-        onChangeText={onDraftTextChange}
-      />
-
-      <View style={styles.ritualMetaRow}>
-        <Text style={styles.screenMeta}>{textLength}/180</Text>
-        <Text style={styles.screenMeta}>Pending queue: {queueState.pendingCount}</Text>
-      </View>
-
-      {!isSignedIn ? (
-        <Text style={[styles.screenMeta, styles.ritualStateWarn]}>
-          Ritual gonderimi icin once Session kartindan giris yap.
-        </Text>
-      ) : null}
-
-      {submitState.message ? <Text style={[styles.screenMeta, submitToneStyle]}>{submitState.message}</Text> : null}
-      {queueState.message ? <Text style={[styles.screenMeta, queueToneStyle]}>{queueState.message}</Text> : null}
-
-      <View style={styles.ritualActionRow}>
-        <Pressable
-          style={[
-            styles.claimButton,
-            submitState.status === 'submitting' || !canSubmit ? styles.claimButtonDisabled : null,
-          ]}
-          disabled={submitState.status === 'submitting' || !canSubmit}
-          onPress={onSubmit}
-        >
-          <Text style={styles.claimButtonText}>
-            {submitState.status === 'submitting' ? 'Gonderiliyor...' : 'Ritual Kaydet'}
-          </Text>
-        </Pressable>
-
-        <Pressable
-          style={[styles.retryButton, !canRetryQueue ? styles.claimButtonDisabled : null]}
-          disabled={!canRetryQueue}
-          onPress={onFlushQueue}
-        >
-          <Text style={styles.retryText}>
-            {queueState.status === 'syncing' ? 'Kuyruk Senkron...' : 'Kuyrugu Tekrar Dene'}
-          </Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-};
-
-const InviteClaimScreen = ({
-  inviteCode,
-  claimState,
-  onClaim,
-}: {
-  inviteCode?: string;
-  claimState: InviteClaimState;
-  onClaim: (inviteCode: string) => void;
-}) => {
-  const isLoading = claimState.status === 'loading';
-
-  return (
-    <View style={styles.screenCard}>
-      <Text style={styles.screenTitle}>Invite Claim</Text>
-      <Text style={styles.screenBody}>Davet kodunu backend uzerinden dogrula ve uygula.</Text>
-      <Text style={styles.screenMeta}>Invite: {inviteCode || 'none'}</Text>
-
-      {inviteCode ? (
-        <Pressable
-          style={[styles.claimButton, isLoading ? styles.claimButtonDisabled : null]}
-          onPress={() => onClaim(inviteCode)}
-          disabled={isLoading}
-        >
-          <Text style={styles.claimButtonText}>
-            {isLoading ? 'Kontrol ediliyor...' : 'Davet Kodunu Uygula'}
-          </Text>
-        </Pressable>
-      ) : (
-        <Text style={styles.screenMeta}>Deep link icinde davet kodu yok.</Text>
-      )}
-
-      {claimState.status === 'success' ? (
-        <View style={styles.claimSuccess}>
-          <Text style={styles.claimSuccessText}>{claimState.message}</Text>
-          <Text style={styles.screenMeta}>Invitee XP: +{claimState.inviteeRewardXp}</Text>
-          <Text style={styles.screenMeta}>Inviter XP: +{claimState.inviterRewardXp}</Text>
-          <Text style={styles.screenMeta}>Claim count: {claimState.claimCount}</Text>
-        </View>
-      ) : null}
-
-      {claimState.status === 'error' ? (
-        <View style={styles.claimError}>
-          <Text style={styles.claimErrorText}>{claimState.message}</Text>
-          <Text style={styles.screenMeta}>Error code: {claimState.errorCode}</Text>
-        </View>
-      ) : null}
-    </View>
-  );
-};
-
-const ShareHubScreen = ({
-  inviteCode,
-  platform,
-  goal,
-}: {
-  inviteCode?: string;
-  platform?: string;
-  goal?: string;
-}) => (
-  <View style={styles.screenCard}>
-    <Text style={styles.screenTitle}>Share Hub</Text>
-    <Text style={styles.screenBody}>Paylasim hedefi bazli mobil ekran.</Text>
-    <Text style={styles.screenMeta}>Platform: {platform || 'none'}</Text>
-    <Text style={styles.screenMeta}>Goal: {goal || 'none'}</Text>
-    <Text style={styles.screenMeta}>Invite: {inviteCode || 'none'}</Text>
-  </View>
-);
 
 export default function App() {
-  const [lastIncomingUrl, setLastIncomingUrl] = useState<string | null>(null);
-  const [lastIncomingIntent, setLastIncomingIntent] = useState<MobileRouteIntent | null>(null);
-  const [manualIntent, setManualIntent] = useState<MobileRouteIntent | null>(null);
+  type MainTabKey = 'daily' | 'explore' | 'inbox' | 'profile' | 'account';
+  const [fontsLoaded] = useFonts({
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+  });
   const [dailyState, setDailyState] = useState<DailyState>({ status: 'idle' });
   const [inviteClaimState, setInviteClaimState] = useState<InviteClaimState>({ status: 'idle' });
   const [authEmail, setAuthEmail] = useState('');
@@ -923,66 +338,35 @@ export default function App() {
     message: 'Notification inbox yuklenmedi.',
     items: [],
   });
-
-  const promptDecision = useMemo(
-    () =>
-      resolveMobileWebPromptDecision({
-        streak: 4,
-        dailyRitualsCount: 2,
-        inviteCode: 'ABC12345',
-      }),
-    []
-  );
-
-  const activeIntent = manualIntent || lastIncomingIntent || promptDecision.routeIntent;
-  const screenPlan = useMemo(() => resolveMobileScreenPlan(activeIntent), [activeIntent]);
-
-  const deepLink = useMemo(
-    () =>
-      buildMobileDeepLinkFromRouteIntent(activeIntent, {
-        base: MOBILE_DEEP_LINK_BASE,
-      }),
-    [activeIntent]
-  );
+  const [arenaState, setArenaState] = useState<{
+    status: 'loading' | 'ready' | 'error';
+    source: 'live' | 'fallback';
+    message: string;
+    entries: ArenaEntryView[];
+  }>({
+    status: 'loading',
+    source: 'fallback',
+    message: 'Arena leaderboard yukleniyor...',
+    entries: [],
+  });
+  const [publicProfileInput, setPublicProfileInput] = useState('');
+  const [, setActiveTab] = useState<MainTabKey>('daily');
+  const [debugExpanded, setDebugExpanded] = useState(false);
+  const {
+    activeIntent,
+    deepLink,
+    handleIncomingUrl,
+    lastIncomingIntent,
+    lastIncomingUrl,
+    screenPlan,
+    setManualIntent,
+  } = useMobileRouteIntent();
+  const { pageEntrance, pageEnterTranslateY } = usePageEntranceAnimation();
 
   const primaryDailyMovie =
     dailyState.status === 'success' && dailyState.movies.length > 0 ? dailyState.movies[0] : null;
 
   const isSignedIn = authState.status === 'signed_in';
-
-  const trackEntryIntent = useCallback((intent: MobileRouteIntent, rawUrl: string) => {
-    if (intent.target === 'invite') {
-      void trackMobileEvent('app_opened_from_invite', {
-        inviteCode: intent.invite || null,
-        rawUrl,
-      });
-      return;
-    }
-
-    if (intent.target === 'share') {
-      void trackMobileEvent('app_opened_from_share', {
-        inviteCode: intent.invite || null,
-        platform: intent.platform || null,
-        goal: intent.goal || null,
-        rawUrl,
-      });
-    }
-  }, []);
-
-  const handleIncomingUrl = useCallback(
-    (url: string | null) => {
-      if (!url) return;
-      setLastIncomingUrl(url);
-
-      const parsedRoute = parseMobileDeepLink(url);
-      if (!parsedRoute) return;
-
-      setLastIncomingIntent(parsedRoute);
-      setManualIntent(null);
-      trackEntryIntent(parsedRoute, url);
-    },
-    [trackEntryIntent]
-  );
 
   const refreshAuthState = useCallback(async () => {
     if (!isSupabaseConfigured || !supabase) {
@@ -1061,10 +445,41 @@ export default function App() {
     });
   }, []);
 
+  const refreshArenaLeaderboard = useCallback(async () => {
+    setArenaState((prev) => ({
+      ...prev,
+      status: 'loading',
+      message: 'Arena leaderboard yukleniyor...',
+    }));
+
+    const result = await fetchMobileArenaSnapshot();
+    const entriesWithProfile = result.entries.map((entry) => ({
+      ...entry,
+      profileHref: buildPublicProfileUrl({
+        userId: entry.userId,
+        username: entry.displayName,
+      }),
+    }));
+
+    setArenaState({
+      status: result.ok ? 'ready' : 'error',
+      source: result.source,
+      message: result.message,
+      entries: entriesWithProfile,
+    });
+
+    void trackMobileEvent('page_view', {
+      reason: result.ok ? 'mobile_arena_loaded' : 'mobile_arena_failed',
+      source: result.source,
+      entries: entriesWithProfile.length,
+    });
+  }, []);
+
   const describePushNotification = useCallback((snapshot: PushNotificationSnapshot): string => {
     const title = snapshot.title || '(no-title)';
     const deepLinkMark = snapshot.deepLink ? 'with-link' : 'no-link';
-    return `${snapshot.receivedAt} | ${snapshot.kind} | ${title} | ${deepLinkMark}`;
+    const idPreview = snapshot.notificationId ? snapshot.notificationId.slice(-8) : 'no-id';
+    return `${snapshot.receivedAt} | ${snapshot.kind} | ${title} | ${deepLinkMark} | id:${idPreview}`;
   }, []);
 
   const refreshPushInbox = useCallback(async () => {
@@ -1084,6 +499,7 @@ export default function App() {
   const appendPushInbox = useCallback(
     async (snapshot: PushNotificationSnapshot, source: 'received' | 'opened') => {
       const result = await appendPushInboxItem({
+        notificationId: snapshot.notificationId,
         title: snapshot.title,
         body: snapshot.body,
         deepLink: snapshot.deepLink,
@@ -1114,6 +530,52 @@ export default function App() {
     });
     void trackMobileEvent('page_view', {
       reason: 'mobile_push_inbox_cleared',
+    });
+  }, []);
+
+  const handleMarkPushInboxScopeOpened = useCallback(async (ids: string[]) => {
+    if (!Array.isArray(ids) || ids.length === 0) return;
+    setPushInboxState((prev) => ({
+      ...prev,
+      status: 'loading',
+      message: 'Secili inbox kayitlari opened yapiliyor...',
+    }));
+    const result = await markPushInboxItemsOpened(ids);
+    setPushInboxState({
+      status: 'ready',
+      message:
+        result.updatedCount > 0
+          ? `${result.updatedCount} inbox kaydi opened olarak isaretlendi.`
+          : 'Secili kayitlarda guncellenecek bir durum yok.',
+      items: result.items,
+    });
+    void trackMobileEvent('page_view', {
+      reason: 'mobile_push_inbox_bulk_opened',
+      updatedCount: result.updatedCount,
+      targetCount: ids.length,
+    });
+  }, []);
+
+  const handleRemovePushInboxScope = useCallback(async (ids: string[]) => {
+    if (!Array.isArray(ids) || ids.length === 0) return;
+    setPushInboxState((prev) => ({
+      ...prev,
+      status: 'loading',
+      message: 'Secili inbox kayitlari temizleniyor...',
+    }));
+    const result = await removePushInboxItems(ids);
+    setPushInboxState({
+      status: 'ready',
+      message:
+        result.removedCount > 0
+          ? `${result.removedCount} inbox kaydi temizlendi.`
+          : 'Secili filtrede silinecek kayit bulunamadi.',
+      items: result.items,
+    });
+    void trackMobileEvent('page_view', {
+      reason: 'mobile_push_inbox_bulk_removed',
+      removedCount: result.removedCount,
+      targetCount: ids.length,
     });
   }, []);
 
@@ -1583,6 +1045,10 @@ export default function App() {
   }, [authState.status, refreshProfileStats]);
 
   useEffect(() => {
+    void refreshArenaLeaderboard();
+  }, [authState.status, refreshArenaLeaderboard]);
+
+  useEffect(() => {
     void refreshPushInbox();
   }, [refreshPushInbox]);
 
@@ -1856,10 +1322,23 @@ export default function App() {
   }, [screenPlan.screen, dailyState.status]);
 
   useEffect(() => {
-    void Linking.getInitialURL().then(handleIncomingUrl);
-    const subscription = Linking.addEventListener('url', ({ url }) => handleIncomingUrl(url));
-    return () => subscription.remove();
-  }, [handleIncomingUrl]);
+    const targetTabRoute = MAIN_TAB_BY_SCREEN[screenPlan.screen];
+    const targetTabKey = MAIN_KEY_BY_TAB[targetTabRoute];
+    setActiveTab((prev) => (prev === targetTabKey ? prev : targetTabKey));
+    if (!tabNavigationRef.isReady()) return;
+    const currentRouteName = tabNavigationRef.getCurrentRoute()?.name;
+    if (currentRouteName !== targetTabRoute) {
+      tabNavigationRef.navigate(targetTabRoute);
+    }
+  }, [screenPlan.screen]);
+
+  useEffect(() => {
+    if (!PUSH_FEATURE_ENABLED) return;
+    if (authState.status !== 'signed_in') return;
+    if (pushState.status === 'ready' && pushState.token) return;
+    if (pushState.status === 'loading') return;
+    void refreshPushRegistration();
+  }, [authState.status, pushState.status, pushState.token, refreshPushRegistration]);
 
   const inviteCode =
     activeIntent.target === 'invite' || activeIntent.target === 'share'
@@ -1870,10 +1349,182 @@ export default function App() {
   const canSubmitRitualDraft = Boolean(
     isSignedIn && primaryDailyMovie && ritualDraftText.trim().length > 0
   );
+  const isInviteRouteActive = screenPlan.screen === 'invite_claim';
+  const isShareRouteActive = screenPlan.screen === 'share_hub';
+  const activeRouteLabel = isInviteRouteActive
+    ? 'Davet'
+    : isShareRouteActive
+      ? 'Paylas'
+      : 'Gunluk';
+  const accountRouteLabel = isInviteRouteActive
+    ? 'Davet'
+    : isShareRouteActive
+      ? 'Paylas'
+      : 'Oturum';
+  const isDevSurfaceEnabled = INTERNAL_OPS_VISIBLE;
+  const handleTabNavigationStateChange = useCallback(() => {
+    const currentRouteName = tabNavigationRef.getCurrentRoute()?.name;
+    if (!currentRouteName) return;
+    const nextTabKey = MAIN_KEY_BY_TAB[currentRouteName];
+    setActiveTab((prev) => (prev === nextTabKey ? prev : nextTabKey));
+  }, []);
+  const handleTabNavigationReady = useCallback(() => {
+    const targetTabRoute = MAIN_TAB_BY_SCREEN[screenPlan.screen];
+    const currentRouteName = tabNavigationRef.getCurrentRoute()?.name;
+    if (currentRouteName !== targetTabRoute) {
+      tabNavigationRef.navigate(targetTabRoute);
+    }
+    handleTabNavigationStateChange();
+  }, [handleTabNavigationStateChange, screenPlan.screen]);
+  const authSummary = isSignedIn ? 'ready' : 'required';
+  const pushSummary =
+    pushState.cloudStatus === 'synced'
+      ? 'synced'
+      : pushState.cloudStatus === 'syncing'
+        ? 'syncing'
+        : pushState.cloudStatus === 'error'
+          ? 'error'
+          : 'idle';
+  const dailySummary =
+    dailyState.status === 'success'
+      ? `${dailyState.movies.length} picks`
+      : dailyState.status === 'error'
+        ? 'error'
+        : dailyState.status === 'loading'
+          ? 'loading'
+          : 'idle';
+  const inboxSummary = `${pushInboxState.items.length} items`;
+  const unreadDeepLinkCount = pushInboxState.items.filter(
+    (item) => !item.opened && Boolean(item.deepLink)
+  ).length;
+  const pendingQueueCount = ritualQueueState.pendingCount;
+  const streakSummary = profileState.status === 'success' ? String(profileState.streak) : '--';
+  const ritualsCountSummary =
+    profileState.status === 'success' ? String(profileState.ritualsCount) : '--';
+  const profileSourceLabel =
+    profileState.status === 'success'
+      ? profileState.source === 'xp_state'
+        ? 'Canli'
+        : 'Yedek'
+      : 'Hazir degil';
+  const canOpenManualProfile = Boolean(String(publicProfileInput || '').trim() && MOBILE_WEB_BASE_URL);
+  const inboxTabBadge =
+    unreadDeepLinkCount > 0 ? (unreadDeepLinkCount > 9 ? '9+' : unreadDeepLinkCount) : undefined;
 
   useEffect(() => {
     setInviteClaimState({ status: 'idle' });
   }, [screenPlan.screen, inviteCode]);
+
+  const handleOpenDiscoverRoute = useCallback(
+    async (route: { id: string; href: string }) => {
+      if (!route.href) {
+        void trackMobileEvent('page_view', {
+          reason: 'mobile_discover_route_missing_base',
+          route: route.id,
+        });
+        return;
+      }
+
+      try {
+        const canOpen = await Linking.canOpenURL(route.href);
+        if (!canOpen) {
+          void trackMobileEvent('page_view', {
+            reason: 'mobile_discover_route_unsupported',
+            route: route.id,
+          });
+          return;
+        }
+        await Linking.openURL(route.href);
+        void trackMobileEvent('page_view', {
+          reason: 'mobile_discover_route_opened',
+          route: route.id,
+        });
+      } catch (error) {
+        void trackMobileEvent('page_view', {
+          reason: 'mobile_discover_route_open_failed',
+          route: route.id,
+          message: error instanceof Error ? error.message : 'unknown',
+        });
+      }
+    },
+    []
+  );
+
+  const handleOpenArenaProfile = useCallback(async (entry: ArenaEntryView) => {
+    if (!entry.profileHref) {
+      void trackMobileEvent('page_view', {
+        reason: 'mobile_arena_profile_missing_url',
+        rank: entry.rank,
+      });
+      return;
+    }
+
+    try {
+      const canOpen = await Linking.canOpenURL(entry.profileHref);
+      if (!canOpen) {
+        void trackMobileEvent('page_view', {
+          reason: 'mobile_arena_profile_unsupported',
+          rank: entry.rank,
+        });
+        return;
+      }
+      await Linking.openURL(entry.profileHref);
+      void trackMobileEvent('page_view', {
+        reason: 'mobile_arena_profile_opened',
+        rank: entry.rank,
+        displayName: entry.displayName,
+      });
+    } catch (error) {
+      void trackMobileEvent('page_view', {
+        reason: 'mobile_arena_profile_open_failed',
+        rank: entry.rank,
+        message: error instanceof Error ? error.message : 'unknown',
+      });
+    }
+  }, []);
+
+  const handleOpenManualPublicProfile = useCallback(async () => {
+    const normalizedUsername = String(publicProfileInput || '').trim();
+    const publicProfileUrl = buildPublicProfileUrl({ username: normalizedUsername });
+    if (!publicProfileUrl) {
+      void trackMobileEvent('page_view', {
+        reason: 'mobile_manual_profile_missing_url',
+      });
+      return;
+    }
+
+    try {
+      const canOpen = await Linking.canOpenURL(publicProfileUrl);
+      if (!canOpen) {
+        void trackMobileEvent('page_view', {
+          reason: 'mobile_manual_profile_unsupported',
+          username: normalizedUsername,
+        });
+        return;
+      }
+      await Linking.openURL(publicProfileUrl);
+      void trackMobileEvent('page_view', {
+        reason: 'mobile_manual_profile_opened',
+        username: normalizedUsername,
+      });
+    } catch (error) {
+      void trackMobileEvent('page_view', {
+        reason: 'mobile_manual_profile_open_failed',
+        username: normalizedUsername,
+        message: error instanceof Error ? error.message : 'unknown',
+      });
+    }
+  }, [publicProfileInput]);
+
+  const handleOpenDailyFromExplore = useCallback(() => {
+    setManualIntent({ target: 'daily' });
+    if (tabNavigationRef.isReady()) {
+      tabNavigationRef.navigate(MAIN_TAB_BY_KEY.daily);
+    }
+    void trackMobileEvent('page_view', {
+      reason: 'mobile_explore_jump_to_daily',
+    });
+  }, [setManualIntent]);
 
   const handleClaimInvite = useCallback(async (rawInviteCode: string) => {
     const inviteCodeText = String(rawInviteCode || '').trim().toUpperCase();
@@ -1968,460 +1619,550 @@ export default function App() {
     }
   }, []);
 
+  const renderHeroCard = (tabLabel: string) => (
+    <View style={styles.heroCard}>
+      <View style={styles.heroAccent} />
+      <View style={styles.heroTicketRow}>
+        <View style={styles.heroTicketDotSage} />
+        <View style={styles.heroTicketDotClay} />
+        <View style={styles.heroTicketDash} />
+      </View>
+      <Text style={styles.heroEyebrow}>Absolute Cinema</Text>
+      <Text style={styles.title}>180 Absolute Cinema</Text>
+      <Text style={styles.subtitle}>Gunluk secim, ritual notu ve sosyal akis tek yerde.</Text>
+      <View style={styles.heroMetaRow}>
+        <Text style={styles.heroBadgeMuted}>
+          {isSignedIn ? 'Oturum: hazir' : 'Oturum: gerekli'}
+        </Text>
+        {isDevSurfaceEnabled ? (
+          <>
+            <Text style={styles.heroBadge}>Screen: {screenPlan.screen}</Text>
+            <Text style={styles.heroBadge}>Tab: {tabLabel}</Text>
+            <Text style={styles.heroBadgeNeutral}>{MOBILE_UI_PACKAGE_LABEL}</Text>
+          </>
+        ) : null}
+      </View>
+      {isDevSurfaceEnabled ? (
+        <>
+          <View style={styles.statusRail}>
+            <View style={styles.statusPill}>
+              <Text style={styles.statusPillKey}>Auth</Text>
+              <Text
+                style={[
+                  styles.statusPillValue,
+                  isSignedIn ? styles.statusPillValueSage : styles.statusPillValueClay,
+                ]}
+              >
+                {authSummary}
+              </Text>
+            </View>
+            <View style={styles.statusPill}>
+              <Text style={styles.statusPillKey}>Push</Text>
+              <Text
+                style={[
+                  styles.statusPillValue,
+                  pushState.cloudStatus === 'synced'
+                    ? styles.statusPillValueSage
+                    : pushState.cloudStatus === 'error'
+                      ? styles.statusPillValueClay
+                      : styles.statusPillValue,
+                ]}
+              >
+                {pushSummary}
+              </Text>
+            </View>
+            <View style={styles.statusPill}>
+              <Text style={styles.statusPillKey}>Daily</Text>
+              <Text
+                style={[
+                  styles.statusPillValue,
+                  dailyState.status === 'success'
+                    ? styles.statusPillValueSage
+                    : dailyState.status === 'error'
+                      ? styles.statusPillValueClay
+                      : styles.statusPillValue,
+                ]}
+              >
+                {dailySummary}
+              </Text>
+            </View>
+            <View style={styles.statusPill}>
+              <Text style={styles.statusPillKey}>Inbox</Text>
+              <Text style={styles.statusPillValue}>{inboxSummary}</Text>
+            </View>
+          </View>
+          <View style={styles.opsSummaryRow}>
+            <View style={styles.opsSummaryCard}>
+              <Text style={styles.opsSummaryKey}>Unread Links</Text>
+              <Text
+                style={[
+                  styles.opsSummaryValue,
+                  unreadDeepLinkCount > 0
+                    ? styles.statusPillValueClay
+                    : styles.statusPillValueSage,
+                ]}
+              >
+                {unreadDeepLinkCount}
+              </Text>
+            </View>
+            <View style={styles.opsSummaryCard}>
+              <Text style={styles.opsSummaryKey}>Queue Pending</Text>
+              <Text
+                style={[
+                  styles.opsSummaryValue,
+                  pendingQueueCount > 0
+                    ? styles.statusPillValueClay
+                    : styles.statusPillValueSage,
+                ]}
+              >
+                {pendingQueueCount}
+              </Text>
+            </View>
+            <View style={styles.opsSummaryCard}>
+              <Text style={styles.opsSummaryKey}>Streak</Text>
+              <Text style={styles.opsSummaryValue}>{streakSummary}</Text>
+            </View>
+          </View>
+        </>
+      ) : null}
+    </View>
+  );
+  const renderSurfaceIntro = ({
+    title,
+    body,
+    tone = 'sage',
+    badges,
+  }: {
+    title: string;
+    body: string;
+    tone?: 'sage' | 'clay';
+    badges: Array<{ label: string; muted?: boolean }>;
+  }) => (
+    <View style={styles.surfaceIntroCard}>
+      <View
+        style={[
+          styles.surfaceIntroAccent,
+          tone === 'clay' ? styles.surfaceIntroAccentClay : styles.surfaceIntroAccentSage,
+        ]}
+      />
+      <Text style={styles.surfaceIntroTitle}>{title}</Text>
+      <Text style={styles.surfaceIntroBody}>{body}</Text>
+      <View style={styles.surfaceIntroMetaRow}>
+        {badges.map((badge, index) => (
+          <Text
+            key={`${title}-${index}`}
+            style={badge.muted ? styles.surfaceIntroBadgeMuted : styles.surfaceIntroBadge}
+          >
+            {badge.label}
+          </Text>
+        ))}
+      </View>
+    </View>
+  );
+
+  if (!fontsLoaded) {
+    return (
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.safeArea}>
+          <StatusBar style="light" />
+        </SafeAreaView>
+      </SafeAreaProvider>
+    );
+  }
+
   return (
     <SafeAreaProvider>
       <SafeAreaView style={styles.safeArea}>
-        <ScrollView
-          contentContainerStyle={styles.container}
-          keyboardShouldPersistTaps="handled"
+        <View pointerEvents="none" style={styles.backdropLayer}>
+          <View style={styles.backdropBandTop} />
+          <View style={styles.backdropBandBottom} />
+          <View style={styles.backdropRuleVerticalA} />
+          <View style={styles.backdropRuleVerticalB} />
+          <View style={styles.backdropRuleHorizontalA} />
+          <View style={styles.backdropRuleHorizontalB} />
+        </View>
+        <Animated.View
+          style={[
+            styles.pageMotion,
+            {
+              opacity: pageEntrance,
+              transform: [{ translateY: pageEnterTranslateY }],
+            },
+          ]}
         >
-          <Text style={styles.title}>180 Absolute Cinema Mobile</Text>
-          <Text style={styles.subtitle}>Phase-1.5 flow routing live.</Text>
-
-          <AuthCard
-            authState={authState}
-            email={authEmail}
-            password={authPassword}
-            onEmailChange={setAuthEmail}
-            onPasswordChange={setAuthPassword}
-            onSignIn={handleSignIn}
-            onSignOut={handleSignOut}
-          />
-
-          <PushStatusCard
-            pushEnabled={PUSH_FEATURE_ENABLED}
-            state={pushState}
-            testState={pushTestState}
-            localSimState={localPushSimState}
-            isSignedIn={isSignedIn}
-            onRegister={() => {
-              void refreshPushRegistration();
-            }}
-            onSendTest={() => {
-              void handleSendPushTest();
-            }}
-            onSimulateLocal={() => {
-              void handleSimulateLocalPush();
-            }}
-          />
-
-          <PushInboxCard
-            state={pushInboxState}
-            onReload={() => {
-              void refreshPushInbox();
-            }}
-            onClear={() => {
-              void handleClearPushInbox();
-            }}
-            onOpenDeepLink={(item) => {
-              void handleOpenInboxDeepLink(item);
-            }}
-          />
-
-          <ProfileSnapshotCard
-            state={profileState}
-            isSignedIn={isSignedIn}
-            onRefresh={() => {
-              void refreshProfileStats();
-            }}
-          />
-
-          {screenPlan.screen === 'daily_home' ? (
-            <>
-              <DailyHomeScreen
-                state={dailyState}
-                onRetry={() => {
-                  void loadDailyMovies();
-                }}
-              />
-              <RitualDraftCard
-                primaryMovie={primaryDailyMovie}
-                draftText={ritualDraftText}
-                onDraftTextChange={(value) => {
-                  setRitualDraftText(value);
-                  if (ritualSubmitState.status !== 'idle') {
-                    setRitualSubmitState({
-                      status: 'idle',
-                      message: '',
-                    });
-                  }
-                  if (ritualQueueState.status === 'done') {
-                    setRitualQueueState((prev) => ({
-                      ...prev,
-                      status: 'idle',
-                      message: '',
-                    }));
-                  }
-                }}
-                submitState={ritualSubmitState}
-                queueState={ritualQueueState}
-                canSubmit={canSubmitRitualDraft}
-                isSignedIn={isSignedIn}
-                onSubmit={handleSubmitRitualDraft}
-                onFlushQueue={handleFlushRitualQueue}
-              />
-            </>
-          ) : null}
-          {screenPlan.screen === 'invite_claim' ? (
-            <InviteClaimScreen
-              inviteCode={inviteCode}
-              claimState={inviteClaimState}
-              onClaim={handleClaimInvite}
-            />
-          ) : null}
-          {screenPlan.screen === 'share_hub' ? (
-            <ShareHubScreen inviteCode={inviteCode} platform={sharePlatform} goal={shareGoal} />
-          ) : null}
-
-          <View style={styles.actionsRow}>
-            <Pressable
-              style={styles.actionButton}
-              onPress={() => setManualIntent({ target: 'daily' })}
+          <NavigationContainer
+            ref={tabNavigationRef}
+            theme={TAB_THEME}
+            onReady={handleTabNavigationReady}
+            onStateChange={handleTabNavigationStateChange}
+          >
+            <Tab.Navigator
+              initialRouteName={MAIN_TAB_BY_KEY.daily}
+              screenOptions={({ route }) => ({
+                headerShown: false,
+                sceneStyle: styles.navScene,
+                tabBarStyle: styles.navTabBar,
+                tabBarItemStyle: styles.navTabItem,
+                tabBarLabelStyle: styles.navTabLabel,
+                tabBarLabel: TAB_LABEL_BY_ROUTE[route.name],
+                tabBarActiveTintColor: '#8A9A5B',
+                tabBarInactiveTintColor: '#8e8b84',
+                tabBarBadgeStyle: styles.navTabBadge,
+                tabBarBadge: route.name === MAIN_TAB_BY_KEY.inbox ? inboxTabBadge : undefined,
+                tabBarIcon: ({ color, focused, size }) => (
+                  <Ionicons
+                    name={
+                      focused
+                        ? TAB_ICON_BY_ROUTE[route.name].active
+                        : TAB_ICON_BY_ROUTE[route.name].inactive
+                    }
+                    size={size}
+                    color={color}
+                  />
+                ),
+              })}
             >
-              <Text style={styles.actionText}>Daily</Text>
-            </Pressable>
-            <Pressable
-              style={styles.actionButton}
-              onPress={() => setManualIntent({ target: 'invite', invite: 'ABC12345' })}
-            >
-              <Text style={styles.actionText}>Invite</Text>
-            </Pressable>
-            <Pressable
-              style={styles.actionButton}
-              onPress={() =>
-                setManualIntent({
-                  target: 'share',
-                  invite: 'ABC12345',
-                  platform: 'x',
-                  goal: 'streak',
-                })
-              }
-            >
-              <Text style={styles.actionText}>Share</Text>
-            </Pressable>
-          </View>
+              <Tab.Screen name={MAIN_TAB_BY_KEY.daily}>
+                {() => (
+                  <ScrollView
+                    contentContainerStyle={[styles.container, styles.containerWithTabs]}
+                    keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode="on-drag"
+                    showsVerticalScrollIndicator={false}
+                  >
+                    {renderHeroCard('Daily')}
+                    <View style={styles.sectionAnchor}>
+                      <View style={styles.sectionHeaderRow}>
+                        <Text style={styles.sectionHeader}>Gunluk Akis</Text>
+                        <Text style={styles.sectionHeaderMeta}>Gunluk</Text>
+                      </View>
+                    </View>
 
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Active Screen Plan</Text>
-            <Text style={styles.code}>{JSON.stringify(screenPlan, null, 2)}</Text>
-          </View>
+                    <DailyHomeScreen
+                      state={dailyState}
+                      showOpsMeta={isDevSurfaceEnabled}
+                      onRetry={() => {
+                        void loadDailyMovies();
+                      }}
+                    />
+                    <RitualDraftCard
+                      primaryMovie={primaryDailyMovie}
+                      draftText={ritualDraftText}
+                      onDraftTextChange={(value) => {
+                        setRitualDraftText(value);
+                        if (ritualSubmitState.status !== 'idle') {
+                          setRitualSubmitState({
+                            status: 'idle',
+                            message: '',
+                          });
+                        }
+                        if (ritualQueueState.status === 'done') {
+                          setRitualQueueState((prev) => ({
+                            ...prev,
+                            status: 'idle',
+                            message: '',
+                          }));
+                        }
+                      }}
+                      submitState={ritualSubmitState}
+                      queueState={ritualQueueState}
+                      canSubmit={canSubmitRitualDraft}
+                      isSignedIn={isSignedIn}
+                      onSubmit={handleSubmitRitualDraft}
+                      onFlushQueue={handleFlushRitualQueue}
+                    />
 
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Generated Deep Link</Text>
-            <Text selectable style={styles.code}>
-              {deepLink}
-            </Text>
-          </View>
+                    {isDevSurfaceEnabled ? (
+                      <>
+                        <View style={styles.actionsRow}>
+                          <UiButton
+                            label="Daily"
+                            tone={screenPlan.screen === 'daily_home' ? 'brand' : 'neutral'}
+                            stretch
+                            onPress={() => setManualIntent({ target: 'daily' })}
+                          />
+                          <UiButton
+                            label="Invite"
+                            tone={screenPlan.screen === 'invite_claim' ? 'teal' : 'neutral'}
+                            stretch
+                            onPress={() => setManualIntent({ target: 'invite', invite: 'ABC12345' })}
+                          />
+                          <UiButton
+                            label="Share"
+                            tone={screenPlan.screen === 'share_hub' ? 'teal' : 'neutral'}
+                            stretch
+                            onPress={() =>
+                              setManualIntent({
+                                target: 'share',
+                                invite: 'ABC12345',
+                                platform: 'x',
+                                goal: 'streak',
+                              })
+                            }
+                          />
+                        </View>
+                        <Text style={styles.actionsHint}>Aktif route: {activeRouteLabel}</Text>
+                      </>
+                    ) : null}
+                  </ScrollView>
+                )}
+              </Tab.Screen>
 
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Last Incoming URL</Text>
-            <Text selectable style={styles.code}>
-              {lastIncomingUrl || '(none yet)'}
-            </Text>
-          </View>
+              <Tab.Screen name={MAIN_TAB_BY_KEY.explore}>
+                {() => (
+                  <ScrollView
+                    contentContainerStyle={[styles.container, styles.containerWithTabs]}
+                    keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode="on-drag"
+                    showsVerticalScrollIndicator={false}
+                  >
+                    {renderSurfaceIntro({
+                      title: 'Kesif ve Arena',
+                      body: 'Webdeki kesif, arena leaderboard ve public profile gecisleri mobile tasindi.',
+                      badges: [
+                        { label: `${DISCOVER_ROUTES.length} kesif rotasi` },
+                        { label: 'Arena + Profile + Kurallar', muted: true },
+                      ],
+                    })}
+                    <View style={styles.sectionAnchor}>
+                      <View style={styles.sectionHeaderRow}>
+                        <Text style={styles.sectionHeader}>Kesif</Text>
+                        <Text style={styles.sectionHeaderMeta}>Web parity</Text>
+                      </View>
+                    </View>
+                    <DiscoverRoutesCard
+                      routes={DISCOVER_ROUTES}
+                      onOpenRoute={(route) => {
+                        void handleOpenDiscoverRoute(route);
+                      }}
+                    />
+                    <ArenaChallengeCard
+                      streakLabel={streakSummary}
+                      ritualsLabel={ritualsCountSummary}
+                      onOpenDaily={handleOpenDailyFromExplore}
+                    />
+                    <ArenaLeaderboardCard
+                      state={arenaState}
+                      onRefresh={() => {
+                        void refreshArenaLeaderboard();
+                      }}
+                      onOpenProfile={(item) => {
+                        void handleOpenArenaProfile(item);
+                      }}
+                    />
+                    <PublicProfileBridgeCard
+                      profileInput={publicProfileInput}
+                      onProfileInputChange={setPublicProfileInput}
+                      onOpenProfile={() => {
+                        void handleOpenManualPublicProfile();
+                      }}
+                      canOpenProfile={canOpenManualProfile}
+                      hasWebBase={Boolean(MOBILE_WEB_BASE_URL)}
+                    />
+                    <PlatformRulesCard />
+                  </ScrollView>
+                )}
+              </Tab.Screen>
 
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Last Incoming Intent</Text>
-            <Text style={styles.code}>
-              {lastIncomingIntent ? JSON.stringify(lastIncomingIntent, null, 2) : '(none yet)'}
-            </Text>
-          </View>
-        </ScrollView>
-        <StatusBar style="auto" />
+              <Tab.Screen name={MAIN_TAB_BY_KEY.inbox}>
+                {() => (
+                  <ScrollView
+                    contentContainerStyle={[styles.container, styles.containerWithTabs]}
+                    keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode="on-drag"
+                    showsVerticalScrollIndicator={false}
+                  >
+                    {renderSurfaceIntro({
+                      title: 'Bildirim Kutusu',
+                      body: 'Yeni bildirimleri izle, filtrele ve tek tikla ilgili akisa gec.',
+                      badges: [
+                        { label: `${unreadDeepLinkCount} yeni link` },
+                        { label: `${pushInboxState.items.length} toplam`, muted: true },
+                      ],
+                    })}
+                    <View style={styles.sectionAnchor}>
+                      <View style={styles.sectionHeaderRow}>
+                        <Text style={styles.sectionHeader}>Kutu</Text>
+                        <Text style={styles.sectionHeaderMeta}>{unreadDeepLinkCount} yeni link</Text>
+                      </View>
+                    </View>
+                    <PushInboxCard
+                      state={pushInboxState}
+                      showOpsMeta={isDevSurfaceEnabled}
+                      onReload={() => {
+                        void refreshPushInbox();
+                      }}
+                      onClear={() => {
+                        void handleClearPushInbox();
+                      }}
+                      onOpenDeepLink={(item) => {
+                        void handleOpenInboxDeepLink(item);
+                      }}
+                      onMarkScopeOpened={(ids) => {
+                        void handleMarkPushInboxScopeOpened(ids);
+                      }}
+                      onRemoveScope={(ids) => {
+                        void handleRemovePushInboxScope(ids);
+                      }}
+                    />
+                  </ScrollView>
+                )}
+              </Tab.Screen>
+
+              <Tab.Screen name={MAIN_TAB_BY_KEY.profile}>
+                {() => (
+                  <ScrollView
+                    contentContainerStyle={[styles.container, styles.containerWithTabs]}
+                    keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode="on-drag"
+                    showsVerticalScrollIndicator={false}
+                  >
+                    {renderSurfaceIntro({
+                      title: 'Profil Ozeti',
+                      body: 'Seri, XP ve sosyal metrikleri tek bakista takip et.',
+                      badges: [
+                        { label: `Seri ${streakSummary}` },
+                        { label: `Kaynak ${profileSourceLabel}`, muted: true },
+                      ],
+                    })}
+                    <View style={styles.sectionAnchor}>
+                      <View style={styles.sectionHeaderRow}>
+                        <Text style={styles.sectionHeader}>Profil</Text>
+                        <Text style={styles.sectionHeaderMeta}>Seri {streakSummary}</Text>
+                      </View>
+                    </View>
+                    <ProfileSnapshotCard
+                      state={profileState}
+                      isSignedIn={isSignedIn}
+                      onRefresh={() => {
+                        void refreshProfileStats();
+                      }}
+                    />
+                  </ScrollView>
+                )}
+              </Tab.Screen>
+
+              <Tab.Screen name={MAIN_TAB_BY_KEY.account}>
+                {() => (
+                  <ScrollView
+                    contentContainerStyle={[styles.container, styles.containerWithTabs]}
+                    keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode="on-drag"
+                    showsVerticalScrollIndicator={false}
+                  >
+                    {renderSurfaceIntro({
+                      title: 'Hesap ve Oturum',
+                      body: 'Oturumu yonet ve gelen davet/paylasim akislarini bu sekmeden tamamla.',
+                      tone: 'clay',
+                      badges: [
+                        { label: isSignedIn ? 'Oturum hazir' : 'Oturum gerekli' },
+                        { label: `Akis ${accountRouteLabel}`, muted: true },
+                      ],
+                    })}
+                    <View style={styles.sectionAnchor}>
+                      <View style={styles.sectionHeaderRow}>
+                        <Text style={styles.sectionHeader}>Hesap</Text>
+                        <Text style={styles.sectionHeaderMeta}>{accountRouteLabel}</Text>
+                      </View>
+                    </View>
+                    <AuthCard
+                      authState={authState}
+                      email={authEmail}
+                      password={authPassword}
+                      onEmailChange={setAuthEmail}
+                      onPasswordChange={setAuthPassword}
+                      onSignIn={handleSignIn}
+                      onSignOut={handleSignOut}
+                    />
+                    {screenPlan.screen === 'invite_claim' ? (
+                      <InviteClaimScreen
+                        inviteCode={inviteCode}
+                        claimState={inviteClaimState}
+                        onClaim={handleClaimInvite}
+                      />
+                    ) : null}
+                    {screenPlan.screen === 'share_hub' ? (
+                      <ShareHubScreen
+                        inviteCode={inviteCode}
+                        platform={sharePlatform}
+                        goal={shareGoal}
+                      />
+                    ) : null}
+
+                    {isDevSurfaceEnabled ? (
+                      <>
+                        <View style={styles.card}>
+                          <Text style={styles.cardTitle}>Release Snapshot</Text>
+                          <Text style={styles.screenMeta}>Push permission: {pushState.permissionStatus}</Text>
+                          <Text style={styles.screenMeta}>Push cloud: {pushState.cloudStatus}</Text>
+                          <Text style={styles.screenMeta}>Pending queue: {pendingQueueCount}</Text>
+                        </View>
+                        <PushStatusCard
+                          pushEnabled={PUSH_FEATURE_ENABLED}
+                          state={pushState}
+                          testState={pushTestState}
+                          localSimState={localPushSimState}
+                          isSignedIn={isSignedIn}
+                          onRegister={() => {
+                            void refreshPushRegistration();
+                          }}
+                          onSendTest={() => {
+                            void handleSendPushTest();
+                          }}
+                          onSimulateLocal={() => {
+                            void handleSimulateLocalPush();
+                          }}
+                        />
+                        <View style={styles.singleActionRow}>
+                          <UiButton
+                            label={debugExpanded ? 'Debug Detaylarini Gizle' : 'Debug Detaylarini Goster'}
+                            tone="neutral"
+                            stretch
+                            onPress={() => setDebugExpanded((prev) => !prev)}
+                          />
+                        </View>
+                        {debugExpanded ? (
+                          <>
+                            <View style={styles.card}>
+                              <Text style={styles.cardTitle}>Active Screen Plan</Text>
+                              <Text style={styles.code}>{JSON.stringify(screenPlan, null, 2)}</Text>
+                            </View>
+
+                            <View style={styles.card}>
+                              <Text style={styles.cardTitle}>Generated Deep Link</Text>
+                              <Text selectable style={styles.code}>
+                                {deepLink}
+                              </Text>
+                            </View>
+
+                            <View style={styles.card}>
+                              <Text style={styles.cardTitle}>Last Incoming URL</Text>
+                              <Text selectable style={styles.code}>
+                                {lastIncomingUrl || '(none yet)'}
+                              </Text>
+                            </View>
+
+                            <View style={styles.card}>
+                              <Text style={styles.cardTitle}>Last Incoming Intent</Text>
+                              <Text style={styles.code}>
+                                {lastIncomingIntent
+                                  ? JSON.stringify(lastIncomingIntent, null, 2)
+                                  : '(none yet)'}
+                              </Text>
+                            </View>
+                          </>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </ScrollView>
+                )}
+              </Tab.Screen>
+            </Tab.Navigator>
+          </NavigationContainer>
+        </Animated.View>
+        <StatusBar style="light" />
       </SafeAreaView>
     </SafeAreaProvider>
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#0d1321',
-  },
-  container: {
-    paddingHorizontal: 16,
-    paddingVertical: 20,
-    gap: 12,
-  },
-  title: {
-    color: '#f8fafc',
-    fontSize: 22,
-    fontWeight: '700',
-  },
-  subtitle: {
-    color: '#94a3b8',
-    fontSize: 14,
-    marginBottom: 6,
-  },
-  screenCard: {
-    backgroundColor: '#0f172a',
-    borderColor: '#2b3650',
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
-    gap: 8,
-  },
-  screenTitle: {
-    color: '#e2e8f0',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  screenBody: {
-    color: '#cbd5e1',
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  screenMeta: {
-    color: '#94a3b8',
-    fontSize: 12,
-  },
-  movieList: {
-    marginTop: 8,
-    gap: 8,
-  },
-  movieRow: {
-    padding: 8,
-    backgroundColor: '#111827',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#22314a',
-  },
-  movieTitle: {
-    color: '#e2e8f0',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  movieMeta: {
-    marginTop: 2,
-    color: '#94a3b8',
-    fontSize: 12,
-  },
-  inboxList: {
-    marginTop: 6,
-    gap: 8,
-  },
-  inboxRow: {
-    backgroundColor: '#111827',
-    borderColor: '#22314a',
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    gap: 4,
-  },
-  inboxTitle: {
-    color: '#e2e8f0',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  inboxMeta: {
-    color: '#94a3b8',
-    fontSize: 11,
-  },
-  inboxBody: {
-    color: '#cbd5e1',
-    fontSize: 12,
-  },
-  inboxOpenButton: {
-    marginTop: 4,
-    alignSelf: 'flex-start',
-    backgroundColor: '#1d4ed8',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  ritualInput: {
-    minHeight: 88,
-    backgroundColor: '#111827',
-    borderColor: '#334155',
-    borderWidth: 1,
-    borderRadius: 10,
-    color: '#e2e8f0',
-    fontSize: 13,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-  },
-  ritualMetaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 8,
-  },
-  ritualStateOk: {
-    color: '#86efac',
-  },
-  ritualStateWarn: {
-    color: '#fbbf24',
-  },
-  ritualStateError: {
-    color: '#fecaca',
-  },
-  ritualActionRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  profileGrid: {
-    marginTop: 6,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  profileMetricCard: {
-    minWidth: 90,
-    flexGrow: 1,
-    backgroundColor: '#111827',
-    borderColor: '#22314a',
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    gap: 2,
-  },
-  profileMetricValue: {
-    color: '#e2e8f0',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  profileMetricLabel: {
-    color: '#94a3b8',
-    fontSize: 11,
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-  },
-  badgeRow: {
-    marginTop: 4,
-    gap: 2,
-  },
-  warningBox: {
-    marginTop: 6,
-    padding: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#7c2d12',
-    backgroundColor: '#2f1a12',
-  },
-  warningText: {
-    color: '#fdba74',
-    fontSize: 12,
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  actionButton: {
-    flex: 1,
-    backgroundColor: '#1e293b',
-    borderColor: '#334155',
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  actionText: {
-    color: '#e2e8f0',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  retryButton: {
-    marginTop: 8,
-    alignSelf: 'flex-start',
-    backgroundColor: '#1d4ed8',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  retryText: {
-    color: '#f8fafc',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  authForm: {
-    marginTop: 8,
-    gap: 8,
-  },
-  authSignedInBox: {
-    marginTop: 8,
-    gap: 8,
-  },
-  input: {
-    backgroundColor: '#111827',
-    borderColor: '#334155',
-    borderWidth: 1,
-    borderRadius: 8,
-    color: '#e2e8f0',
-    fontSize: 13,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  claimButton: {
-    marginTop: 6,
-    alignSelf: 'flex-start',
-    backgroundColor: '#0f766e',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  claimButtonDisabled: {
-    opacity: 0.7,
-  },
-  claimButtonText: {
-    color: '#f8fafc',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  signOutButton: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#7f1d1d',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  claimSuccess: {
-    marginTop: 6,
-    padding: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#14532d',
-    backgroundColor: '#0f2a1f',
-    gap: 2,
-  },
-  claimSuccessText: {
-    color: '#bbf7d0',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  claimError: {
-    marginTop: 6,
-    padding: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#7f1d1d',
-    backgroundColor: '#2f1212',
-    gap: 2,
-  },
-  claimErrorText: {
-    color: '#fecaca',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  card: {
-    backgroundColor: '#111827',
-    borderColor: '#334155',
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    gap: 8,
-  },
-  cardTitle: {
-    color: '#e2e8f0',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  code: {
-    color: '#cbd5e1',
-    fontFamily: 'monospace',
-    fontSize: 12,
-    lineHeight: 18,
-  },
-});

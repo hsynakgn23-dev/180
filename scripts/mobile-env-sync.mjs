@@ -14,6 +14,7 @@ const ORDERED_KEYS = [
   'EXPO_PUBLIC_PUSH_ENABLED',
   'EXPO_PUBLIC_PUSH_API_BASE',
   'EXPO_PUBLIC_EXPO_PROJECT_ID',
+  'EXPO_PUBLIC_MOBILE_INTERNAL_SURFACES',
 ];
 
 const readFileSafe = (filePath) => {
@@ -73,6 +74,8 @@ const nextMobileEnv = {
   EXPO_PUBLIC_PUSH_API_BASE:
     mobileEnv.EXPO_PUBLIC_PUSH_API_BASE || referralBase || fallbackBase,
   EXPO_PUBLIC_EXPO_PROJECT_ID: mobileEnv.EXPO_PUBLIC_EXPO_PROJECT_ID || '',
+  EXPO_PUBLIC_MOBILE_INTERNAL_SURFACES:
+    mobileEnv.EXPO_PUBLIC_MOBILE_INTERNAL_SURFACES || '0',
 };
 
 const removedKeys = Object.keys(mobileEnv).filter((key) => !ORDERED_KEYS.includes(key));

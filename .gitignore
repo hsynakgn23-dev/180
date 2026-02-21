@@ -10,6 +10,7 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+artifacts
 *.local
 
 # Editor directories and files
@@ -25,5 +26,7 @@ dist-ssr
 
 # Env
 .env
+apps/mobile/.env.release
 
 .vercel
+.gradle-local/

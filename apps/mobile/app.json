@@ -6,12 +6,12 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "absolutecinema",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#121212"
     },
     "ios": {
       "supportsTablet": true,
@@ -22,7 +22,7 @@
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#121212"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false

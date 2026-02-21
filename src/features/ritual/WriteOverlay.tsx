@@ -30,8 +30,8 @@ export const WriteOverlay: React.FC<WriteOverlayProps> = ({ movie, onClose }) =>
     };
 
     return (
-        <div className="fixed inset-0 z-50 bg-[#121212] flex items-center justify-center animate-fade-in p-4 sm:p-6">
-            <div className="max-w-xl w-full rounded-2xl border border-white/10 bg-[#121212]/95 px-4 sm:px-8 py-6 sm:py-8">
+        <div className="fixed inset-0 z-50 bg-[#121212]/85 backdrop-blur-md flex items-center justify-center animate-fade-in p-4 sm:p-6 transition-all duration-500">
+            <div className="max-w-xl w-full rounded-3xl border border-white/10 bg-gradient-to-b from-[#181818] to-[#121212] px-4 sm:px-8 py-6 sm:py-8 shadow-[0_0_40px_rgba(0,0,0,0.8),0_0_15px_rgba(138,154,91,0.05)] transform scale-100 animate-[fade-in-delayed_0.3s_ease-out]">
 
                 {/* Header (Minimal) */}
                 <div className="mb-7 sm:mb-12 text-center opacity-80">
@@ -75,9 +75,9 @@ export const WriteOverlay: React.FC<WriteOverlayProps> = ({ movie, onClose }) =>
                         <button
                             key={num}
                             onClick={() => setRating(num)}
-                            className={`w-full sm:w-8 h-8 rounded-lg sm:rounded-full text-xs font-bold transition-all ${rating >= num
-                                ? 'bg-sage text-[#121212] sm:scale-110'
-                                : 'bg-white/5 text-gray-500 hover:bg-white/10'
+                            className={`w-full sm:w-8 h-8 rounded-lg sm:rounded-full text-xs font-bold transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] ${rating >= num
+                                ? 'bg-sage text-[#121212] sm:scale-110 shadow-[0_0_12px_rgba(138,154,91,0.4)]'
+                                : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-[#E5E4E2] hover:scale-105'
                                 }`}
                         >
                             {num}
@@ -103,7 +103,7 @@ export const WriteOverlay: React.FC<WriteOverlayProps> = ({ movie, onClose }) =>
                     <button
                         onClick={handleSubmit}
                         disabled={text.length === 0}
-                        className="w-full sm:w-auto px-8 py-2 bg-[#2C2C2C] text-white text-sm tracking-widest uppercase rounded-full hover:bg-sage disabled:opacity-20 disabled:hover:bg-[#2C2C2C] transition-all shadow-lg hover:shadow-xl sm:hover:-translate-y-1"
+                        className="w-full sm:w-auto px-10 py-3 bg-[#2C2C2C] text-white text-sm tracking-widest uppercase rounded-full hover:bg-sage disabled:opacity-20 disabled:hover:bg-[#2C2C2C] transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] shadow-[0_4px_14px_rgba(0,0,0,0.3)] hover:shadow-[0_6px_20px_rgba(138,154,91,0.3)] hover:-translate-y-1"
                     >
                         {ui.writeOverlay.save}
                     </button>
