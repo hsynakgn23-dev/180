@@ -1093,8 +1093,13 @@ const DailyHomeScreen = ({
       <ScreenCard accent="sage">
         <Text style={styles.screenTitle}>Gunun Secimi</Text>
         <Text style={styles.screenBody}>Bugunun secimi su an yuklenemedi.</Text>
-        {showOpsMeta ? <Text style={styles.screenMeta}>Error: {state.message}</Text> : null}
-        {showOpsMeta ? <Text style={styles.screenMeta}>Endpoint: {state.endpoint || 'unset'}</Text> : null}
+        <View style={styles.errorBox}>
+          <Text style={styles.errorText}>
+            {state.message}
+          </Text>
+          {showOpsMeta ? <Text style={styles.screenMeta}>Error Trace: {state.message}</Text> : null}
+          {showOpsMeta ? <Text style={styles.screenMeta}>Endpoint: {state.endpoint || 'unset'}</Text> : null}
+        </View>
         <Pressable
           style={styles.retryButton}
           onPress={onRetry}
@@ -1113,6 +1118,12 @@ const DailyHomeScreen = ({
   }
 
   const successState = state;
+  const dataSourceLabel =
+    successState.dataSource === 'live'
+      ? 'canli'
+      : successState.dataSource === 'cache'
+        ? 'onbellek'
+        : 'fallback';
 
   return (
     <ScreenCard accent="sage">
@@ -1124,7 +1135,14 @@ const DailyHomeScreen = ({
             ? 'Servis erisimi olmadigi icin local fallback secim gosteriliyor.'
             : 'Bugunun secimi hazir.'}
       </Text>
-      <Text style={styles.screenMeta}>Tarih: {successState.date || 'unknown'}</Text>
+      <View style={styles.dailyDataSourceRow}>
+        <View style={successState.dataSource === 'live' ? styles.dataSourceBadgeLive : styles.dataSourceBadgeFallback}>
+          <Text style={successState.dataSource === 'live' ? styles.dataSourceTextLive : styles.dataSourceTextFallback}>
+            VERI YOLU: {dataSourceLabel}
+          </Text>
+        </View>
+        <Text style={styles.screenMeta}>Tarih: {successState.date || 'unknown'}</Text>
+      </View>
       {showOpsMeta ? <Text style={styles.screenMeta}>Source: {successState.source || 'unknown'}</Text> : null}
       {showOpsMeta ? <Text style={styles.screenMeta}>Endpoint: {successState.endpoint}</Text> : null}
       {showOpsMeta ? (
@@ -1136,9 +1154,11 @@ const DailyHomeScreen = ({
           ) : null}
         </View>
       ) : null}
-      {showOpsMeta && successState.warning ? (
+      {successState.warning ? (
         <View style={styles.warningBox}>
-          <Text style={styles.warningText}>Live fetch warning: {successState.warning}</Text>
+          <Text style={styles.warningText}>
+            {showOpsMeta ? 'Live fetch warning' : 'Canli veri uyarisi'}: {successState.warning}
+          </Text>
         </View>
       ) : null}
 

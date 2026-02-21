@@ -638,17 +638,18 @@ export const styles = StyleSheet.create({
     gap: 2,
   },
   warningBox: {
-    marginTop: 6,
-    padding: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#A57164',
-    backgroundColor: 'rgba(165, 113, 100, 0.14)',
+    marginTop: 12,
+    backgroundColor: 'rgba(165, 113, 100, 0.08)',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(165, 113, 100, 0.3)',
+    padding: 12,
   },
   warningText: {
-    color: '#A57164',
-    fontSize: 12,
-    fontFamily: 'Inter_500Medium',
+    color: '#E5E4E2',
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+    lineHeight: 20,
   },
   exploreRouteList: {
     marginTop: 6,
@@ -1277,6 +1278,60 @@ export const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 8,
   },
+
+  /* Daily Features Classes */
+  dailyDataSourceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  dataSourceBadgeLive: {
+    backgroundColor: 'rgba(138, 154, 91, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(138, 154, 91, 0.4)',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+  },
+  dataSourceTextLive: {
+    color: '#8A9A5B',
+    fontSize: 10,
+    fontFamily: 'Inter_700Bold',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  dataSourceBadgeFallback: {
+    backgroundColor: 'rgba(165, 113, 100, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(165, 113, 100, 0.4)',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+  },
+  dataSourceTextFallback: {
+    color: '#A57164',
+    fontSize: 10,
+    fontFamily: 'Inter_700Bold',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  errorBox: {
+    marginTop: 12,
+    marginBottom: 8,
+    backgroundColor: 'rgba(127, 29, 29, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(127, 29, 29, 0.3)',
+    padding: 16,
+    borderRadius: 6,
+  },
+  errorText: {
+    color: '#E5E4E2',
+    fontSize: 13,
+    fontFamily: 'Inter_500Medium',
+    lineHeight: 20,
+  }
 });
 
 
