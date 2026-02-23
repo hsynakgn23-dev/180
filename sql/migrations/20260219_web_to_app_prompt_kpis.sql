@@ -1,6 +1,9 @@
 -- Web-to-app prompt KPI extension (2026-02-19)
 -- Requires `public.analytics_events` from 20260215_analytics_events.sql.
 
+c-- Web-to-app prompt KPI extension (2026-02-19)
+-- Requires `public.analytics_events` from 20260215_analytics_events.sql.
+
 create or replace view public.analytics_kpi_daily as
 with daily as (
   select

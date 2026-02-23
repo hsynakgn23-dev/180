@@ -204,6 +204,7 @@ const MAX_REFERRAL_ACCEPTED_KEYS = 200;
 const INVITE_REGISTRY_STORAGE_KEY = '180_invite_registry_v1';
 const PENDING_INVITE_CODE_STORAGE_KEY = '180_pending_invite_code_v1';
 const INVITE_DEVICE_GUARD_STORAGE_KEY = '180_invite_device_guard_v1';
+const DATE_KEY_REGEX = /^(\d{4})-(\d{2})-(\d{2})$/;
 export const LEAGUE_NAMES = Object.keys(LEAGUES_DATA);
 type PendingRegistrationProfile = RegistrationProfileInput & { email: string };
 const getLeagueIndexFromXp = (xp: number): number =>
@@ -247,11 +248,17 @@ const getLocalDateKey = (value = new Date()): string => {
 };
 
 const parseDateKeyToDayIndex = (dateKey: string): number | null => {
-    const parts = dateKey.split('-').map((part) => Number(part));
-    if (parts.length !== 3 || parts.some((part) => Number.isNaN(part))) return null;
-    const [year, month, day] = parts;
+    const match = DATE_KEY_REGEX.exec(String(dateKey || '').trim());
+    if (!match) return null;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+
     const parsed = new Date(year, month - 1, day);
     if (Number.isNaN(parsed.getTime())) return null;
+    if (parsed.getFullYear() !== year || parsed.getMonth() + 1 !== month || parsed.getDate() !== day) return null;
+
     return Math.floor(parsed.getTime() / DAY_MS);
 };
 
@@ -801,6 +808,15 @@ const mergeStringLists = (...lists: string[][]): string[] => {
         }
     }
     return merged;
+};
+
+const areStringListsEqual = (left: string[] = [], right: string[] = []): boolean => {
+    if (left === right) return true;
+    if (left.length !== right.length) return false;
+    for (let index = 0; index < left.length; index += 1) {
+        if (left[index] !== right[index]) return false;
+    }
+    return true;
 };
 
 const ritualMergeKey = (ritual: RitualLog): string => {
@@ -2212,7 +2228,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                     marks: currentMarks,
                     streak: newStreak
                 };
-            } else if (JSON.stringify(currentMarks) !== JSON.stringify(prev.marks)) {
+            } else if (!areStringListsEqual(currentMarks, prev.marks || [])) {
                 updated = { ...prev, marks: currentMarks };
             }
 
@@ -2254,20 +2270,41 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     // 2. Dwell Time
     useEffect(() => {
         const interval = setInterval(() => {
+            if (!isXpHydrated) return;
             const today = getToday();
-            if (state.lastDwellDate !== today) {
-                updateState({ dailyDwellXP: 0, lastDwellDate: today });
-                return;
-            }
-            if (state.dailyDwellXP < MAX_DAILY_DWELL_XP) {
-                updateState({
-                    totalXP: state.totalXP + 2,
-                    dailyDwellXP: state.dailyDwellXP + 2
-                });
-            }
+
+            setState((prev) => {
+                if (prev.lastDwellDate !== today) {
+                    const updated = { ...prev, dailyDwellXP: 0, lastDwellDate: today };
+                    if (user) {
+                        persistUserXpStateToLocal(user.email, updated);
+                    }
+                    return updated;
+                }
+
+                if (prev.dailyDwellXP >= MAX_DAILY_DWELL_XP) {
+                    return prev;
+                }
+
+                const nextDailyDwellXP = Math.min(MAX_DAILY_DWELL_XP, prev.dailyDwellXP + 2);
+                const earnedXp = nextDailyDwellXP - prev.dailyDwellXP;
+                if (earnedXp <= 0) {
+                    return prev;
+                }
+
+                const updated = {
+                    ...prev,
+                    totalXP: prev.totalXP + earnedXp,
+                    dailyDwellXP: nextDailyDwellXP
+                };
+                if (user) {
+                    persistUserXpStateToLocal(user.email, updated);
+                }
+                return updated;
+            });
         }, 120000);
         return () => clearInterval(interval);
-    }, [state.dailyDwellXP, state.lastDwellDate]);
+    }, [isXpHydrated, user?.email]);
 
     // 3. Ritual Submission
     const submitRitual = (

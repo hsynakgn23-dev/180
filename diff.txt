@@ -1,0 +1,269 @@
+﻿diff --git a/apps/mobile/src/ui/appStyles.ts b/apps/mobile/src/ui/appStyles.ts
+index f65aea1..ef453ef 100644
+--- a/apps/mobile/src/ui/appStyles.ts
++++ b/apps/mobile/src/ui/appStyles.ts
+@@ -63,9 +63,9 @@ export const styles = StyleSheet.create({
+     flex: 1,
+   },
+   container: {
+-    paddingHorizontal: 18,
++    paddingHorizontal: 16,
+     paddingTop: 24,
+-    paddingBottom: 32,
++    paddingBottom: 24,
+     gap: 16,
+   },
+   containerWithTabs: {
+@@ -130,16 +130,17 @@ export const styles = StyleSheet.create({
+   },
+   title: {
+     color: '#E5E4E2',
+-    fontSize: 29,
++    fontSize: 34,
+     fontFamily: 'Inter_700Bold',
+     fontWeight: '700',
+-    lineHeight: 34,
++    lineHeight: 40,
++    letterSpacing: -0.5,
+   },
+   subtitle: {
+-    color: '#c9c6bf',
+-    fontSize: 14,
++    color: '#E5E4E2',
++    fontSize: 16,
+     fontFamily: 'Inter_500Medium',
+-    lineHeight: 20,
++    lineHeight: 24,
+     marginBottom: 8,
+   },
+   heroMetaRow: {
+@@ -294,7 +295,7 @@ export const styles = StyleSheet.create({
+     gap: 4,
+   },
+   opsSummaryKey: {
+-    color: '#8e8b84',
++    color: '#a3a099',
+     fontSize: 10,
+     fontFamily: 'Inter_500Medium',
+     textTransform: 'uppercase',
+@@ -318,7 +319,7 @@ export const styles = StyleSheet.create({
+     gap: 4,
+   },
+   statusPillKey: {
+-    color: '#8e8b84',
++    color: '#a3a099',
+     fontSize: 10,
+     fontFamily: 'Inter_500Medium',
+     textTransform: 'uppercase',
+@@ -399,19 +400,20 @@ export const styles = StyleSheet.create({
+   },
+   screenTitle: {
+     color: '#E5E4E2',
+-    fontSize: 19,
++    fontSize: 22,
+     fontFamily: 'Inter_700Bold',
+     fontWeight: '700',
++    letterSpacing: -0.3,
+   },
+   screenBody: {
+     color: '#c9c6bf',
+-    fontSize: 14,
++    fontSize: 15,
+     fontFamily: 'Inter_400Regular',
+-    lineHeight: 21,
++    lineHeight: 22,
+   },
+   screenMeta: {
+-    color: '#8e8b84',
+-    fontSize: 12,
++    color: '#a3a099',
++    fontSize: 13,
+     fontFamily: 'Inter_400Regular',
+   },
+   movieList: {
+@@ -419,22 +421,22 @@ export const styles = StyleSheet.create({
+     gap: 8,
+   },
+   movieRow: {
+-    padding: 12,
+-    backgroundColor: 'rgba(31, 31, 31, 0.7)',
++    padding: 16,
++    backgroundColor: 'rgba(31, 31, 31, 0.85)',
+     borderRadius: 16,
+     borderWidth: 1,
+-    borderColor: 'rgba(255, 255, 255, 0.08)',
++    borderColor: 'rgba(255, 255, 255, 0.12)',
+   },
+   movieTitle: {
+     color: '#E5E4E2',
+-    fontSize: 14,
++    fontSize: 16,
+     fontFamily: 'Inter_600SemiBold',
+     fontWeight: '600',
+   },
+   movieMeta: {
+     marginTop: 4,
+-    color: '#8e8b84',
+-    fontSize: 12,
++    color: '#a3a099',
++    fontSize: 13,
+     fontFamily: 'Inter_400Regular',
+   },
+   inboxList: {
+@@ -448,31 +450,32 @@ export const styles = StyleSheet.create({
+     borderColor: 'rgba(255, 255, 255, 0.08)',
+     borderWidth: 1,
+     borderRadius: 16,
+-    paddingHorizontal: 16,
+-    paddingVertical: 14,
+-    gap: 6,
++    paddingHorizontal: 20,
++    paddingVertical: 16,
++    gap: 8,
+   },
+   inboxTitle: {
+     color: '#E5E4E2',
+-    fontSize: 12,
++    fontSize: 14,
+     fontFamily: 'Inter_600SemiBold',
+     fontWeight: '700',
+   },
+   inboxTitleState: {
+-    color: '#8e8b84',
+-    fontSize: 11,
++    color: '#a3a099',
++    fontSize: 13,
+     fontFamily: 'Inter_500Medium',
+     fontWeight: '600',
+   },
+   inboxMeta: {
+-    color: '#8e8b84',
+-    fontSize: 11,
++    color: '#a3a099',
++    fontSize: 13,
+     fontFamily: 'Inter_400Regular',
+   },
+   inboxBody: {
+     color: '#E5E4E2',
+-    fontSize: 12,
++    fontSize: 14,
+     fontFamily: 'Inter_400Regular',
++    lineHeight: 20,
+   },
+   inboxHighlight: {
+     backgroundColor: 'rgba(138, 154, 91, 0.24)',
+@@ -627,7 +630,7 @@ export const styles = StyleSheet.create({
+     fontWeight: '700',
+   },
+   profileMetricLabel: {
+-    color: '#8e8b84',
++    color: '#a3a099',
+     fontSize: 11,
+     fontFamily: 'Inter_500Medium',
+     letterSpacing: 0.4,
+@@ -673,7 +676,7 @@ export const styles = StyleSheet.create({
+     fontWeight: '600',
+   },
+   exploreRouteBody: {
+-    color: '#8e8b84',
++    color: '#a3a099',
+     fontSize: 12,
+     fontFamily: 'Inter_400Regular',
+     lineHeight: 18,
+@@ -705,7 +708,7 @@ export const styles = StyleSheet.create({
+     fontWeight: '700',
+   },
+   arenaMetricLabel: {
+-    color: '#8e8b84',
++    color: '#a3a099',
+     fontSize: 10,
+     fontFamily: 'Inter_500Medium',
+     textTransform: 'uppercase',
+@@ -753,7 +756,7 @@ export const styles = StyleSheet.create({
+     fontWeight: '600',
+   },
+   arenaLeaderboardMeta: {
+-    color: '#8e8b84',
++    color: '#a3a099',
+     fontSize: 11,
+     fontFamily: 'Inter_400Regular',
+   },
+@@ -807,7 +810,7 @@ export const styles = StyleSheet.create({
+   actionsHint: {
+     marginTop: -6,
+     paddingHorizontal: 4,
+-    color: '#8e8b84',
++    color: '#a3a099',
+     fontSize: 11,
+     fontFamily: 'Inter_500Medium',
+   },
+@@ -843,7 +846,7 @@ export const styles = StyleSheet.create({
+   quickNavHint: {
+     marginTop: -4,
+     paddingHorizontal: 4,
+-    color: '#8e8b84',
++    color: '#a3a099',
+     fontSize: 11,
+     fontFamily: 'Inter_500Medium',
+   },
+@@ -866,7 +869,7 @@ export const styles = StyleSheet.create({
+     paddingVertical: 6,
+   },
+   backToTopMetaKey: {
+-    color: '#8e8b84',
++    color: '#a3a099',
+     fontSize: 10,
+     fontFamily: 'Inter_500Medium',
+     textTransform: 'uppercase',
+@@ -891,13 +894,13 @@ export const styles = StyleSheet.create({
+     textTransform: 'uppercase',
+   },
+   sectionHeaderMeta: {
+-    color: '#8e8b84',
++    color: '#a3a099',
+     fontSize: 11,
+     fontFamily: 'Inter_500Medium',
+   },
+   subSectionLabel: {
+     marginTop: 2,
+-    color: '#8e8b84',
++    color: '#a3a099',
+     fontSize: 10,
+     fontFamily: 'Inter_600SemiBold',
+     letterSpacing: 0.4,
+@@ -1079,7 +1082,7 @@ export const styles = StyleSheet.create({
+     borderWidth: 1,
+   },
+   themeModeSegmentText: {
+-    color: '#8e8b84',
++    color: '#a3a099',
+     fontSize: 13,
+     fontFamily: 'Inter_600SemiBold',
+     fontWeight: '600',
+@@ -1163,7 +1166,7 @@ export const styles = StyleSheet.create({
+     textTransform: 'uppercase',
+   },
+   commentFeedMeta: {
+-    color: '#8e8b84',
++    color: '#a3a099',
+     fontSize: 11,
+     fontFamily: 'Inter_500Medium',
+   },
+@@ -1214,7 +1217,7 @@ export const styles = StyleSheet.create({
+     borderWidth: 1,
+   },
+   commentFeedSegmentText: {
+-    color: '#8e8b84',
++    color: '#a3a099',
+     fontSize: 12,
+     fontFamily: 'Inter_500Medium',
+   },
+@@ -1237,7 +1240,7 @@ export const styles = StyleSheet.create({
+     gap: 8,
+   },
+   markCategoryTitle: {
+-    color: '#8e8b84',
++    color: '#a3a099',
+     fontSize: 11,
+     fontFamily: 'Inter_600SemiBold',
+     textTransform: 'uppercase',

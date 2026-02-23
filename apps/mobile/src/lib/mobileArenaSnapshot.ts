@@ -1,4 +1,5 @@
 import { isSupabaseLive, supabase } from './supabase';
+import { resolveUserIdsByAuthorNames, toAuthorIdentityKey } from './mobileAuthorUserMap';
 
 type SupabaseErrorLike = {
   code?: string | null;
@@ -29,6 +30,7 @@ export type MobileArenaEntry = {
   rank: number;
   userId: string | null;
   displayName: string;
+  avatarUrl: string | null;
   ritualsCount: number;
   echoCount: number;
 };
@@ -41,17 +43,31 @@ export type MobileArenaSnapshotResult = {
 };
 
 const FALLBACK_ARENA_ENTRIES: MobileArenaEntry[] = [
-  { rank: 1, userId: null, displayName: 'Cineast_Pro', ritualsCount: 9, echoCount: 31 },
-  { rank: 2, userId: null, displayName: 'Silent_Walker', ritualsCount: 7, echoCount: 22 },
-  { rank: 3, userId: null, displayName: 'User_4421', ritualsCount: 6, echoCount: 18 },
-  { rank: 4, userId: null, displayName: 'Ghibli_Stan', ritualsCount: 5, echoCount: 15 },
-  { rank: 5, userId: null, displayName: 'Novice_Watcher', ritualsCount: 4, echoCount: 9 },
+  { rank: 1, userId: null, displayName: 'Cineast_Pro', avatarUrl: null, ritualsCount: 9, echoCount: 31 },
+  { rank: 2, userId: null, displayName: 'Silent_Walker', avatarUrl: null, ritualsCount: 7, echoCount: 22 },
+  { rank: 3, userId: null, displayName: 'User_4421', avatarUrl: null, ritualsCount: 6, echoCount: 18 },
+  { rank: 4, userId: null, displayName: 'Ghibli_Stan', avatarUrl: null, ritualsCount: 5, echoCount: 15 },
+  { rank: 5, userId: null, displayName: 'Novice_Watcher', avatarUrl: null, ritualsCount: 4, echoCount: 9 },
 ];
 
 const normalizeText = (value: unknown, maxLength = 120): string => {
   const text = String(value ?? '').trim();
   if (!text) return '';
   return text.length > maxLength ? text.slice(0, maxLength) : text;
+};
+
+const normalizeAvatarUrl = (value: unknown): string => {
+  const normalized = normalizeText(value, 1200);
+  if (!normalized) return '';
+  if (/^https?:\/\//i.test(normalized)) return normalized;
+  if (/^data:image\//i.test(normalized)) return normalized;
+  return '';
+};
+
+const resolveAvatarFromXpState = (value: unknown): string => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
+  const xpState = value as Record<string, unknown>;
+  return normalizeAvatarUrl(xpState.avatarUrl || xpState.avatar_url);
 };
 
 const normalizeArenaName = (value: unknown): string =>
@@ -185,9 +201,90 @@ const buildEntries = (rows: RitualRow[], echoByRitual: Map<string, number>): Mob
       rank: index + 1,
       userId: entry.userId,
       displayName: entry.displayName,
+      avatarUrl: null,
       ritualsCount: entry.ritualsCount,
       echoCount: entry.echoCount,
     }));
+};
+
+const hydrateArenaEntryUserIds = async (
+  entries: MobileArenaEntry[]
+): Promise<MobileArenaEntry[]> => {
+  const unresolvedNames = entries
+    .filter((entry) => !entry.userId)
+    .map((entry) => entry.displayName)
+    .filter(Boolean);
+  if (unresolvedNames.length === 0) return entries;
+
+  const authorUserMap = await resolveUserIdsByAuthorNames(unresolvedNames);
+  if (authorUserMap.size === 0) return entries;
+
+  return entries.map((entry) => {
+    if (entry.userId) return entry;
+    const resolvedUserId = authorUserMap.get(toAuthorIdentityKey(entry.displayName)) || null;
+    if (!resolvedUserId) return entry;
+    return {
+      ...entry,
+      userId: resolvedUserId,
+    };
+  });
+};
+
+type ProfileAvatarRow = {
+  user_id?: string | null;
+  avatar_url?: string | null;
+  xp_state?: unknown;
+};
+
+const readAvatarRowsByUserIds = async (userIds: string[]): Promise<ProfileAvatarRow[]> => {
+  if (!supabase) return [];
+
+  const normalizedUserIds = Array.from(
+    new Set(userIds.map((userId) => normalizeText(userId, 120)).filter(Boolean))
+  );
+  if (normalizedUserIds.length === 0) return [];
+
+  const variants = ['user_id,avatar_url,xp_state', 'user_id,xp_state'] as const;
+  for (const select of variants) {
+    const { data, error } = await supabase.from('profiles').select(select).in('user_id', normalizedUserIds);
+    if (error) {
+      if (isSupabaseCapabilityError(error)) continue;
+      return [];
+    }
+    return Array.isArray(data) ? (data as ProfileAvatarRow[]) : [];
+  }
+  return [];
+};
+
+const hydrateArenaEntryAvatars = async (
+  entries: MobileArenaEntry[]
+): Promise<MobileArenaEntry[]> => {
+  const userIds = entries.map((entry) => entry.userId || '').filter(Boolean);
+  if (userIds.length === 0) return entries;
+
+  const avatarRows = await readAvatarRowsByUserIds(userIds);
+  if (avatarRows.length === 0) return entries;
+
+  const avatarMap = new Map<string, string>();
+  for (const row of avatarRows) {
+    const userId = normalizeText(row.user_id, 120);
+    if (!userId || avatarMap.has(userId)) continue;
+    const avatarUrl = normalizeAvatarUrl(row.avatar_url) || resolveAvatarFromXpState(row.xp_state);
+    if (!avatarUrl) continue;
+    avatarMap.set(userId, avatarUrl);
+  }
+  if (avatarMap.size === 0) return entries;
+
+  return entries.map((entry) => {
+    const userId = entry.userId || '';
+    if (!userId) return entry;
+    const avatarUrl = avatarMap.get(userId) || '';
+    if (!avatarUrl) return entry;
+    return {
+      ...entry,
+      avatarUrl,
+    };
+  });
 };
 
 export const fetchMobileArenaSnapshot = async (): Promise<MobileArenaSnapshotResult> => {
@@ -204,7 +301,9 @@ export const fetchMobileArenaSnapshot = async (): Promise<MobileArenaSnapshotRes
     .map((row) => normalizeText(row.id, 80))
     .filter((value): value is string => Boolean(value));
   const echoByRitual = await readEchoCounts(ritualIds);
-  const entries = buildEntries(rows, echoByRitual);
+  const entries = await hydrateArenaEntryAvatars(
+    await hydrateArenaEntryUserIds(buildEntries(rows, echoByRitual))
+  );
   if (entries.length === 0) {
     return getFallbackResult('Arena canli verisi bos, fallback listesi gosteriliyor.');
   }

@@ -55,6 +55,21 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY=ci_dummy_service_role_key
           EOF
 
+      - name: Materialize Android Firebase config for release gate
+        shell: bash
+        env:
+          MOBILE_GOOGLE_SERVICES_JSON_B64: ${{ secrets.MOBILE_GOOGLE_SERVICES_JSON_B64 }}
+        run: |
+          if [ -z "$MOBILE_GOOGLE_SERVICES_JSON_B64" ]; then
+            echo "::error::Missing GitHub secret MOBILE_GOOGLE_SERVICES_JSON_B64 (base64 of apps/mobile/google-services.json)."
+            exit 1
+          fi
+          echo "$MOBILE_GOOGLE_SERVICES_JSON_B64" | base64 --decode > apps/mobile/google-services.json
+          if [ ! -s apps/mobile/google-services.json ]; then
+            echo "::error::apps/mobile/google-services.json was generated empty."
+            exit 1
+          fi
+
       - name: Run mobile phase-1 release strict gate
         run: npm run mobile:phase1:release:check:ci
 

@@ -49,6 +49,11 @@ type TmdbDiscoverMovie = {
     genre_ids?: number[];
 };
 
+type TmdbCreditsResponse = {
+    cast?: Array<{ name?: string; order?: number }>;
+    crew?: Array<{ name?: string; job?: string; department?: string }>;
+};
+
 const DEFAULT_SLOT_LABELS = [
     'The Legend',
     'The Hidden Gem',
@@ -65,17 +70,19 @@ const DEFAULT_GRADIENTS = [
     'from-green-700 to-green-900'
 ];
 const DAILY_MOVIE_COUNT = 5;
-const DAILY_MIN_UNIQUE_GENRES = 4;
+const DAILY_MIN_UNIQUE_GENRES = DAILY_MOVIE_COUNT;
 const CLASSIC_YEAR_THRESHOLD = 2000;
 const MODERN_YEAR_THRESHOLD = 2010;
 const DAILY_MAX_MOVIES_PER_DIRECTOR = 1;
+const DAILY_REPEAT_COOLDOWN_DAYS = 60;
 const TMDB_DISCOVER_PAGE_WINDOW = 20;
 const TMDB_SLOT_PAGE_COUNT = 2;
 const TMDB_MIN_VOTE_AVERAGE = 6.5;
 const TMDB_MIN_VOTE_COUNT = 700;
-const TMDB_MIN_POPULARITY = 10;
+const TMDB_MIN_POPULARITY = 7;
 const TMDB_MIN_RUNTIME_MINUTES = 60;
 const TMDB_EXCLUDED_GENRE_IDS = new Set<number>([99]);
+const TMDB_CAST_LIMIT = 6;
 const TMDB_FALLBACK_DISCOVER_PARAMS = [
     '&vote_average.gte=6.5&vote_count.gte=1200&sort_by=vote_count.desc',
     '&vote_average.gte=6.5&vote_count.gte=900&sort_by=popularity.desc',
@@ -246,14 +253,15 @@ const getSlotParamsForToday = (): string[] => {
     );
 };
 
-const getPreviousDateKey = (dateKey: string): string => {
+const getDateKeyDaysAgo = (dateKey: string, days: number): string => {
     const [year, month, day] = dateKey.split('-').map((part) => Number(part));
+    const safeDays = Math.max(0, Math.floor(days));
     const date = new Date(Date.UTC(year, (month || 1) - 1, day || 1));
-    date.setUTCDate(date.getUTCDate() - 1);
-    const prevYear = date.getUTCFullYear();
-    const prevMonth = String(date.getUTCMonth() + 1).padStart(2, '0');
-    const prevDay = String(date.getUTCDate()).padStart(2, '0');
-    return `${prevYear}-${prevMonth}-${prevDay}`;
+    date.setUTCDate(date.getUTCDate() - safeDays);
+    const nextYear = date.getUTCFullYear();
+    const nextMonth = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const nextDay = String(date.getUTCDate()).padStart(2, '0');
+    return `${nextYear}-${nextMonth}-${nextDay}`;
 };
 
 const normalizeMovieIds = (movieIds: number[] = []): number[] => {
@@ -264,6 +272,12 @@ const normalizeMovieIds = (movieIds: number[] = []): number[] => {
                 .filter((value) => Number.isInteger(value) && value > 0)
         )
     );
+};
+
+const normalizeDirectorKey = (value: string | null | undefined): string => {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized || normalized === 'unknown') return '';
+    return normalized;
 };
 
 const isMovieEligibleForDaily = (movie: Movie): boolean => {
@@ -363,6 +377,38 @@ const countByGenre = (movies: Movie[]): Map<string, number> => {
     return counts;
 };
 
+const hasUniqueDirectors = (movies: Movie[]): boolean => {
+    const seen = new Set<string>();
+    for (const movie of movies) {
+        const directorKey = normalizeDirectorKey(movie.director);
+        if (!directorKey || seen.has(directorKey)) return false;
+        seen.add(directorKey);
+    }
+    return true;
+};
+
+const hasEraBalance = (movies: Movie[]): boolean => {
+    const hasClassic = movies.some((movie) => movie.year < CLASSIC_YEAR_THRESHOLD);
+    const hasModern = movies.some((movie) => movie.year >= MODERN_YEAR_THRESHOLD);
+    return hasClassic && hasModern;
+};
+
+const hasCastData = (movies: Movie[]): boolean => {
+    return movies.every(
+        (movie) => Array.isArray(movie.cast) && movie.cast.some((name) => String(name || '').trim().length > 0)
+    );
+};
+
+const isSelectionEligibleForDaily = (movies: Movie[]): boolean => {
+    if (movies.length !== DAILY_MOVIE_COUNT) return false;
+    if (isLegacySeedSelection(movies)) return false;
+    if (!movies.every(isMovieEligibleForDaily)) return false;
+    if (!hasEraBalance(movies)) return false;
+    if (!hasUniqueDirectors(movies)) return false;
+    if (!hasCastData(movies)) return false;
+    return true;
+};
+
 const applySlotStyles = (movies: Movie[]): Movie[] => {
     return movies.map((movie, index) => ({
         ...movie,
@@ -376,7 +422,7 @@ const pickWithDirectorLimit = (pool: Movie[]): Movie[] => {
     const directorCounts = new Map<string, number>();
 
     for (const movie of pool) {
-        const directorKey = (movie.director || '').trim().toLowerCase();
+        const directorKey = normalizeDirectorKey(movie.director);
         const count = directorCounts.get(directorKey) || 0;
         if (directorKey && count >= DAILY_MAX_MOVIES_PER_DIRECTOR) continue;
 
@@ -459,6 +505,7 @@ const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
 const TMDB_API_BASE = 'https://api.themoviedb.org/3';
 const IMAGE_SOURCE_PROXIES = ['https://images.weserv.nl/?url=', 'https://wsrv.nl/?url='];
 const tmdbPosterCache = new Map<number, string | null>();
+const tmdbCreditsCache = new Map<number, { director: string; cast: string[] } | null>();
 
 const fetchTmdbGenreMap = async (apiKey: string): Promise<Map<number, string>> => {
     const params = new URLSearchParams({
@@ -546,7 +593,7 @@ const mapTmdbResultToMovie = (result: TmdbDiscoverMovie, genreMap: Map<number, s
     return {
         id,
         title,
-        director: 'Unknown',
+        director: '',
         year: parseYearFromDate(result.release_date),
         genre: genres.join('/') || 'Drama',
         tagline: '',
@@ -554,8 +601,128 @@ const mapTmdbResultToMovie = (result: TmdbDiscoverMovie, genreMap: Map<number, s
         posterPath,
         voteAverage: voteAverage || undefined,
         overview: typeof result.overview === 'string' ? result.overview : undefined,
-        originalLanguage: typeof result.original_language === 'string' ? result.original_language : undefined
+        originalLanguage: typeof result.original_language === 'string' ? result.original_language : undefined,
+        cast: []
     };
+};
+
+const fetchTmdbCredits = async (
+    apiKey: string,
+    movieId: number
+): Promise<{ director: string; cast: string[] } | null> => {
+    if (tmdbCreditsCache.has(movieId)) {
+        return tmdbCreditsCache.get(movieId) || null;
+    }
+
+    try {
+        const response = await fetch(`${TMDB_API_BASE}/movie/${movieId}/credits?api_key=${apiKey}&language=en-US`);
+        if (!response.ok) {
+            tmdbCreditsCache.set(movieId, null);
+            return null;
+        }
+
+        const payload = (await response.json()) as TmdbCreditsResponse;
+        const director =
+            (payload.crew || [])
+                .find((member) => String(member?.job || '').toLowerCase() === 'director')
+                ?.name ||
+            (payload.crew || [])
+                .find((member) => String(member?.department || '').toLowerCase() === 'directing')
+                ?.name ||
+            '';
+        const normalizedDirector = String(director || '').trim();
+        if (!normalizedDirector) {
+            tmdbCreditsCache.set(movieId, null);
+            return null;
+        }
+
+        const cast = (payload.cast || [])
+            .slice()
+            .sort((left, right) => (Number(left?.order) || 9999) - (Number(right?.order) || 9999))
+            .map((member) => String(member?.name || '').trim())
+            .filter((name) => Boolean(name))
+            .slice(0, TMDB_CAST_LIMIT);
+
+        const resolved = {
+            director: normalizedDirector,
+            cast
+        };
+        tmdbCreditsCache.set(movieId, resolved);
+        return resolved;
+    } catch {
+        tmdbCreditsCache.set(movieId, null);
+        return null;
+    }
+};
+
+const enrichSelectionWithCredits = async (
+    selected: Movie[],
+    pool: Movie[],
+    apiKey: string
+): Promise<Movie[]> => {
+    const next = [...selected];
+    const usedMovieIds = new Set(next.map((movie) => movie.id));
+
+    for (let index = 0; index < next.length; index += 1) {
+        const otherGenres = new Set(
+            next
+                .filter((_, i) => i !== index)
+                .map((movie) => normalizeGenre(movie))
+        );
+        const otherDirectors = new Set(
+            next
+                .filter((_, i) => i !== index)
+                .map((movie) => normalizeDirectorKey(movie.director))
+                .filter((value) => Boolean(value))
+        );
+
+        const currentCredits = await fetchTmdbCredits(apiKey, next[index].id);
+        const currentDirectorKey = normalizeDirectorKey(currentCredits?.director || next[index].director);
+        const currentGenre = normalizeGenre(next[index]);
+        const currentIsValid =
+            Boolean(currentCredits?.director) &&
+            Boolean(currentDirectorKey) &&
+            !otherDirectors.has(currentDirectorKey) &&
+            Boolean(currentGenre) &&
+            !otherGenres.has(currentGenre);
+
+        if (currentIsValid) {
+            next[index] = {
+                ...next[index],
+                director: currentCredits!.director,
+                cast: currentCredits!.cast.length ? currentCredits!.cast : next[index].cast || []
+            };
+            continue;
+        }
+
+        let replacementFound = false;
+        for (const candidate of pool) {
+            if (usedMovieIds.has(candidate.id)) continue;
+
+            const candidateGenre = normalizeGenre(candidate);
+            if (!candidateGenre || otherGenres.has(candidateGenre)) continue;
+
+            const credits = await fetchTmdbCredits(apiKey, candidate.id);
+            const directorKey = normalizeDirectorKey(credits?.director);
+            if (!credits || !directorKey || otherDirectors.has(directorKey)) continue;
+
+            usedMovieIds.delete(next[index].id);
+            usedMovieIds.add(candidate.id);
+            next[index] = {
+                ...candidate,
+                director: credits.director,
+                cast: credits.cast.length ? credits.cast : candidate.cast || []
+            };
+            replacementFound = true;
+            break;
+        }
+
+        if (!replacementFound) {
+            return [];
+        }
+    }
+
+    return next;
 };
 
 const getCronSecret = (): string | null => {
@@ -883,8 +1050,7 @@ const buildDailyTmdbMovies = async (dateKey: string, excludedMovieIds: number[] 
 
         const fullPool = Array.from(poolById.values()).filter(isMovieEligibleForDaily);
         const excludedSet = new Set(normalizeMovieIds(excludedMovieIds));
-        const filteredPool = fullPool.filter((movie) => !excludedSet.has(movie.id));
-        const pool = filteredPool.length >= DAILY_MOVIE_COUNT ? filteredPool : fullPool;
+        const pool = fullPool.filter((movie) => !excludedSet.has(movie.id));
         if (pool.length < DAILY_MOVIE_COUNT) return [];
 
         const random = createSeededRandom(hashString(`daily-cron:${dateKey}`));
@@ -912,7 +1078,9 @@ const buildDailyTmdbMovies = async (dateKey: string, excludedMovieIds: number[] 
         selected = enforceGenreDiversity(selected, pool);
 
         if (selected.length < DAILY_MOVIE_COUNT) return [];
-        return applySlotStyles(selected.slice(0, DAILY_MOVIE_COUNT)).filter(isMovieEligibleForDaily);
+        selected = await enrichSelectionWithCredits(selected.slice(0, DAILY_MOVIE_COUNT), pool, apiKey);
+        if (!isSelectionEligibleForDaily(selected)) return [];
+        return applySlotStyles(selected).filter(isMovieEligibleForDaily);
     } catch (error) {
         console.warn('[daily-cron] dynamic tmdb pool failed', error);
         return [];
@@ -973,22 +1141,29 @@ export default async function handler(req: any, res: any) {
         console.log('[daily-cron] bucket', bucket);
         await ensureBucket(supabase, bucket);
         const todayKey = getDailyDateKey();
-        const previousKey = getPreviousDateKey(todayKey);
+        const cooldownStartKey = getDateKeyDaysAgo(todayKey, DAILY_REPEAT_COOLDOWN_DAYS);
         const forceValue = getQueryParam(req, 'force');
         const force = forceValue === '1' || forceValue === 'true';
-        let previousMovieIds: number[] = [];
+        let cooldownMovieIds: number[] = [];
 
-        const { data: previousData } = await supabase
+        const { data: recentRows, error: recentRowsError } = await supabase
             .from('daily_showcase')
-            .select('movies')
-            .eq('date', previousKey)
-            .single();
+            .select('date,movies')
+            .gte('date', cooldownStartKey)
+            .lt('date', todayKey)
+            .limit(120);
 
-        if (Array.isArray(previousData?.movies)) {
-            previousMovieIds = normalizeMovieIds(
-                previousData.movies
-                    .map((movie: any) => Number((movie as Partial<Movie>)?.id))
-                    .filter((id: number) => Number.isInteger(id) && id > 0)
+        if (recentRowsError && recentRowsError.code !== 'PGRST116') {
+            console.warn('[daily-cron] recent cooldown read failed', recentRowsError.message);
+        }
+        if (Array.isArray(recentRows)) {
+            cooldownMovieIds = normalizeMovieIds(
+                recentRows.flatMap((row: any) => {
+                    const rowMovies = Array.isArray(row?.movies) ? row.movies : [];
+                    return rowMovies
+                        .map((movie: any) => Number((movie as Partial<Movie>)?.id))
+                        .filter((id: number) => Number.isInteger(id) && id > 0);
+                })
             );
         }
 
@@ -1005,21 +1180,17 @@ export default async function handler(req: any, res: any) {
         const existingMovies = Array.isArray(existing?.movies)
             ? (existing.movies as Movie[]).map((movie) => movie as Movie)
             : [];
+        const cooldownMovieIdSet = new Set(cooldownMovieIds);
         const existingMoviesEligible =
-            existingMovies.length === DAILY_MOVIE_COUNT &&
-            existingMovies.every(isMovieEligibleForDaily) &&
-            !isLegacySeedSelection(existingMovies);
+            isSelectionEligibleForDaily(existingMovies) &&
+            !existingMovies.some((movie) => cooldownMovieIdSet.has(movie.id));
 
         let movies: Movie[] = !force && existingMoviesEligible ? existingMovies : [];
         if (movies.length === 0) {
-            const dynamicMovies = await buildDailyTmdbMovies(todayKey, previousMovieIds);
+            const dynamicMovies = await buildDailyTmdbMovies(todayKey, cooldownMovieIds);
             movies = dynamicMovies.slice(0, DAILY_MOVIE_COUNT);
         }
-        if (movies.length !== DAILY_MOVIE_COUNT) {
-            const retryMovies = await buildDailyTmdbMovies(todayKey, []);
-            movies = retryMovies.slice(0, DAILY_MOVIE_COUNT);
-        }
-        if (movies.length !== DAILY_MOVIE_COUNT) {
+        if (!isSelectionEligibleForDaily(movies) || movies.some((movie) => cooldownMovieIdSet.has(movie.id))) {
             return sendJson(res, 503, {
                 error: 'No eligible TMDB movies found for constraints',
                 date: todayKey,

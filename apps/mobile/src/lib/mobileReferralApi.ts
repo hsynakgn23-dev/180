@@ -28,6 +28,13 @@ type ClaimInvitePayload = {
   claimCount: number;
 };
 
+type EnsureInviteCodePayload = {
+  code: string;
+  created: boolean;
+  claimCount: number;
+  inviteLink: string;
+};
+
 const REFERRAL_DEVICE_KEY_STORAGE = '180_referral_device_key_v1';
 
 const normalizeText = (value: unknown, maxLength: number): string => {
@@ -164,4 +171,11 @@ export const claimInviteCodeViaApi = async (
     code: inviteCode,
     deviceKey
   });
+};
+
+export const ensureInviteCodeViaApi = async (
+  rawSeed: string
+): Promise<ReferralApiResponse<EnsureInviteCodePayload>> => {
+  const seed = normalizeText(rawSeed, 120) || `mobile-${Date.now().toString(36)}`;
+  return postReferralApi<EnsureInviteCodePayload>('/api/referral/create', { seed });
 };

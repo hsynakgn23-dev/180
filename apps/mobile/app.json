@@ -15,10 +15,12 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.hsyna.absolutecinema"
+      "bundleIdentifier": "com.hsyna.absolutecinema",
+      "buildNumber": "1"
     },
     "android": {
       "package": "com.hsyna.absolutecinema",
+      "versionCode": 1,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",

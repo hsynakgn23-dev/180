@@ -1,0 +1,14 @@
+7: const isDawn = useMobileThemeContext();
+8: const dawnStyle = isDawn ? { color: '#171717' } : null;
+48: const isDawn = useMobileThemeContext();
+50: <View style={[styles.screenCard, isDawn && { backgroundColor: '#e5e4e2', borderColor: 'rgba(0,0,0,0.08)' }]}>
+398: <View style={[styles.themeModeSegmentContainer, isDawn && { backgroundColor: 'rgba(0,0,0,0.03)', borderColor: 'rgba(0,0,0,0.08)' }]}>
+444: const isDawn = useMobileThemeContext();
+501: <View key={`mark-${mark.id}`} style={[styles.markPill, isDawn && { backgroundColor: '#E5E4E2', borderColor: '#c9c6bf' }]}>
+768: <View style={[styles.inboxRow, isDawn && { backgroundColor: '#e5e4e2', borderColor: 'rgba(0,0,0,0.08)' }]}>
+1191: <View key={item.id} style={[styles.commentFeedRow, isDawn && { backgroundColor: '#e5e4e2', borderColor: 'rgba(0,0,0,0.08)' }]}>
+1192: <View style={[styles.commentFeedRowHeader, isDawn && { backgroundColor: '#e5e4e2' }]}>
+1274: const isDawn = useMobileThemeContext();
+1339: <View style={[styles.dailyDataSourceRow, isDawn && { backgroundColor: '#e5e4e2', borderColor: 'rgba(0,0,0,0.08)' }]}>
+1778: const isDawn = useMobileThemeContext();
+1794: <View key={`rule-${index}`} style={[styles.rulesRow, isDawn && { backgroundColor: 'rgba(0,0,0,0.03)' }]}>

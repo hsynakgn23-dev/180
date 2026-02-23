@@ -7,7 +7,76 @@ type DailyMovie = {
   title: string;
   voteAverage: number | null;
   genre: string | null;
+  year: number | null;
+  director: string | null;
+  overview: string | null;
+  posterPath: string | null;
+  cast: string[];
+  originalLanguage: string | null;
 };
+
+const FALLBACK_DAILY_MOVIES: DailyMovie[] = [
+  {
+    id: 603,
+    title: 'The Matrix',
+    voteAverage: 8.7,
+    genre: 'Sci-Fi',
+    year: 1999,
+    director: 'Lana Wachowski, Lilly Wachowski',
+    overview: 'A hacker discovers reality is a simulation and joins a rebellion.',
+    posterPath: null,
+    cast: ['Keanu Reeves', 'Carrie-Anne Moss', 'Laurence Fishburne'],
+    originalLanguage: 'en',
+  },
+  {
+    id: 155,
+    title: 'The Dark Knight',
+    voteAverage: 8.5,
+    genre: 'Action',
+    year: 2008,
+    director: 'Christopher Nolan',
+    overview: 'Batman faces escalating chaos as Gotham is challenged by the Joker.',
+    posterPath: null,
+    cast: ['Christian Bale', 'Heath Ledger', 'Gary Oldman'],
+    originalLanguage: 'en',
+  },
+  {
+    id: 238,
+    title: 'The Godfather',
+    voteAverage: 8.7,
+    genre: 'Crime',
+    year: 1972,
+    director: 'Francis Ford Coppola',
+    overview: 'The aging patriarch of a crime dynasty transfers control to his son.',
+    posterPath: null,
+    cast: ['Marlon Brando', 'Al Pacino', 'James Caan'],
+    originalLanguage: 'en',
+  },
+  {
+    id: 13,
+    title: 'Forrest Gump',
+    voteAverage: 8.4,
+    genre: 'Drama',
+    year: 1994,
+    director: 'Robert Zemeckis',
+    overview: 'A kind-hearted man witnesses key moments of modern American history.',
+    posterPath: null,
+    cast: ['Tom Hanks', 'Robin Wright', 'Gary Sinise'],
+    originalLanguage: 'en',
+  },
+  {
+    id: 157336,
+    title: 'Interstellar',
+    voteAverage: 8.6,
+    genre: 'Adventure',
+    year: 2014,
+    director: 'Christopher Nolan',
+    overview: 'A team travels through a wormhole to secure humanitys future.',
+    posterPath: null,
+    cast: ['Matthew McConaughey', 'Anne Hathaway', 'Jessica Chastain'],
+    originalLanguage: 'en',
+  },
+];
 
 type DailyResponse = {
   ok: boolean;
@@ -28,6 +97,13 @@ type DailyCacheRecord = {
 const DAILY_CACHE_KEY = '180_mobile_daily_cache_v1';
 const DAILY_CACHE_MAX_AGE_MS = 18 * 60 * 60 * 1000;
 
+const getLocalDateKey = (value = new Date()): string => {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const normalizeText = (value: unknown, maxLength = 200): string => {
   const text = String(value ?? '').trim();
   if (!text) return '';
@@ -37,6 +113,14 @@ const normalizeText = (value: unknown, maxLength = 200): string => {
 const normalizeNumber = (value: unknown): number | null => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+};
+
+const normalizeStringList = (value: unknown, maxItems = 8, maxLength = 80): string[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => normalizeText(entry, maxLength))
+    .filter(Boolean)
+    .slice(0, maxItems);
 };
 
 const normalizeMovie = (raw: unknown, index: number): DailyMovie | null => {
@@ -51,6 +135,12 @@ const normalizeMovie = (raw: unknown, index: number): DailyMovie | null => {
     title,
     voteAverage: normalizeNumber(movie.voteAverage ?? movie.vote_average),
     genre: normalizeText(movie.genre, 120) || null,
+    year: normalizeNumber(movie.year),
+    director: normalizeText(movie.director, 120) || null,
+    overview: normalizeText(movie.overview, 600) || null,
+    posterPath: normalizeText(movie.posterPath ?? movie.poster_path, 400) || null,
+    cast: normalizeStringList(movie.cast, 8, 80),
+    originalLanguage: normalizeText(movie.originalLanguage ?? movie.original_language, 24) || null,
   };
 };
 
@@ -127,7 +217,7 @@ export const fetchDailyMovies = async (): Promise<{
   source: string | null;
   movies: DailyMovie[];
   error: string | null;
-  dataSource: 'live' | 'cache';
+  dataSource: 'live' | 'cache' | 'fallback';
   cacheAgeSeconds: number | null;
   stale: boolean;
   warning: string | null;
@@ -151,16 +241,16 @@ export const fetchDailyMovies = async (): Promise<{
     }
 
     return {
-      ok: false,
+      ok: true,
       endpoint: '',
-      date: null,
-      source: null,
-      movies: [],
-      error: 'Missing EXPO_PUBLIC_DAILY_API_URL (or derivable analytics endpoint).',
-      dataSource: 'live',
+      date: getLocalDateKey(),
+      source: 'local_fallback',
+      movies: FALLBACK_DAILY_MOVIES,
+      error: null,
+      dataSource: 'fallback',
       cacheAgeSeconds: null,
       stale: true,
-      warning: null,
+      warning: 'Missing EXPO_PUBLIC_DAILY_API_URL (or derivable analytics endpoint).',
     };
   }
 
@@ -195,16 +285,48 @@ export const fetchDailyMovies = async (): Promise<{
       }
 
       return {
-        ok: false,
+        ok: true,
         endpoint,
-        date: normalizeText(payload.date, 40) || null,
-        source: normalizeText(payload.source, 40) || null,
-        movies: [],
-        error: liveError,
-        dataSource: 'live',
+        date: normalizeText(payload.date, 40) || getLocalDateKey(),
+        source: 'local_fallback',
+        movies: FALLBACK_DAILY_MOVIES,
+        error: null,
+        dataSource: 'fallback',
         cacheAgeSeconds: null,
         stale: true,
-        warning: null,
+        warning: liveError,
+      };
+    }
+
+    if (movies.length === 0) {
+      const liveError = 'Daily API returned empty movies payload';
+      const cached = await readDailyCache();
+      if (cached) {
+        return {
+          ok: true,
+          endpoint,
+          date: cached.date,
+          source: cached.source,
+          movies: cached.movies,
+          error: null,
+          dataSource: 'cache',
+          cacheAgeSeconds: cached.ageSeconds >= 0 ? cached.ageSeconds : null,
+          stale: cached.stale,
+          warning: liveError,
+        };
+      }
+
+      return {
+        ok: true,
+        endpoint,
+        date: normalizeText(payload.date, 40) || getLocalDateKey(),
+        source: 'local_fallback',
+        movies: FALLBACK_DAILY_MOVIES,
+        error: null,
+        dataSource: 'fallback',
+        cacheAgeSeconds: null,
+        stale: true,
+        warning: liveError,
       };
     }
 
@@ -247,16 +369,16 @@ export const fetchDailyMovies = async (): Promise<{
     }
 
     return {
-      ok: false,
+      ok: true,
       endpoint,
-      date: null,
-      source: null,
-      movies: [],
-      error: liveError,
-      dataSource: 'live',
+      date: getLocalDateKey(),
+      source: 'local_fallback',
+      movies: FALLBACK_DAILY_MOVIES,
+      error: null,
+      dataSource: 'fallback',
       cacheAgeSeconds: null,
       stale: true,
-      warning: null,
+      warning: liveError,
     };
   }
 };

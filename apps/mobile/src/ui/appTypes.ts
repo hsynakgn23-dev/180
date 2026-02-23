@@ -1,4 +1,9 @@
 import type { PushInboxItem } from '../lib/mobilePushInbox';
+import type {
+  CommentFeedScope,
+  CommentFeedSort,
+  MobileCommentFeedItem,
+} from '../lib/mobileCommentsFeed';
 
 type PushInboxFilter =
   | 'all'
@@ -42,11 +47,22 @@ type DailyState =
       endpoint: string;
       date: string | null;
       source: string | null;
-      dataSource: 'live' | 'cache';
+      dataSource: 'live' | 'cache' | 'fallback';
       cacheAgeSeconds: number | null;
       stale: boolean;
       warning: string | null;
-      movies: Array<{ id: number; title: string; voteAverage: number | null; genre: string | null }>;
+      movies: Array<{
+        id: number;
+        title: string;
+        voteAverage: number | null;
+        genre: string | null;
+        year: number | null;
+        director: string | null;
+        overview: string | null;
+        posterPath: string | null;
+        cast: string[];
+        originalLanguage: string | null;
+      }>;
     };
 
 type InviteClaimState =
@@ -93,9 +109,25 @@ type ProfileState =
       daysPresent: number;
       followersCount: number;
       followingCount: number;
+      marks: string[];
+      featuredMarks: string[];
       lastRitualDate: string | null;
       source: 'xp_state' | 'fallback';
     };
+
+type CommentFeedState = {
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  message: string;
+  source: 'live' | 'fallback';
+  scope: CommentFeedScope;
+  sort: CommentFeedSort;
+  query: string;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+  isAppending: boolean;
+  items: MobileCommentFeedItem[];
+};
 
 type PushState =
   | {
@@ -163,6 +195,9 @@ export type {
   PushTestState,
   LocalPushSimState,
   PushInboxState,
+  CommentFeedState,
+  CommentFeedScope,
+  CommentFeedSort,
 };
 
 export {

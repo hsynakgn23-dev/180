@@ -6,6 +6,8 @@ const deepLinkModule = await import('../packages/shared/src/mobile/deepLinks.ts'
 const promptModule = await import('../packages/shared/src/mobile/mobileWebPromptContract.ts');
 const analyticsModule = await import('../packages/shared/src/mobile/analyticsEvents.ts');
 const envModule = await import('../apps/mobile/src/lib/mobileEnv.ts');
+const publicProfileModule = await import('../apps/mobile/src/lib/mobilePublicProfile.ts');
+const authorMapModule = await import('../apps/mobile/src/lib/mobileAuthorUserMap.ts');
 
 const {
   normalizeInviteCode,
@@ -24,6 +26,8 @@ const {
   resolveMobilePushApiBase,
   resolveMobileWebBaseUrl,
 } = envModule;
+const { buildMobilePublicProfileUrl, isAllowedMobilePublicProfileUrl } = publicProfileModule;
+const { toAuthorIdentityKey } = authorMapModule;
 
 let failed = false;
 
@@ -169,6 +173,58 @@ runCase('mobile env resolver falls back from daily endpoint to referral/push bas
 
 runCase('mobile env resolver rejects non-http URLs for base', () => {
   assert.equal(normalizeBaseUrl('absolutecinema://open'), '');
+});
+
+runCase('mobile public profile builder emits canonical id route', () => {
+  const profileUrl = buildMobilePublicProfileUrl({
+    webBaseUrl: 'https://cinema.example.com/app',
+    userId: '123e4567',
+    username: 'neo',
+    allowNameFallback: false,
+  });
+  assert.equal(profileUrl, 'https://cinema.example.com/app/#/u/id%3A123e4567?name=neo');
+  assert.equal(
+    isAllowedMobilePublicProfileUrl({
+      webBaseUrl: 'https://cinema.example.com/app',
+      candidateUrl: profileUrl,
+      allowNameFallback: false,
+    }),
+    true
+  );
+});
+
+runCase('mobile public profile guard blocks external and non-profile routes', () => {
+  assert.equal(
+    isAllowedMobilePublicProfileUrl({
+      webBaseUrl: 'https://cinema.example.com/app',
+      candidateUrl: 'https://evil.example.com/app/#/u/id%3A123e4567',
+      allowNameFallback: false,
+    }),
+    false
+  );
+  assert.equal(
+    isAllowedMobilePublicProfileUrl({
+      webBaseUrl: 'https://cinema.example.com/app',
+      candidateUrl: 'https://cinema.example.com/app/#/discover/mood-films',
+      allowNameFallback: false,
+    }),
+    false
+  );
+});
+
+runCase('mobile public profile builder blocks name route when fallback disabled', () => {
+  const profileUrl = buildMobilePublicProfileUrl({
+    webBaseUrl: 'https://cinema.example.com/app',
+    username: 'cineast_pro',
+    allowNameFallback: false,
+  });
+  assert.equal(profileUrl, '');
+});
+
+runCase('mobile author identity key normalizes case and spacing', () => {
+  assert.equal(toAuthorIdentityKey('  Cineast   Pro  '), 'cineast pro');
+  assert.equal(toAuthorIdentityKey(''), '');
+  assert.equal(toAuthorIdentityKey(null), '');
 });
 
 runCase('analytics event names remain unique and include mobile funnel signals', () => {

@@ -62,6 +62,13 @@ npm run dev
 - Android remote push icin Firebase `google-services.json` zorunlu:
   - `apps/mobile/google-services.json` dosyasini koy
   - Android package adi Firebase'de `com.hsyna.absolutecinema` olmali
+- GitHub Actions `mobile:phase1:release:check:ci` icin secret zorunlu:
+  - Repo secret adi: `MOBILE_GOOGLE_SERVICES_JSON_B64`
+  - Deger: `apps/mobile/google-services.json` dosyasinin base64 metni
+  - PowerShell (tek satir base64):
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("apps/mobile/google-services.json"))
+```
 - Troubleshooting (Firebase init):
   - Hata: `Default FirebaseApp is not initialized`
   - Push'i gecici kapat: `EXPO_PUBLIC_PUSH_ENABLED=0`

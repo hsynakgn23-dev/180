@@ -17,7 +17,8 @@ type RitualTimestampRow = {
   created_at?: string | null;
 };
 
-export type MobileProfileStats = {
+export type MobilePublicProfileSnapshot = {
+  userId: string;
   displayName: string;
   totalXp: number;
   streak: number;
@@ -31,8 +32,8 @@ export type MobileProfileStats = {
   source: 'xp_state' | 'fallback';
 };
 
-export type MobileProfileStatsResult =
-  | { ok: true; stats: MobileProfileStats }
+export type MobilePublicProfileSnapshotResult =
+  | { ok: true; message: string; profile: MobilePublicProfileSnapshot }
   | { ok: false; message: string };
 
 const normalizeText = (value: unknown, maxLength = 120): string => {
@@ -113,96 +114,13 @@ const computeCurrentStreak = (dateKeys: string[]): number => {
 
   let streak = 1;
   let prev = latest;
-  for (let i = 1; i < uniqueIndexes.length; i += 1) {
-    const next = uniqueIndexes[i];
-    if (prev - next === 1) {
-      streak += 1;
-      prev = next;
-      continue;
-    }
-    break;
+  for (let index = 1; index < uniqueIndexes.length; index += 1) {
+    const next = uniqueIndexes[index];
+    if (prev - next !== 1) break;
+    streak += 1;
+    prev = next;
   }
   return streak;
-};
-
-const readFollowCounts = async (
-  userId: string
-): Promise<{ followersCount: number; followingCount: number }> => {
-  if (!supabase) {
-    return { followersCount: 0, followingCount: 0 };
-  }
-
-  const [followersRes, followingRes] = await Promise.all([
-    supabase
-      .from('user_follows')
-      .select('follower_user_id', { head: true, count: 'exact' })
-      .eq('followed_user_id', userId),
-    supabase
-      .from('user_follows')
-      .select('followed_user_id', { head: true, count: 'exact' })
-      .eq('follower_user_id', userId),
-  ]);
-
-  const followersCount =
-    followersRes.error && isSupabaseCapabilityError(followersRes.error)
-      ? 0
-      : Math.max(0, Number(followersRes.count || 0));
-  const followingCount =
-    followingRes.error && isSupabaseCapabilityError(followingRes.error)
-      ? 0
-      : Math.max(0, Number(followingRes.count || 0));
-
-  return {
-    followersCount,
-    followingCount,
-  };
-};
-
-const readRitualTimeline = async (
-  userId: string
-): Promise<{ dateKeys: string[]; ritualsCount: number; lastRitualDate: string | null }> => {
-  if (!supabase) {
-    return { dateKeys: [], ritualsCount: 0, lastRitualDate: null };
-  }
-
-  const { count } = await supabase
-    .from('rituals')
-    .select('id', { head: true, count: 'exact' })
-    .eq('user_id', userId);
-
-  const variants: Array<{ select: string; orderBy: 'timestamp' | 'created_at' }> = [
-    { select: 'timestamp', orderBy: 'timestamp' },
-    { select: 'created_at', orderBy: 'created_at' },
-  ];
-
-  let rows: RitualTimestampRow[] = [];
-  for (const variant of variants) {
-    const { data, error } = await supabase
-      .from('rituals')
-      .select(variant.select)
-      .eq('user_id', userId)
-      .order(variant.orderBy, { ascending: false })
-      .limit(420);
-
-    if (error) {
-      if (isSupabaseCapabilityError(error)) continue;
-      break;
-    }
-
-    rows = Array.isArray(data) ? (data as RitualTimestampRow[]) : [];
-    break;
-  }
-
-  const dateKeys = rows
-    .map((row) => parseIsoToDateKey(row.timestamp || row.created_at))
-    .filter((value): value is string => Boolean(value));
-  const lastRitualDate = dateKeys[0] || null;
-
-  return {
-    dateKeys,
-    ritualsCount: Math.max(0, Number(count || 0)),
-    lastRitualDate,
-  };
 };
 
 const parseStatsFromXpState = (
@@ -251,7 +169,86 @@ const parseStatsFromXpState = (
   };
 };
 
-export const fetchMobileProfileStats = async (): Promise<MobileProfileStatsResult> => {
+const readFollowCounts = async (
+  userId: string
+): Promise<{ followersCount: number; followingCount: number }> => {
+  if (!supabase) return { followersCount: 0, followingCount: 0 };
+
+  const [followersRes, followingRes] = await Promise.all([
+    supabase
+      .from('user_follows')
+      .select('follower_user_id', { head: true, count: 'exact' })
+      .eq('followed_user_id', userId),
+    supabase
+      .from('user_follows')
+      .select('followed_user_id', { head: true, count: 'exact' })
+      .eq('follower_user_id', userId),
+  ]);
+
+  const followersCount =
+    followersRes.error && isSupabaseCapabilityError(followersRes.error)
+      ? 0
+      : Math.max(0, Number(followersRes.count || 0));
+  const followingCount =
+    followingRes.error && isSupabaseCapabilityError(followingRes.error)
+      ? 0
+      : Math.max(0, Number(followingRes.count || 0));
+
+  return { followersCount, followingCount };
+};
+
+const readRitualTimeline = async (
+  userId: string
+): Promise<{ dateKeys: string[]; ritualsCount: number; lastRitualDate: string | null }> => {
+  if (!supabase) return { dateKeys: [], ritualsCount: 0, lastRitualDate: null };
+
+  const { count } = await supabase
+    .from('rituals')
+    .select('id', { head: true, count: 'exact' })
+    .eq('user_id', userId);
+
+  const variants: Array<{ select: string; orderBy: 'timestamp' | 'created_at' }> = [
+    { select: 'timestamp', orderBy: 'timestamp' },
+    { select: 'created_at', orderBy: 'created_at' },
+  ];
+
+  let rows: RitualTimestampRow[] = [];
+  for (const variant of variants) {
+    const { data, error } = await supabase
+      .from('rituals')
+      .select(variant.select)
+      .eq('user_id', userId)
+      .order(variant.orderBy, { ascending: false })
+      .limit(420);
+
+    if (error) {
+      if (isSupabaseCapabilityError(error)) continue;
+      break;
+    }
+
+    rows = Array.isArray(data) ? (data as RitualTimestampRow[]) : [];
+    break;
+  }
+
+  const dateKeys = rows
+    .map((row) => parseIsoToDateKey(row.timestamp || row.created_at))
+    .filter((value): value is string => Boolean(value));
+  const lastRitualDate = dateKeys[0] || null;
+
+  return {
+    dateKeys,
+    ritualsCount: Math.max(0, Number(count || 0)),
+    lastRitualDate,
+  };
+};
+
+export const fetchMobilePublicProfileSnapshot = async ({
+  userId,
+  displayNameHint,
+}: {
+  userId: string;
+  displayNameHint?: string;
+}): Promise<MobilePublicProfileSnapshotResult> => {
   if (!isSupabaseLive() || !supabase) {
     return {
       ok: false,
@@ -259,20 +256,18 @@ export const fetchMobileProfileStats = async (): Promise<MobileProfileStatsResul
     };
   }
 
-  const { data: sessionData } = await supabase.auth.getSession();
-  const userId = normalizeText(sessionData.session?.user?.id, 80);
-  const userEmail = normalizeText(sessionData.session?.user?.email, 160);
-  if (!userId) {
+  const normalizedUserId = normalizeText(userId, 120);
+  if (!normalizedUserId) {
     return {
       ok: false,
-      message: 'Profil istatistikleri icin once giris yap.',
+      message: 'Gecersiz kullanici kimligi.',
     };
   }
 
   const { data: profileData, error: profileError } = await supabase
     .from('profiles')
     .select('display_name,xp_state')
-    .eq('user_id', userId)
+    .eq('user_id', normalizedUserId)
     .maybeSingle();
 
   if (profileError && !isSupabaseCapabilityError(profileError)) {
@@ -284,18 +279,20 @@ export const fetchMobileProfileStats = async (): Promise<MobileProfileStatsResul
 
   const profileRow = (profileData || null) as ProfileRow | null;
   const xpStats = parseStatsFromXpState(profileRow?.xp_state || null);
-  const followCounts = await readFollowCounts(userId);
+  const followCounts = await readFollowCounts(normalizedUserId);
 
   const displayNameBase =
     (xpStats && xpStats.displayNameCandidate) ||
     normalizeText(profileRow?.display_name, 80) ||
-    normalizeText(userEmail.split('@')[0], 80) ||
+    normalizeText(displayNameHint, 80) ||
     'Observer';
 
   if (xpStats) {
     return {
       ok: true,
-      stats: {
+      message: 'Profil verisi guncellendi.',
+      profile: {
+        userId: normalizedUserId,
         displayName: displayNameBase,
         totalXp: xpStats.totalXp,
         streak: xpStats.streak,
@@ -311,11 +308,13 @@ export const fetchMobileProfileStats = async (): Promise<MobileProfileStatsResul
     };
   }
 
-  const timeline = await readRitualTimeline(userId);
+  const timeline = await readRitualTimeline(normalizedUserId);
   const uniqueDays = Array.from(new Set(timeline.dateKeys));
   return {
     ok: true,
-    stats: {
+    message: 'Profil fallback verisi gosteriliyor.',
+    profile: {
+      userId: normalizedUserId,
       displayName: displayNameBase,
       totalXp: 0,
       streak: computeCurrentStreak(uniqueDays),
@@ -330,3 +329,4 @@ export const fetchMobileProfileStats = async (): Promise<MobileProfileStatsResul
     },
   };
 };
+
