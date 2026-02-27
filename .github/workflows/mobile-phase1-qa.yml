@@ -76,19 +76,53 @@ jobs:
       - name: Run mobile phase-1 release strict gate
         shell: bash
         run: |
+          set +e
           mkdir -p artifacts/mobile-release
+          cat > artifacts/mobile-release/ci-step-status.txt <<'EOF'
+          mobile:phase1:qa=NOT_RUN
+          mobile:release:env:sync=NOT_RUN
+          mobile-release-ready=NOT_RUN
+          EOF
+          cat > artifacts/mobile-release/release-ready-report.json <<'EOF'
+          {
+            "generatedAt": "pending",
+            "status": "NOT_RUN",
+            "strict": true,
+            "envFile": "apps/mobile/.env.release",
+            "warningCount": 0,
+            "checks": [],
+            "warnings": [
+              "release gate did not finish; inspect ci-step-status.txt and workflow logs"
+            ]
+          }
+          EOF
+          cat > artifacts/mobile-release/release-checklist.md <<'EOF'
+          # Mobile Release Checklist
+
+          - Status: NOT_RUN
+          - Detail: Release gate did not finish; inspect `ci-step-status.txt` and workflow logs.
+          EOF
 
           qa_status=0
           release_env_status=0
           ready_status=0
 
-          npm run mobile:phase1:qa || qa_status=$?
-          npm run mobile:release:env:sync || release_env_status=$?
+          npm run mobile:phase1:qa
+          qa_status=$?
+          npm run mobile:release:env:sync
+          release_env_status=$?
           node scripts/mobile-release-ready.mjs \
             --env-file=apps/mobile/.env.release \
             --strict \
             --report-file=artifacts/mobile-release/release-ready-report.json \
-            --checklist-file=artifacts/mobile-release/release-checklist.md || ready_status=$?
+            --checklist-file=artifacts/mobile-release/release-checklist.md
+          ready_status=$?
+
+          cat > artifacts/mobile-release/ci-step-status.txt <<EOF
+          mobile:phase1:qa=$qa_status
+          mobile:release:env:sync=$release_env_status
+          mobile-release-ready=$ready_status
+          EOF
 
           if [ "$qa_status" -ne 0 ]; then
             echo "::error::mobile:phase1:qa failed with exit code $qa_status."
@@ -112,7 +146,6 @@ jobs:
         with:
           name: mobile-phase1-release-gate-${{ github.run_number }}
           path: |
-            artifacts/mobile-release/release-ready-report.json
-            artifacts/mobile-release/release-checklist.md
+            artifacts/mobile-release/**
             apps/mobile/.env.release
           if-no-files-found: warn
