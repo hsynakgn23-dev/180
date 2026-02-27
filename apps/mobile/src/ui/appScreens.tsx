@@ -49,6 +49,8 @@ import {
   type RitualSubmitState,
 } from './appTypes';
 import type { MobileCommentReply } from '../lib/mobileCommentInteractions';
+import type { MobileWatchedMovie } from '../lib/mobileProfileWatchedMovies';
+import type { MobileProfileMovieArchiveEntry } from '../lib/mobileProfileMovieArchive';
 
 const PRESSABLE_HIT_SLOP = { top: 8, right: 8, bottom: 8, left: 8 } as const;
 const TMDB_POSTER_BASE_URL = 'https://image.tmdb.org/t/p/w342';
@@ -251,6 +253,7 @@ const AuthCard = ({
   onConfirmPasswordChange,
   onModeChange,
   onSignIn,
+  onGoogleSignIn,
   onRequestPasswordReset,
   onCompletePasswordReset,
   onSignOut,
@@ -265,6 +268,7 @@ const AuthCard = ({
   onConfirmPasswordChange: (value: string) => void;
   onModeChange: (value: 'login' | 'forgot' | 'recovery') => void;
   onSignIn: () => void;
+  onGoogleSignIn: () => void;
   onRequestPasswordReset: () => void;
   onCompletePasswordReset: () => void;
   onSignOut: () => void;
@@ -408,6 +412,24 @@ const AuthCard = ({
           >
             <Text style={styles.claimButtonText}>{submitLabel}</Text>
           </Pressable>
+          {mode === 'login' ? (
+            <Pressable
+              style={[
+                styles.retryButton,
+                isBusy || !isConfigured ? styles.claimButtonDisabled : null,
+              ]}
+              onPress={onGoogleSignIn}
+              disabled={isBusy || !isConfigured}
+              hitSlop={PRESSABLE_HIT_SLOP}
+              accessibilityRole="button"
+              accessibilityLabel="Google ile devam et"
+              accessibilityState={{ disabled: isBusy || !isConfigured }}
+            >
+              <Text style={styles.retryText}>
+                {isBusy ? 'Yonlendiriliyor...' : 'Google ile Devam Et'}
+              </Text>
+            </Pressable>
+          ) : null}
           {mode !== 'login' ? (
             <Pressable
               style={styles.retryButton}
@@ -1962,6 +1984,139 @@ const MovieDetailsModal = ({
   );
 };
 
+const ProfileMovieArchiveModal = ({
+  visible,
+  status,
+  message,
+  movie,
+  entries,
+  onRefresh,
+  onClose,
+}: {
+  visible: boolean;
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  message: string;
+  movie: MobileWatchedMovie | null;
+  entries: MobileProfileMovieArchiveEntry[];
+  onRefresh: () => void;
+  onClose: () => void;
+}) => {
+  if (!visible || !movie) return null;
+
+  const posterUri = resolvePosterUrl(movie.posterPath || entries[0]?.posterPath || null);
+  const entryCountLabel = `${entries.length} yorum kaydi`;
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.modalOverlaySurface}>
+        <Pressable style={{ flex: 1 }} onPress={onClose} />
+        <View style={styles.modalSheetSurface}>
+          <View style={styles.modalNavRow}>
+            <Text style={styles.sectionHeader}>Film Arsivi</Text>
+            <Pressable onPress={onClose} hitSlop={PRESSABLE_HIT_SLOP}>
+              <Text style={styles.modalCloseTextBtn}>Kapat</Text>
+            </Pressable>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.modalSheetScroll} showsVerticalScrollIndicator={false}>
+            <View style={styles.modalContentSurface}>
+              <View style={styles.movieArchiveHeader}>
+                {posterUri ? (
+                  <Image source={{ uri: posterUri }} style={styles.movieArchivePoster} resizeMode="cover" />
+                ) : (
+                  <View style={styles.movieArchivePosterFallback}>
+                    <Text style={styles.movieArchivePosterFallbackText}>180</Text>
+                  </View>
+                )}
+                <View style={styles.movieArchiveHeaderContent}>
+                  <Text style={styles.movieDetailTitle}>{movie.movieTitle}</Text>
+                  <Text style={styles.movieDetailMeta}>
+                    {movie.year ? `${movie.year} | ` : ''}
+                    Son izleme: {movie.watchedDayKey || '-'}
+                  </Text>
+                  <View style={styles.movieArchiveBadgeRow}>
+                    <View style={styles.movieArchiveBadge}>
+                      <Text style={styles.movieArchiveBadgeText}>{entryCountLabel}</Text>
+                    </View>
+                    {movie.watchCount > 1 ? (
+                      <View style={styles.movieArchiveBadge}>
+                        <Text style={styles.movieArchiveBadgeText}>Tekrar {movie.watchCount}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text
+                    style={[
+                      styles.screenMeta,
+                      status === 'error'
+                        ? styles.ritualStateError
+                        : status === 'ready'
+                          ? styles.ritualStateOk
+                          : styles.screenMeta,
+                    ]}
+                  >
+                    {message}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {status === 'loading' ? (
+              <View style={styles.modalContentSurface}>
+                <Text style={styles.screenBody}>Film arsivi ve yanitlar yukleniyor...</Text>
+              </View>
+            ) : null}
+
+            {status !== 'loading' && entries.length === 0 ? (
+              <View style={styles.modalContentSurface}>
+                <Text style={styles.screenBody}>Bu film icin mobilde gosterilecek yorum kaydi bulunamadi.</Text>
+              </View>
+            ) : null}
+
+            {entries.length > 0 ? (
+              <View style={styles.movieArchiveEntryList}>
+                {entries.map((entry) => (
+                  <View key={entry.id} style={styles.movieArchiveEntryCard}>
+                    <View style={styles.movieArchiveEntryHeader}>
+                      <Text style={styles.movieArchiveEntryDate}>{entry.date}</Text>
+                      {entry.genre ? (
+                        <Text style={styles.movieArchiveEntryGenre}>{entry.genre}</Text>
+                      ) : null}
+                    </View>
+                    <Text style={styles.movieArchiveEntryBody}>"{entry.text}"</Text>
+                    <View style={styles.commentFeedReplyPanel}>
+                      <Text style={styles.movieArchiveRepliesLabel}>Yanitlar: {entry.replies.length}</Text>
+                      {entry.replies.length > 0 ? (
+                        <View style={styles.commentFeedReplyList}>
+                          {entry.replies.map((reply) => (
+                            <View key={reply.id} style={styles.commentFeedReplyRow}>
+                              <View style={styles.commentFeedReplyHeader}>
+                                <Text style={styles.commentFeedReplyAuthor}>{reply.author}</Text>
+                                <Text style={styles.commentFeedMeta}>{reply.timestampLabel}</Text>
+                              </View>
+                              <Text style={styles.commentFeedReplyText}>{reply.text}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      ) : (
+                        <Text style={styles.screenMeta}>Bu kayit icin yanit bulunmuyor.</Text>
+                      )}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
+            <View style={styles.modalActionStack}>
+              <UiButton label="Arsivi Yenile" tone="brand" stretch onPress={onRefresh} />
+              <UiButton label="Kapat" tone="neutral" stretch onPress={onClose} />
+            </View>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 const RitualDraftCard = ({
   targetMovie,
   draftText,
@@ -3161,6 +3316,7 @@ export {
   PublicProfileBridgeCard,
   PublicProfileDetailCard,
   PlatformRulesCard,
+  ProfileMovieArchiveModal,
   MovieDetailsModal,
 };
 

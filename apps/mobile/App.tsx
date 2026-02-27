@@ -62,6 +62,10 @@ import {
   type MobileWatchedMovie,
 } from './src/lib/mobileProfileWatchedMovies';
 import {
+  fetchMobileProfileMovieArchive,
+  type MobileProfileMovieArchiveEntry,
+} from './src/lib/mobileProfileMovieArchive';
+import {
   mergeMobileProfileIdentityDrafts,
   normalizeMobileProfileIdentityDraft,
   readMobileProfileIdentityFromCloud,
@@ -128,6 +132,7 @@ import {
   LeaguePromotionModal,
   MobileSettingsModal,
   PlatformRulesCard,
+  ProfileMovieArchiveModal,
   ProfileMarksCard,
   PushInboxCard,
   PushStatusCard,
@@ -159,7 +164,7 @@ const INTERNAL_OPS_VISIBLE =
 const MOBILE_DEEP_LINK_BASE = 'absolutecinema://open';
 const MOBILE_AUTH_REDIRECT_TO =
   String(process.env.EXPO_PUBLIC_AUTH_REDIRECT_TO || '').trim() || MOBILE_DEEP_LINK_BASE;
-const MOBILE_UI_PACKAGE_LABEL = 'UI Package 6.30';
+const MOBILE_UI_PACKAGE_LABEL = 'UI Package 6.32';
 const MOBILE_PROFILE_IDENTITY_STORAGE_KEY = 'ac_mobile_profile_identity_v1';
 const MOBILE_PROFILE_LANGUAGE_STORAGE_KEY = 'ac_mobile_profile_language_v1';
 
@@ -271,6 +276,13 @@ type PublicProfileModalState = {
   followsYou: boolean;
   isSelfProfile: boolean;
   source: PublicProfileOpenOrigin | null;
+};
+type ProfileMovieArchiveModalState = {
+  visible: boolean;
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  message: string;
+  movie: MobileWatchedMovie | null;
+  entries: MobileProfileMovieArchiveEntry[];
 };
 
 type MainTabParamList = {
@@ -505,6 +517,14 @@ export default function App() {
     message: 'Izlenen filmler yuklenmedi.',
     items: [],
   });
+  const [profileMovieArchiveModalState, setProfileMovieArchiveModalState] =
+    useState<ProfileMovieArchiveModalState>({
+      visible: false,
+      status: 'idle',
+      message: 'Film arsivi hazir degil.',
+      movie: null,
+      entries: [],
+    });
   const [publicProfileModalState, setPublicProfileModalState] = useState<PublicProfileModalState>({
     visible: false,
     status: 'idle',
@@ -776,6 +796,58 @@ export default function App() {
       items: result.items,
     });
   }, [authState.status]);
+
+  const handleCloseProfileMovieArchive = useCallback(() => {
+    setProfileMovieArchiveModalState((prev) => ({
+      ...prev,
+      visible: false,
+    }));
+  }, []);
+
+  const handleOpenProfileMovieArchive = useCallback(async (movie: MobileWatchedMovie) => {
+    const movieTitle = String(movie.movieTitle || '').trim();
+    if (!movieTitle) return;
+
+    setProfileMovieArchiveModalState({
+      visible: true,
+      status: 'loading',
+      message: 'Film arsivi yukleniyor...',
+      movie,
+      entries: [],
+    });
+    void trackMobileEvent('movie_archive_opened', {
+      movieTitle,
+      movieYear: movie.year ?? null,
+      watchCount: movie.watchCount,
+    });
+
+    const result = await fetchMobileProfileMovieArchive({
+      movieTitle,
+      year: movie.year,
+    });
+
+    setProfileMovieArchiveModalState({
+      visible: true,
+      status: result.ok ? 'ready' : 'error',
+      message: result.message,
+      movie,
+      entries: result.entries,
+    });
+
+    if (!result.ok) {
+      void trackMobileEvent('movie_archive_failed', {
+        movieTitle,
+        movieYear: movie.year ?? null,
+        reason: result.message,
+      });
+    }
+  }, []);
+
+  const handleRefreshProfileMovieArchive = useCallback(() => {
+    const movie = profileMovieArchiveModalState.movie;
+    if (!movie) return;
+    void handleOpenProfileMovieArchive(movie);
+  }, [handleOpenProfileMovieArchive, profileMovieArchiveModalState.movie]);
 
   const resolvePublicProfileUserId = useCallback(
     async ({ userId, username }: { userId?: string | null; username?: string | null }) => {
@@ -1584,6 +1656,94 @@ export default function App() {
     }
   }, [authEmail]);
 
+  const handleGoogleSignIn = useCallback(async () => {
+    if (!isSupabaseConfigured || !supabase) {
+      setAuthState({
+        status: 'error',
+        message: 'Google girisi icin Supabase ayarlari eksik.',
+      });
+      return;
+    }
+
+    setAuthState({
+      status: 'loading',
+      message: 'Google girisi icin yonlendiriliyor...',
+    });
+    void trackMobileEvent('oauth_start', {
+      provider: 'google',
+      surface: 'mobile_native',
+    });
+
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: MOBILE_AUTH_REDIRECT_TO,
+          skipBrowserRedirect: true,
+        },
+      });
+
+      if (error) {
+        setAuthState({
+          status: 'error',
+          message: error.message || 'Google girisi baslatilamadi.',
+        });
+        void trackMobileEvent('oauth_failure', {
+          provider: 'google',
+          reason: error.message || 'oauth_start_failed',
+        });
+        return;
+      }
+
+      const redirectUrl = String(data?.url || '').trim();
+      if (!redirectUrl) {
+        setAuthState({
+          status: 'error',
+          message: 'Google girisi icin yonlendirme URL olusmadi.',
+        });
+        void trackMobileEvent('oauth_failure', {
+          provider: 'google',
+          reason: 'missing_oauth_url',
+        });
+        return;
+      }
+
+      const canOpen = await Linking.canOpenURL(redirectUrl);
+      if (!canOpen) {
+        setAuthState({
+          status: 'error',
+          message: 'Google girisi icin tarayici acilamadi.',
+        });
+        void trackMobileEvent('oauth_failure', {
+          provider: 'google',
+          reason: 'oauth_url_not_openable',
+        });
+        return;
+      }
+
+      void trackMobileEvent('oauth_redirect_started', {
+        provider: 'google',
+        redirectTo: MOBILE_AUTH_REDIRECT_TO,
+      });
+      await Linking.openURL(redirectUrl);
+      setAuthFlowMode('login');
+      setAuthState({
+        status: 'signed_out',
+        message: 'Google girisini tarayicida tamamla; uygulama callback ile geri donecek.',
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Google girisi baslatilamadi.';
+      setAuthState({
+        status: 'error',
+        message,
+      });
+      void trackMobileEvent('oauth_failure', {
+        provider: 'google',
+        reason: message,
+      });
+    }
+  }, []);
+
   const handleCompletePasswordReset = useCallback(async () => {
     const password = authPassword.trim();
     const confirmPassword = authConfirmPassword.trim();
@@ -1799,6 +1959,13 @@ export default function App() {
         status: 'idle',
         message: 'Izlenen filmler icin giris bekleniyor.',
         items: [],
+      });
+      setProfileMovieArchiveModalState({
+        visible: false,
+        status: 'idle',
+        message: 'Film arsivi icin giris bekleniyor.',
+        movie: null,
+        entries: [],
       });
       return;
     }
@@ -4236,14 +4403,24 @@ export default function App() {
                       {watchedMoviesState.items.length > 0 ? (
                         <View style={styles.movieList}>
                           {watchedMoviesState.items.slice(0, 20).map((movie) => (
-                            <View key={movie.id} style={styles.movieRow}>
+                            <Pressable
+                              key={movie.id}
+                              style={styles.movieRow}
+                              onPress={() => {
+                                void handleOpenProfileMovieArchive(movie);
+                              }}
+                              hitSlop={8}
+                              accessibilityRole="button"
+                              accessibilityLabel={`${movie.movieTitle} film arsivini ac`}
+                            >
                               <Text style={styles.movieTitle}>{movie.movieTitle}</Text>
                               <Text style={styles.movieMeta}>
                                 {movie.year ? `${movie.year} | ` : ''}
                                 Son izleme: {movie.watchedDayKey || '-'}
                                 {movie.watchCount > 1 ? ` | Tekrar: ${movie.watchCount}` : ''}
                               </Text>
-                            </View>
+                              <Text style={styles.movieRowActionHint}>Yorum Arsivini Ac</Text>
+                            </Pressable>
                           ))}
                         </View>
                       ) : (
@@ -4279,6 +4456,7 @@ export default function App() {
                       onConfirmPasswordChange={setAuthConfirmPassword}
                       onModeChange={setAuthFlowMode}
                       onSignIn={handleSignIn}
+                      onGoogleSignIn={handleGoogleSignIn}
                       onRequestPasswordReset={handleRequestPasswordReset}
                       onCompletePasswordReset={handleCompletePasswordReset}
                       onSignOut={handleSignOut}
@@ -4417,6 +4595,16 @@ export default function App() {
             onSubmit={handleSubmitRitualDraft}
             onFlushQueue={handleFlushRitualQueue}
             onClose={() => setRitualComposerVisible(false)}
+          />
+
+          <ProfileMovieArchiveModal
+            visible={profileMovieArchiveModalState.visible}
+            status={profileMovieArchiveModalState.status}
+            message={profileMovieArchiveModalState.message}
+            movie={profileMovieArchiveModalState.movie}
+            entries={profileMovieArchiveModalState.entries}
+            onRefresh={handleRefreshProfileMovieArchive}
+            onClose={handleCloseProfileMovieArchive}
           />
 
           <MobileSettingsModal
