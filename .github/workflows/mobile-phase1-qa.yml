@@ -67,7 +67,41 @@ jobs:
             exit 0
           fi
           echo "MOBILE_RELEASE_ALLOW_NO_PUSH=0" >> "$GITHUB_ENV"
-          echo "$MOBILE_GOOGLE_SERVICES_JSON_B64" | base64 --decode > apps/mobile/google-services.json
+          python3 - <<'PY'
+          import base64
+          import json
+          import os
+          import sys
+
+          secret_value = os.environ.get("MOBILE_GOOGLE_SERVICES_JSON_B64", "").strip()
+
+          if secret_value.startswith("{"):
+              file_text = secret_value
+          else:
+              normalized = "".join(secret_value.split())
+              try:
+                  file_text = base64.b64decode(normalized, validate=True).decode("utf-8")
+              except Exception as error:
+                  print("::error::MOBILE_GOOGLE_SERVICES_JSON_B64 is not valid base64.", flush=True)
+                  print(
+                      "::error::Paste either the raw google-services.json content or its base64 value into the GitHub secret.",
+                      flush=True,
+                  )
+                  print(f"::error::{error}", flush=True)
+                  sys.exit(1)
+
+          try:
+              json.loads(file_text)
+          except Exception as error:
+              print("::error::Decoded Firebase config is not valid JSON.", flush=True)
+              print(f"::error::{error}", flush=True)
+              sys.exit(1)
+
+          with open("apps/mobile/google-services.json", "w", encoding="utf-8", newline="\n") as handle:
+              handle.write(file_text)
+              if not file_text.endswith("\n"):
+                  handle.write("\n")
+          PY
           if [ ! -s apps/mobile/google-services.json ]; then
             echo "::error::apps/mobile/google-services.json was generated empty."
             exit 1
