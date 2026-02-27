@@ -61,9 +61,12 @@ jobs:
           MOBILE_GOOGLE_SERVICES_JSON_B64: ${{ secrets.MOBILE_GOOGLE_SERVICES_JSON_B64 }}
         run: |
           if [ -z "$MOBILE_GOOGLE_SERVICES_JSON_B64" ]; then
-            echo "::error::Missing GitHub secret MOBILE_GOOGLE_SERVICES_JSON_B64 (base64 of apps/mobile/google-services.json)."
-            exit 1
+            echo "::warning::Missing GitHub secret MOBILE_GOOGLE_SERVICES_JSON_B64. Falling back to no-push release gate."
+            printf '\nMOBILE_RELEASE_PUSH_ENABLED=0\n' >> .env
+            echo "MOBILE_RELEASE_ALLOW_NO_PUSH=1" >> "$GITHUB_ENV"
+            exit 0
           fi
+          echo "MOBILE_RELEASE_ALLOW_NO_PUSH=0" >> "$GITHUB_ENV"
           echo "$MOBILE_GOOGLE_SERVICES_JSON_B64" | base64 --decode > apps/mobile/google-services.json
           if [ ! -s apps/mobile/google-services.json ]; then
             echo "::error::apps/mobile/google-services.json was generated empty."

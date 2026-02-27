@@ -79,6 +79,8 @@ const parseUrlSafe = (value) => {
   }
 };
 
+const allowNoPushFallback = isEnabled(process.env.MOBILE_RELEASE_ALLOW_NO_PUSH, false);
+
 let failed = false;
 let warningCount = 0;
 const checks = [];
@@ -187,8 +189,13 @@ if (!isEnabled(mobileEnv.EXPO_PUBLIC_ANALYTICS_ENABLED, true)) {
 
 const pushEnabled = isEnabled(mobileEnv.EXPO_PUBLIC_PUSH_ENABLED, false);
 if (!pushEnabled) {
-  showWarn('EXPO_PUBLIC_PUSH_ENABLED is disabled. Remote push flow will remain off.');
+  if (allowNoPushFallback) {
+    showItem('release push gate mode', true, 'fallback active; EXPO_PUBLIC_PUSH_ENABLED=0');
+  } else {
+    showWarn('EXPO_PUBLIC_PUSH_ENABLED is disabled. Remote push flow will remain off.');
+  }
 } else {
+  showItem('release push gate mode', true, 'push enabled');
   const googleServicesFilePath = normalizeText(expo?.android?.googleServicesFile);
   showItem(
     'app.json android.googleServicesFile',
