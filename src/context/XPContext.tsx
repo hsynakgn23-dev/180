@@ -6,6 +6,18 @@ import { moderateComment } from '../lib/commentModeration';
 import { trackEvent } from '../lib/analytics';
 import { claimInviteCodeViaApi, ensureInviteCodeViaApi, getReferralDeviceKey } from '../lib/referralApi';
 import { appendMobileDeepLinkParams } from '../domain/deepLinks';
+import {
+    LEAGUES_DATA,
+    LEAGUE_NAMES,
+    LEVEL_THRESHOLD,
+    getLeagueKeyByIndex,
+    getLeagueIndexFromXp,
+    resolveLeagueInfo,
+    resolveLeagueKey,
+    resolveLeagueKeyFromXp,
+    type LeagueInfo,
+    type LeagueKey
+} from '../domain/leagueSystem';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 // Types
@@ -78,12 +90,6 @@ interface SessionUser {
     birthDate?: string;
 }
 
-export interface LeagueInfo {
-    name: string;
-    color: string;
-    description: string;
-}
-
 export interface StreakCelebrationEvent {
     day: number;
     isMilestone: boolean;
@@ -106,24 +112,21 @@ export interface RegistrationProfileInput {
     birthDate: string; // YYYY-MM-DD
 }
 
-export const LEAGUES_DATA: Record<string, LeagueInfo> = {
-    'Bronze': { name: 'Figüran', color: '#CD7F32', description: 'Sahneye ilk adım.' },
-    'Silver': { name: 'İzleyici', color: '#C0C0C0', description: 'Gözlemlemeye başladın.' },
-    'Gold': { name: 'Yorumcu', color: '#FFD700', description: 'Sesin duyuluyor.' },
-    'Platinum': { name: 'Eleştirmen', color: '#E5E4E2', description: 'Analizlerin derinleşiyor.' },
-    'Emerald': { name: 'Sinema Gurmesi', color: '#50C878', description: 'Zevklerin inceliyor.' },
-    'Sapphire': { name: 'Sinefil', color: '#0F52BA', description: 'Tutkun bir yaşam biçimi.' },
-    'Ruby': { name: 'Vizyoner', color: '#E0115F', description: 'Geleceği görüyorsun.' },
-    'Diamond': { name: 'Yönetmen', color: '#B9F2FF', description: 'Kendi sahnelerini kur.' },
-    'Master': { name: 'Auteur', color: '#9400D3', description: 'İmzanı at.' },
-    'Grandmaster': { name: 'Efsane', color: '#FF0000', description: 'Tarihe geçtin.' },
-    'Absolute': { name: 'Absolute', color: '#000000', description: 'The Void' },
-    'Eternal': { name: 'Eternal', color: '#FFFFFF', description: 'The Light' }
+export {
+    LEAGUES_DATA,
+    LEAGUE_NAMES,
+    LEVEL_THRESHOLD,
+    getLeagueKeyByIndex,
+    getLeagueIndexFromXp,
+    resolveLeagueInfo,
+    resolveLeagueKey,
+    resolveLeagueKeyFromXp
 };
+export type { LeagueInfo, LeagueKey };
 
 interface XPContextType {
     xp: number;
-    league: string;
+    league: LeagueKey;
     leagueInfo: LeagueInfo;
     levelUpEvent: LeagueInfo | null;
     closeLevelUp: () => void;
@@ -184,7 +187,6 @@ interface XPContextType {
 
 
 const MAX_DAILY_DWELL_XP = 20;
-const LEVEL_THRESHOLD = 500;
 const LONG_FORM_RITUAL_THRESHOLD = 160;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const STREAK_MILESTONES = new Set([5, 7, 10, 20, 40, 50, 100, 200, 250, 300, 350]);
@@ -205,10 +207,7 @@ const INVITE_REGISTRY_STORAGE_KEY = '180_invite_registry_v1';
 const PENDING_INVITE_CODE_STORAGE_KEY = '180_pending_invite_code_v1';
 const INVITE_DEVICE_GUARD_STORAGE_KEY = '180_invite_device_guard_v1';
 const DATE_KEY_REGEX = /^(\d{4})-(\d{2})-(\d{2})$/;
-export const LEAGUE_NAMES = Object.keys(LEAGUES_DATA);
 type PendingRegistrationProfile = RegistrationProfileInput & { email: string };
-const getLeagueIndexFromXp = (xp: number): number =>
-    Math.min(Math.floor(xp / LEVEL_THRESHOLD), LEAGUE_NAMES.length - 1);
 const KNOWN_MOVIES_BY_ID = new Map(
     TMDB_SEEDS.map((movie) => [
         movie.id,
@@ -2169,7 +2168,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         if (currentLeagueIndex > previousLeagueIndex) {
             const crossed: LeagueInfo[] = [];
             for (let i = previousLeagueIndex + 1; i <= currentLeagueIndex; i += 1) {
-                const leagueName = LEAGUE_NAMES[i];
+                const leagueName = getLeagueKeyByIndex(i);
                 crossed.push(LEAGUES_DATA[leagueName]);
             }
             setLevelUpQueue((prev) => [...prev, ...crossed]);
@@ -2203,8 +2202,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             let newStreak = prev.streak;
 
             // Mark: Eternal
-            const leagueIndex = getLeagueIndexFromXp(prev.totalXP);
-            const currentLeague = LEAGUE_NAMES[leagueIndex];
+            const currentLeague = resolveLeagueKeyFromXp(prev.totalXP);
             if (currentLeague === 'Eternal') currentMarks = tryUnlockMark('eternal_mark', currentMarks);
             if (newActiveDays.length >= 14) currentMarks = tryUnlockMark('daybreaker', currentMarks);
             if (newActiveDays.length >= 30) currentMarks = tryUnlockMark('legacy', currentMarks);
@@ -2471,7 +2469,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         });
 
         if (isSupabaseLive() && supabase && user?.id && canWriteRitualRef.current) {
-            const leagueForInsert = LEAGUE_NAMES[getLeagueIndexFromXp(newTotalXP)];
+            const leagueForInsert = resolveLeagueKeyFromXp(newTotalXP);
             void (async () => {
                 const { data: sessionData } = await supabase.auth.getSession();
                 const sessionUser = sessionData.session?.user;
@@ -2806,8 +2804,8 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     };
 
     const leagueIndex = getLeagueIndexFromXp(state.totalXP);
-    const leagueName = LEAGUE_NAMES[leagueIndex];
-    const leagueInfo = LEAGUES_DATA[leagueName];
+    const leagueName = resolveLeagueKeyFromXp(state.totalXP);
+    const leagueInfo = resolveLeagueInfo(leagueName);
     const currentLevelStart = leagueIndex * LEVEL_THRESHOLD;
     const progressPercentage = Math.min(100, Math.max(0, ((state.totalXP - currentLevelStart) / LEVEL_THRESHOLD) * 100));
     const nextLevelXP = currentLevelStart + LEVEL_THRESHOLD;
@@ -2885,3 +2883,4 @@ export const useXP = () => {
     }
     return context;
 };
+

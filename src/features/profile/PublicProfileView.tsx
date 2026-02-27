@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { InfoFooter } from '../../components/InfoFooter';
-import { LEAGUES_DATA, LEAGUE_NAMES, useXP } from '../../context/XPContext';
+import { LEAGUE_NAMES, resolveLeagueInfo, resolveLeagueKey, useXP } from '../../context/XPContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { TMDB_SEEDS } from '../../data/tmdbSeeds';
 import { resolvePosterCandidates } from '../../lib/posterCandidates';
@@ -440,8 +440,8 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
         return best;
     }, [profile]);
 
-    const leagueInfo = profile ? LEAGUES_DATA[profile.league] : null;
-    const leagueIndex = profile ? LEAGUE_NAMES.indexOf(profile.league) : 0;
+    const leagueInfo = profile ? resolveLeagueInfo(profile.league) : null;
+    const leagueIndex = profile ? LEAGUE_NAMES.indexOf(resolveLeagueKey(profile.league)) : 0;
     const currentLevelStart = Math.max(0, leagueIndex) * LEVEL_THRESHOLD;
     const progressPercentage = profile
         ? Math.min(100, Math.max(0, ((profile.xp - currentLevelStart) / LEVEL_THRESHOLD) * 100))

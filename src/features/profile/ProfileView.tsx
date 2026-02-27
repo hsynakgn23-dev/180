@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useXP, LEAGUES_DATA, LEAGUE_NAMES } from '../../context/XPContext';
+import { useXP, LEAGUES_DATA, LEAGUE_NAMES, resolveLeagueKey } from '../../context/XPContext';
 import { MAJOR_MARKS } from '../../data/marksData';
 import { TMDB_SEEDS } from '../../data/tmdbSeeds';
 import { SettingsModal } from './SettingsModal';
@@ -214,7 +214,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
     const progressFill = getProgressFill(progressPercentage);
     const progressTransitionMs = getProgressTransitionMs(progressPercentage);
     const currentLeagueLabel = leagueCopy(league)?.name || league;
-    const nextLeagueKey = LEAGUE_NAMES[LEAGUE_NAMES.indexOf(league) + 1];
+    const nextLeagueKey = LEAGUE_NAMES[LEAGUE_NAMES.indexOf(resolveLeagueKey(league)) + 1];
     const nextLeagueLabel = nextLeagueKey
         ? leagueCopy(nextLeagueKey)?.name || LEAGUES_DATA[nextLeagueKey]?.name || 'Max'
         : 'Max';

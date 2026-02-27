@@ -203,6 +203,12 @@ export const InfoFooter: React.FC<InfoFooterProps> = ({
                                 {getDiscoverLabel(link.key, text)}
                             </a>
                         ))}
+                        <a
+                            href="/privacy/"
+                            className="transition-colors hover:text-sage"
+                        >
+                            Privacy Policy
+                        </a>
                     </div>
 
                     <div className="flex items-center justify-center gap-2 sm:gap-3">
