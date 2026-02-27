@@ -30,3 +30,16 @@ apps/mobile/.env.release
 
 .vercel
 .gradle-local/
+
+# Local scratch/debug outputs
+Filtrele
+diff.txt
+eslint_out.txt
+eslint_out_u8.txt
+git_diff_app_styles.txt
+isDawn_debug.txt
+styles_head.txt
+apps/mobile/expo_out.txt
+apps/mobile/tmp.json
+apps/mobile/tsc-errors.txt
+apps/mobile/tsc.txt
