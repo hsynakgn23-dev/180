@@ -9,6 +9,8 @@ import {
   type ReactNode,
 } from 'react';
 import {
+  Animated,
+  Easing,
   FlatList,
   Platform,
   Pressable,
@@ -21,7 +23,9 @@ import {
   type TextProps,
 } from 'react-native';
 import {
+  MOBILE_MARK_CATALOG,
   groupMobileMarksByCategory,
+  resolveMobileMarkMeta,
   resolveMobileMarkTitle,
 } from '../lib/mobileMarksCatalog';
 import { type PushInboxItem } from '../lib/mobilePushInbox';
@@ -47,6 +51,15 @@ import {
 
 const PRESSABLE_HIT_SLOP = { top: 8, right: 8, bottom: 8, left: 8 } as const;
 const TMDB_POSTER_BASE_URL = 'https://image.tmdb.org/t/p/w342';
+const STORAGE_PUBLIC_PATH = '/storage/v1/object/public/';
+const STORAGE_OBJECT_PUBLIC_PATH = 'storage/v1/object/public/';
+const MOBILE_SUPABASE_BASE_URL = String(process.env.EXPO_PUBLIC_SUPABASE_URL || '')
+  .trim()
+  .replace(/\/+$/, '');
+const MOBILE_SUPABASE_STORAGE_BUCKET =
+  String(process.env.EXPO_PUBLIC_SUPABASE_STORAGE_BUCKET || 'posters')
+    .trim()
+    .replace(/^\/+|\/+$/g, '') || 'posters';
 const DAWN_TEXT_COLOR_STYLE = { color: '#A45E4A' } as const;
 let APP_SCREENS_THEME_MODE: MobileThemeMode = 'midnight';
 
@@ -61,10 +74,124 @@ const setAppScreensThemeMode = (mode: MobileThemeMode) => {
   APP_SCREENS_THEME_MODE = mode === 'dawn' ? 'dawn' : 'midnight';
 };
 
+export type MobileLeaguePromotionEvent = {
+  leagueKey: string;
+  leagueName: string;
+  leagueColor: string;
+  previousLeagueKey?: string | null;
+};
+
+const LeaguePromotionModal = ({
+  event,
+  onClose,
+}: {
+  event: MobileLeaguePromotionEvent | null;
+  onClose: () => void;
+}) => {
+  if (!event) return null;
+
+  const accentColor = String(event.leagueColor || '#8A9A5B').trim() || '#8A9A5B';
+
+  return (
+    <Modal
+      visible
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      accessibilityViewIsModal
+    >
+      <View style={styles.leagueTransitionOverlay}>
+        <Pressable
+          style={styles.leagueTransitionOverlayTap}
+          onPress={onClose}
+          accessibilityLabel="Lig atlama ekranini kapat"
+        />
+
+        <View
+          style={[
+            styles.leagueTransitionCard,
+            {
+              borderColor: `${accentColor}66`,
+              shadowColor: accentColor,
+            },
+          ]}
+        >
+          <View style={[styles.leagueTransitionLine, { backgroundColor: accentColor }]} />
+          <Text style={styles.leagueTransitionEyebrow}>League Advanced</Text>
+          <Text style={[styles.leagueTransitionLeagueName, { color: accentColor }]}>
+            {event.leagueName || event.leagueKey}
+          </Text>
+          <Text style={styles.leagueTransitionBody}>
+            Tebrikler. Toplam XP seviyen yeni lige yukseldi.
+          </Text>
+          {event.previousLeagueKey ? (
+            <Text style={styles.leagueTransitionMeta}>
+              {event.previousLeagueKey}
+              {' -> '}
+              {event.leagueKey}
+            </Text>
+          ) : null}
+          <Pressable
+            style={styles.leagueTransitionButton}
+            onPress={onClose}
+            hitSlop={PRESSABLE_HIT_SLOP}
+            accessibilityRole="button"
+            accessibilityLabel="Lig atlama ekranini tamamla"
+          >
+            <Text style={styles.leagueTransitionButtonText}>Tamam</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+const isStoragePosterPath = (value: string): boolean => {
+  const normalized = value.replace(/^\/+/, '');
+  return (
+    normalized.startsWith(STORAGE_OBJECT_PUBLIC_PATH) ||
+    normalized.startsWith('object/public/') ||
+    normalized.startsWith(`${MOBILE_SUPABASE_STORAGE_BUCKET}/`) ||
+    /^\d+\/(w200|w342|w500|w780|original)\.(jpg|jpeg|png|webp)$/i.test(normalized)
+  );
+};
+
+const resolveStoragePosterUrl = (value: string): string | null => {
+  if (!MOBILE_SUPABASE_BASE_URL) return null;
+
+  const normalized = value.replace(/^\/+/, '');
+  if (normalized.startsWith(STORAGE_OBJECT_PUBLIC_PATH)) {
+    return `${MOBILE_SUPABASE_BASE_URL}/${normalized}`;
+  }
+  if (normalized.startsWith('object/public/')) {
+    return `${MOBILE_SUPABASE_BASE_URL}/storage/v1/${normalized}`;
+  }
+  if (normalized.startsWith(`${MOBILE_SUPABASE_STORAGE_BUCKET}/`)) {
+    return `${MOBILE_SUPABASE_BASE_URL}/storage/v1/object/public/${normalized}`;
+  }
+  if (/^\d+\/(w200|w342|w500|w780|original)\.(jpg|jpeg|png|webp)$/i.test(normalized)) {
+    return `${MOBILE_SUPABASE_BASE_URL}/storage/v1/object/public/${MOBILE_SUPABASE_STORAGE_BUCKET}/${normalized}`;
+  }
+  return null;
+};
+
 const resolvePosterUrl = (posterPath: string | null | undefined): string | null => {
   const normalized = String(posterPath || '').trim();
   if (!normalized) return null;
   if (/^https?:\/\//i.test(normalized)) return normalized;
+  if (/^\/\//.test(normalized)) return `https:${normalized}`;
+
+  const storageResolved = resolveStoragePosterUrl(normalized);
+  if (storageResolved) return storageResolved;
+
+  if (
+    normalized.startsWith(STORAGE_PUBLIC_PATH) ||
+    normalized.startsWith(STORAGE_PUBLIC_PATH.slice(1)) ||
+    isStoragePosterPath(normalized)
+  ) {
+    return null;
+  }
+
   const normalizedPath = normalized.startsWith('/') ? normalized : `/${normalized}`;
   return `${TMDB_POSTER_BASE_URL}${normalizedPath}`;
 };
@@ -89,7 +216,9 @@ class ScreenErrorBoundary extends Component<
     };
   }
 
-  componentDidCatch(_error: unknown, _errorInfo: ErrorInfo) {
+  componentDidCatch(error: unknown, errorInfo: ErrorInfo) {
+    void error;
+    void errorInfo;
     // Rendering errors should not blank the tab.
   }
 
@@ -233,6 +362,7 @@ const ProfileSnapshotCard = ({
         <>
           <Text style={styles.screenMeta}>User: {state.displayName}</Text>
           <Text style={styles.screenMeta}>Source: {state.source}</Text>
+          <Text style={styles.screenMeta}>League: {state.leagueKey}</Text>
           <Text style={styles.screenMeta}>Last ritual day: {state.lastRitualDate || 'none'}</Text>
           <View style={styles.profileGrid}>
             <View style={styles.profileMetricCard}>
@@ -342,19 +472,213 @@ const ThemeModeCard = ({
   </ScreenCard>
 );
 
+const markMotionDurationMs = (motion: string): number => {
+  switch (motion) {
+    case 'spin':
+      return 3600;
+    case 'signal':
+      return 1800;
+    case 'spark':
+      return 1500;
+    case 'float':
+      return 2600;
+    case 'pulse':
+    default:
+      return 2200;
+  }
+};
+
+const MobileMarkPill = ({
+  title,
+  motion,
+  isUnlocked,
+  isFeatured,
+}: {
+  title: string;
+  motion: string;
+  isUnlocked: boolean;
+  isFeatured: boolean;
+}) => {
+  const progress = useMemo(() => new Animated.Value(0), []);
+
+  useEffect(() => {
+    progress.stopAnimation();
+    progress.setValue(0);
+    if (!isUnlocked) return;
+
+    const duration = markMotionDurationMs(motion);
+    const animation =
+      motion === 'spin'
+        ? Animated.loop(
+            Animated.timing(progress, {
+              toValue: 1,
+              duration,
+              easing: Easing.linear,
+              useNativeDriver: true,
+            })
+          )
+        : Animated.loop(
+            Animated.sequence([
+              Animated.timing(progress, {
+                toValue: 1,
+                duration: Math.round(duration / 2),
+                easing: Easing.inOut(Easing.ease),
+                useNativeDriver: true,
+              }),
+              Animated.timing(progress, {
+                toValue: 0,
+                duration: Math.round(duration / 2),
+                easing: Easing.inOut(Easing.ease),
+                useNativeDriver: true,
+              }),
+            ])
+          );
+
+    animation.start();
+    return () => {
+      animation.stop();
+    };
+  }, [isUnlocked, motion, progress]);
+
+  const containerAnimatedStyle = isUnlocked
+    ? {
+        opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }),
+        transform: [
+          {
+            scale: progress.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.985, isFeatured ? 1.05 : 1.03],
+            }),
+          },
+        ],
+      }
+    : null;
+
+  const glyphAnimatedStyle = (() => {
+    if (!isUnlocked) return null;
+
+    switch (motion) {
+      case 'spin':
+        return {
+          transform: [
+            {
+              rotate: progress.interpolate({
+                inputRange: [0, 1],
+                outputRange: ['0deg', '360deg'],
+              }),
+            },
+          ],
+        };
+      case 'float':
+        return {
+          transform: [
+            {
+              translateY: progress.interpolate({
+                inputRange: [0, 0.5, 1],
+                outputRange: [0, -2, 0],
+              }),
+            },
+          ],
+        };
+      case 'signal':
+        return {
+          opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }),
+          transform: [
+            {
+              scale: progress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.9, 1.18],
+              }),
+            },
+          ],
+        };
+      case 'spark':
+        return {
+          opacity: progress.interpolate({
+            inputRange: [0, 0.35, 0.7, 1],
+            outputRange: [0.74, 1, 0.86, 0.74],
+          }),
+          transform: [
+            {
+              rotate: progress.interpolate({
+                inputRange: [0, 0.35, 0.7, 1],
+                outputRange: ['-8deg', '8deg', '0deg', '-8deg'],
+              }),
+            },
+            {
+              scale: progress.interpolate({
+                inputRange: [0, 0.35, 0.7, 1],
+                outputRange: [0.9, 1.16, 1, 0.9],
+              }),
+            },
+          ],
+        };
+      case 'pulse':
+      default:
+        return {
+          transform: [
+            {
+              scale: progress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.9, 1.12],
+              }),
+            },
+          ],
+        };
+    }
+  })();
+
+  return (
+    <Animated.View
+      style={[
+        styles.markPill,
+        !isUnlocked ? { opacity: 0.42 } : null,
+        isUnlocked && isFeatured ? styles.markPillFeatured : null,
+        containerAnimatedStyle,
+      ]}
+    >
+      <View style={styles.markPillContentRow}>
+        <Animated.View
+          style={[
+            styles.markPillGlyph,
+            isUnlocked ? styles.markPillGlyphUnlocked : styles.markPillGlyphLocked,
+            isUnlocked && isFeatured ? styles.markPillGlyphFeatured : null,
+            glyphAnimatedStyle,
+          ]}
+        />
+        <Text
+          style={[
+            styles.markPillText,
+            !isUnlocked ? { color: '#8e8b84' } : null,
+            isUnlocked && isFeatured ? styles.markPillFeaturedText : null,
+          ]}
+        >
+          {title}
+        </Text>
+      </View>
+    </Animated.View>
+  );
+};
+
 const ProfileMarksCard = ({
   state,
   isSignedIn,
+  mode = 'all',
 }: {
   state: ProfileState;
   isSignedIn: boolean;
+  mode?: 'all' | 'unlocked';
 }) => {
   const unlockedMarks = state.status === 'success' ? state.marks : [];
   const featuredMarks = state.status === 'success' ? state.featuredMarks : [];
-  const hasMarks = unlockedMarks.length > 0;
-  const groupedMarks = useMemo(
+  const unlockedSet = useMemo(() => new Set(unlockedMarks), [unlockedMarks]);
+  const groupedUnlockedMarks = useMemo(
     () => groupMobileMarksByCategory(unlockedMarks),
     [unlockedMarks]
+  );
+  const groupedCatalogMarks = useMemo(
+    () => groupMobileMarksByCategory(MOBILE_MARK_CATALOG.map((mark) => mark.id)),
+    []
   );
 
   return (
@@ -387,34 +711,51 @@ const ProfileMarksCard = ({
               <Text style={styles.screenMeta}>Vitrine hic mark secilmemis.</Text>
             ) : (
               <View style={styles.markPillRow}>
-                {featuredMarks.map((markId) => (
-                  <View key={`featured-${markId}`} style={styles.markPillFeatured}>
-                    <Text style={styles.markPillFeaturedText}>{resolveMobileMarkTitle(markId)}</Text>
-                  </View>
-                ))}
+                {featuredMarks.map((markId) => {
+                  const markMeta = resolveMobileMarkMeta(markId);
+                  return (
+                    <MobileMarkPill
+                      key={`featured-${markId}`}
+                      title={resolveMobileMarkTitle(markId)}
+                      motion={markMeta.motion}
+                      isUnlocked
+                      isFeatured
+                    />
+                  );
+                })}
               </View>
             )}
           </View>
 
           <View style={styles.markCategoryBlock}>
-            <Text style={styles.markCategoryTitle}>Tum Marklar</Text>
-            {hasMarks ? (
+            <Text style={styles.markCategoryTitle}>
+              {mode === 'unlocked' ? 'Kazanilan Marklar' : 'Tum Marklar'}
+            </Text>
+            {mode === 'unlocked' && unlockedMarks.length === 0 ? (
+              <Text style={styles.screenMeta}>Henuz kazanilan mark yok.</Text>
+            ) : (
               <View style={styles.markCategoryList}>
-                {groupedMarks.map((group) => (
+                {(mode === 'unlocked' ? groupedUnlockedMarks : groupedCatalogMarks).map((group) => (
                   <View key={`mark-category-${group.category}`} style={styles.markCategoryBlock}>
                     <Text style={styles.markCategoryTitle}>{group.category}</Text>
                     <View style={styles.markPillRow}>
-                      {group.marks.map((mark) => (
-                        <View key={`mark-${mark.id}`} style={styles.markPill}>
-                          <Text style={styles.markPillText}>{mark.title}</Text>
-                        </View>
-                      ))}
+                      {group.marks.map((mark) => {
+                        const isUnlocked = mode === 'unlocked' ? true : unlockedSet.has(mark.id);
+                        const isFeatured = featuredMarks.includes(mark.id);
+                        return (
+                          <MobileMarkPill
+                            key={`mark-${mark.id}`}
+                            title={mark.title}
+                            motion={mark.motion}
+                            isUnlocked={isUnlocked}
+                            isFeatured={isUnlocked && isFeatured}
+                          />
+                        );
+                      })}
                     </View>
                   </View>
                 ))}
               </View>
-            ) : (
-              <Text style={styles.screenMeta}>Henuz kazanilmis bir mark yok.</Text>
             )}
           </View>
         </>
@@ -939,6 +1280,19 @@ const CommentFeedCard = ({
                 >
                   <Text style={styles.commentFeedAuthorLink}>{item.author}</Text>
                 </Pressable>
+                <View
+                  style={[
+                    styles.commentFeedLeagueBadge,
+                    {
+                      borderColor: `${item.leagueColor || '#8A9A5B'}80`,
+                      backgroundColor: `${item.leagueColor || '#8A9A5B'}22`,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.commentFeedLeagueBadgeText, { color: item.leagueColor || '#8A9A5B' }]}>
+                    {item.leagueKey || 'Bronze'}
+                  </Text>
+                </View>
                 <Text style={styles.commentFeedMeta}>{item.timestampLabel}</Text>
               </View>
               <Text style={styles.commentFeedBody}>{item.text}</Text>
@@ -1929,19 +2283,73 @@ const ShareHubScreen = ({
   inviteCode,
   platform,
   goal,
+  streakValue,
+  onOpenDaily,
 }: {
   inviteCode?: string;
   platform?: string;
   goal?: string;
-}) => (
-  <ScreenCard accent="sage">
-    <Text style={styles.screenTitle}>Paylasim Merkezi</Text>
-    <Text style={styles.screenBody}>Paylasim hedefi bazli mobil ekran.</Text>
-    <Text style={styles.screenMeta}>Platform: {platform || 'none'}</Text>
-    <Text style={styles.screenMeta}>Goal: {goal || 'none'}</Text>
-    <Text style={styles.screenMeta}>Invite: {inviteCode || 'none'}</Text>
-  </ScreenCard>
-);
+  streakValue?: number;
+  onOpenDaily?: () => void;
+}) => {
+  const normalizedGoal = goal === 'streak' || goal === 'comment' ? goal : undefined;
+  const normalizedPlatform =
+    platform === 'instagram' || platform === 'tiktok' || platform === 'x' ? platform : undefined;
+  const safeStreak = Math.max(0, Number(streakValue || 0));
+
+  const title =
+    normalizedGoal === 'streak'
+      ? 'Streak Paylasimi'
+      : normalizedGoal === 'comment'
+        ? 'Yorum Paylasimi'
+        : 'Paylasim Merkezi';
+
+  const body =
+    normalizedGoal === 'streak'
+      ? 'Seri tamamlandi. Paylasim niyeti deep link ile alindi; mobilde route bilgisi hazir.'
+      : normalizedGoal === 'comment'
+        ? 'Yorum paylasimi niyeti deep link ile alindi; mobilde route bilgisi hazir.'
+        : 'Paylasim hedefi bilgisi bulunamadi. Varsayilan route acildi.';
+
+  return (
+    <ScreenCard accent={normalizedGoal === 'streak' ? 'clay' : 'sage'}>
+      <Text style={styles.screenTitle}>{title}</Text>
+      <Text style={styles.screenBody}>{body}</Text>
+
+      <View style={styles.arenaMetricGrid}>
+        <View style={styles.arenaMetricCard}>
+          <Text style={styles.arenaMetricValue}>{normalizedGoal || 'none'}</Text>
+          <Text style={styles.arenaMetricLabel}>Goal</Text>
+        </View>
+        <View style={styles.arenaMetricCard}>
+          <Text style={styles.arenaMetricValue}>{normalizedPlatform || 'none'}</Text>
+          <Text style={styles.arenaMetricLabel}>Platform</Text>
+        </View>
+        <View style={styles.arenaMetricCard}>
+          <Text style={styles.arenaMetricValue}>{safeStreak}</Text>
+          <Text style={styles.arenaMetricLabel}>Streak</Text>
+        </View>
+      </View>
+
+      <Text style={styles.screenMeta}>Invite: {inviteCode || 'none'}</Text>
+      {normalizedGoal === 'streak' && safeStreak === 0 ? (
+        <Text style={[styles.screenMeta, styles.ritualStateWarn]}>
+          Streak verisi henuz senkron degil. Profil kartini yenileyip tekrar dene.
+        </Text>
+      ) : null}
+      <Text style={[styles.screenMeta, styles.ritualStateWarn]}>
+        Not: Mobilde tam sosyal paylasim aksiyonu bir sonraki pakette acilacak.
+      </Text>
+
+      <UiButton
+        label="Gunluk Akisa Don"
+        tone="brand"
+        onPress={() => onOpenDaily?.()}
+        accessibilityLabel="Gunluk akis sekmesine git"
+      />
+    </ScreenCard>
+  );
+};
 
 type DiscoverRouteItem = {
   id: string;
@@ -1957,7 +2365,6 @@ type ArenaLeaderboardItem = {
   avatarUrl?: string | null;
   ritualsCount: number;
   echoCount: number;
-  profileHref?: string;
 };
 
 type ArenaLeaderboardState = {
@@ -2055,7 +2462,7 @@ const ArenaLeaderboardCard = ({
   <ScreenCard accent="sage">
     <Text style={styles.screenTitle}>Arena Leaderboard</Text>
     <Text style={styles.screenBody}>
-      Son ritual aktivitesinden uretilen haftalik siralama. Profilleri tek dokunusta acabilirsin.
+      Son ritual aktivitesinden uretilen haftalik siralama. Nick uzerine dokunarak profili ac.
     </Text>
     <Text style={styles.screenMeta}>Kaynak: {state.source === 'live' ? 'canli' : 'fallback'}</Text>
     <Text
@@ -2071,40 +2478,45 @@ const ArenaLeaderboardCard = ({
       {state.message}
     </Text>
     <View style={styles.arenaLeaderboardList}>
-      {state.entries.map((item) => (
-        <View key={`${item.rank}-${item.displayName}`} style={styles.arenaLeaderboardRow}>
-          <View style={styles.arenaLeaderboardRankWrap}>
-            <Text style={styles.arenaLeaderboardRank}>{item.rank}</Text>
-          </View>
-          <View style={styles.arenaLeaderboardAvatarWrap}>
-            {item.avatarUrl ? (
-              <Image
-                source={{ uri: item.avatarUrl }}
-                style={styles.arenaLeaderboardAvatarImage}
-                resizeMode="cover"
-              />
-            ) : (
-              <Text style={styles.arenaLeaderboardAvatarFallback}>
-                {(String(item.displayName || '').trim().slice(0, 1) || 'U').toUpperCase()}
+      {state.entries.map((item) => {
+        const canOpenProfile = Boolean(
+          String(item.userId || '').trim() || String(item.displayName || '').trim()
+        );
+        return (
+          <View key={`${item.rank}-${item.displayName}`} style={styles.arenaLeaderboardRow}>
+            <View style={styles.arenaLeaderboardRankWrap}>
+              <Text style={styles.arenaLeaderboardRank}>{item.rank}</Text>
+            </View>
+            <View style={styles.arenaLeaderboardAvatarWrap}>
+              {item.avatarUrl ? (
+                <Image
+                  source={{ uri: item.avatarUrl }}
+                  style={styles.arenaLeaderboardAvatarImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Text style={styles.arenaLeaderboardAvatarFallback}>
+                  {(String(item.displayName || '').trim().slice(0, 1) || 'U').toUpperCase()}
+                </Text>
+              )}
+            </View>
+            <View style={styles.arenaLeaderboardContent}>
+              <Pressable
+                onPress={() => onOpenProfile(item)}
+                disabled={!canOpenProfile}
+                hitSlop={PRESSABLE_HIT_SLOP}
+                accessibilityRole="button"
+                accessibilityLabel={`${item.displayName} profilini ac`}
+              >
+                <Text style={styles.arenaLeaderboardName}>{item.displayName}</Text>
+              </Pressable>
+              <Text style={styles.arenaLeaderboardMeta}>
+                Ritual {item.ritualsCount} | Echo {item.echoCount}
               </Text>
-            )}
+            </View>
           </View>
-          <View style={styles.arenaLeaderboardContent}>
-            <Text style={styles.arenaLeaderboardName}>{item.displayName}</Text>
-            <Text style={styles.arenaLeaderboardMeta}>
-              Ritual {item.ritualsCount} | Echo {item.echoCount}
-            </Text>
-          </View>
-          <UiButton
-            label={item.profileHref ? 'Profil' : 'Yok'}
-            tone="neutral"
-            onPress={() => onOpenProfile(item)}
-            disabled={!item.profileHref}
-            style={styles.arenaLeaderboardAction}
-            accessibilityLabel={`${item.displayName} profilini ac`}
-          />
-        </View>
-      ))}
+        );
+      })}
     </View>
     <UiButton
       label={state.status === 'loading' ? 'Yenileniyor...' : 'Leaderboard Yenile'}
@@ -2128,24 +2540,15 @@ const PublicProfileBridgeCard = ({
   onProfileInputChange,
   onOpenProfile,
   canOpenProfile,
-  hasWebBase,
 }: {
   profileInput: string;
   onProfileInputChange: (value: string) => void;
   onOpenProfile: () => void;
   canOpenProfile: boolean;
-  hasWebBase: boolean;
 }) => (
   <ScreenCard accent="clay">
     <Text style={styles.screenTitle}>Public Profile Gecisi</Text>
-    <Text style={styles.screenBody}>
-      Kullanici adini girip web public profile ekranina mobil icinden gecis yap.
-    </Text>
-    {!hasWebBase ? (
-      <Text style={[styles.screenMeta, styles.ritualStateWarn]}>
-        Web base URL tanimli degil. EXPO_PUBLIC_WEB_BASE_URL kontrol edilmeli.
-      </Text>
-    ) : null}
+    <Text style={styles.screenBody}>Kullanici adini girip profili mobil icinde ac.</Text>
     <TextInput
       style={styles.publicProfileInput}
       value={profileInput}
@@ -2173,9 +2576,11 @@ const PublicProfileDetailCard = ({
   isSignedIn,
   followStatus,
   isFollowing,
+  followsYou,
   isSelfProfile,
   followMessage,
   onToggleFollow,
+  onOpenFullProfile,
   onBack,
   onRefresh,
 }: {
@@ -2186,9 +2591,11 @@ const PublicProfileDetailCard = ({
   isSignedIn: boolean;
   followStatus: 'idle' | 'loading' | 'ready' | 'error';
   isFollowing: boolean;
+  followsYou: boolean;
   isSelfProfile: boolean;
   followMessage: string;
   onToggleFollow: () => void;
+  onOpenFullProfile: () => void;
   onBack: () => void;
   onRefresh: () => void;
 }) => {
@@ -2200,14 +2607,20 @@ const PublicProfileDetailCard = ({
 
   return (
     <ScreenCard accent="clay">
-      <Text style={styles.screenTitle}>{profileDisplayName || '@bilinmeyen'}</Text>
-      <Text style={styles.screenBody}>{status === 'loading' ? 'Profil yukleniyor...' : message}</Text>
-      {profile ? (
-        <View style={styles.profileBadgeList}>
-          <Text style={styles.screenMeta}>Rituals: {ritualsCount}</Text>
-          <Text style={styles.screenMeta}>Takip: {followingCount} / Takipci: {followersCount}</Text>
-        </View>
-      ) : null}
+      <Pressable onPress={onOpenFullProfile} hitSlop={PRESSABLE_HIT_SLOP}>
+        <Text style={styles.screenTitle}>{profileDisplayName || '@bilinmeyen'}</Text>
+        <Text style={styles.screenBody}>{status === 'loading' ? 'Profil yukleniyor...' : message}</Text>
+        {profile ? (
+          <View style={styles.profileBadgeList}>
+            <Text style={styles.screenMeta}>Rituals: {ritualsCount}</Text>
+            <Text style={styles.screenMeta}>Takip: {followingCount} / Takipci: {followersCount}</Text>
+          </View>
+        ) : null}
+        {!isSelfProfile && followsYou ? (
+          <Text style={[styles.screenMeta, styles.ritualStateOk]}>Bu kisi seni takip ediyor.</Text>
+        ) : null}
+        <Text style={styles.screenMeta}>Detayli profil icin bu alana dokun.</Text>
+      </Pressable>
       {!isSelfProfile && isSignedIn && profile ? (
         <Pressable
           style={[styles.claimButton, isFollowBusy ? styles.claimButtonDisabled : null]}
@@ -2233,6 +2646,9 @@ const PublicProfileDetailCard = ({
         </Text>
       ) : null}
       <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
+        <Pressable style={styles.retryButton} onPress={onOpenFullProfile} hitSlop={PRESSABLE_HIT_SLOP}>
+          <Text style={styles.retryText}>Profili Tam Ac</Text>
+        </Pressable>
         <Pressable style={styles.retryButton} onPress={onRefresh} hitSlop={PRESSABLE_HIT_SLOP}>
           <Text style={styles.retryText}>Yenile</Text>
         </Pressable>
@@ -2288,6 +2704,7 @@ export {
   DailyHomeScreen,
   RitualDraftCard,
   RitualComposerModal,
+  LeaguePromotionModal,
   InviteClaimScreen,
   ShareHubScreen,
   DiscoverRoutesCard,

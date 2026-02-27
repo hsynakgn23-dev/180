@@ -104,6 +104,11 @@ type ProfileState =
       message: string;
       displayName: string;
       totalXp: number;
+      leagueKey: string;
+      leagueName: string;
+      leagueColor: string;
+      nextLeagueKey: string | null;
+      nextLeagueName: string | null;
       streak: number;
       ritualsCount: number;
       daysPresent: number;

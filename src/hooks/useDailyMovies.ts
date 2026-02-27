@@ -8,6 +8,10 @@ type LooseMovie = Partial<Movie> & {
     poster_path?: string;
     posterURL?: string;
     poster_url?: string;
+    posterStoragePath?: string;
+    poster_storage_path?: string;
+    posterThumbPath?: string;
+    poster_thumb_path?: string;
 };
 
 interface UseDailyMoviesOptions {
@@ -16,8 +20,8 @@ interface UseDailyMoviesOptions {
     personalizationSeed?: string;
 }
 
-const DAILY_CACHE_KEY = 'DAILY_SELECTION_V18';
-const DAILY_CANDIDATE_CACHE_KEY = 'DAILY_CANDIDATE_POOL_V2';
+const DAILY_CACHE_KEY = 'DAILY_SELECTION_V19';
+const DAILY_CANDIDATE_CACHE_KEY = 'DAILY_CANDIDATE_POOL_V3';
 const DAILY_MOVIE_COUNT = 5;
 const DAILY_MIN_UNIQUE_GENRES = DAILY_MOVIE_COUNT;
 const CLASSIC_YEAR_THRESHOLD = 2000;
@@ -873,7 +877,15 @@ const normalizeMovie = (input: unknown): Movie => {
         return input as Movie;
     }
     const movie = input as LooseMovie;
-    const posterPath = movie.posterPath ?? movie.poster_path ?? movie.posterURL ?? movie.poster_url;
+    const posterPath =
+        movie.posterPath ??
+        movie.poster_path ??
+        movie.posterStoragePath ??
+        movie.poster_storage_path ??
+        movie.posterThumbPath ??
+        movie.poster_thumb_path ??
+        movie.posterURL ??
+        movie.poster_url;
     return { ...(movie as Movie), posterPath };
 };
 

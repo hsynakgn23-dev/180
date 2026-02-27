@@ -16,59 +16,55 @@ import { ShieldMark } from '../components/icons/ShieldMark';
 import { AtomMark } from '../components/icons/AtomMark';
 import { SignalMark } from '../components/icons/SignalMark';
 import { MonumentMark } from '../components/icons/MonumentMark';
+import { MARK_CATALOG, type MarkCategory, type MarkMotion } from '../domain/marksCatalog';
+
+type MarkIcon = React.ComponentType<{ color?: string; size?: number; className?: string; opacity?: number }>;
 
 export interface MarkDef {
     id: string;
     title: string;
     description: string;
-    category: 'Ritual' | 'Discovery' | 'Social' | 'Presence' | 'Writing' | 'Rhythm' | 'Legacy';
-    Icon: React.ComponentType<{ color?: string; size?: number; className?: string; opacity?: number }>;
+    category: MarkCategory;
+    Icon: MarkIcon;
     whisper: string;
+    motion: MarkMotion;
     badgeAsset?: string;
 }
 
-export const MAJOR_MARKS: MarkDef[] = [
-    // --- CATEGORY A: PRESENCE ---
-    { id: 'first_mark', title: 'First Mark', description: 'Complete your first ritual.', category: 'Presence', Icon: CircleMark, whisper: 'It begins.' },
-    { id: 'daybreaker', title: 'Daybreaker', description: 'Be present for 14 active days.', category: 'Presence', Icon: SunMark, whisper: 'You kept showing up.' },
+const ICON_BY_MARK_ID: Record<string, MarkIcon> = {
+    first_mark: CircleMark,
+    daybreaker: SunMark,
+    '180_exact': HexagonMark,
+    precision_loop: HexagonMark,
+    minimalist: CrossMark,
+    deep_diver: GridMark,
+    no_rush: PentagonMark,
+    daily_regular: InfinityMark,
+    seven_quiet_days: InfinityMark,
+    ritual_marathon: PentagonMark,
+    wide_lens: TriangleMark,
+    hidden_gem: OrbitMark,
+    genre_discovery: TriangleMark,
+    one_genre_devotion: SignalMark,
+    classic_soul: CrossMark,
+    genre_nomad: OrbitMark,
+    watched_on_time: SunMark,
+    held_for_five: ShieldMark,
+    mystery_solver: NestedSquareMark,
+    midnight_ritual: SparkMark,
+    first_echo: DiamondMark,
+    echo_receiver: DiamondMark,
+    echo_initiate: AtomMark,
+    influencer: SignalMark,
+    resonator: ShieldMark,
+    quiet_following: EyeMark,
+    echo_chamber: AtomMark,
+    eternal_mark: MonumentMark,
+    legacy: MonumentMark,
+    archive_keeper: MonumentMark,
+};
 
-    // --- CATEGORY B: WRITING ---
-    { id: '180_exact', title: 'The Architect', description: 'Write exactly 180 characters.', category: 'Writing', Icon: HexagonMark, whisper: 'Perfectly framed.' },
-    { id: 'precision_loop', title: 'Precision Loop', description: 'Write exactly 180 characters 3 times.', category: 'Writing', Icon: HexagonMark, whisper: 'Precision repeated.' },
-    { id: 'minimalist', title: 'Minimalist', description: 'Write a ritual with < 40 characters.', category: 'Writing', Icon: CrossMark, whisper: 'Less said.' },
-    { id: 'deep_diver', title: 'Deep Diver', description: 'Submit a long-form ritual (160+ chars).', category: 'Writing', Icon: GridMark, whisper: 'The depths explored.' },
-
-    // --- CATEGORY C: RHYTHM ---
-    { id: 'no_rush', title: 'No Rush', description: 'Complete 10 rituals, none consecutive.', category: 'Rhythm', Icon: PentagonMark, whisper: 'Your pace is yours.' },
-    { id: 'daily_regular', title: 'Regular', description: 'Maintain a 3-day streak.', category: 'Rhythm', Icon: InfinityMark, whisper: 'A steady pulse.' },
-    { id: 'seven_quiet_days', title: 'Silence Keeper', description: 'Maintain a 7-day streak.', category: 'Rhythm', Icon: InfinityMark, whisper: 'Seven days of silence.' },
-    { id: 'ritual_marathon', title: 'Marathon', description: 'Submit 20 rituals.', category: 'Rhythm', Icon: PentagonMark, whisper: 'Momentum held.' },
-
-    // --- CATEGORY D: DISCOVERY ---
-    { id: 'wide_lens', title: 'Wide Lens', description: 'Review 10 unique genres.', category: 'Discovery', Icon: TriangleMark, whisper: 'A wider lens.' },
-    { id: 'hidden_gem', title: 'Hidden Gem', description: 'Review a lower-rated title (<= 7.9).', category: 'Discovery', Icon: OrbitMark, whisper: 'A private orbit.' },
-    { id: 'genre_discovery', title: 'Spectrum', description: 'Review 3 unique genres.', category: 'Discovery', Icon: TriangleMark, whisper: 'A spectrum revealed.' },
-    { id: 'one_genre_devotion', title: 'Devotee', description: '20 rituals in one genre.', category: 'Discovery', Icon: SignalMark, whisper: 'A singular focus.' },
-    { id: 'classic_soul', title: 'Classic Soul', description: 'Watch a movie from before 1990.', category: 'Discovery', Icon: CrossMark, whisper: 'An echo from the past.' },
-    { id: 'genre_nomad', title: 'Genre Nomad', description: 'Write 5 rituals in 5 different genres in a row.', category: 'Discovery', Icon: OrbitMark, whisper: 'No fixed orbit.' },
-
-    // --- CATEGORY E: CINEMA RITUALS ---
-    { id: 'watched_on_time', title: 'Dawn Watcher', description: 'Submit a ritual between 05:00 and 07:00.', category: 'Ritual', Icon: SunMark, whisper: 'Right on time.' },
-    { id: 'held_for_five', title: 'The Keeper', description: '5-day active streak.', category: 'Ritual', Icon: ShieldMark, whisper: 'You held it.' },
-    { id: 'mystery_solver', title: 'Mystery Solver', description: 'Unlock the Mystery Slot.', category: 'Ritual', Icon: NestedSquareMark, whisper: 'The unknown revealed.' },
-    { id: 'midnight_ritual', title: 'Midnight', description: 'Ritual between 00:00-01:00.', category: 'Ritual', Icon: SparkMark, whisper: 'The witching hour.' },
-
-    // --- CATEGORY F: SOCIAL ---
-    { id: 'first_echo', title: 'First Echo', description: 'Receive your first Echo.', category: 'Social', Icon: DiamondMark, whisper: 'Someone heard you.' },
-    { id: 'echo_receiver', title: 'Echo Receiver', description: 'Receive your first Echo.', category: 'Social', Icon: DiamondMark, whisper: 'You are heard.' },
-    { id: 'echo_initiate', title: 'Echo Initiate', description: 'Give 1 Echo.', category: 'Social', Icon: AtomMark, whisper: 'A small signal.' },
-    { id: 'influencer', title: 'Influencer', description: 'Receive 5 Echoes.', category: 'Social', Icon: SignalMark, whisper: 'A wider frequency.' },
-    { id: 'resonator', title: 'Resonator', description: 'Receive 5 Echoes.', category: 'Social', Icon: ShieldMark, whisper: 'Resonance established.' },
-    { id: 'quiet_following', title: 'Quiet Following', description: 'Follow 5 users.', category: 'Social', Icon: EyeMark, whisper: 'A small orbit.' },
-    { id: 'echo_chamber', title: 'Echo Chamber', description: 'Give 10 Echoes.', category: 'Social', Icon: AtomMark, whisper: 'Signal sustained.' },
-
-    // --- CATEGORY G: LEGACY / LEAGUES ---
-    { id: 'eternal_mark', title: 'Eternal', description: 'Reach the Eternal League.', category: 'Legacy', Icon: MonumentMark, whisper: 'Still here.' },
-    { id: 'legacy', title: 'The Pillar', description: 'Active for 30+ days.', category: 'Legacy', Icon: MonumentMark, whisper: 'A pillar in time.' },
-    { id: 'archive_keeper', title: 'Archive Keeper', description: 'Submit 50 rituals.', category: 'Legacy', Icon: MonumentMark, whisper: 'The archive remembers.' }
-];
+export const MAJOR_MARKS: MarkDef[] = MARK_CATALOG.map((mark) => ({
+    ...mark,
+    Icon: ICON_BY_MARK_ID[mark.id] || CircleMark,
+}));

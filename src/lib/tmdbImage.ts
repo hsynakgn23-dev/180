@@ -1,8 +1,39 @@
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
 const WESERV_BASE = 'https://images.weserv.nl/?url=';
 const DEFAULT_PROXIES = ['https://images.weserv.nl/?url=', 'https://wsrv.nl/?url='];
+const STORAGE_PUBLIC_PATH = '/storage/v1/object/public/';
 
 const isAbsoluteUrl = (value: string) => /^https?:\/\//i.test(value);
+const isProtocolRelativeUrl = (value: string) => value.startsWith('//');
+
+const getSupabaseBaseUrl = (): string => {
+    const raw = String(import.meta.env.VITE_SUPABASE_URL || '').trim();
+    if (!raw) return '';
+    return raw.endsWith('/') ? raw.slice(0, -1) : raw;
+};
+
+const getWindowOrigin = (): string => {
+    if (typeof window === 'undefined' || !window.location?.origin) return '';
+    return String(window.location.origin || '').trim().replace(/\/+$/, '');
+};
+
+const resolveStorageRelativeUrl = (value: string): string | null => {
+    const normalized = value.trim();
+    if (!normalized) return null;
+
+    let storagePath = '';
+    if (normalized.startsWith(STORAGE_PUBLIC_PATH)) {
+        storagePath = normalized;
+    } else if (normalized.startsWith(STORAGE_PUBLIC_PATH.slice(1))) {
+        storagePath = `/${normalized}`;
+    } else {
+        return null;
+    }
+
+    const baseUrl = getSupabaseBaseUrl() || getWindowOrigin();
+    if (!baseUrl) return null;
+    return `${baseUrl}${storagePath}`;
+};
 
 const getImageMode = (): 'direct-first' | 'proxy-first' | 'proxy-only' => {
     const raw = (import.meta.env.VITE_IMAGE_MODE || 'direct-first').toLowerCase();
@@ -33,6 +64,15 @@ export const resolveImageUrl = (
 
     if (value.startsWith(WESERV_BASE)) {
         value = decodeURIComponent(value.slice(WESERV_BASE.length));
+    }
+
+    if (isProtocolRelativeUrl(value)) {
+        return `https:${value}`;
+    }
+
+    const storageAbsolute = resolveStorageRelativeUrl(value);
+    if (storageAbsolute) {
+        return storageAbsolute;
     }
 
     if (isAbsoluteUrl(value)) {

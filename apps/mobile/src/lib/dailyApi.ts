@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { resolveMobileDailyApiUrl } from './mobileEnv';
+import { resolveMobileDailyApiUrl, resolveMobileWebBaseUrl } from './mobileEnv';
 import { fetchWithTimeout } from './network';
+import { isSupabaseLive, supabase } from './supabase';
 
 type DailyMovie = {
   id: number;
@@ -14,69 +15,6 @@ type DailyMovie = {
   cast: string[];
   originalLanguage: string | null;
 };
-
-const FALLBACK_DAILY_MOVIES: DailyMovie[] = [
-  {
-    id: 603,
-    title: 'The Matrix',
-    voteAverage: 8.7,
-    genre: 'Sci-Fi',
-    year: 1999,
-    director: 'Lana Wachowski, Lilly Wachowski',
-    overview: 'A hacker discovers reality is a simulation and joins a rebellion.',
-    posterPath: null,
-    cast: ['Keanu Reeves', 'Carrie-Anne Moss', 'Laurence Fishburne'],
-    originalLanguage: 'en',
-  },
-  {
-    id: 155,
-    title: 'The Dark Knight',
-    voteAverage: 8.5,
-    genre: 'Action',
-    year: 2008,
-    director: 'Christopher Nolan',
-    overview: 'Batman faces escalating chaos as Gotham is challenged by the Joker.',
-    posterPath: null,
-    cast: ['Christian Bale', 'Heath Ledger', 'Gary Oldman'],
-    originalLanguage: 'en',
-  },
-  {
-    id: 238,
-    title: 'The Godfather',
-    voteAverage: 8.7,
-    genre: 'Crime',
-    year: 1972,
-    director: 'Francis Ford Coppola',
-    overview: 'The aging patriarch of a crime dynasty transfers control to his son.',
-    posterPath: null,
-    cast: ['Marlon Brando', 'Al Pacino', 'James Caan'],
-    originalLanguage: 'en',
-  },
-  {
-    id: 13,
-    title: 'Forrest Gump',
-    voteAverage: 8.4,
-    genre: 'Drama',
-    year: 1994,
-    director: 'Robert Zemeckis',
-    overview: 'A kind-hearted man witnesses key moments of modern American history.',
-    posterPath: null,
-    cast: ['Tom Hanks', 'Robin Wright', 'Gary Sinise'],
-    originalLanguage: 'en',
-  },
-  {
-    id: 157336,
-    title: 'Interstellar',
-    voteAverage: 8.6,
-    genre: 'Adventure',
-    year: 2014,
-    director: 'Christopher Nolan',
-    overview: 'A team travels through a wormhole to secure humanitys future.',
-    posterPath: null,
-    cast: ['Matthew McConaughey', 'Anne Hathaway', 'Jessica Chastain'],
-    originalLanguage: 'en',
-  },
-];
 
 type DailyResponse = {
   ok: boolean;
@@ -94,15 +32,15 @@ type DailyCacheRecord = {
   movies: DailyMovie[];
 };
 
-const DAILY_CACHE_KEY = '180_mobile_daily_cache_v1';
-const DAILY_CACHE_MAX_AGE_MS = 18 * 60 * 60 * 1000;
-
-const getLocalDateKey = (value = new Date()): string => {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, '0');
-  const day = String(value.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+type DailyShowcaseRow = {
+  date?: string | null;
+  source?: string | null;
+  movies?: unknown;
 };
+
+const DAILY_CACHE_KEY = '180_mobile_daily_cache_v3';
+const DAILY_CACHE_MAX_AGE_MS = 18 * 60 * 60 * 1000;
+const DAILY_ROLLOVER_TIMEZONE = 'Europe/Istanbul';
 
 const normalizeText = (value: unknown, maxLength = 200): string => {
   const text = String(value ?? '').trim();
@@ -123,6 +61,77 @@ const normalizeStringList = (value: unknown, maxItems = 8, maxLength = 80): stri
     .slice(0, maxItems);
 };
 
+const getDateKeyFromParts = (value = new Date(), timeZone?: string): string => {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const parts = formatter.formatToParts(value);
+    const year = parts.find((part) => part.type === 'year')?.value || '';
+    const month = parts.find((part) => part.type === 'month')?.value || '';
+    const day = parts.find((part) => part.type === 'day')?.value || '';
+    if (!year || !month || !day) return '';
+    return `${year}-${month}-${day}`;
+  } catch {
+    return '';
+  }
+};
+
+const getLocalDateKey = (value = new Date()): string => {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getDailyDateKey = (): string =>
+  getDateKeyFromParts(new Date(), DAILY_ROLLOVER_TIMEZONE) || getLocalDateKey();
+
+const normalizeEndpointForComparison = (value: unknown): string => {
+  const text = normalizeText(value, 1200);
+  if (!text) return '';
+  try {
+    const parsed = new URL(text);
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.toString().replace(/\/+$/, '');
+  } catch {
+    const [withoutQuery] = text.split(/[?#]/, 1);
+    return String(withoutQuery || '').trim().replace(/\/+$/, '');
+  }
+};
+
+const buildDailyRequestUrl = (endpoint: string, dateKey: string): string => {
+  const normalizedEndpoint = normalizeText(endpoint, 1200);
+  if (!normalizedEndpoint) return '';
+  const normalizedDateKey = normalizeText(dateKey, 40);
+  if (!normalizedDateKey) return normalizedEndpoint;
+
+  try {
+    const parsed = new URL(normalizedEndpoint);
+    parsed.searchParams.set('date', normalizedDateKey);
+    parsed.searchParams.set('_', String(Date.now()));
+    return parsed.toString();
+  } catch {
+    const separator = normalizedEndpoint.includes('?') ? '&' : '?';
+    return `${normalizedEndpoint}${separator}date=${encodeURIComponent(normalizedDateKey)}&_=${Date.now()}`;
+  }
+};
+
+const resolveMatchingCachedDaily = (
+  cached: (DailyCacheRecord & { ageSeconds: number; stale: boolean }) | null,
+  expectedDateKey: string
+): (DailyCacheRecord & { ageSeconds: number; stale: boolean }) | null => {
+  if (!cached) return null;
+  const normalizedExpectedDate = normalizeText(expectedDateKey, 40);
+  const normalizedCachedDate = normalizeText(cached.date, 40);
+  if (!normalizedExpectedDate || !normalizedCachedDate) return null;
+  return normalizedCachedDate === normalizedExpectedDate ? cached : null;
+};
+
 const normalizeMovie = (raw: unknown, index: number): DailyMovie | null => {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const movie = raw as Record<string, unknown>;
@@ -138,7 +147,18 @@ const normalizeMovie = (raw: unknown, index: number): DailyMovie | null => {
     year: normalizeNumber(movie.year),
     director: normalizeText(movie.director, 120) || null,
     overview: normalizeText(movie.overview, 600) || null,
-    posterPath: normalizeText(movie.posterPath ?? movie.poster_path, 400) || null,
+    posterPath:
+      normalizeText(
+        movie.posterPath ??
+          movie.poster_path ??
+          movie.posterStoragePath ??
+          movie.poster_storage_path ??
+          movie.posterThumbPath ??
+          movie.poster_thumb_path ??
+          movie.posterURL ??
+          movie.poster_url,
+        400
+      ) || null,
     cast: normalizeStringList(movie.cast, 8, 80),
     originalLanguage: normalizeText(movie.originalLanguage ?? movie.original_language, 24) || null,
   };
@@ -210,6 +230,262 @@ const writeDailyCache = async (record: DailyCacheRecord): Promise<void> => {
   }
 };
 
+const readDailyFromSupabase = async (
+  preferredDateKey?: string | null
+): Promise<{
+  ok: boolean;
+  date: string | null;
+  source: string | null;
+  movies: DailyMovie[];
+  warning: string | null;
+}> => {
+  if (!isSupabaseLive() || !supabase) {
+    return {
+      ok: false,
+      date: null,
+      source: null,
+      movies: [],
+      warning: null,
+    };
+  }
+
+  const targetDate = normalizeText(preferredDateKey, 40) || getDailyDateKey();
+  const parseRow = (
+    row: DailyShowcaseRow | null | undefined
+  ): { date: string | null; source: string | null; movies: DailyMovie[] } | null => {
+    if (!row) return null;
+    const rawMovies = Array.isArray(row.movies) ? row.movies : [];
+    const movies = rawMovies
+      .map((movie, index) => normalizeMovie(movie, index))
+      .filter((movie): movie is DailyMovie => Boolean(movie))
+      .slice(0, 20);
+    if (movies.length === 0) return null;
+    return {
+      date: normalizeText(row.date, 40) || targetDate || null,
+      source: normalizeText(row.source, 40) || 'supabase_daily_showcase',
+      movies,
+    };
+  };
+
+  try {
+    const { data: byDateData } = await supabase
+      .from('daily_showcase')
+      .select('date,source,movies')
+      .eq('date', targetDate)
+      .maybeSingle();
+    const parsed = parseRow((byDateData || null) as DailyShowcaseRow | null);
+    if (parsed) {
+      return {
+        ok: true,
+        date: parsed.date,
+        source: parsed.source,
+        movies: parsed.movies,
+        warning: null,
+      };
+    }
+  } catch {
+    // continue to latest fallback
+  }
+
+  try {
+    const { data: latestRows } = await supabase
+      .from('daily_showcase')
+      .select('date,source,movies')
+      .order('date', { ascending: false })
+      .limit(1);
+    const latestRow =
+      Array.isArray(latestRows) && latestRows.length > 0
+        ? ((latestRows[0] || null) as DailyShowcaseRow | null)
+        : null;
+    const latest = parseRow(latestRow);
+    if (latest) {
+      return {
+        ok: true,
+        date: latest.date,
+        source: latest.source,
+        movies: latest.movies,
+        warning: latest.date && latest.date !== targetDate ? 'Supabase latest daily used.' : null,
+      };
+    }
+  } catch {
+    // no-op
+  }
+
+  return {
+    ok: false,
+    date: null,
+    source: null,
+    movies: [],
+    warning: null,
+  };
+};
+
+const readDailyFromWebApi = async (
+  preferredDateKey?: string | null,
+  excludeEndpoint?: string | null
+): Promise<{
+  ok: boolean;
+  endpoint: string;
+  date: string | null;
+  source: string | null;
+  movies: DailyMovie[];
+}> => {
+  const webBase = resolveMobileWebBaseUrl();
+  if (!webBase) {
+    return {
+      ok: false,
+      endpoint: '',
+      date: null,
+      source: null,
+      movies: [],
+    };
+  }
+
+  const normalizedExclude = normalizeEndpointForComparison(excludeEndpoint);
+  const dateKey = normalizeText(preferredDateKey, 40) || getDailyDateKey();
+  const webEndpoint = `${webBase}/api/daily?date=${encodeURIComponent(dateKey)}&_=${Date.now()}`;
+  if (normalizeEndpointForComparison(webEndpoint) === normalizedExclude) {
+    return {
+      ok: false,
+      endpoint: webEndpoint,
+      date: null,
+      source: null,
+      movies: [],
+    };
+  }
+
+  try {
+    const response = await fetchWithTimeout({
+      url: webEndpoint,
+      timeoutMs: 8000,
+      timeoutMessage: 'Daily web API timeout',
+    });
+    const payload = (await response.json()) as DailyResponse;
+    if (!response.ok || !payload.ok) {
+      return {
+        ok: false,
+        endpoint: webEndpoint,
+        date: normalizeText(payload.date, 40) || null,
+        source: normalizeText(payload.source, 40) || null,
+        movies: [],
+      };
+    }
+
+    const rawMovies = Array.isArray(payload.movies) ? payload.movies : [];
+    const movies = rawMovies
+      .map((movie, index) => normalizeMovie(movie, index))
+      .filter((movie): movie is DailyMovie => Boolean(movie))
+      .slice(0, 20);
+    if (movies.length === 0) {
+      return {
+        ok: false,
+        endpoint: webEndpoint,
+        date: normalizeText(payload.date, 40) || null,
+        source: normalizeText(payload.source, 40) || null,
+        movies: [],
+      };
+    }
+
+    return {
+      ok: true,
+      endpoint: webEndpoint,
+      date: normalizeText(payload.date, 40) || null,
+      source: normalizeText(payload.source, 40) || null,
+      movies,
+    };
+  } catch {
+    return {
+      ok: false,
+      endpoint: webEndpoint,
+      date: null,
+      source: null,
+      movies: [],
+    };
+  }
+};
+
+const readDailyFromWebApiLatest = async (
+  excludeEndpoint?: string | null
+): Promise<{
+  ok: boolean;
+  endpoint: string;
+  date: string | null;
+  source: string | null;
+  movies: DailyMovie[];
+}> => {
+  const webBase = resolveMobileWebBaseUrl();
+  if (!webBase) {
+    return {
+      ok: false,
+      endpoint: '',
+      date: null,
+      source: null,
+      movies: [],
+    };
+  }
+
+  const normalizedExclude = normalizeEndpointForComparison(excludeEndpoint);
+  const webEndpoint = `${webBase}/api/daily?_=${Date.now()}`;
+  if (normalizeEndpointForComparison(webEndpoint) === normalizedExclude) {
+    return {
+      ok: false,
+      endpoint: webEndpoint,
+      date: null,
+      source: null,
+      movies: [],
+    };
+  }
+
+  try {
+    const response = await fetchWithTimeout({
+      url: webEndpoint,
+      timeoutMs: 8000,
+      timeoutMessage: 'Daily web API timeout',
+    });
+    const payload = (await response.json()) as DailyResponse;
+    if (!response.ok || !payload.ok) {
+      return {
+        ok: false,
+        endpoint: webEndpoint,
+        date: normalizeText(payload.date, 40) || null,
+        source: normalizeText(payload.source, 40) || null,
+        movies: [],
+      };
+    }
+
+    const rawMovies = Array.isArray(payload.movies) ? payload.movies : [];
+    const movies = rawMovies
+      .map((movie, index) => normalizeMovie(movie, index))
+      .filter((movie): movie is DailyMovie => Boolean(movie))
+      .slice(0, 20);
+    if (movies.length === 0) {
+      return {
+        ok: false,
+        endpoint: webEndpoint,
+        date: normalizeText(payload.date, 40) || null,
+        source: normalizeText(payload.source, 40) || null,
+        movies: [],
+      };
+    }
+
+    return {
+      ok: true,
+      endpoint: webEndpoint,
+      date: normalizeText(payload.date, 40) || null,
+      source: normalizeText(payload.source, 40) || null,
+      movies,
+    };
+  } catch {
+    return {
+      ok: false,
+      endpoint: webEndpoint,
+      date: null,
+      source: null,
+      movies: [],
+    };
+  }
+};
+
 export const fetchDailyMovies = async (): Promise<{
   ok: boolean;
   endpoint: string;
@@ -217,14 +493,78 @@ export const fetchDailyMovies = async (): Promise<{
   source: string | null;
   movies: DailyMovie[];
   error: string | null;
-  dataSource: 'live' | 'cache' | 'fallback';
+  dataSource: 'live' | 'cache';
   cacheAgeSeconds: number | null;
   stale: boolean;
   warning: string | null;
 }> => {
   const endpoint = resolveMobileDailyApiUrl();
+  const targetDateKey = getDailyDateKey();
   if (!endpoint) {
+    const supabaseDaily = await readDailyFromSupabase();
+    if (supabaseDaily.ok) {
+      return {
+        ok: true,
+        endpoint: 'supabase://daily_showcase',
+        date: supabaseDaily.date,
+        source: supabaseDaily.source,
+        movies: supabaseDaily.movies,
+        error: null,
+        dataSource: 'live',
+        cacheAgeSeconds: null,
+        stale: false,
+        warning: supabaseDaily.warning || 'Daily API endpoint missing; Supabase source used.',
+      };
+    }
+
+    const webDaily = await readDailyFromWebApi();
+    if (webDaily.ok) {
+      return {
+        ok: true,
+        endpoint: webDaily.endpoint,
+        date: webDaily.date,
+        source: webDaily.source,
+        movies: webDaily.movies,
+        error: null,
+        dataSource: 'live',
+        cacheAgeSeconds: null,
+        stale: false,
+        warning: 'Daily API endpoint missing; web API source used.',
+      };
+    }
+
+    const webLatestDaily = await readDailyFromWebApiLatest();
+    if (webLatestDaily.ok) {
+      return {
+        ok: true,
+        endpoint: webLatestDaily.endpoint,
+        date: webLatestDaily.date,
+        source: webLatestDaily.source,
+        movies: webLatestDaily.movies,
+        error: null,
+        dataSource: 'live',
+        cacheAgeSeconds: null,
+        stale: false,
+        warning: 'Daily API endpoint missing; web latest source used.',
+      };
+    }
+
     const cached = await readDailyCache();
+    const matchingCached = resolveMatchingCachedDaily(cached, targetDateKey);
+    if (matchingCached) {
+      return {
+        ok: true,
+        endpoint: matchingCached.endpoint,
+        date: matchingCached.date,
+        source: matchingCached.source,
+        movies: matchingCached.movies,
+        error: null,
+        dataSource: 'cache',
+        cacheAgeSeconds: matchingCached.ageSeconds >= 0 ? matchingCached.ageSeconds : null,
+        stale: true,
+        warning: 'Missing EXPO_PUBLIC_DAILY_API_URL (or derivable analytics endpoint).',
+      };
+    }
     if (cached) {
       return {
         ok: true,
@@ -236,27 +576,29 @@ export const fetchDailyMovies = async (): Promise<{
         dataSource: 'cache',
         cacheAgeSeconds: cached.ageSeconds >= 0 ? cached.ageSeconds : null,
         stale: true,
-        warning: 'Missing EXPO_PUBLIC_DAILY_API_URL (or derivable analytics endpoint).',
+        warning: 'Canli kaynak ulasilamadi; son onbellek secimi gosteriliyor.',
       };
     }
 
     return {
-      ok: true,
+      ok: false,
       endpoint: '',
-      date: getLocalDateKey(),
-      source: 'local_fallback',
-      movies: FALLBACK_DAILY_MOVIES,
-      error: null,
-      dataSource: 'fallback',
+      date: null,
+      source: null,
+      movies: [],
+      error: 'Missing EXPO_PUBLIC_DAILY_API_URL (or derivable analytics endpoint).',
+      dataSource: 'live',
       cacheAgeSeconds: null,
       stale: true,
-      warning: 'Missing EXPO_PUBLIC_DAILY_API_URL (or derivable analytics endpoint).',
+      warning: null,
     };
   }
 
+  const requestEndpoint = buildDailyRequestUrl(endpoint, targetDateKey);
+
   try {
     const response = await fetchWithTimeout({
-      url: endpoint,
+      url: requestEndpoint || endpoint,
       timeoutMs: 8000,
       timeoutMessage: 'Daily API timeout',
     });
@@ -267,66 +609,148 @@ export const fetchDailyMovies = async (): Promise<{
       .filter((movie): movie is DailyMovie => Boolean(movie));
 
     if (!response.ok || !payload.ok) {
+      const expectedDateKey = normalizeText(payload.date, 40) || targetDateKey;
       const liveError = normalizeText(payload.error, 200) || `HTTP ${response.status}`;
-      const cached = await readDailyCache();
-      if (cached) {
+      const supabaseDaily = await readDailyFromSupabase(expectedDateKey || null);
+      if (supabaseDaily.ok) {
         return {
           ok: true,
-          endpoint,
-          date: cached.date,
-          source: cached.source,
-          movies: cached.movies,
+          endpoint: requestEndpoint || endpoint,
+          date: supabaseDaily.date,
+          source: supabaseDaily.source,
+          movies: supabaseDaily.movies,
+          error: null,
+          dataSource: 'live',
+          cacheAgeSeconds: null,
+          stale: false,
+          warning: liveError,
+        };
+      }
+
+      const webDaily = await readDailyFromWebApi(expectedDateKey || null, endpoint);
+      if (webDaily.ok) {
+        return {
+          ok: true,
+          endpoint: webDaily.endpoint,
+          date: webDaily.date,
+          source: webDaily.source,
+          movies: webDaily.movies,
+          error: null,
+          dataSource: 'live',
+          cacheAgeSeconds: null,
+          stale: false,
+          warning: liveError,
+        };
+      }
+
+      const webLatestDaily = await readDailyFromWebApiLatest(endpoint);
+      if (webLatestDaily.ok) {
+        return {
+          ok: true,
+          endpoint: webLatestDaily.endpoint,
+          date: webLatestDaily.date,
+          source: webLatestDaily.source,
+          movies: webLatestDaily.movies,
+          error: null,
+          dataSource: 'live',
+          cacheAgeSeconds: null,
+          stale: false,
+          warning: liveError,
+        };
+      }
+
+      const cached = await readDailyCache();
+      const matchingCached = resolveMatchingCachedDaily(cached, expectedDateKey);
+      if (matchingCached) {
+        return {
+          ok: true,
+          endpoint: requestEndpoint || endpoint,
+          date: matchingCached.date,
+          source: matchingCached.source,
+          movies: matchingCached.movies,
           error: null,
           dataSource: 'cache',
-          cacheAgeSeconds: cached.ageSeconds >= 0 ? cached.ageSeconds : null,
-          stale: cached.stale,
+          cacheAgeSeconds: matchingCached.ageSeconds >= 0 ? matchingCached.ageSeconds : null,
+          stale: matchingCached.stale,
           warning: liveError,
         };
       }
 
       return {
-        ok: true,
-        endpoint,
-        date: normalizeText(payload.date, 40) || getLocalDateKey(),
-        source: 'local_fallback',
-        movies: FALLBACK_DAILY_MOVIES,
-        error: null,
-        dataSource: 'fallback',
+        ok: false,
+        endpoint: requestEndpoint || endpoint,
+        date: expectedDateKey || null,
+        source: normalizeText(payload.source, 40) || null,
+        movies: [],
+        error: liveError,
+        dataSource: 'live',
         cacheAgeSeconds: null,
         stale: true,
-        warning: liveError,
+        warning: null,
       };
     }
 
     if (movies.length === 0) {
       const liveError = 'Daily API returned empty movies payload';
+      const expectedDateKey = normalizeText(payload.date, 40) || targetDateKey;
+      const supabaseDaily = await readDailyFromSupabase(expectedDateKey || null);
+      if (supabaseDaily.ok) {
+        return {
+          ok: true,
+          endpoint: requestEndpoint || endpoint,
+          date: supabaseDaily.date,
+          source: supabaseDaily.source,
+          movies: supabaseDaily.movies,
+          error: null,
+          dataSource: 'live',
+          cacheAgeSeconds: null,
+          stale: false,
+          warning: liveError,
+        };
+      }
+
       const cached = await readDailyCache();
+      const matchingCached = resolveMatchingCachedDaily(cached, expectedDateKey);
+      if (matchingCached) {
+        return {
+          ok: true,
+          endpoint: requestEndpoint || endpoint,
+          date: matchingCached.date,
+          source: matchingCached.source,
+          movies: matchingCached.movies,
+          error: null,
+          dataSource: 'cache',
+          cacheAgeSeconds: matchingCached.ageSeconds >= 0 ? matchingCached.ageSeconds : null,
+          stale: matchingCached.stale,
+          warning: liveError,
+        };
+      }
       if (cached) {
         return {
           ok: true,
-          endpoint,
+          endpoint: cached.endpoint || requestEndpoint || endpoint,
           date: cached.date,
           source: cached.source,
           movies: cached.movies,
           error: null,
           dataSource: 'cache',
           cacheAgeSeconds: cached.ageSeconds >= 0 ? cached.ageSeconds : null,
-          stale: cached.stale,
-          warning: liveError,
+          stale: true,
+          warning: `${liveError} | stale-cache`,
         };
       }
 
       return {
-        ok: true,
-        endpoint,
-        date: normalizeText(payload.date, 40) || getLocalDateKey(),
-        source: 'local_fallback',
-        movies: FALLBACK_DAILY_MOVIES,
-        error: null,
-        dataSource: 'fallback',
+        ok: false,
+        endpoint: requestEndpoint || endpoint,
+        date: expectedDateKey || null,
+        source: normalizeText(payload.source, 40) || null,
+        movies: [],
+        error: liveError,
+        dataSource: 'live',
         cacheAgeSeconds: null,
         stale: true,
-        warning: liveError,
+        warning: null,
       };
     }
 
@@ -340,7 +764,7 @@ export const fetchDailyMovies = async (): Promise<{
 
     return {
       ok: true,
-      endpoint,
+      endpoint: requestEndpoint || endpoint,
       date: normalizeText(payload.date, 40) || null,
       source: normalizeText(payload.source, 40) || null,
       movies,
@@ -352,33 +776,96 @@ export const fetchDailyMovies = async (): Promise<{
     };
   } catch (error) {
     const liveError = error instanceof Error ? error.message : 'Daily API request failed';
+    const supabaseDaily = await readDailyFromSupabase(targetDateKey);
+    if (supabaseDaily.ok) {
+      return {
+        ok: true,
+        endpoint: requestEndpoint || endpoint,
+        date: supabaseDaily.date,
+        source: supabaseDaily.source,
+        movies: supabaseDaily.movies,
+        error: null,
+        dataSource: 'live',
+        cacheAgeSeconds: null,
+        stale: false,
+        warning: liveError,
+      };
+    }
+
+    const webDaily = await readDailyFromWebApi(undefined, endpoint);
+    if (webDaily.ok) {
+      return {
+        ok: true,
+        endpoint: webDaily.endpoint,
+        date: webDaily.date,
+        source: webDaily.source,
+        movies: webDaily.movies,
+        error: null,
+        dataSource: 'live',
+        cacheAgeSeconds: null,
+        stale: false,
+        warning: liveError,
+      };
+    }
+
+    const webLatestDaily = await readDailyFromWebApiLatest(endpoint);
+    if (webLatestDaily.ok) {
+      return {
+        ok: true,
+        endpoint: webLatestDaily.endpoint,
+        date: webLatestDaily.date,
+        source: webLatestDaily.source,
+        movies: webLatestDaily.movies,
+        error: null,
+        dataSource: 'live',
+        cacheAgeSeconds: null,
+        stale: false,
+        warning: liveError,
+      };
+    }
+
     const cached = await readDailyCache();
+    const matchingCached = resolveMatchingCachedDaily(cached, targetDateKey);
+    if (matchingCached) {
+      return {
+        ok: true,
+        endpoint: requestEndpoint || endpoint,
+        date: matchingCached.date,
+        source: matchingCached.source,
+        movies: matchingCached.movies,
+        error: null,
+        dataSource: 'cache',
+        cacheAgeSeconds: matchingCached.ageSeconds >= 0 ? matchingCached.ageSeconds : null,
+        stale: matchingCached.stale,
+        warning: liveError,
+      };
+    }
     if (cached) {
       return {
         ok: true,
-        endpoint,
+        endpoint: cached.endpoint || requestEndpoint || endpoint,
         date: cached.date,
         source: cached.source,
         movies: cached.movies,
         error: null,
         dataSource: 'cache',
         cacheAgeSeconds: cached.ageSeconds >= 0 ? cached.ageSeconds : null,
-        stale: cached.stale,
-        warning: liveError,
+        stale: true,
+        warning: `${liveError} | stale-cache`,
       };
     }
 
     return {
-      ok: true,
-      endpoint,
-      date: getLocalDateKey(),
-      source: 'local_fallback',
-      movies: FALLBACK_DAILY_MOVIES,
-      error: null,
-      dataSource: 'fallback',
+      ok: false,
+      endpoint: requestEndpoint || endpoint,
+      date: null,
+      source: null,
+      movies: [],
+      error: liveError,
+      dataSource: 'live',
       cacheAgeSeconds: null,
       stale: true,
-      warning: liveError,
+      warning: null,
     };
   }
 };

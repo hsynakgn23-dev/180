@@ -15,7 +15,7 @@ export const GridMark: React.FC<IconProps> = ({ color = "currentColor", size = 2
             viewBox="0 0 24 24"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
-            className={className}
+            className={`mark-motion mark-motion--pulse ${className}`}
             style={{ opacity }}
         >
             <rect x="3" y="3" width="8" height="8" rx="1" fill={color} />
@@ -25,3 +25,4 @@ export const GridMark: React.FC<IconProps> = ({ color = "currentColor", size = 2
         </svg>
     );
 };
+

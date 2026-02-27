@@ -350,6 +350,99 @@ body.light-mode .theme-toggle-button {
   animation: streak-pulse 2.8s ease-out forwards;
 }
 
+/* Mark icon motion */
+@keyframes mark-spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes mark-pulse-soft {
+  0%,
+  100% {
+    opacity: 0.84;
+    transform: scale(0.96);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+}
+
+@keyframes mark-float-soft {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-1.5px);
+  }
+}
+
+@keyframes mark-signal-wave {
+  0%,
+  100% {
+    opacity: 0.72;
+    transform: scale(0.98);
+  }
+
+  45% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+}
+
+@keyframes mark-spark-flicker {
+  0%,
+  100% {
+    opacity: 0.78;
+    transform: scale(0.96) rotate(-1deg);
+  }
+
+  35% {
+    opacity: 1;
+    transform: scale(1.08) rotate(1deg);
+  }
+
+  65% {
+    opacity: 0.86;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+.mark-motion {
+  transform-origin: center;
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .mark-motion--spin {
+    animation: mark-spin-slow 7.2s linear infinite;
+  }
+
+  .mark-motion--pulse {
+    animation: mark-pulse-soft 2.8s ease-in-out infinite;
+  }
+
+  .mark-motion--float {
+    animation: mark-float-soft 3.2s ease-in-out infinite;
+  }
+
+  .mark-motion--signal {
+    animation: mark-signal-wave 2.2s ease-in-out infinite;
+  }
+
+  .mark-motion--spark {
+    animation: mark-spark-flicker 1.9s ease-in-out infinite;
+  }
+}
+
 /* Interaction color policy: sage -> clay on interactive controls */
 :is(button, a, [role="button"])[class*="text-sage"]:is(:hover, :focus-visible, :active) {
   color: var(--color-clay);

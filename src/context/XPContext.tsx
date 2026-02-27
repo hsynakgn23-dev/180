@@ -4,20 +4,7 @@ import { TMDB_SEEDS } from '../data/tmdbSeeds';
 import { supabase, isSupabaseLive } from '../lib/supabase';
 import { moderateComment } from '../lib/commentModeration';
 import { trackEvent } from '../lib/analytics';
-import { claimInviteCodeViaApi, ensureInviteCodeViaApi, getReferralDeviceKey } from '../lib/referralApi';
-import { appendMobileDeepLinkParams } from '../domain/deepLinks';
-import {
-    LEAGUES_DATA,
-    LEAGUE_NAMES,
-    LEVEL_THRESHOLD,
-    getLeagueKeyByIndex,
-    getLeagueIndexFromXp,
-    resolveLeagueInfo,
-    resolveLeagueKey,
-    resolveLeagueKeyFromXp,
-    type LeagueInfo,
-    type LeagueKey
-} from '../domain/leagueSystem';
+export { getLeagueKeyByIndex, resolveLeagueInfo, resolveLeagueKey, resolveLeagueKeyFromXp } from '../domain/leagueSystem';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 // Types
@@ -65,12 +52,9 @@ interface XPState {
     avatarId: string; // e.g. 'geo_1', 'geo_2'
     avatarUrl?: string; // Custom uploaded image (Data URL)
     lastShareRewardDate: string | null;
-    inviteCode: string;
-    invitedByCode: string | null;
-    inviteClaimsCount: number;
-    inviteRewardsEarned: number;
-    inviteClaimedAt: string | null;
-    referralAcceptedKeys: string[];
+    referralCode: string; // Unique invite code
+    referralCount: number; // Successful invites
+    invitedBy?: string; // Code of the inviter
 }
 
 interface AuthResult {
@@ -88,6 +72,12 @@ interface SessionUser {
     username?: string;
     gender?: RegistrationGender | '';
     birthDate?: string;
+}
+
+export interface LeagueInfo {
+    name: string;
+    color: string;
+    description: string;
 }
 
 export interface StreakCelebrationEvent {
@@ -112,21 +102,24 @@ export interface RegistrationProfileInput {
     birthDate: string; // YYYY-MM-DD
 }
 
-export {
-    LEAGUES_DATA,
-    LEAGUE_NAMES,
-    LEVEL_THRESHOLD,
-    getLeagueKeyByIndex,
-    getLeagueIndexFromXp,
-    resolveLeagueInfo,
-    resolveLeagueKey,
-    resolveLeagueKeyFromXp
+export const LEAGUES_DATA: Record<string, LeagueInfo> = {
+    'Bronze': { name: 'Figüran', color: '#CD7F32', description: 'Sahneye ilk adım.' },
+    'Silver': { name: 'İzleyici', color: '#C0C0C0', description: 'Gözlemlemeye başladın.' },
+    'Gold': { name: 'Yorumcu', color: '#FFD700', description: 'Sesin duyuluyor.' },
+    'Platinum': { name: 'Eleştirmen', color: '#E5E4E2', description: 'Analizlerin derinleşiyor.' },
+    'Emerald': { name: 'Sinema Gurmesi', color: '#50C878', description: 'Zevklerin inceliyor.' },
+    'Sapphire': { name: 'Sinefil', color: '#0F52BA', description: 'Tutkun bir yaşam biçimi.' },
+    'Ruby': { name: 'Vizyoner', color: '#E0115F', description: 'Geleceği görüyorsun.' },
+    'Diamond': { name: 'Yönetmen', color: '#B9F2FF', description: 'Kendi sahnelerini kur.' },
+    'Master': { name: 'Auteur', color: '#9400D3', description: 'İmzanı at.' },
+    'Grandmaster': { name: 'Efsane', color: '#FF0000', description: 'Tarihe geçtin.' },
+    'Absolute': { name: 'Absolute', color: '#000000', description: 'The Void' },
+    'Eternal': { name: 'Eternal', color: '#FFFFFF', description: 'The Light' }
 };
-export type { LeagueInfo, LeagueKey };
 
 interface XPContextType {
     xp: number;
-    league: LeagueKey;
+    league: string;
     leagueInfo: LeagueInfo;
     levelUpEvent: LeagueInfo | null;
     closeLevelUp: () => void;
@@ -183,10 +176,12 @@ interface XPContextType {
     logout: () => Promise<void>;
     avatarUrl?: string; // Custom uploaded avatar
     updateAvatar: (url: string) => void;
+    redeemInviteCode: (code: string) => AuthResult;
 }
 
 
 const MAX_DAILY_DWELL_XP = 20;
+const LEVEL_THRESHOLD = 500;
 const LONG_FORM_RITUAL_THRESHOLD = 160;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const STREAK_MILESTONES = new Set([5, 7, 10, 20, 40, 50, 100, 200, 250, 300, 350]);
@@ -197,17 +192,12 @@ const USER_XP_STORAGE_KEY_PREFIX = '180_xp_data_';
 const USER_RITUAL_BACKUP_KEY_PREFIX = '180_ritual_backup_';
 const MAX_PERSISTED_AVATAR_URL_LENGTH = 180_000;
 const STORAGE_RECOVERY_KEYS = ['DAILY_CANDIDATE_POOL_V2', 'DAILY_SELECTION_V18'] as const;
-const INVITE_CODE_REGEX = /^[A-Z0-9]{6,12}$/;
-const INVITE_CODE_LENGTH = 8;
-const INVITER_REWARD_XP = 40;
-const INVITEE_REWARD_XP = 24;
-const MAX_DAILY_DEVICE_INVITE_CLAIMS = 3;
-const MAX_REFERRAL_ACCEPTED_KEYS = 200;
-const INVITE_REGISTRY_STORAGE_KEY = '180_invite_registry_v1';
-const PENDING_INVITE_CODE_STORAGE_KEY = '180_pending_invite_code_v1';
-const INVITE_DEVICE_GUARD_STORAGE_KEY = '180_invite_device_guard_v1';
-const DATE_KEY_REGEX = /^(\d{4})-(\d{2})-(\d{2})$/;
+const INVITER_REWARD_XP = 0;
+const INVITEE_REWARD_XP = 50;
+export const LEAGUE_NAMES = Object.keys(LEAGUES_DATA);
 type PendingRegistrationProfile = RegistrationProfileInput & { email: string };
+const getLeagueIndexFromXp = (xp: number): number =>
+    Math.min(Math.floor(xp / LEVEL_THRESHOLD), LEAGUE_NAMES.length - 1);
 const KNOWN_MOVIES_BY_ID = new Map(
     TMDB_SEEDS.map((movie) => [
         movie.id,
@@ -223,22 +213,6 @@ const KNOWN_MOVIE_ID_BY_TITLE = new Map(
     TMDB_SEEDS.map((movie) => [movie.title.trim().toLowerCase(), movie.id] as const)
 );
 
-type InviteRegistryEntry = {
-    ownerEmail: string;
-    ownerUserId: string | null;
-    createdAt: string;
-    claimCount: number;
-    lastClaimAt: string | null;
-};
-
-type InviteRegistry = Record<string, InviteRegistryEntry>;
-
-type InviteDeviceGuard = {
-    date: string;
-    count: number;
-    claimedCodes: string[];
-};
-
 const getLocalDateKey = (value = new Date()): string => {
     const year = value.getFullYear();
     const month = String(value.getMonth() + 1).padStart(2, '0');
@@ -247,17 +221,11 @@ const getLocalDateKey = (value = new Date()): string => {
 };
 
 const parseDateKeyToDayIndex = (dateKey: string): number | null => {
-    const match = DATE_KEY_REGEX.exec(String(dateKey || '').trim());
-    if (!match) return null;
-    const year = Number(match[1]);
-    const month = Number(match[2]);
-    const day = Number(match[3]);
-    if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-
+    const parts = dateKey.split('-').map((part) => Number(part));
+    if (parts.length !== 3 || parts.some((part) => Number.isNaN(part))) return null;
+    const [year, month, day] = parts;
     const parsed = new Date(year, month - 1, day);
     if (Number.isNaN(parsed.getTime())) return null;
-    if (parsed.getFullYear() !== year || parsed.getMonth() + 1 !== month || parsed.getDate() !== day) return null;
-
     return Math.floor(parsed.getTime() / DAY_MS);
 };
 
@@ -314,12 +282,9 @@ const buildInitialXPState = (bio = "A silent observer."): XPState => ({
     bio,
     avatarId: "geo_1",
     lastShareRewardDate: null,
-    inviteCode: '',
-    invitedByCode: null,
-    inviteClaimsCount: 0,
-    inviteRewardsEarned: 0,
-    inviteClaimedAt: null,
-    referralAcceptedKeys: []
+    referralCode: Math.random().toString(36).substring(2, 8).toUpperCase(),
+    referralCount: 0,
+    invitedBy: undefined
 });
 
 const normalizeXPState = (input: Partial<XPState> | null | undefined): XPState => {
@@ -351,186 +316,10 @@ const normalizeXPState = (input: Partial<XPState> | null | undefined): XPState =
         bio: input.bio || fallback.bio,
         avatarId: input.avatarId || fallback.avatarId,
         lastShareRewardDate: input.lastShareRewardDate || null,
-        inviteCode: isValidInviteCode(String(input.inviteCode || '')) ? normalizeInviteCode(String(input.inviteCode)) : '',
-        invitedByCode: isValidInviteCode(String(input.invitedByCode || ''))
-            ? normalizeInviteCode(String(input.invitedByCode))
-            : null,
-        inviteClaimsCount: input.inviteClaimsCount || 0,
-        inviteRewardsEarned: input.inviteRewardsEarned || 0,
-        inviteClaimedAt: input.inviteClaimedAt || null,
-        referralAcceptedKeys: Array.isArray(input.referralAcceptedKeys)
-            ? input.referralAcceptedKeys
-                .map((value) => String(value || '').trim())
-                .filter((value) => Boolean(value))
-                .slice(-MAX_REFERRAL_ACCEPTED_KEYS)
-            : []
+        referralCode: input.referralCode || fallback.referralCode,
+        referralCount: input.referralCount || 0,
+        invitedBy: input.invitedBy
     };
-};
-
-const normalizeInviteCode = (value: string | null | undefined): string => {
-    return String(value || '')
-        .trim()
-        .toUpperCase()
-        .replace(/[^A-Z0-9]/g, '');
-};
-
-const isValidInviteCode = (value: string): boolean => INVITE_CODE_REGEX.test(normalizeInviteCode(value));
-
-const readInviteRegistry = (): InviteRegistry => {
-    try {
-        const raw = localStorage.getItem(INVITE_REGISTRY_STORAGE_KEY);
-        if (!raw) return {};
-        const parsed = JSON.parse(raw) as InviteRegistry;
-        if (!parsed || typeof parsed !== 'object') return {};
-        return parsed;
-    } catch {
-        return {};
-    }
-};
-
-const writeInviteRegistry = (registry: InviteRegistry) => {
-    try {
-        localStorage.setItem(INVITE_REGISTRY_STORAGE_KEY, JSON.stringify(registry));
-    } catch {
-        // no-op
-    }
-};
-
-const persistPendingInviteCode = (rawCode: string) => {
-    const normalized = normalizeInviteCode(rawCode);
-    if (!isValidInviteCode(normalized)) return;
-    try {
-        localStorage.setItem(PENDING_INVITE_CODE_STORAGE_KEY, normalized);
-    } catch {
-        // no-op
-    }
-};
-
-const readPendingInviteCode = (): string | null => {
-    try {
-        const raw = localStorage.getItem(PENDING_INVITE_CODE_STORAGE_KEY);
-        const normalized = normalizeInviteCode(raw);
-        return isValidInviteCode(normalized) ? normalized : null;
-    } catch {
-        return null;
-    }
-};
-
-const clearPendingInviteCode = () => {
-    try {
-        localStorage.removeItem(PENDING_INVITE_CODE_STORAGE_KEY);
-    } catch {
-        // no-op
-    }
-};
-
-const readInviteDeviceGuard = (): InviteDeviceGuard => {
-    try {
-        const raw = localStorage.getItem(INVITE_DEVICE_GUARD_STORAGE_KEY);
-        if (!raw) return { date: '', count: 0, claimedCodes: [] };
-        const parsed = JSON.parse(raw) as Partial<InviteDeviceGuard>;
-        return {
-            date: typeof parsed.date === 'string' ? parsed.date : '',
-            count: Number.isFinite(parsed.count) ? Number(parsed.count) : 0,
-            claimedCodes: Array.isArray(parsed.claimedCodes)
-                ? parsed.claimedCodes.map((code) => normalizeInviteCode(String(code))).filter((code) => isValidInviteCode(code))
-                : []
-        };
-    } catch {
-        return { date: '', count: 0, claimedCodes: [] };
-    }
-};
-
-const writeInviteDeviceGuard = (guard: InviteDeviceGuard) => {
-    try {
-        localStorage.setItem(INVITE_DEVICE_GUARD_STORAGE_KEY, JSON.stringify(guard));
-    } catch {
-        // no-op
-    }
-};
-
-const buildInviteLink = (inviteCode: string): string => {
-    const normalized = normalizeInviteCode(inviteCode);
-    const baseOrigin =
-        typeof window !== 'undefined' && window.location?.origin
-            ? window.location.origin
-            : 'https://180absolutecinema.com';
-    const url = new URL('/', baseOrigin);
-
-    if (!isValidInviteCode(normalized)) {
-        return url.toString();
-    }
-
-    url.searchParams.set('invite', normalized);
-    url.searchParams.set('utm_source', 'invite');
-    url.searchParams.set('utm_medium', 'referral');
-    url.searchParams.set('utm_campaign', 'user_invite');
-    appendMobileDeepLinkParams(url, { type: 'invite', inviteCode: normalized });
-    return url.toString();
-};
-
-const buildInviteCodeCandidate = (seed: string): string => {
-    const normalizedSeed = String(seed || '')
-        .toUpperCase()
-        .replace(/[^A-Z0-9]/g, '')
-        .slice(0, 4)
-        .padEnd(4, 'X');
-    const randomPart = Math.random().toString(36).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4).padEnd(4, '0');
-    return `${normalizedSeed}${randomPart}`.slice(0, INVITE_CODE_LENGTH);
-};
-
-const ensureInviteCodeForOwner = (
-    currentCode: string,
-    ownerEmail: string,
-    ownerUserId?: string
-): string => {
-    const normalizedEmail = String(ownerEmail || '').trim().toLowerCase();
-    const normalizedUserId = String(ownerUserId || '').trim() || null;
-    const registry = readInviteRegistry();
-    const preferredCode = normalizeInviteCode(currentCode);
-    if (isValidInviteCode(preferredCode)) {
-        const existing = registry[preferredCode];
-        if (!existing || existing.ownerEmail === normalizedEmail) {
-            registry[preferredCode] = {
-                ownerEmail: normalizedEmail,
-                ownerUserId: normalizedUserId,
-                createdAt: existing?.createdAt || new Date().toISOString(),
-                claimCount: existing?.claimCount || 0,
-                lastClaimAt: existing?.lastClaimAt || null
-            };
-            writeInviteRegistry(registry);
-            return preferredCode;
-        }
-    }
-
-    const seed = normalizedEmail.split('@')[0] || normalizedUserId || 'cine';
-    for (let index = 0; index < 20; index += 1) {
-        const candidate = buildInviteCodeCandidate(seed);
-        const existing = registry[candidate];
-        if (existing && existing.ownerEmail !== normalizedEmail) {
-            continue;
-        }
-        registry[candidate] = {
-            ownerEmail: normalizedEmail,
-            ownerUserId: normalizedUserId,
-            createdAt: existing?.createdAt || new Date().toISOString(),
-            claimCount: existing?.claimCount || 0,
-            lastClaimAt: existing?.lastClaimAt || null
-        };
-        writeInviteRegistry(registry);
-        return candidate;
-    }
-
-    const fallback = `${Date.now().toString(36)}0000`.toUpperCase().slice(0, INVITE_CODE_LENGTH);
-    registry[fallback] = {
-        ownerEmail: normalizedEmail,
-        ownerUserId: normalizedUserId,
-        createdAt: new Date().toISOString(),
-        claimCount: 0,
-        lastClaimAt: null
-    };
-    writeInviteRegistry(registry);
-    return fallback;
 };
 
 const normalizeFollowKey = (value: string | null | undefined): string => (value || '').trim().toLowerCase();
@@ -545,6 +334,25 @@ const getUserXpStorageKey = (email: string): string =>
 
 const getLegacyUserXpStorageKey = (email: string): string =>
     `${USER_XP_STORAGE_KEY_PREFIX}${email}`;
+
+const buildInviteLink = (inviteCode: string): string => {
+    const normalized = String(inviteCode || '').trim().toUpperCase();
+    const baseOrigin =
+        typeof window !== 'undefined' && window.location?.origin
+            ? window.location.origin
+            : 'https://180absolutecinema.com';
+    const url = new URL('/', baseOrigin);
+
+    if (!normalized) {
+        return url.toString();
+    }
+
+    url.searchParams.set('invite', normalized);
+    url.searchParams.set('utm_source', 'invite');
+    url.searchParams.set('utm_medium', 'referral');
+    url.searchParams.set('utm_campaign', 'user_invite');
+    return url.toString();
+};
 
 const compactStateForPersistence = (state: XPState): XPState => {
     if (!state.avatarUrl || state.avatarUrl.length <= MAX_PERSISTED_AVATAR_URL_LENGTH) {
@@ -809,15 +617,6 @@ const mergeStringLists = (...lists: string[][]): string[] => {
     return merged;
 };
 
-const areStringListsEqual = (left: string[] = [], right: string[] = []): boolean => {
-    if (left === right) return true;
-    if (left.length !== right.length) return false;
-    for (let index = 0; index < left.length; index += 1) {
-        if (left[index] !== right[index]) return false;
-    }
-    return true;
-};
-
 const ritualMergeKey = (ritual: RitualLog): string => {
     const id = String(ritual.id || '').trim();
     if (id) return `id:${id}`;
@@ -907,7 +706,7 @@ const mergeXPStates = (states: Array<XPState | null | undefined>): XPState | nul
     const latestStreakDate = maxDateKey(normalizedStates.map((state) => state.lastStreakDate));
     const latestDwellDate = maxDateKey(normalizedStates.map((state) => state.lastDwellDate));
     const latestShareRewardDate = maxDateKey(normalizedStates.map((state) => state.lastShareRewardDate));
-    const latestInviteClaimedAt = maxDateKey(normalizedStates.map((state) => state.inviteClaimedAt));
+    const stableReferralCode = priority.find(s => s.referralCode)?.referralCode || merged.referralCode;
 
     const mergedRituals = mergeRitualLogs(...priority.map((state) => state.dailyRituals || []));
     const mergedMarks = mergeStringLists(...priority.map((state) => state.marks || []));
@@ -942,12 +741,9 @@ const mergeXPStates = (states: Array<XPState | null | undefined>): XPState | nul
     merged.following = mergeStringLists(...priority.map((state) => state.following || []));
     merged.nonConsecutiveCount = Math.max(...normalizedStates.map((state) => state.nonConsecutiveCount || 0));
     merged.lastShareRewardDate = latestShareRewardDate;
-    merged.inviteClaimsCount = Math.max(...normalizedStates.map((state) => state.inviteClaimsCount || 0));
-    merged.inviteRewardsEarned = Math.max(...normalizedStates.map((state) => state.inviteRewardsEarned || 0));
-    merged.inviteClaimedAt = latestInviteClaimedAt;
-    merged.referralAcceptedKeys = mergeStringLists(
-        ...priority.map((state) => state.referralAcceptedKeys || [])
-    ).slice(-MAX_REFERRAL_ACCEPTED_KEYS);
+    merged.referralCode = stableReferralCode;
+    merged.referralCount = Math.max(...normalizedStates.map((state) => state.referralCount || 0));
+    merged.invitedBy = priority.find(s => s.invitedBy)?.invitedBy;
 
     const pickPreferredText = (selector: (state: XPState) => string): string => {
         for (const state of priority) {
@@ -966,12 +762,6 @@ const mergeXPStates = (states: Array<XPState | null | undefined>): XPState | nul
     merged.birthDate = pickPreferredText((state) => state.birthDate);
     merged.bio = pickPreferredText((state) => state.bio) || merged.bio;
     merged.avatarId = pickPreferredText((state) => state.avatarId) || merged.avatarId;
-    const inviteCodeCandidate = pickPreferredText((state) => state.inviteCode);
-    merged.inviteCode = isValidInviteCode(inviteCodeCandidate) ? normalizeInviteCode(inviteCodeCandidate) : '';
-    const invitedByCodeCandidate = pickPreferredText((state) => state.invitedByCode || '');
-    merged.invitedByCode = isValidInviteCode(invitedByCodeCandidate)
-        ? normalizeInviteCode(invitedByCodeCandidate)
-        : null;
     merged.avatarUrl = priority.find((state) => typeof state.avatarUrl === 'string' && state.avatarUrl.trim())
         ?.avatarUrl;
 
@@ -1105,7 +895,6 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     const previousLeagueIndexRef = useRef(getLeagueIndexFromXp(state.totalXP));
     const pendingWelcomeWhisperRef = useRef(false);
     const pendingRegistrationProfileRef = useRef<PendingRegistrationProfile | null>(null);
-    const pendingInviteAttemptRef = useRef<string>('');
     const canReadProfileStateRef = useRef(true);
     const canWriteProfileStateRef = useRef(true);
     const canWriteRitualRef = useRef(true);
@@ -1168,23 +957,6 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         };
     }, []);
 
-    useEffect(() => {
-        if (typeof window === 'undefined') return;
-        const params = new URLSearchParams(window.location.search);
-        const inviteCode = normalizeInviteCode(params.get('invite') || params.get('ref'));
-        if (!isValidInviteCode(inviteCode)) return;
-
-        persistPendingInviteCode(inviteCode);
-        const clickedSessionKey = `180_invite_clicked_${inviteCode}`;
-        if (window.sessionStorage.getItem(clickedSessionKey) !== '1') {
-            window.sessionStorage.setItem(clickedSessionKey, '1');
-            trackEvent('invite_clicked', {
-                inviteCode,
-                source: 'url_query'
-            });
-        }
-    }, []);
-
     // Load data when user changes
     useEffect(() => {
         setIsXpHydrated(false);
@@ -1197,7 +969,6 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         canWriteRitualRef.current = true;
         canReadFollowRef.current = true;
         canWriteFollowRef.current = true;
-        pendingInviteAttemptRef.current = '';
 
         if (!user) {
             setState(buildInitialXPState("Orbiting nearby..."));
@@ -1299,52 +1070,6 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 uniqueGenres: mergeStringLists(resolvedState.uniqueGenres || [], ritualGenres),
                 following: mergeStringLists(resolvedState.following || [], cloudFollowingKeys)
             };
-
-            const previousInviteCode = normalizeInviteCode(resolvedState.inviteCode);
-            let ensuredInviteCode = previousInviteCode;
-            let ensuredClaimCount = resolvedState.inviteClaimsCount || 0;
-            let inviteCodeCreated = false;
-
-            if (isSupabaseLive() && supabase && user.id) {
-                const ensureResult = await ensureInviteCodeViaApi(
-                    previousInviteCode || user.username || user.fullName || user.email
-                );
-                if (ensureResult.ok && ensureResult.data) {
-                    ensuredInviteCode = normalizeInviteCode(ensureResult.data.code);
-                    ensuredClaimCount = Math.max(
-                        ensuredClaimCount,
-                        Number(ensureResult.data.claimCount || 0)
-                    );
-                    inviteCodeCreated = Boolean(ensureResult.data.created);
-                }
-            }
-
-            if (!isValidInviteCode(ensuredInviteCode)) {
-                ensuredInviteCode = ensureInviteCodeForOwner(
-                    previousInviteCode,
-                    user.email,
-                    user.id
-                );
-                inviteCodeCreated = ensuredInviteCode !== previousInviteCode;
-            }
-
-            resolvedState = {
-                ...resolvedState,
-                inviteCode: ensuredInviteCode,
-                inviteClaimsCount: ensuredClaimCount,
-                inviteRewardsEarned: Math.max(
-                    resolvedState.inviteRewardsEarned || 0,
-                    ensuredClaimCount * INVITER_REWARD_XP
-                )
-            };
-            if (inviteCodeCreated && ensuredInviteCode) {
-                trackEvent('invite_created', {
-                    inviteCode: ensuredInviteCode,
-                    source: 'auto_generate'
-                }, {
-                    userId: user.id || null
-                });
-            }
 
             if (!active) return;
 
@@ -1556,15 +1281,12 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             const reason = normalizeAuthError(message);
             trackEvent('auth_failure', { flow, method: 'password', reason });
             return { ok: false, message: reason };
+            return { ok: false, message: normalizeAuthError(message) };
         }
     };
 
     const loginWithGoogle = async (): Promise<AuthResult> => {
         if (!isSupabaseLive() || !supabase) {
-            trackEvent('oauth_failure', {
-                provider: 'google',
-                reason: 'supabase_not_available'
-            });
             return { ok: false, message: 'Google login icin Supabase gerekli.' };
         }
 
@@ -1575,41 +1297,21 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 options: { redirectTo }
             });
 
-            if (error) {
-                const reason = normalizeAuthError(error.message);
-                trackEvent('oauth_failure', { provider: 'google', reason });
-                return { ok: false, message: reason };
-            }
-            trackEvent('oauth_redirect_started', {
-                provider: 'google',
-                authMode: 'supabase'
-            });
+            if (error) return { ok: false, message: normalizeAuthError(error.message) };
             return { ok: true };
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Google login failed.';
-            const reason = normalizeAuthError(message);
-            trackEvent('oauth_failure', { provider: 'google', reason });
-            return { ok: false, message: reason };
+            return { ok: false, message: normalizeAuthError(message) };
         }
     };
 
     const requestPasswordReset = async (email: string): Promise<AuthResult> => {
         const normalizedEmail = email.trim().toLowerCase();
         if (!normalizedEmail) {
-            trackEvent('auth_failure', {
-                flow: 'forgot_password',
-                method: 'email',
-                reason: 'email_required'
-            });
             return { ok: false, message: 'E-posta gerekli.' };
         }
 
         if (!isSupabaseLive() || !supabase) {
-            trackEvent('auth_failure', {
-                flow: 'forgot_password',
-                method: 'email',
-                reason: 'supabase_not_available'
-            });
             return { ok: false, message: 'Sifre sifirlama icin Supabase gerekli.' };
         }
 
@@ -1617,75 +1319,35 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
                 redirectTo: buildAuthRedirectTo()
             });
-            if (error) {
-                const reason = normalizeAuthError(error.message);
-                trackEvent('auth_failure', {
-                    flow: 'forgot_password',
-                    method: 'email',
-                    reason
-                });
-                return { ok: false, message: reason };
-            }
-            trackEvent('password_reset_requested', { method: 'email' });
+            if (error) return { ok: false, message: normalizeAuthError(error.message) };
             return { ok: true, message: 'Sifre yenileme baglantisi e-posta adresine gonderildi.' };
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Password reset failed.';
-            const reason = normalizeAuthError(message);
-            trackEvent('auth_failure', {
-                flow: 'forgot_password',
-                method: 'email',
-                reason
-            });
-            return { ok: false, message: reason };
+            return { ok: false, message: normalizeAuthError(message) };
         }
     };
 
     const completePasswordReset = async (newPassword: string): Promise<AuthResult> => {
         const normalizedPassword = newPassword.trim();
         if (normalizedPassword.length < 6) {
-            trackEvent('auth_failure', {
-                flow: 'reset_password',
-                method: 'password',
-                reason: 'password_too_short'
-            });
             return { ok: false, message: 'Sifre en az 6 karakter olmali.' };
         }
 
         if (!isSupabaseLive() || !supabase) {
-            trackEvent('auth_failure', {
-                flow: 'reset_password',
-                method: 'password',
-                reason: 'supabase_not_available'
-            });
             return { ok: false, message: 'Sifre guncelleme icin Supabase gerekli.' };
         }
 
         try {
             const { error } = await supabase.auth.updateUser({ password: normalizedPassword });
-            if (error) {
-                const reason = normalizeAuthError(error.message);
-                trackEvent('auth_failure', {
-                    flow: 'reset_password',
-                    method: 'password',
-                    reason
-                });
-                return { ok: false, message: reason };
-            }
+            if (error) return { ok: false, message: normalizeAuthError(error.message) };
 
             setIsPasswordRecoveryMode(false);
             clearRecoveryUrlState();
-            trackEvent('password_reset_completed', { method: 'password' }, { userId: user?.id || null });
             triggerWhisper("Password updated.");
             return { ok: true, message: 'Sifre guncellendi.' };
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Password update failed.';
-            const reason = normalizeAuthError(message);
-            trackEvent('auth_failure', {
-                flow: 'reset_password',
-                method: 'password',
-                reason
-            });
-            return { ok: false, message: reason };
+            return { ok: false, message: normalizeAuthError(message) };
         }
     };
 
@@ -1840,13 +1502,6 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         if (trigger === 'comment') {
             const hasCommentToday = state.dailyRituals.some((ritual) => ritual.date === today);
             if (!hasCommentToday) {
-                trackEvent('share_reward_denied', {
-                    platform,
-                    trigger,
-                    reason: 'comment_not_ready'
-                }, {
-                    userId: user?.id || null
-                });
                 return { ok: false, message: 'Yorum paylasim bonusu icin once bugun yorum yaz.' };
             }
         }
@@ -1854,25 +1509,11 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         if (trigger === 'streak') {
             const isStreakCompletedToday = state.streak > 0 && state.lastStreakDate === today;
             if (!isStreakCompletedToday) {
-                trackEvent('share_reward_denied', {
-                    platform,
-                    trigger,
-                    reason: 'streak_not_ready'
-                }, {
-                    userId: user?.id || null
-                });
                 return { ok: false, message: 'Streak paylasim bonusu icin once bugunku rituelini tamamla.' };
             }
         }
 
         if (state.lastShareRewardDate === today) {
-            trackEvent('share_reward_denied', {
-                platform,
-                trigger,
-                reason: 'already_claimed_today'
-            }, {
-                userId: user?.id || null
-            });
             return { ok: false, message: 'Bugun paylasim bonusu zaten alindi.' };
         }
 
@@ -1881,14 +1522,6 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             totalXP: nextXP,
             lastShareRewardDate: today
         });
-        trackEvent('share_reward_claimed', {
-            platform,
-            trigger,
-            rewardXp: SHARE_REWARD_XP,
-            resultingXp: nextXP
-        }, {
-            userId: user?.id || null
-        });
         triggerWhisper(`Paylasim bonusi +${SHARE_REWARD_XP} XP`);
 
         const platformLabel = platform === 'x' ? 'X' : platform === 'tiktok' ? 'TikTok' : 'Instagram';
@@ -1896,247 +1529,6 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         return {
             ok: true,
             message: `${platformLabel} ${triggerLabel} kaydedildi. +${SHARE_REWARD_XP} XP`
-        };
-    };
-
-    const inviteLink = buildInviteLink(state.inviteCode);
-
-    const claimInviteCode = async (rawCode: string): Promise<AuthResult> => {
-        if (!user) {
-            return { ok: false, message: 'Davet kodu kullanmak icin giris yap.' };
-        }
-
-        const inviteCode = normalizeInviteCode(rawCode);
-        const today = getToday();
-        const currentEmail = (user.email || '').trim().toLowerCase();
-
-        if (!isValidInviteCode(inviteCode)) {
-            trackEvent('invite_claim_failed', { reason: 'invalid_code_format', inviteCode });
-            return { ok: false, message: 'Davet kodu gecersiz.' };
-        }
-
-        if (state.invitedByCode) {
-            trackEvent('invite_claim_failed', {
-                reason: 'already_claimed_on_account',
-                inviteCode,
-                invitedByCode: state.invitedByCode
-            }, {
-                userId: user.id || null
-            });
-            return { ok: false, message: 'Bu hesap zaten bir davet kodu kullandi.' };
-        }
-
-        if (inviteCode === state.inviteCode) {
-            trackEvent('invite_claim_failed', { reason: 'self_invite_blocked', inviteCode }, { userId: user.id || null });
-            return { ok: false, message: 'Kendi davet kodunu kullanamazsin.' };
-        }
-
-        if (isSupabaseLive() && supabase && user.id) {
-            const deviceKey = getReferralDeviceKey();
-            const apiResult = await claimInviteCodeViaApi(inviteCode, deviceKey);
-
-            if (apiResult.ok && apiResult.data) {
-                const inviteeRewardXp = Math.max(0, Number(apiResult.data.inviteeRewardXp || INVITEE_REWARD_XP));
-                const inviterRewardXp = Math.max(0, Number(apiResult.data.inviterRewardXp || 0));
-                const inviteeRewardedXp = state.totalXP + inviteeRewardXp;
-                const inviterRewardGranted = inviterRewardXp > 0;
-
-                updateState({
-                    totalXP: inviteeRewardedXp,
-                    invitedByCode: inviteCode,
-                    inviteClaimedAt: today
-                });
-                clearPendingInviteCode();
-
-                trackEvent('invite_accepted', {
-                    inviteCode,
-                    inviteeRewardXp,
-                    inviterRewardGranted,
-                    inviterRewardXp
-                }, {
-                    userId: user.id || null
-                });
-
-                trackEvent('invite_reward_granted', {
-                    role: 'invitee',
-                    inviteCode,
-                    rewardXp: inviteeRewardXp
-                }, {
-                    userId: user.id || null
-                });
-
-                if (inviterRewardGranted) {
-                    trackEvent('invite_reward_granted', {
-                        role: 'inviter',
-                        inviteCode,
-                        rewardXp: inviterRewardXp,
-                        inviterUserId: apiResult.data.inviterUserId || null
-                    });
-                }
-
-                triggerWhisper(`Davet odulu +${inviteeRewardXp} XP`);
-                return {
-                    ok: true,
-                    message: `Davet kodu uygulandi. +${inviteeRewardXp} XP kazandin.`
-                };
-            }
-
-            if (apiResult.errorCode && apiResult.errorCode !== 'SERVER_ERROR') {
-                const apiFailureReasonByCode: Record<string, string> = {
-                    UNAUTHORIZED: 'api_unauthorized',
-                    INVALID_CODE: 'invalid_code_format',
-                    INVITE_NOT_FOUND: 'code_not_found',
-                    SELF_INVITE: 'self_invite_blocked',
-                    ALREADY_CLAIMED: 'already_claimed_on_account',
-                    DEVICE_DAILY_LIMIT: 'device_daily_limit_reached',
-                    DEVICE_CODE_REUSE: 'code_already_used_on_device'
-                };
-                const apiMessageByCode: Record<string, string> = {
-                    UNAUTHORIZED: 'Oturum dogrulanamadi. Yeniden giris yap ve tekrar dene.',
-                    INVALID_CODE: 'Davet kodu gecersiz.',
-                    INVITE_NOT_FOUND: 'Davet kodu bulunamadi.',
-                    SELF_INVITE: 'Kendi davet kodunu kullanamazsin.',
-                    ALREADY_CLAIMED: 'Bu hesap zaten bir davet kodu kullandi.',
-                    DEVICE_DAILY_LIMIT: 'Gunluk davet limiti doldu. Yarim gun sonra tekrar dene.',
-                    DEVICE_CODE_REUSE: 'Bu cihazda bu davet kodu zaten kullanildi.'
-                };
-                const failureReason = apiFailureReasonByCode[apiResult.errorCode] || 'api_claim_rejected';
-                trackEvent('invite_claim_failed', {
-                    reason: failureReason,
-                    inviteCode,
-                    errorCode: apiResult.errorCode,
-                    apiMessage: apiResult.message || null
-                }, {
-                    userId: user.id || null
-                });
-                return {
-                    ok: false,
-                    message: apiMessageByCode[apiResult.errorCode] || (apiResult.message || 'Davet kodu uygulanamadi.')
-                };
-            }
-
-            trackEvent('invite_claim_failed', {
-                reason: 'api_unavailable',
-                inviteCode,
-                errorCode: apiResult.errorCode || 'SERVER_ERROR',
-                apiMessage: apiResult.message || null
-            }, {
-                userId: user.id || null
-            });
-        }
-
-        const guard = readInviteDeviceGuard();
-        const normalizedGuard: InviteDeviceGuard = guard.date === today
-            ? guard
-            : { date: today, count: 0, claimedCodes: [] };
-
-        if (normalizedGuard.claimedCodes.includes(inviteCode)) {
-            trackEvent('invite_claim_failed', {
-                reason: 'code_already_used_on_device',
-                inviteCode
-            }, {
-                userId: user.id || null
-            });
-            return { ok: false, message: 'Bu cihazda bu davet kodu zaten kullanildi.' };
-        }
-
-        if (normalizedGuard.count >= MAX_DAILY_DEVICE_INVITE_CLAIMS) {
-            trackEvent('invite_claim_failed', {
-                reason: 'device_daily_limit_reached',
-                inviteCode,
-                dailyLimit: MAX_DAILY_DEVICE_INVITE_CLAIMS
-            }, {
-                userId: user.id || null
-            });
-            return { ok: false, message: 'Gunluk davet limiti doldu. Yarim gun sonra tekrar dene.' };
-        }
-
-        const registry = readInviteRegistry();
-        const registryEntry = registry[inviteCode];
-        if (!registryEntry || !registryEntry.ownerEmail) {
-            trackEvent('invite_claim_failed', { reason: 'code_not_found', inviteCode }, { userId: user.id || null });
-            return { ok: false, message: 'Davet kodu bulunamadi.' };
-        }
-
-        const inviterEmail = registryEntry.ownerEmail.trim().toLowerCase();
-        if (inviterEmail === currentEmail) {
-            trackEvent('invite_claim_failed', { reason: 'self_invite_blocked', inviteCode }, { userId: user.id || null });
-            return { ok: false, message: 'Kendi davet kodunu kullanamazsin.' };
-        }
-
-        const inviteeRewardedXp = state.totalXP + INVITEE_REWARD_XP;
-        const claimantKey = user.id ? `id:${user.id}` : `email:${currentEmail}`;
-
-        let inviterRewardGranted = false;
-        const inviterState = readUserXpStateFromLocal(inviterEmail);
-        if (inviterState) {
-            const acceptedKeys = Array.isArray(inviterState.referralAcceptedKeys)
-                ? inviterState.referralAcceptedKeys
-                : [];
-            if (!acceptedKeys.includes(claimantKey)) {
-                const inviterUpdatedState = normalizeXPState({
-                    ...inviterState,
-                    totalXP: inviterState.totalXP + INVITER_REWARD_XP,
-                    inviteClaimsCount: (inviterState.inviteClaimsCount || 0) + 1,
-                    inviteRewardsEarned: (inviterState.inviteRewardsEarned || 0) + INVITER_REWARD_XP,
-                    referralAcceptedKeys: [...acceptedKeys, claimantKey].slice(-MAX_REFERRAL_ACCEPTED_KEYS)
-                });
-                persistUserXpStateToLocal(inviterEmail, inviterUpdatedState);
-                inviterRewardGranted = true;
-            }
-        }
-
-        registry[inviteCode] = {
-            ...registryEntry,
-            claimCount: (registryEntry.claimCount || 0) + 1,
-            lastClaimAt: new Date().toISOString()
-        };
-        writeInviteRegistry(registry);
-
-        writeInviteDeviceGuard({
-            date: today,
-            count: normalizedGuard.count + 1,
-            claimedCodes: [...normalizedGuard.claimedCodes, inviteCode].slice(-20)
-        });
-
-        updateState({
-            totalXP: inviteeRewardedXp,
-            invitedByCode: inviteCode,
-            inviteClaimedAt: today
-        });
-        clearPendingInviteCode();
-
-        trackEvent('invite_accepted', {
-            inviteCode,
-            inviteeRewardXp: INVITEE_REWARD_XP,
-            inviterRewardGranted,
-            inviterRewardXp: inviterRewardGranted ? INVITER_REWARD_XP : 0
-        }, {
-            userId: user.id || null
-        });
-
-        trackEvent('invite_reward_granted', {
-            role: 'invitee',
-            inviteCode,
-            rewardXp: INVITEE_REWARD_XP
-        }, {
-            userId: user.id || null
-        });
-
-        if (inviterRewardGranted) {
-            trackEvent('invite_reward_granted', {
-                role: 'inviter',
-                inviteCode,
-                rewardXp: INVITER_REWARD_XP
-            });
-        }
-
-        triggerWhisper(`Davet odulu +${INVITEE_REWARD_XP} XP`);
-        return {
-            ok: true,
-            message: inviterRewardGranted
-                ? `Davet kodu uygulandi. +${INVITEE_REWARD_XP} XP kazandin.`
-                : `Davet kodu uygulandi. +${INVITEE_REWARD_XP} XP kazandin.`
         };
     };
 
@@ -2168,7 +1560,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         if (currentLeagueIndex > previousLeagueIndex) {
             const crossed: LeagueInfo[] = [];
             for (let i = previousLeagueIndex + 1; i <= currentLeagueIndex; i += 1) {
-                const leagueName = getLeagueKeyByIndex(i);
+                const leagueName = LEAGUE_NAMES[i];
                 crossed.push(LEAGUES_DATA[leagueName]);
             }
             setLevelUpQueue((prev) => [...prev, ...crossed]);
@@ -2202,7 +1594,8 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             let newStreak = prev.streak;
 
             // Mark: Eternal
-            const currentLeague = resolveLeagueKeyFromXp(prev.totalXP);
+            const leagueIndex = getLeagueIndexFromXp(prev.totalXP);
+            const currentLeague = LEAGUE_NAMES[leagueIndex];
             if (currentLeague === 'Eternal') currentMarks = tryUnlockMark('eternal_mark', currentMarks);
             if (newActiveDays.length >= 14) currentMarks = tryUnlockMark('daybreaker', currentMarks);
             if (newActiveDays.length >= 30) currentMarks = tryUnlockMark('legacy', currentMarks);
@@ -2226,7 +1619,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                     marks: currentMarks,
                     streak: newStreak
                 };
-            } else if (!areStringListsEqual(currentMarks, prev.marks || [])) {
+            } else if (JSON.stringify(currentMarks) !== JSON.stringify(prev.marks)) {
                 updated = { ...prev, marks: currentMarks };
             }
 
@@ -2241,68 +1634,23 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         triggerWhisper("Welcome back.");
     }, [state.lastLoginDate]);
 
-    useEffect(() => {
-        if (!user || !isXpHydrated) return;
-        if (state.invitedByCode) return;
-
-        const pendingCode = readPendingInviteCode();
-        if (!pendingCode) return;
-
-        const attemptKey = `${user.email}|${pendingCode}`;
-        if (pendingInviteAttemptRef.current === attemptKey) return;
-        pendingInviteAttemptRef.current = attemptKey;
-
-        void claimInviteCode(pendingCode).then((claimResult) => {
-            if (!claimResult.ok) {
-                if (
-                    claimResult.message?.includes('gecersiz') ||
-                    claimResult.message?.includes('bulunamadi') ||
-                    claimResult.message?.includes('zaten bir davet')
-                ) {
-                    clearPendingInviteCode();
-                }
-            }
-        });
-    }, [isXpHydrated, state.invitedByCode, user?.email, user?.id]);
-
     // 2. Dwell Time
     useEffect(() => {
         const interval = setInterval(() => {
-            if (!isXpHydrated) return;
             const today = getToday();
-
-            setState((prev) => {
-                if (prev.lastDwellDate !== today) {
-                    const updated = { ...prev, dailyDwellXP: 0, lastDwellDate: today };
-                    if (user) {
-                        persistUserXpStateToLocal(user.email, updated);
-                    }
-                    return updated;
-                }
-
-                if (prev.dailyDwellXP >= MAX_DAILY_DWELL_XP) {
-                    return prev;
-                }
-
-                const nextDailyDwellXP = Math.min(MAX_DAILY_DWELL_XP, prev.dailyDwellXP + 2);
-                const earnedXp = nextDailyDwellXP - prev.dailyDwellXP;
-                if (earnedXp <= 0) {
-                    return prev;
-                }
-
-                const updated = {
-                    ...prev,
-                    totalXP: prev.totalXP + earnedXp,
-                    dailyDwellXP: nextDailyDwellXP
-                };
-                if (user) {
-                    persistUserXpStateToLocal(user.email, updated);
-                }
-                return updated;
-            });
+            if (state.lastDwellDate !== today) {
+                updateState({ dailyDwellXP: 0, lastDwellDate: today });
+                return;
+            }
+            if (state.dailyDwellXP < MAX_DAILY_DWELL_XP) {
+                updateState({
+                    totalXP: state.totalXP + 2,
+                    dailyDwellXP: state.dailyDwellXP + 2
+                });
+            }
         }, 120000);
         return () => clearInterval(interval);
-    }, [isXpHydrated, user?.email]);
+    }, [state.dailyDwellXP, state.lastDwellDate]);
 
     // 3. Ritual Submission
     const submitRitual = (
@@ -2316,13 +1664,6 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         const moderation = moderateComment(text, { maxChars: 180, maxEmojiCount: 6, maxEmojiRatio: 0.2 });
         if (!moderation.ok) {
             const message = moderation.message || 'Yorum gonderilemedi.';
-            trackEvent('ritual_submit_failed', {
-                reason: 'moderation_failed',
-                movieId,
-                message
-            }, {
-                userId: user?.id || null
-            });
             triggerWhisper(message);
             return { ok: false, message };
         }
@@ -2330,12 +1671,6 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         const sanitizedText = text.trim();
         const today = getToday();
         if (state.dailyRituals.some(r => r.date === today && r.movieId === movieId)) {
-            trackEvent('ritual_submit_failed', {
-                reason: 'duplicate_for_movie_today',
-                movieId
-            }, {
-                userId: user?.id || null
-            });
             triggerWhisper("Memory stored.");
             return { ok: false, message: 'Bu filme bugun zaten yorum yazildi.' };
         }
@@ -2455,21 +1790,9 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             streak: newStreak,
             date: today
         });
-        trackEvent('ritual_submitted', {
-            movieId,
-            movieTitle: newRitual.movieTitle,
-            genre,
-            textLength: sanitizedText.length,
-            earnedXp: earnedXP,
-            resultingXp: newTotalXP,
-            streak: newStreak,
-            preferredShareGoal: preferredGoal
-        }, {
-            userId: user?.id || null
-        });
 
         if (isSupabaseLive() && supabase && user?.id && canWriteRitualRef.current) {
-            const leagueForInsert = resolveLeagueKeyFromXp(newTotalXP);
+            const leagueForInsert = LEAGUE_NAMES[getLeagueIndexFromXp(newTotalXP)];
             void (async () => {
                 const { data: sessionData } = await supabase.auth.getSession();
                 const sessionUser = sessionData.session?.user;
@@ -2803,9 +2126,35 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         return { ok: true, message: 'Profil bilgileri guncellendi.' };
     };
 
+    const redeemInviteCode = (code: string): AuthResult => {
+        const normalizedCode = code.trim().toUpperCase();
+        if (!normalizedCode || normalizedCode.length < 4) {
+            return { ok: false, message: 'Gecersiz davet kodu.' };
+        }
+        if (state.invitedBy) {
+            return { ok: false, message: 'Zaten bir davet kodu kullandiniz.' };
+        }
+        if (normalizedCode === state.referralCode) {
+            return { ok: false, message: 'Kendi kodunu kullanamazsin.' };
+        }
+
+        // In a real scenario, we would verify the code against DB here.
+        // For local-first/MVP, we accept it and grant a small boost.
+        updateState({ invitedBy: normalizedCode, totalXP: state.totalXP + 50 });
+        triggerWhisper("Invite accepted. +50 XP");
+        return { ok: true, message: 'Davet kodu kabul edildi.' };
+    };
+
+    const inviteCode = String(state.referralCode || '').trim().toUpperCase();
+    const inviteLink = buildInviteLink(inviteCode);
+    const invitedByCode = state.invitedBy || null;
+    const inviteClaimsCount = state.referralCount || 0;
+    const inviteRewardsEarned = inviteClaimsCount * INVITER_REWARD_XP;
+    const claimInviteCode = async (code: string): Promise<AuthResult> => redeemInviteCode(code);
+
     const leagueIndex = getLeagueIndexFromXp(state.totalXP);
-    const leagueName = resolveLeagueKeyFromXp(state.totalXP);
-    const leagueInfo = resolveLeagueInfo(leagueName);
+    const leagueName = LEAGUE_NAMES[leagueIndex];
+    const leagueInfo = LEAGUES_DATA[leagueName];
     const currentLevelStart = leagueIndex * LEVEL_THRESHOLD;
     const progressPercentage = Math.min(100, Math.max(0, ((state.totalXP - currentLevelStart) / LEVEL_THRESHOLD) * 100));
     const nextLevelXP = currentLevelStart + LEVEL_THRESHOLD;
@@ -2844,11 +2193,11 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             updatePersonalInfo,
             toggleFollowUser,
             awardShareXP,
-            inviteCode: state.inviteCode || '',
+            inviteCode,
             inviteLink,
-            invitedByCode: state.invitedByCode || null,
-            inviteClaimsCount: state.inviteClaimsCount || 0,
-            inviteRewardsEarned: state.inviteRewardsEarned || 0,
+            invitedByCode,
+            inviteClaimsCount,
+            inviteRewardsEarned,
             inviteRewardConfig: {
                 inviterXp: INVITER_REWARD_XP,
                 inviteeXp: INVITEE_REWARD_XP
@@ -2869,7 +2218,8 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             loginWithGoogle,
             logout,
             avatarUrl: state.avatarUrl,
-            updateAvatar
+            updateAvatar,
+            redeemInviteCode
         }}>
             {children}
         </XPContext.Provider>
@@ -2883,4 +2233,3 @@ export const useXP = () => {
     }
     return context;
 };
-

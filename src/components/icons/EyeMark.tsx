@@ -15,7 +15,7 @@ export const EyeMark: React.FC<IconProps> = ({ color = "currentColor", size = 24
             viewBox="0 0 24 24"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
-            className={className}
+            className={`mark-motion mark-motion--pulse ${className}`}
             style={{ opacity }}
         >
             <path
@@ -30,3 +30,4 @@ export const EyeMark: React.FC<IconProps> = ({ color = "currentColor", size = 24
         </svg>
     );
 };
+

@@ -15,7 +15,7 @@ export const SunMark: React.FC<IconProps> = ({ color = "currentColor", size = 24
             viewBox="0 0 24 24"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
-            className={className}
+            className={`mark-motion mark-motion--spin ${className}`}
             style={{ opacity }}
         >
             <circle cx="12" cy="12" r="5" fill={color} />
@@ -30,3 +30,4 @@ export const SunMark: React.FC<IconProps> = ({ color = "currentColor", size = 24
         </svg>
     );
 };
+

@@ -15,14 +15,14 @@ export const HexagonMark: React.FC<IconProps> = ({ color = "currentColor", size 
             viewBox="0 0 24 24"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
-            className={className}
+            className={`mark-motion mark-motion--spin ${className}`}
             style={{ opacity }}
         >
             <path
                 d="M12 2L20.66 7V17L12 22L3.34 17V7L12 2Z"
                 fill={color}
                 stroke="currentColor"
-                strokeWidth="0" // Filled style as requested by "parlasın" (glow/color)
+                strokeWidth="0" // Filled style as requested by "parlasÄ±n" (glow/color)
             />
             {/* Optional internal detail for "Architect" look */}
             <path
@@ -35,3 +35,4 @@ export const HexagonMark: React.FC<IconProps> = ({ color = "currentColor", size 
         </svg>
     );
 };
+

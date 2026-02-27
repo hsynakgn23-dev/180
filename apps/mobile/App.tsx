@@ -15,7 +15,7 @@ import {
 } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useEffect, useMemo, useState, type ComponentProps } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import {
   Animated,
   Image,
@@ -34,12 +34,38 @@ import { useMobileRouteIntent } from './src/hooks/useMobileRouteIntent';
 import { usePageEntranceAnimation } from './src/hooks/usePageEntranceAnimation';
 import { trackMobileEvent } from './src/lib/mobileAnalytics';
 import { fetchMobileArenaSnapshot, type MobileArenaEntry } from './src/lib/mobileArenaSnapshot';
+import { resolveUserIdsByAuthorNames, toAuthorIdentityKey } from './src/lib/mobileAuthorUserMap';
 import {
   flushQueuedRitualDrafts,
   getQueuedRitualDraftCounts,
   submitRitualDraftWithQueue,
 } from './src/lib/mobileRitualQueue';
+import {
+  MOBILE_LEAGUE_NAMES,
+  getLeagueIndexFromXp,
+  resolveMobileLeagueInfoFromXp,
+  resolveMobileLeagueKeyFromXp,
+} from './src/lib/mobileLeagueSystem';
+import { resolveMobileFollowState, toggleMobileFollowState } from './src/lib/mobileFollowState';
 import { fetchMobileProfileStats } from './src/lib/mobileProfileStats';
+import {
+  fetchMobilePublicProfileSnapshot,
+  type MobilePublicProfileSnapshot,
+} from './src/lib/mobilePublicProfileSnapshot';
+import {
+  fetchMobilePublicProfileActivity,
+  type MobilePublicProfileActivityItem,
+} from './src/lib/mobilePublicProfileActivity';
+import {
+  fetchMobileProfileWatchedMovies,
+  type MobileWatchedMovie,
+} from './src/lib/mobileProfileWatchedMovies';
+import {
+  mergeMobileProfileIdentityDrafts,
+  normalizeMobileProfileIdentityDraft,
+  readMobileProfileIdentityFromCloud,
+  syncMobileProfileIdentityToCloud,
+} from './src/lib/mobileProfileIdentitySync';
 import {
   fetchMobileCommentFeed,
   type CommentFeedScope,
@@ -87,20 +113,22 @@ import {
   DailyHomeScreen,
   DiscoverRoutesCard,
   InviteClaimScreen,
+  LeaguePromotionModal,
   MobileSettingsModal,
   PlatformRulesCard,
   ProfileMarksCard,
   PushInboxCard,
   PushStatusCard,
   PublicProfileBridgeCard,
-  RitualDraftCard,
+  RitualComposerModal,
   ShareHubScreen,
   setAppScreensThemeMode,
   type MobileSettingsIdentityDraft,
   type MobileSettingsLanguage,
+  type MobileLeaguePromotionEvent,
   type MobileSettingsSaveState,
 } from './src/ui/appScreens';
-import { normalizeBaseUrl, resolveMobileWebBaseUrl } from './src/lib/mobileEnv';
+import { resolveMobileWebBaseUrl } from './src/lib/mobileEnv';
 import {
   readStoredMobileThemeMode,
   writeStoredMobileThemeMode,
@@ -133,30 +161,6 @@ const DEFAULT_SETTINGS_IDENTITY: MobileSettingsIdentityDraft = {
   profileLink: '',
 };
 
-const buildPublicProfileUrl = ({
-  userId,
-  username,
-}: {
-  userId?: string | null;
-  username?: string | null;
-}): string => {
-  const normalizedBase = normalizeBaseUrl(MOBILE_WEB_BASE_URL);
-  if (!normalizedBase) return '';
-
-  const normalizedUserId = String(userId || '').trim();
-  const normalizedUsername = String(username || '').trim();
-  const profileKey = normalizedUserId
-    ? `id:${normalizedUserId}`
-    : normalizedUsername
-      ? `name:${normalizedUsername}`
-      : '';
-  if (!profileKey) return '';
-
-  const encodedKey = encodeURIComponent(profileKey);
-  const query = normalizedUsername ? `?name=${encodeURIComponent(normalizedUsername)}` : '';
-  return `${normalizedBase}/#/u/${encodedKey}${query}`;
-};
-
 const normalizeExternalUrl = (value: string): string => {
   const normalized = String(value || '').trim();
   if (!normalized) return '';
@@ -184,27 +188,19 @@ const normalizeDateLabel = (value: string): string => {
   return normalized;
 };
 
+const getLocalDateKey = (value = new Date()): string => {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const parseStoredIdentityDraft = (raw: string | null): MobileSettingsIdentityDraft => {
   if (!raw) return DEFAULT_SETTINGS_IDENTITY;
   try {
     const parsed = JSON.parse(raw) as Partial<MobileSettingsIdentityDraft> | null;
     if (!parsed || typeof parsed !== 'object') return DEFAULT_SETTINGS_IDENTITY;
-    return {
-      fullName: String(parsed.fullName || '').slice(0, 120),
-      username: String(parsed.username || '')
-        .replace(/\s+/g, '')
-        .toLowerCase()
-        .slice(0, 80),
-      gender: (['female', 'male', 'non_binary', 'prefer_not_to_say'].includes(
-        String(parsed.gender || '')
-      )
-        ? String(parsed.gender || '')
-        : '') as MobileSettingsIdentityDraft['gender'],
-      birthDate: normalizeDateLabel(String(parsed.birthDate || '').slice(0, 30)),
-      bio: String(parsed.bio || '').slice(0, 180),
-      avatarUrl: String(parsed.avatarUrl || '').slice(0, 1200),
-      profileLink: String(parsed.profileLink || '').slice(0, 280),
-    };
+    return normalizeMobileProfileIdentityDraft(parsed);
   } catch {
     return DEFAULT_SETTINGS_IDENTITY;
   }
@@ -239,7 +235,27 @@ const DISCOVER_ROUTES = DISCOVER_ROUTE_CONFIG.map((route) => ({
   href: MOBILE_WEB_BASE_URL ? `${MOBILE_WEB_BASE_URL}${route.path}` : '',
 }));
 
-type ArenaEntryView = MobileArenaEntry & { profileHref: string };
+type ArenaEntryView = MobileArenaEntry;
+type PublicProfileOpenOrigin = 'arena' | 'comment' | 'manual';
+type PublicProfileOpenTarget = {
+  userId?: string | null;
+  username?: string | null;
+  displayNameHint?: string | null;
+  origin: PublicProfileOpenOrigin;
+};
+type PublicProfileModalState = {
+  visible: boolean;
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  message: string;
+  displayNameHint: string;
+  profile: MobilePublicProfileSnapshot | null;
+  followStatus: 'idle' | 'loading' | 'ready' | 'error';
+  followMessage: string;
+  isFollowing: boolean;
+  followsYou: boolean;
+  isSelfProfile: boolean;
+  source: PublicProfileOpenOrigin | null;
+};
 
 type MainTabParamList = {
   Daily: undefined;
@@ -346,6 +362,8 @@ export default function App() {
     status: 'idle',
     message: '',
   });
+  const [selectedDailyMovieId, setSelectedDailyMovieId] = useState<number | null>(null);
+  const [ritualComposerVisible, setRitualComposerVisible] = useState(false);
   const [ritualQueueState, setRitualQueueState] = useState<RitualQueueState>({
     status: 'idle',
     message: '',
@@ -355,6 +373,9 @@ export default function App() {
     status: 'idle',
     message: 'Profil metrikleri hazir degil.',
   });
+  const [leaguePromotionEvent, setLeaguePromotionEvent] = useState<MobileLeaguePromotionEvent | null>(
+    null
+  );
   const [pushState, setPushState] = useState<PushState>({
     status: PUSH_FEATURE_ENABLED ? 'idle' : 'unsupported',
     message: PUSH_FEATURE_ENABLED
@@ -419,7 +440,7 @@ export default function App() {
   const [profileGenreDistribution, setProfileGenreDistribution] = useState<
     Array<{ genre: string; count: number }>
   >([]);
-  const [commentFeedScope, setCommentFeedScope] = useState<CommentFeedScope>('all');
+  const [commentFeedScope, setCommentFeedScope] = useState<CommentFeedScope>('today');
   const [commentFeedSort, setCommentFeedSort] = useState<CommentFeedSort>('latest');
   const [commentFeedQuery, setCommentFeedQuery] = useState('');
   const [debouncedCommentFeedQuery, setDebouncedCommentFeedQuery] = useState('');
@@ -427,7 +448,7 @@ export default function App() {
     status: 'idle',
     message: 'Genel yorum akisi hazir degil.',
     source: 'fallback',
-    scope: 'all',
+    scope: 'today',
     sort: 'latest',
     query: '',
     page: 1,
@@ -448,6 +469,46 @@ export default function App() {
     entries: [],
   });
   const [publicProfileInput, setPublicProfileInput] = useState('');
+  const [watchedMoviesState, setWatchedMoviesState] = useState<{
+    status: 'idle' | 'loading' | 'ready' | 'error';
+    message: string;
+    items: MobileWatchedMovie[];
+  }>({
+    status: 'idle',
+    message: 'Izlenen filmler yuklenmedi.',
+    items: [],
+  });
+  const [publicProfileModalState, setPublicProfileModalState] = useState<PublicProfileModalState>({
+    visible: false,
+    status: 'idle',
+    message: 'Profil secimi bekleniyor.',
+    displayNameHint: '',
+    profile: null,
+    followStatus: 'idle',
+    followMessage: '',
+    isFollowing: false,
+    followsYou: false,
+    isSelfProfile: false,
+    source: null,
+  });
+  const [publicProfileFullState, setPublicProfileFullState] = useState<{
+    visible: boolean;
+    status: 'idle' | 'loading' | 'ready' | 'error';
+    message: string;
+    displayName: string;
+    items: MobilePublicProfileActivityItem[];
+  }>({
+    visible: false,
+    status: 'idle',
+    message: 'Detayli profil hazir degil.',
+    displayName: '',
+    items: [],
+  });
+  const [publicProfileTarget, setPublicProfileTarget] = useState<{
+    userId: string;
+    displayNameHint: string;
+    source: PublicProfileOpenOrigin;
+  } | null>(null);
   const [, setActiveTab] = useState<MainTabKey>('daily');
   const [debugExpanded, setDebugExpanded] = useState(false);
   const {
@@ -460,9 +521,35 @@ export default function App() {
     setManualIntent,
   } = useMobileRouteIntent();
   const { pageEntrance, pageEnterTranslateY } = usePageEntranceAnimation();
+  const hasCloudIdentityHydratedRef = useRef(false);
+  const lastObservedLeagueIndexRef = useRef<number | null>(null);
 
   const primaryDailyMovie =
     dailyState.status === 'success' && dailyState.movies.length > 0 ? dailyState.movies[0] : null;
+  const selectedDailyMovie =
+    dailyState.status === 'success'
+      ? dailyState.movies.find((movie) => movie.id === selectedDailyMovieId) || primaryDailyMovie
+      : null;
+  const dailyHomeCommentFeedState = useMemo<CommentFeedState>(() => {
+    const todayKey = getLocalDateKey();
+    const todayItems = commentFeedState.items.filter((item) => item.dayKey === todayKey);
+    const message =
+      commentFeedState.status === 'ready'
+        ? todayItems.length > 0
+          ? 'Bugunun yorumlari listelendi.'
+          : 'Bugun henuz yorum yok.'
+        : commentFeedState.message;
+    return {
+      ...commentFeedState,
+      scope: 'today',
+      query: '',
+      page: 1,
+      hasMore: false,
+      isAppending: false,
+      message,
+      items: todayItems,
+    };
+  }, [commentFeedState]);
 
   const isSignedIn = authState.status === 'signed_in';
 
@@ -545,6 +632,30 @@ export default function App() {
     });
   }, []);
 
+  const refreshSettingsIdentityFromCloud = useCallback(async () => {
+    const result = await readMobileProfileIdentityFromCloud();
+    if (!result.ok) {
+      void trackMobileEvent('page_view', {
+        reason: 'mobile_profile_identity_cloud_read_failed',
+        message: result.message,
+      });
+      return;
+    }
+
+    setSettingsIdentityDraft((prev) => {
+      const merged = mergeMobileProfileIdentityDrafts(prev, result.identity);
+      void AsyncStorage.setItem(MOBILE_PROFILE_IDENTITY_STORAGE_KEY, JSON.stringify(merged)).catch(
+        () => undefined
+      );
+      return merged;
+    });
+
+    void trackMobileEvent('page_view', {
+      reason: 'mobile_profile_identity_cloud_loaded',
+      source: result.source,
+    });
+  }, []);
+
   const refreshProfileGenreDistribution = useCallback(async () => {
     if (!isSupabaseConfigured || !supabase || authState.status !== 'signed_in') {
       setProfileGenreDistribution([]);
@@ -605,6 +716,233 @@ export default function App() {
     }
   }, [authState.status]);
 
+  const refreshWatchedMovies = useCallback(async () => {
+    if (authState.status !== 'signed_in') {
+      setWatchedMoviesState({
+        status: 'idle',
+        message: 'Izlenen filmler icin giris bekleniyor.',
+        items: [],
+      });
+      return;
+    }
+
+    setWatchedMoviesState({
+      status: 'loading',
+      message: 'Izlenen filmler yukleniyor...',
+      items: [],
+    });
+
+    const result = await fetchMobileProfileWatchedMovies({ limit: 24 });
+    if (!result.ok) {
+      setWatchedMoviesState({
+        status: 'error',
+        message: result.message,
+        items: [],
+      });
+      return;
+    }
+
+    setWatchedMoviesState({
+      status: 'ready',
+      message: result.message,
+      items: result.items,
+    });
+  }, [authState.status]);
+
+  const resolvePublicProfileUserId = useCallback(
+    async ({ userId, username }: { userId?: string | null; username?: string | null }) => {
+      const normalizedUserId = String(userId || '').trim();
+      if (normalizedUserId) return normalizedUserId;
+
+      const normalizedUsername = String(username || '').trim();
+      if (!normalizedUsername) return '';
+
+      const authorUserIds = await resolveUserIdsByAuthorNames([normalizedUsername]);
+      return authorUserIds.get(toAuthorIdentityKey(normalizedUsername)) || '';
+    },
+    []
+  );
+
+  const loadPublicProfileFull = useCallback(
+    async ({ userId, displayName }: { userId: string; displayName: string }) => {
+      setPublicProfileFullState({
+        visible: true,
+        status: 'loading',
+        message: 'Detayli profil yukleniyor...',
+        displayName,
+        items: [],
+      });
+
+      const result = await fetchMobilePublicProfileActivity({
+        userId,
+        limit: 100,
+      });
+
+      if (!result.ok) {
+        setPublicProfileFullState((prev) => ({
+          ...prev,
+          visible: true,
+          status: 'error',
+          message: result.message,
+          items: [],
+        }));
+        return;
+      }
+
+      setPublicProfileFullState((prev) => ({
+        ...prev,
+        visible: true,
+        status: 'ready',
+        message: result.message,
+        items: result.items,
+      }));
+    },
+    []
+  );
+
+  const loadPublicProfileModal = useCallback(
+    async ({
+      userId,
+      displayNameHint,
+      source,
+    }: {
+      userId: string;
+      displayNameHint: string;
+      source: PublicProfileOpenOrigin;
+    }) => {
+      setPublicProfileTarget({ userId, displayNameHint, source });
+      setPublicProfileModalState((prev) => ({
+        ...prev,
+        visible: false,
+        status: 'loading',
+        message: 'Profil yukleniyor...',
+        displayNameHint,
+        profile: null,
+        followStatus: 'idle',
+        followMessage: '',
+        isFollowing: false,
+        followsYou: false,
+        isSelfProfile: false,
+        source,
+      }));
+
+      const profileResult = await fetchMobilePublicProfileSnapshot({
+        userId,
+        displayNameHint,
+      });
+
+      if (!profileResult.ok) {
+        setPublicProfileModalState((prev) => ({
+          ...prev,
+          status: 'error',
+          message: profileResult.message,
+          profile: null,
+          followStatus: 'error',
+          followMessage: '',
+          isFollowing: false,
+          followsYou: false,
+          isSelfProfile: false,
+        }));
+        return {
+          ok: false,
+          displayName: displayNameHint,
+          message: profileResult.message,
+        } as const;
+      }
+
+      setPublicProfileModalState((prev) => ({
+        ...prev,
+        status: 'ready',
+        message: profileResult.message,
+        displayNameHint: profileResult.profile.displayName || displayNameHint,
+        profile: profileResult.profile,
+      }));
+
+      const followResult = await resolveMobileFollowState(userId);
+      setPublicProfileModalState((prev) => ({
+        ...prev,
+        followStatus: followResult.ok ? 'ready' : 'error',
+        followMessage: followResult.message,
+        isFollowing: followResult.isFollowing,
+        followsYou: followResult.followsYou,
+        isSelfProfile: followResult.isSelf,
+      }));
+
+      return {
+        ok: true,
+        displayName: profileResult.profile.displayName || displayNameHint,
+        message: profileResult.message,
+      } as const;
+    },
+    []
+  );
+
+  const openPublicProfileInApp = useCallback(
+    async (target: PublicProfileOpenTarget) => {
+      const displayNameHint =
+        String(target.displayNameHint || '').trim() || String(target.username || '').trim();
+      const resolvedUserId = await resolvePublicProfileUserId({
+        userId: target.userId,
+        username: target.username,
+      });
+
+      if (!resolvedUserId) {
+        setPublicProfileTarget(null);
+        setPublicProfileModalState({
+          visible: false,
+          status: 'error',
+          message: 'Profil bulunamadi.',
+          displayNameHint,
+          profile: null,
+          followStatus: 'error',
+          followMessage: 'Kullanici kimligi cozulmedi.',
+          isFollowing: false,
+          followsYou: false,
+          isSelfProfile: false,
+          source: target.origin,
+        });
+        setPublicProfileFullState({
+          visible: true,
+          status: 'error',
+          message: 'Profil bulunamadi.',
+          displayName: displayNameHint || '@bilinmeyen',
+          items: [],
+        });
+        if (tabNavigationRef.isReady()) {
+          tabNavigationRef.navigate(MAIN_TAB_BY_KEY.profile);
+        }
+        return;
+      }
+
+      const loadResult = await loadPublicProfileModal({
+        userId: resolvedUserId,
+        displayNameHint,
+        source: target.origin,
+      });
+
+      if (tabNavigationRef.isReady()) {
+        tabNavigationRef.navigate(MAIN_TAB_BY_KEY.profile);
+      }
+
+      if (!loadResult.ok) {
+        setPublicProfileFullState({
+          visible: true,
+          status: 'error',
+          message: loadResult.message,
+          displayName: loadResult.displayName || displayNameHint || '@bilinmeyen',
+          items: [],
+        });
+        return;
+      }
+
+      await loadPublicProfileFull({
+        userId: resolvedUserId,
+        displayName: loadResult.displayName || displayNameHint || '@bilinmeyen',
+      });
+    },
+    [loadPublicProfileFull, loadPublicProfileModal, resolvePublicProfileUserId]
+  );
+
   const refreshArenaLeaderboard = useCallback(async () => {
     setArenaState((prev) => ({
       ...prev,
@@ -613,25 +951,18 @@ export default function App() {
     }));
 
     const result = await fetchMobileArenaSnapshot();
-    const entriesWithProfile = result.entries.map((entry) => ({
-      ...entry,
-      profileHref: buildPublicProfileUrl({
-        userId: entry.userId,
-        username: entry.displayName,
-      }),
-    }));
 
     setArenaState({
       status: result.ok ? 'ready' : 'error',
       source: result.source,
       message: result.message,
-      entries: entriesWithProfile,
+      entries: result.entries,
     });
 
     void trackMobileEvent('page_view', {
       reason: result.ok ? 'mobile_arena_loaded' : 'mobile_arena_failed',
       source: result.source,
-      entries: entriesWithProfile.length,
+      entries: result.entries.length,
     });
   }, []);
 
@@ -1258,12 +1589,43 @@ export default function App() {
   }, [profileState]);
 
   useEffect(() => {
+    if (profileState.status !== 'success') return;
+
+    const currentIndex = getLeagueIndexFromXp(profileState.totalXp);
+    const previousIndex = lastObservedLeagueIndexRef.current;
+
+    if (previousIndex !== null && currentIndex > previousIndex) {
+      const previousLeagueKey = MOBILE_LEAGUE_NAMES[previousIndex] || null;
+      setLeaguePromotionEvent({
+        leagueKey: profileState.leagueKey,
+        leagueName: profileState.leagueName,
+        leagueColor: profileState.leagueColor,
+        previousLeagueKey,
+      });
+    }
+
+    lastObservedLeagueIndexRef.current = currentIndex;
+  }, [profileState]);
+
+  useEffect(() => {
     if (authState.status !== 'signed_in') {
       setProfileGenreDistribution([]);
       return;
     }
     void refreshProfileGenreDistribution();
   }, [authState.status, refreshProfileGenreDistribution]);
+
+  useEffect(() => {
+    if (authState.status !== 'signed_in') {
+      setWatchedMoviesState({
+        status: 'idle',
+        message: 'Izlenen filmler icin giris bekleniyor.',
+        items: [],
+      });
+      return;
+    }
+    void refreshWatchedMovies();
+  }, [authState.status, refreshWatchedMovies]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -1300,11 +1662,24 @@ export default function App() {
       return;
     }
 
+    lastObservedLeagueIndexRef.current = null;
+    setLeaguePromotionEvent(null);
+
     setProfileState({
       status: 'idle',
       message: 'Profil metrikleri icin giris bekleniyor.',
     });
   }, [authState.status, refreshProfileStats]);
+
+  useEffect(() => {
+    if (authState.status !== 'signed_in') {
+      hasCloudIdentityHydratedRef.current = false;
+      return;
+    }
+    if (hasCloudIdentityHydratedRef.current) return;
+    hasCloudIdentityHydratedRef.current = true;
+    void refreshSettingsIdentityFromCloud();
+  }, [authState.status, refreshSettingsIdentityFromCloud]);
 
   useEffect(() => {
     void refreshArenaLeaderboard();
@@ -1449,9 +1824,14 @@ export default function App() {
     setDailyState({ status: 'loading' });
     const result = await fetchDailyMovies();
     if (!result.ok) {
+      const normalizedError = String(result.error || '').trim().toLowerCase();
+      const friendlyMessage =
+        normalizedError.includes('failed to fetch') || normalizedError.includes('network')
+          ? 'Gunluk filmler su an yuklenemedi. Baglanti kontrolu sonrasi tekrar dene.'
+          : result.error || 'Unknown error';
       setDailyState({
         status: 'error',
-        message: result.error || 'Unknown error',
+        message: friendlyMessage,
         endpoint: result.endpoint,
       });
       return;
@@ -1471,10 +1851,10 @@ export default function App() {
   };
 
   const handleSubmitRitualDraft = useCallback(async () => {
-    if (!primaryDailyMovie) {
+    if (!selectedDailyMovie) {
       setRitualSubmitState({
         status: 'error',
-        message: 'Ritual icin once daily listesi yuklenmeli.',
+        message: 'Ritual icin once film secimi yapilmali.',
       });
       return;
     }
@@ -1493,9 +1873,20 @@ export default function App() {
       message: 'Ritual gonderiliyor...',
     });
 
+    const draftLeagueKey =
+      profileState.status === 'success'
+        ? profileState.leagueKey
+        : resolveMobileLeagueKeyFromXp(0);
+
     const result = await submitRitualDraftWithQueue({
-      movieTitle: primaryDailyMovie.title,
+      movieTitle: selectedDailyMovie.title,
       text,
+      posterPath: selectedDailyMovie.posterPath,
+      league: draftLeagueKey,
+      year:
+        typeof selectedDailyMovie.year === 'number' && Number.isFinite(selectedDailyMovie.year)
+          ? String(selectedDailyMovie.year)
+          : null,
     });
 
     if (!result.ok) {
@@ -1505,7 +1896,7 @@ export default function App() {
       });
       void trackMobileEvent('ritual_submit_failed', {
         reason: result.reason,
-        movieTitle: primaryDailyMovie.title,
+        movieTitle: selectedDailyMovie.title,
         textLength: text.length,
       });
       setRitualQueueState((prev) => ({
@@ -1527,11 +1918,13 @@ export default function App() {
         message: result.message,
       });
       void trackMobileEvent('ritual_submitted', {
-        movieTitle: primaryDailyMovie.title,
+        movieTitle: selectedDailyMovie.title,
         textLength: text.length,
         syncMode: 'live',
       });
+      setRitualComposerVisible(false);
       void refreshProfileStats();
+      void refreshWatchedMovies();
       return;
     }
 
@@ -1541,10 +1934,11 @@ export default function App() {
     });
     void trackMobileEvent('ritual_submit_failed', {
       reason: 'queued_for_retry',
-      movieTitle: primaryDailyMovie.title,
+      movieTitle: selectedDailyMovie.title,
       textLength: text.length,
     });
-  }, [primaryDailyMovie, refreshProfileStats, ritualDraftText]);
+    setRitualComposerVisible(false);
+  }, [profileState, selectedDailyMovie, refreshProfileStats, refreshWatchedMovies, ritualDraftText]);
 
   const handleFlushRitualQueue = useCallback(async () => {
     setRitualQueueState((prev) => ({
@@ -1571,10 +1965,11 @@ export default function App() {
 
     if (result.synced > 0) {
       void refreshProfileStats();
+      void refreshWatchedMovies();
     }
 
     await refreshRitualQueue();
-  }, [refreshProfileStats, refreshRitualQueue]);
+  }, [refreshProfileStats, refreshRitualQueue, refreshWatchedMovies]);
 
   useEffect(() => {
     if (screenPlan.screen !== 'daily_home') return;
@@ -1582,6 +1977,19 @@ export default function App() {
       void loadDailyMovies();
     }
   }, [screenPlan.screen, dailyState.status]);
+
+  useEffect(() => {
+    if (dailyState.status !== 'success') {
+      setSelectedDailyMovieId(null);
+      setRitualComposerVisible(false);
+      return;
+    }
+    const movieIds = new Set(dailyState.movies.map((movie) => movie.id));
+    setSelectedDailyMovieId((prev) => {
+      if (prev !== null && movieIds.has(prev)) return prev;
+      return dailyState.movies[0]?.id ?? null;
+    });
+  }, [dailyState]);
 
   useEffect(() => {
     const targetTabRoute = MAIN_TAB_BY_SCREEN[screenPlan.screen];
@@ -1609,7 +2017,7 @@ export default function App() {
   const sharePlatform = activeIntent.target === 'share' ? activeIntent.platform : undefined;
   const shareGoal = activeIntent.target === 'share' ? activeIntent.goal : undefined;
   const canSubmitRitualDraft = Boolean(
-    isSignedIn && primaryDailyMovie && ritualDraftText.trim().length > 0
+    isSignedIn && selectedDailyMovie && ritualDraftText.trim().length > 0
   );
   const isInviteRouteActive = screenPlan.screen === 'invite_claim';
   const isShareRouteActive = screenPlan.screen === 'share_hub';
@@ -1658,7 +2066,7 @@ export default function App() {
   const streakSummary = profileState.status === 'success' ? String(profileState.streak) : '--';
   const ritualsCountSummary =
     profileState.status === 'success' ? String(profileState.ritualsCount) : '--';
-  const canOpenManualProfile = Boolean(String(publicProfileInput || '').trim() && MOBILE_WEB_BASE_URL);
+  const canOpenManualProfile = Boolean(String(publicProfileInput || '').trim());
   const commentFeedSummary =
     commentFeedState.status === 'ready'
       ? `${commentFeedState.items.length} yorum`
@@ -1683,14 +2091,35 @@ export default function App() {
   const profileLink = String(settingsIdentityDraft.profileLink || '').trim();
   const profileAvatarUrl = String(settingsIdentityDraft.avatarUrl || '').trim();
   const profileBirthDateLabel = normalizeDateLabel(settingsIdentityDraft.birthDate);
+  const fallbackLeague = resolveMobileLeagueInfoFromXp(0);
   const profileStats = profileState.status === 'success'
     ? {
+        league: profileState.leagueKey,
         streak: profileState.streak,
         rituals: profileState.ritualsCount,
         marks: profileState.marks.length,
         followers: profileState.followersCount,
         following: profileState.followingCount,
         days: profileState.daysPresent,
+      }
+    : {
+        league: fallbackLeague.leagueKey,
+        streak: 0,
+        rituals: 0,
+        marks: 0,
+        followers: 0,
+        following: 0,
+        days: 0,
+      };
+  const publicSnapshot = publicProfileModalState.profile;
+  const publicProfileStats = publicSnapshot
+    ? {
+        streak: publicSnapshot.streak,
+        rituals: publicSnapshot.ritualsCount,
+        marks: publicSnapshot.marks.length,
+        followers: publicSnapshot.followersCount,
+        following: publicSnapshot.followingCount,
+        days: publicSnapshot.daysPresent,
       }
     : {
         streak: 0,
@@ -1700,6 +2129,92 @@ export default function App() {
         following: 0,
         days: 0,
       };
+  const publicProfileLeague = publicSnapshot
+    ? resolveMobileLeagueInfoFromXp(publicSnapshot.totalXp)
+    : null;
+  const publicProfileMarksState: ProfileState = publicSnapshot
+    ? {
+        status: 'success',
+        message: 'Public profil marklari yuklendi.',
+        displayName: publicSnapshot.displayName,
+        totalXp: publicSnapshot.totalXp,
+        leagueKey: publicProfileLeague?.leagueKey || fallbackLeague.leagueKey,
+        leagueName: publicProfileLeague?.leagueInfo.name || fallbackLeague.leagueInfo.name,
+        leagueColor: publicProfileLeague?.leagueInfo.color || fallbackLeague.leagueInfo.color,
+        nextLeagueKey: null,
+        nextLeagueName: null,
+        streak: publicSnapshot.streak,
+        ritualsCount: publicSnapshot.ritualsCount,
+        daysPresent: publicSnapshot.daysPresent,
+        followersCount: publicSnapshot.followersCount,
+        followingCount: publicSnapshot.followingCount,
+        marks: publicSnapshot.marks,
+        featuredMarks: publicSnapshot.featuredMarks,
+        lastRitualDate: publicSnapshot.lastRitualDate,
+        source: publicSnapshot.source,
+      }
+    : {
+        status: 'idle',
+        message: 'Public profil verisi hazir degil.',
+      };
+  const publicWatchedMovies = useMemo(() => {
+    const deduped = new Map<
+      string,
+      {
+        id: string;
+        movieTitle: string;
+        year: number | null;
+        watchedDayKey: string;
+        watchCount: number;
+        latestMs: number;
+      }
+    >();
+
+    for (let index = 0; index < publicProfileFullState.items.length; index += 1) {
+      const item = publicProfileFullState.items[index];
+      const movieTitle = String(item.movieTitle || '').trim();
+      if (!movieTitle) continue;
+
+      const year =
+        typeof item.year === 'number' && Number.isFinite(item.year)
+          ? Math.floor(item.year)
+          : null;
+      const parsedMs = Date.parse(String(item.rawTimestamp || '').trim());
+      const latestMs = Number.isFinite(parsedMs) ? parsedMs : 0;
+      const watchedDayKey = latestMs > 0 ? getLocalDateKey(new Date(latestMs)) : '-';
+      const key = `${movieTitle.toLowerCase()}::${year ?? ''}`;
+      const existing = deduped.get(key);
+
+      if (existing) {
+        existing.watchCount += 1;
+        if (latestMs > existing.latestMs) {
+          existing.latestMs = latestMs;
+          existing.watchedDayKey = watchedDayKey;
+        }
+        continue;
+      }
+
+      deduped.set(key, {
+        id: `${key}-${index}`,
+        movieTitle,
+        year,
+        watchedDayKey,
+        watchCount: 1,
+        latestMs,
+      });
+    }
+
+    return Array.from(deduped.values())
+      .sort((left, right) => right.latestMs - left.latestMs)
+      .slice(0, 20)
+      .map((entry) => ({
+        id: entry.id,
+        movieTitle: entry.movieTitle,
+        year: entry.year,
+        watchedDayKey: entry.watchedDayKey,
+        watchCount: entry.watchCount,
+      }));
+  }, [publicProfileFullState.items]);
   const inviteStatsLabel = inviteProgram.code
     ? `Kod kullanim: ${inviteProgram.claimCount}`
     : 'Davet kodu olusturulunca burada gorunur.';
@@ -1771,39 +2286,15 @@ export default function App() {
   );
 
   const handleOpenArenaProfile = useCallback(
-    async (entry: { profileHref?: string; rank: number; displayName: string }) => {
-    if (!entry.profileHref) {
-      void trackMobileEvent('page_view', {
-        reason: 'mobile_arena_profile_missing_url',
-        rank: entry.rank,
+    async (entry: { userId?: string | null; rank: number; displayName: string }) => {
+      await openPublicProfileInApp({
+        userId: entry.userId,
+        username: entry.displayName,
+        displayNameHint: entry.displayName,
+        origin: 'arena',
       });
-      return;
-    }
-
-    try {
-      const canOpen = await Linking.canOpenURL(entry.profileHref);
-      if (!canOpen) {
-        void trackMobileEvent('page_view', {
-          reason: 'mobile_arena_profile_unsupported',
-          rank: entry.rank,
-        });
-        return;
-      }
-      await Linking.openURL(entry.profileHref);
-      void trackMobileEvent('page_view', {
-        reason: 'mobile_arena_profile_opened',
-        rank: entry.rank,
-        displayName: entry.displayName,
-      });
-    } catch (error) {
-      void trackMobileEvent('page_view', {
-        reason: 'mobile_arena_profile_open_failed',
-        rank: entry.rank,
-        message: error instanceof Error ? error.message : 'unknown',
-      });
-    }
     },
-    []
+    [openPublicProfileInApp]
   );
 
   const handleChangeSettingsIdentity = useCallback(
@@ -1828,18 +2319,10 @@ export default function App() {
       return;
     }
 
-    const normalizedDraft: MobileSettingsIdentityDraft = {
+    const normalizedDraft = normalizeMobileProfileIdentityDraft({
       ...settingsIdentityDraft,
-      fullName: String(settingsIdentityDraft.fullName || '').trim().slice(0, 120),
-      username: String(settingsIdentityDraft.username || '')
-        .replace(/\s+/g, '')
-        .toLowerCase()
-        .slice(0, 80),
       birthDate: normalizeDateLabel(settingsIdentityDraft.birthDate),
-      bio: String(settingsIdentityDraft.bio || '').trim().slice(0, 180),
-      avatarUrl: String(settingsIdentityDraft.avatarUrl || '').trim().slice(0, 1200),
-      profileLink: String(settingsIdentityDraft.profileLink || '').trim().slice(0, 280),
-    };
+    });
 
     setSettingsSaveState({
       status: 'saving',
@@ -1851,16 +2334,40 @@ export default function App() {
         MOBILE_PROFILE_IDENTITY_STORAGE_KEY,
         JSON.stringify(normalizedDraft)
       );
-      setSettingsIdentityDraft(normalizedDraft);
-      setSettingsSaveState({
-        status: 'success',
-        message: 'Profil ayarlari kaydedildi.',
-      });
+      const syncResult = await syncMobileProfileIdentityToCloud(normalizedDraft);
+      if (syncResult.ok) {
+        setSettingsIdentityDraft(syncResult.identity);
+        setSettingsSaveState({
+          status: 'success',
+          message: 'Profil ayarlari kaydedildi. Cloud senkronu tamamlandi.',
+        });
+        void trackMobileEvent('page_view', {
+          reason: 'mobile_profile_identity_saved',
+          cloudStatus: 'synced',
+        });
+      } else {
+        setSettingsIdentityDraft(normalizedDraft);
+        setSettingsSaveState({
+          status: 'success',
+          message: `Profil ayarlari yerelde kaydedildi. Cloud sync beklemede: ${syncResult.message}`,
+        });
+        void trackMobileEvent('page_view', {
+          reason: 'mobile_profile_identity_saved',
+          cloudStatus: 'pending',
+          message: syncResult.message,
+        });
+      }
       void refreshProfileStats();
     } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Profil ayarlari kaydedilemedi.';
       setSettingsSaveState({
         status: 'error',
-        message: error instanceof Error ? error.message : 'Profil ayarlari kaydedilemedi.',
+        message,
+      });
+      void trackMobileEvent('page_view', {
+        reason: 'mobile_profile_identity_save_failed',
+        message,
       });
     }
   }, [authState.status, refreshProfileStats, settingsIdentityDraft]);
@@ -1902,55 +2409,130 @@ export default function App() {
 
   const handleOpenCommentAuthorProfile = useCallback(
     async (item: CommentFeedState['items'][number]) => {
-      const profileUrl = buildPublicProfileUrl({
+      await openPublicProfileInApp({
         userId: item.userId,
         username: item.author,
+        displayNameHint: item.author,
+        origin: 'comment',
       });
-      if (!profileUrl) return;
-
-      try {
-        const canOpen = await Linking.canOpenURL(profileUrl);
-        if (!canOpen) return;
-        await Linking.openURL(profileUrl);
-      } catch {
-        // ignore link open failures in feed card action
-      }
     },
-    []
+    [openPublicProfileInApp]
   );
 
   const handleOpenManualPublicProfile = useCallback(async () => {
     const normalizedUsername = String(publicProfileInput || '').trim();
-    const publicProfileUrl = buildPublicProfileUrl({ username: normalizedUsername });
-    if (!publicProfileUrl) {
-      void trackMobileEvent('page_view', {
-        reason: 'mobile_manual_profile_missing_url',
-      });
+    if (!normalizedUsername) return;
+
+    await openPublicProfileInApp({
+      username: normalizedUsername,
+      displayNameHint: normalizedUsername,
+      origin: 'manual',
+    });
+  }, [openPublicProfileInApp, publicProfileInput]);
+
+  const handleTogglePublicProfileFollow = useCallback(async () => {
+    const targetUserId =
+      String(publicProfileTarget?.userId || '').trim() ||
+      String(publicProfileModalState.profile?.userId || '').trim();
+    if (!targetUserId) return;
+
+    setPublicProfileModalState((prev) => ({
+      ...prev,
+      followStatus: 'loading',
+      followMessage: 'Takip durumu guncelleniyor...',
+    }));
+
+    const result = await toggleMobileFollowState(targetUserId);
+    if (!result.ok) {
+      setPublicProfileModalState((prev) => ({
+        ...prev,
+        followStatus: 'error',
+        followMessage: result.message,
+        isFollowing: result.isFollowing,
+        isSelfProfile: result.isSelf,
+      }));
       return;
     }
 
-    try {
-      const canOpen = await Linking.canOpenURL(publicProfileUrl);
-      if (!canOpen) {
-        void trackMobileEvent('page_view', {
-          reason: 'mobile_manual_profile_unsupported',
-          username: normalizedUsername,
-        });
-        return;
-      }
-      await Linking.openURL(publicProfileUrl);
-      void trackMobileEvent('page_view', {
-        reason: 'mobile_manual_profile_opened',
-        username: normalizedUsername,
-      });
-    } catch (error) {
-      void trackMobileEvent('page_view', {
-        reason: 'mobile_manual_profile_open_failed',
-        username: normalizedUsername,
-        message: error instanceof Error ? error.message : 'unknown',
-      });
+    setPublicProfileModalState((prev) => {
+      const nextFollowersCount = prev.profile
+        ? Math.max(0, prev.profile.followersCount + result.deltaFollowers)
+        : 0;
+      return {
+        ...prev,
+        followStatus: 'ready',
+        followMessage: result.message,
+        isFollowing: result.isFollowing,
+        isSelfProfile: result.isSelf,
+        profile: prev.profile
+          ? {
+              ...prev.profile,
+              followersCount: nextFollowersCount,
+            }
+          : prev.profile,
+      };
+    });
+    void refreshProfileStats();
+  }, [publicProfileModalState.profile?.userId, publicProfileTarget, refreshProfileStats]);
+
+  const handleRefreshPublicProfileFull = useCallback(async () => {
+    const targetUserId =
+      String(publicProfileTarget?.userId || '').trim() ||
+      String(publicProfileModalState.profile?.userId || '').trim();
+    if (!targetUserId) return;
+
+    const displayName =
+      String(publicProfileModalState.profile?.displayName || '').trim() ||
+      publicProfileModalState.displayNameHint;
+    const [profileResult, followResult] = await Promise.all([
+      fetchMobilePublicProfileSnapshot({
+        userId: targetUserId,
+        displayNameHint: displayName,
+      }),
+      resolveMobileFollowState(targetUserId),
+    ]);
+
+    if (profileResult.ok) {
+      setPublicProfileModalState((prev) => ({
+        ...prev,
+        profile: profileResult.profile,
+        displayNameHint: profileResult.profile.displayName || displayName,
+        status: 'ready',
+        message: profileResult.message,
+      }));
     }
-  }, [publicProfileInput]);
+
+    setPublicProfileModalState((prev) => ({
+      ...prev,
+      followStatus: followResult.ok ? 'ready' : 'error',
+      followMessage: followResult.message,
+      isFollowing: followResult.isFollowing,
+      followsYou: followResult.followsYou,
+      isSelfProfile: followResult.isSelf,
+    }));
+
+    await loadPublicProfileFull({
+      userId: targetUserId,
+      displayName:
+        profileResult.ok && profileResult.profile.displayName
+          ? profileResult.profile.displayName
+          : displayName,
+    });
+  }, [
+    loadPublicProfileFull,
+    publicProfileModalState.displayNameHint,
+    publicProfileModalState.profile?.displayName,
+    publicProfileModalState.profile?.userId,
+    publicProfileTarget,
+  ]);
+
+  const handleClosePublicProfileFull = useCallback(() => {
+    setPublicProfileFullState((prev) => ({
+      ...prev,
+      visible: false,
+    }));
+    setPublicProfileTarget(null);
+  }, []);
 
   const handleOpenProfileLink = useCallback(async () => {
     const targetUrl = normalizeExternalUrl(settingsIdentityDraft.profileLink);
@@ -2325,6 +2907,10 @@ export default function App() {
           pointerEvents="none"
           style={[styles.backdropLayer, isDawnTheme ? styles.backdropLayerDawn : null]}
         />
+        <LeaguePromotionModal
+          event={leaguePromotionEvent}
+          onClose={() => setLeaguePromotionEvent(null)}
+        />
         <Animated.View
           style={[
             styles.pageMotion,
@@ -2384,35 +2970,26 @@ export default function App() {
                     <DailyHomeScreen
                       state={dailyState}
                       showOpsMeta={isDevSurfaceEnabled}
+                      selectedMovieId={selectedDailyMovieId}
+                      onSelectMovie={(movieId) => {
+                        setSelectedDailyMovieId(movieId);
+                        setRitualComposerVisible(true);
+                      }}
                       onRetry={() => {
                         void loadDailyMovies();
                       }}
                     />
-                    <RitualDraftCard
-                      targetMovie={primaryDailyMovie}
-                      draftText={ritualDraftText}
-                      onDraftTextChange={(value) => {
-                        setRitualDraftText(value);
-                        if (ritualSubmitState.status !== 'idle') {
-                          setRitualSubmitState({
-                            status: 'idle',
-                            message: '',
-                          });
-                        }
-                        if (ritualQueueState.status === 'done') {
-                          setRitualQueueState((prev) => ({
-                            ...prev,
-                            status: 'idle',
-                            message: '',
-                          }));
-                        }
+                    <CommentFeedCard
+                      state={dailyHomeCommentFeedState}
+                      showFilters={false}
+                      showOpsMeta={isDevSurfaceEnabled}
+                      onScopeChange={() => undefined}
+                      onSortChange={() => undefined}
+                      onQueryChange={() => undefined}
+                      onOpenAuthorProfile={handleOpenCommentAuthorProfile}
+                      onRefresh={() => {
+                        void refreshCommentFeed('today', '', 'latest');
                       }}
-                      submitState={ritualSubmitState}
-                      queueState={ritualQueueState}
-                      canSubmit={canSubmitRitualDraft}
-                      isSignedIn={isSignedIn}
-                      onSubmit={handleSubmitRitualDraft}
-                      onFlushQueue={handleFlushRitualQueue}
                     />
 
                     {isDevSurfaceEnabled ? (
@@ -2521,7 +3098,6 @@ export default function App() {
                             void handleOpenManualPublicProfile();
                           }}
                           canOpenProfile={canOpenManualProfile}
-                          hasWebBase={Boolean(MOBILE_WEB_BASE_URL)}
                         />
                         <PlatformRulesCard />
                       </>
@@ -2581,8 +3157,8 @@ export default function App() {
                   >
                     {isDevSurfaceEnabled
                       ? renderSurfaceIntro({
-                          title: 'Marklar ve Arena',
-                          body: 'Rozet arsivi ve arena siralamasina tek sekmeden ulas.',
+                          title: 'Marklar',
+                          body: 'Rozet arsivini tek sekmeden takip et.',
                           badges: [
                             { label: `Seri ${streakSummary}` },
                             { label: `Ritual ${ritualsCountSummary}` },
@@ -2592,19 +3168,10 @@ export default function App() {
                     <View style={styles.sectionAnchor}>
                       <View style={styles.sectionHeaderRow}>
                         <Text style={styles.sectionHeader}>Marklar</Text>
-                        <Text style={styles.sectionHeaderMeta}>Arena + Koleksiyon</Text>
+                        <Text style={styles.sectionHeaderMeta}>Koleksiyon</Text>
                       </View>
                     </View>
-                    <ArenaLeaderboardCard
-                      state={arenaState}
-                      onRefresh={() => {
-                        void refreshArenaLeaderboard();
-                      }}
-                      onOpenProfile={(item) => {
-                        void handleOpenArenaProfile(item);
-                      }}
-                    />
-                    <ProfileMarksCard state={profileState} isSignedIn={isSignedIn} />
+                    <ProfileMarksCard state={profileState} isSignedIn={isSignedIn} mode="all" />
                   </ScrollView>
                 )}
               </Tab.Screen>
@@ -2631,6 +3198,206 @@ export default function App() {
                           ],
                         })
                       : null}
+                    {publicProfileFullState.visible ? (
+                      <>
+                        <View style={styles.card}>
+                          <View style={styles.profileHeroRow}>
+                            <View style={styles.profileHeroAvatarWrap}>
+                              <Text style={styles.profileHeroAvatarFallback}>
+                                {(
+                                  String(publicSnapshot?.displayName || publicProfileFullState.displayName || 'U')
+                                    .slice(0, 1) || 'U'
+                                ).toUpperCase()}
+                              </Text>
+                            </View>
+                            <View style={styles.profileHeroContent}>
+                              <Text style={[styles.cardTitle, isDawnTheme ? styles.dawnTextColor : null]}>
+                                {publicSnapshot?.displayName || publicProfileFullState.displayName || '@bilinmeyen'}
+                              </Text>
+                              {publicSnapshot?.lastRitualDate ? (
+                                <Text style={[styles.screenMeta, isDawnTheme ? styles.dawnTextMuted : null]}>
+                                  Son ritual: {publicSnapshot.lastRitualDate}
+                                </Text>
+                              ) : null}
+                              <Text style={[styles.screenMeta, isDawnTheme ? styles.dawnTextMuted : null]}>
+                                {publicProfileFullState.message}
+                              </Text>
+                            </View>
+                          </View>
+
+                          <View style={styles.profileGrid}>
+                            <View style={styles.profileMetricCard}>
+                              <Text style={[styles.profileMetricValue, isDawnTheme ? styles.dawnTextColor : null]}>
+                                {publicProfileStats.rituals}
+                              </Text>
+                              <Text style={[styles.profileMetricLabel, isDawnTheme ? styles.dawnTextMuted : null]}>
+                                Izlenen
+                              </Text>
+                            </View>
+                            <View style={styles.profileMetricCard}>
+                              <Text style={[styles.profileMetricValue, isDawnTheme ? styles.dawnTextColor : null]}>
+                                {publicProfileStats.streak}
+                              </Text>
+                              <Text style={[styles.profileMetricLabel, isDawnTheme ? styles.dawnTextMuted : null]}>
+                                Streak
+                              </Text>
+                            </View>
+                            <View style={styles.profileMetricCard}>
+                              <Text style={[styles.profileMetricValue, isDawnTheme ? styles.dawnTextColor : null]}>
+                                {publicProfileStats.marks}
+                              </Text>
+                              <Text style={[styles.profileMetricLabel, isDawnTheme ? styles.dawnTextMuted : null]}>
+                                Mark
+                              </Text>
+                            </View>
+                            <View style={styles.profileMetricCard}>
+                              <Text style={[styles.profileMetricValue, isDawnTheme ? styles.dawnTextColor : null]}>
+                                {publicProfileStats.followers}
+                              </Text>
+                              <Text style={[styles.profileMetricLabel, isDawnTheme ? styles.dawnTextMuted : null]}>
+                                Takipci
+                              </Text>
+                            </View>
+                            <View style={styles.profileMetricCard}>
+                              <Text style={[styles.profileMetricValue, isDawnTheme ? styles.dawnTextColor : null]}>
+                                {publicProfileStats.following}
+                              </Text>
+                              <Text style={[styles.profileMetricLabel, isDawnTheme ? styles.dawnTextMuted : null]}>
+                                Takip
+                              </Text>
+                            </View>
+                            <View style={styles.profileMetricCard}>
+                              <Text style={[styles.profileMetricValue, isDawnTheme ? styles.dawnTextColor : null]}>
+                                {publicProfileStats.days}
+                              </Text>
+                              <Text style={[styles.profileMetricLabel, isDawnTheme ? styles.dawnTextMuted : null]}>
+                                Gun
+                              </Text>
+                            </View>
+                          </View>
+
+                          <View style={styles.profileAboutBox}>
+                            {!publicProfileModalState.isSelfProfile && publicProfileModalState.followsYou ? (
+                              <Text style={[styles.screenMeta, styles.ritualStateOk]}>
+                                Bu kisi seni takip ediyor.
+                              </Text>
+                            ) : null}
+                            {publicProfileModalState.followMessage ? (
+                              <Text
+                                style={[
+                                  styles.screenMeta,
+                                  publicProfileModalState.followStatus === 'error'
+                                    ? styles.ritualStateError
+                                    : publicProfileModalState.followStatus === 'ready'
+                                      ? styles.ritualStateOk
+                                      : styles.screenMeta,
+                                ]}
+                              >
+                                {publicProfileModalState.followMessage}
+                              </Text>
+                            ) : null}
+                          </View>
+
+                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                            {!publicProfileModalState.isSelfProfile && isSignedIn ? (
+                              <Pressable
+                                style={[
+                                  styles.claimButton,
+                                  publicProfileModalState.followStatus === 'loading'
+                                    ? styles.claimButtonDisabled
+                                    : null,
+                                ]}
+                                onPress={() => {
+                                  void handleTogglePublicProfileFollow();
+                                }}
+                                disabled={publicProfileModalState.followStatus === 'loading'}
+                                hitSlop={8}
+                              >
+                                <Text style={styles.claimButtonText}>
+                                  {publicProfileModalState.isFollowing ? 'Takipten Cik' : 'Takip Et'}
+                                </Text>
+                              </Pressable>
+                            ) : null}
+                            <Pressable
+                              style={styles.retryButton}
+                              onPress={() => {
+                                void handleRefreshPublicProfileFull();
+                              }}
+                              hitSlop={8}
+                            >
+                              <Text style={styles.retryText}>Yenile</Text>
+                            </Pressable>
+                            <Pressable
+                              style={[styles.retryButton, { backgroundColor: 'transparent' }]}
+                              onPress={handleClosePublicProfileFull}
+                              hitSlop={8}
+                            >
+                              <Text style={styles.retryText}>Kendi Profilime Don</Text>
+                            </Pressable>
+                          </View>
+                        </View>
+
+                        <View style={styles.card}>
+                          <Text style={[styles.cardTitle, isDawnTheme ? styles.dawnTextColor : null]}>
+                            Izlenen Filmler
+                          </Text>
+                          {publicWatchedMovies.length > 0 ? (
+                            <View style={styles.movieList}>
+                              {publicWatchedMovies.map((movie) => (
+                                <View key={movie.id} style={styles.movieRow}>
+                                  <Text style={styles.movieTitle}>{movie.movieTitle}</Text>
+                                  <Text style={styles.movieMeta}>
+                                    {movie.year ? `${movie.year} | ` : ''}
+                                    Son izleme: {movie.watchedDayKey || '-'}
+                                    {movie.watchCount > 1 ? ` | Tekrar: ${movie.watchCount}` : ''}
+                                  </Text>
+                                </View>
+                              ))}
+                            </View>
+                          ) : (
+                            <Text style={[styles.screenMeta, isDawnTheme ? styles.dawnTextMuted : null]}>
+                              Bu profilde izlenen film kaydi henuz yok.
+                            </Text>
+                          )}
+                        </View>
+
+                        <ProfileMarksCard
+                          state={publicProfileMarksState}
+                          isSignedIn={isSignedIn || Boolean(publicSnapshot)}
+                          mode="unlocked"
+                        />
+
+                        <View style={styles.card}>
+                          <Text style={[styles.cardTitle, isDawnTheme ? styles.dawnTextColor : null]}>
+                            Yorumlar
+                          </Text>
+                          {publicProfileFullState.status === 'loading' ? (
+                            <Text style={[styles.screenMeta, isDawnTheme ? styles.dawnTextMuted : null]}>
+                              Aktivite yukleniyor...
+                            </Text>
+                          ) : publicProfileFullState.items.length > 0 ? (
+                            <View style={styles.commentFeedList}>
+                              {publicProfileFullState.items.map((item) => (
+                                <View key={item.id} style={styles.commentFeedRow}>
+                                  <Text style={styles.commentFeedMovieTitle}>
+                                    {item.movieTitle}
+                                    {item.year ? ` (${item.year})` : ''}
+                                  </Text>
+                                  <Text style={styles.commentFeedMeta}>{item.timestampLabel}</Text>
+                                  <Text style={styles.commentFeedBody}>{item.text}</Text>
+                                </View>
+                              ))}
+                            </View>
+                          ) : (
+                            <Text style={[styles.screenMeta, isDawnTheme ? styles.dawnTextMuted : null]}>
+                              Bu profilde henuz yorum yok.
+                            </Text>
+                          )}
+                        </View>
+                      </>
+                    ) : null}
+                    {!publicProfileFullState.visible ? (
+                      <>
                     <View style={styles.card}>
                       <View style={styles.profileHeroRow}>
                         <View style={styles.profileHeroAvatarWrap}>
@@ -2690,6 +3457,14 @@ export default function App() {
                           </Text>
                           <Text style={[styles.profileMetricLabel, isDawnTheme ? styles.dawnTextMuted : null]}>
                             Streak
+                          </Text>
+                        </View>
+                        <View style={styles.profileMetricCard}>
+                          <Text style={[styles.profileMetricValue, isDawnTheme ? styles.dawnTextColor : null]}>
+                            {profileStats.league}
+                          </Text>
+                          <Text style={[styles.profileMetricLabel, isDawnTheme ? styles.dawnTextMuted : null]}>
+                            Lig
                           </Text>
                         </View>
                         <View style={styles.profileMetricCard}>
@@ -2784,7 +3559,48 @@ export default function App() {
                       </Pressable>
                     </View>
 
-                    <ProfileMarksCard state={profileState} isSignedIn={isSignedIn} />
+                    <View style={styles.card}>
+                      <Text style={[styles.cardTitle, isDawnTheme ? styles.dawnTextColor : null]}>
+                        Izlenen Filmler
+                      </Text>
+                      <Text style={[styles.screenMeta, isDawnTheme ? styles.dawnTextMuted : null]}>
+                        {watchedMoviesState.message}
+                      </Text>
+                      {watchedMoviesState.items.length > 0 ? (
+                        <View style={styles.movieList}>
+                          {watchedMoviesState.items.slice(0, 20).map((movie) => (
+                            <View key={movie.id} style={styles.movieRow}>
+                              <Text style={styles.movieTitle}>{movie.movieTitle}</Text>
+                              <Text style={styles.movieMeta}>
+                                {movie.year ? `${movie.year} | ` : ''}
+                                Son izleme: {movie.watchedDayKey || '-'}
+                                {movie.watchCount > 1 ? ` | Tekrar: ${movie.watchCount}` : ''}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      ) : (
+                        <Text style={[styles.screenMeta, isDawnTheme ? styles.dawnTextMuted : null]}>
+                          Izlenen film kaydi henuz yok.
+                        </Text>
+                      )}
+                      <Pressable
+                        style={styles.retryButton}
+                        onPress={() => {
+                          void refreshWatchedMovies();
+                        }}
+                        disabled={!isSignedIn || watchedMoviesState.status === 'loading'}
+                        hitSlop={8}
+                      >
+                        <Text style={styles.retryText}>
+                          {watchedMoviesState.status === 'loading'
+                            ? 'Yukleniyor...'
+                            : 'Izlenen Filmleri Yenile'}
+                        </Text>
+                      </Pressable>
+                    </View>
+
+                    <ProfileMarksCard state={profileState} isSignedIn={isSignedIn} mode="unlocked" />
                     {!isSignedIn ? (
                       <AuthCard
                         authState={authState}
@@ -2808,6 +3624,8 @@ export default function App() {
                         inviteCode={inviteCode}
                         platform={sharePlatform}
                         goal={shareGoal}
+                        streakValue={profileState.status === 'success' ? profileState.streak : 0}
+                        onOpenDaily={() => setManualIntent({ target: 'daily' })}
                       />
                     ) : null}
 
@@ -2876,11 +3694,51 @@ export default function App() {
                         ) : null}
                       </>
                     ) : null}
+                      </>
+                    ) : null}
                   </ScrollView>
                 )}
               </Tab.Screen>
             </Tab.Navigator>
           </NavigationContainer>
+
+          <RitualComposerModal
+            visible={ritualComposerVisible}
+            targetMovie={
+              selectedDailyMovie
+                ? {
+                    title: selectedDailyMovie.title,
+                    genre: selectedDailyMovie.genre,
+                    year: selectedDailyMovie.year,
+                    director: selectedDailyMovie.director,
+                  }
+                : null
+            }
+            draftText={ritualDraftText}
+            onDraftTextChange={(value) => {
+              setRitualDraftText(value);
+              if (ritualSubmitState.status !== 'idle') {
+                setRitualSubmitState({
+                  status: 'idle',
+                  message: '',
+                });
+              }
+              if (ritualQueueState.status === 'done') {
+                setRitualQueueState((prev) => ({
+                  ...prev,
+                  status: 'idle',
+                  message: '',
+                }));
+              }
+            }}
+            submitState={ritualSubmitState}
+            queueState={ritualQueueState}
+            canSubmit={canSubmitRitualDraft}
+            isSignedIn={isSignedIn}
+            onSubmit={handleSubmitRitualDraft}
+            onFlushQueue={handleFlushRitualQueue}
+            onClose={() => setRitualComposerVisible(false)}
+          />
 
           <MobileSettingsModal
             visible={settingsVisible}

@@ -1,5 +1,10 @@
 import { isSupabaseLive, supabase } from './supabase';
 import { resolveUserIdsByAuthorNames, toAuthorIdentityKey } from './mobileAuthorUserMap';
+import {
+  normalizeMobileLeagueKey,
+  resolveMobileLeagueInfo,
+  resolveMobileLeagueInfoFromXp,
+} from './mobileLeagueSystem';
 
 type SupabaseErrorLike = {
   code?: string | null;
@@ -12,6 +17,7 @@ type RitualRow = {
   author?: string | null;
   movie_title?: string | null;
   text?: string | null;
+  league?: string | null;
   timestamp?: string | null;
   created_at?: string | null;
 };
@@ -21,6 +27,8 @@ type RitualLiteItem = {
   userId: string | null;
   author: string;
   authorAvatarUrl: string | null;
+  leagueKey: string;
+  leagueColor: string;
   movieTitle: string;
   text: string;
   rawTimestamp: string;
@@ -55,6 +63,8 @@ export type MobileCommentFeedItem = {
   userId: string | null;
   author: string;
   authorAvatarUrl: string | null;
+  leagueKey: string;
+  leagueColor: string;
   movieTitle: string;
   text: string;
   timestampLabel: string;
@@ -92,6 +102,14 @@ const MOBILE_COMMENT_FEED_MAX_PAGE = 200;
 
 const FEED_FETCH_VARIANTS: FeedFetchVariant[] = [
   {
+    select: 'id,user_id,author,movie_title,text,league,timestamp',
+    orderBy: 'timestamp',
+  },
+  {
+    select: 'id,user_id,author,movie_title,text,league,created_at',
+    orderBy: 'created_at',
+  },
+  {
     select: 'id,user_id,author,movie_title,text,timestamp',
     orderBy: 'timestamp',
   },
@@ -113,6 +131,12 @@ const normalizeText = (value: unknown, maxLength = 220): string => {
   const text = String(value ?? '').trim();
   if (!text) return '';
   return text.length > maxLength ? text.slice(0, maxLength) : text;
+};
+
+const toSafeInt = (value: unknown): number => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.floor(parsed));
 };
 
 const normalizeAvatarUrl = (value: unknown): string => {
@@ -210,6 +234,8 @@ const normalizeRitualRows = (rows: RitualRow[]): RitualLiteItem[] => {
         normalizeText(row.timestamp, 80) || normalizeText(row.created_at, 80) || new Date().toISOString();
       const movieTitle = normalizeText(row.movie_title, 120) || 'Untitled film';
       const author = normalizeText(row.author, 80) || 'observer';
+      const leagueKey = normalizeMobileLeagueKey(row.league);
+      const leagueInfo = resolveMobileLeagueInfo(leagueKey);
       const dayKey = toDayKeyFromTimestamp(rawTimestamp);
       const createdAtMs = parseTimestampToMs(rawTimestamp);
 
@@ -218,6 +244,8 @@ const normalizeRitualRows = (rows: RitualRow[]): RitualLiteItem[] => {
         userId: normalizeText(row.user_id, 80) || null,
         author,
         authorAvatarUrl: null as string | null,
+        leagueKey,
+        leagueColor: leagueInfo.color,
         movieTitle,
         text,
         rawTimestamp,
@@ -283,23 +311,37 @@ const hydrateAuthorAvatars = async (items: RitualLiteItem[]): Promise<RitualLite
   if (avatarRows.length === 0) return items;
 
   const avatarMap = new Map<string, string>();
+  const leagueMap = new Map<string, { leagueKey: string; leagueColor: string }>();
   for (const row of avatarRows) {
     const userId = normalizeText(row.user_id, 120);
-    if (!userId || avatarMap.has(userId)) continue;
-    const avatarUrl = normalizeAvatarUrl(row.avatar_url) || resolveAvatarFromXpState(row.xp_state);
-    if (!avatarUrl) continue;
-    avatarMap.set(userId, avatarUrl);
+    if (!userId) continue;
+
+    if (!leagueMap.has(userId) && row.xp_state && typeof row.xp_state === 'object' && !Array.isArray(row.xp_state)) {
+      const xpState = row.xp_state as Record<string, unknown>;
+      const { leagueKey, leagueInfo } = resolveMobileLeagueInfoFromXp(toSafeInt(xpState.totalXP));
+      leagueMap.set(userId, { leagueKey, leagueColor: leagueInfo.color });
+    }
+
+    if (!avatarMap.has(userId)) {
+      const avatarUrl = normalizeAvatarUrl(row.avatar_url) || resolveAvatarFromXpState(row.xp_state);
+      if (avatarUrl) {
+        avatarMap.set(userId, avatarUrl);
+      }
+    }
   }
-  if (avatarMap.size === 0) return items;
+  if (avatarMap.size === 0 && leagueMap.size === 0) return items;
 
   return items.map((item) => {
     const userId = item.userId || '';
     if (!userId) return item;
     const avatarUrl = avatarMap.get(userId) || '';
-    if (!avatarUrl) return item;
+    const leagueMeta = leagueMap.get(userId);
+    if (!avatarUrl && !leagueMeta) return item;
     return {
       ...item,
-      authorAvatarUrl: avatarUrl,
+      authorAvatarUrl: avatarUrl || item.authorAvatarUrl,
+      leagueKey: leagueMeta?.leagueKey || item.leagueKey,
+      leagueColor: leagueMeta?.leagueColor || item.leagueColor,
     };
   });
 };
@@ -486,6 +528,8 @@ const toFeedItem = (
   userId: ritual.userId,
   author: ritual.author,
   authorAvatarUrl: ritual.authorAvatarUrl,
+  leagueKey: ritual.leagueKey,
+  leagueColor: ritual.leagueColor,
   movieTitle: ritual.movieTitle,
   text: ritual.text,
   timestampLabel: toRelativeTimestamp(ritual.rawTimestamp),
@@ -515,6 +559,9 @@ const readFallbackFromXpState = async (): Promise<MobileCommentFeedItem[]> => {
     profileData && typeof profileData === 'object' && !Array.isArray(profileData)
       ? (profileData as Record<string, unknown>).xp_state
       : null;
+  const xpTotal = toSafeInt((xpState as Record<string, unknown> | null)?.totalXP);
+  const { leagueKey: fallbackLeagueKey, leagueInfo: fallbackLeagueInfo } =
+    resolveMobileLeagueInfoFromXp(xpTotal);
   const fallbackAvatarUrl = resolveAvatarFromXpState(xpState);
   const dailyRituals = Array.isArray((xpState as Record<string, unknown> | null)?.dailyRituals)
     ? ((xpState as Record<string, unknown>).dailyRituals as Array<Record<string, unknown>>)
@@ -545,6 +592,8 @@ const readFallbackFromXpState = async (): Promise<MobileCommentFeedItem[]> => {
         userId,
         author: fallbackAuthor,
         authorAvatarUrl: fallbackAvatarUrl || null,
+        leagueKey: fallbackLeagueKey,
+        leagueColor: fallbackLeagueInfo.color,
         movieTitle,
         text,
         timestampLabel: dateKey || 'unknown',

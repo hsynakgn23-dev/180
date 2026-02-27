@@ -15,7 +15,7 @@ export const ShieldMark: React.FC<IconProps> = ({ color = "currentColor", size =
             viewBox="0 0 24 24"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
-            className={className}
+            className={`mark-motion mark-motion--pulse ${className}`}
             style={{ opacity }}
         >
             <path
@@ -34,3 +34,4 @@ export const ShieldMark: React.FC<IconProps> = ({ color = "currentColor", size =
         </svg>
     );
 };
+

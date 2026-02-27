@@ -10,12 +10,14 @@ type MobileFollowResolveResult =
       ok: true;
       message: string;
       isFollowing: boolean;
+      followsYou: boolean;
       isSelf: boolean;
     }
   | {
       ok: false;
       message: string;
       isFollowing: false;
+      followsYou: false;
       isSelf: boolean;
     };
 
@@ -81,6 +83,7 @@ export const resolveMobileFollowState = async (
       ok: false,
       message: 'Gecersiz kullanici kimligi.',
       isFollowing: false,
+      followsYou: false,
       isSelf: false,
     };
   }
@@ -90,6 +93,7 @@ export const resolveMobileFollowState = async (
       ok: false,
       message: 'Supabase baglantisi hazir degil.',
       isFollowing: false,
+      followsYou: false,
       isSelf: false,
     };
   }
@@ -100,6 +104,7 @@ export const resolveMobileFollowState = async (
       ok: false,
       message: 'Takip icin uye girisi gerekli.',
       isFollowing: false,
+      followsYou: false,
       isSelf: false,
     };
   }
@@ -109,26 +114,45 @@ export const resolveMobileFollowState = async (
       ok: true,
       message: 'Kendi profilin.',
       isFollowing: false,
+      followsYou: false,
       isSelf: true,
     };
   }
 
-  const relation = await readFollowExists(viewerUserId, targetUserId);
-  if (!relation.ok) {
+  const [viewerToTarget, targetToViewer] = await Promise.all([
+    readFollowExists(viewerUserId, targetUserId),
+    readFollowExists(targetUserId, viewerUserId),
+  ]);
+
+  if (!viewerToTarget.ok) {
     return {
       ok: false,
-      message: normalizeErrorMessage(relation.error),
+      message: normalizeErrorMessage(viewerToTarget.error),
       isFollowing: false,
+      followsYou: false,
       isSelf: false,
     };
   }
 
+  if (!targetToViewer.ok) {
+    return {
+      ok: false,
+      message: normalizeErrorMessage(targetToViewer.error),
+      isFollowing: false,
+      followsYou: false,
+      isSelf: false,
+    };
+  }
+
+  const isFollowing = viewerToTarget.exists;
+  const followsYou = targetToViewer.exists;
   return {
     ok: true,
-    message: relation.exists
+    message: isFollowing
       ? 'Bu kullaniciyi takip ediyorsun.'
       : 'Bu kullaniciyi henuz takip etmiyorsun.',
-    isFollowing: relation.exists,
+    isFollowing,
+    followsYou,
     isSelf: false,
   };
 };

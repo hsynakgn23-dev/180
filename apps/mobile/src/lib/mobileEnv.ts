@@ -51,6 +51,9 @@ export const deriveOriginFromEndpoint = (value: unknown, marker: string): string
 const readEnv = (env: MobileEnvRecord, key: string): string => normalizeText(env[key], 1000);
 
 export const resolveMobileWebBaseUrl = (env: MobileEnvRecord = process.env): string => {
+  const explicitWebBaseAlias = normalizeBaseUrl(readEnv(env, 'EXPO_PUBLIC_WEB_BASE_URL'));
+  if (explicitWebBaseAlias) return explicitWebBaseAlias;
+
   const explicitWebBase = normalizeBaseUrl(readEnv(env, 'EXPO_PUBLIC_WEB_APP_URL'));
   if (explicitWebBase) return explicitWebBase;
 
@@ -68,9 +71,12 @@ export const resolveMobileDailyApiUrl = (env: MobileEnvRecord = process.env): st
   if (explicitDailyUrl) return explicitDailyUrl;
 
   const analyticsBase = deriveOriginFromEndpoint(readEnv(env, 'EXPO_PUBLIC_ANALYTICS_ENDPOINT'), '/api/analytics');
-  if (!analyticsBase) return '';
+  if (analyticsBase) return `${analyticsBase}/api/daily`;
 
-  return `${analyticsBase}/api/daily`;
+  const webBase = resolveMobileWebBaseUrl(env);
+  if (webBase) return `${webBase}/api/daily`;
+
+  return '';
 };
 
 export const resolveMobileReferralApiBase = (env: MobileEnvRecord = process.env): string => {

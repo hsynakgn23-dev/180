@@ -1,4 +1,9 @@
 import { isSupabaseLive, supabase } from './supabase';
+import {
+  resolveMobileLeagueInfoFromXp,
+  resolveMobileNextLeagueKey,
+  resolveMobileLeagueInfo,
+} from './mobileLeagueSystem';
 
 type SupabaseErrorLike = {
   code?: string | null;
@@ -20,6 +25,11 @@ type RitualTimestampRow = {
 export type MobileProfileStats = {
   displayName: string;
   totalXp: number;
+  leagueKey: string;
+  leagueName: string;
+  leagueColor: string;
+  nextLeagueKey: string | null;
+  nextLeagueName: string | null;
   streak: number;
   ritualsCount: number;
   daysPresent: number;
@@ -293,11 +303,19 @@ export const fetchMobileProfileStats = async (): Promise<MobileProfileStatsResul
     'Observer';
 
   if (xpStats) {
+    const { leagueKey, leagueInfo } = resolveMobileLeagueInfoFromXp(xpStats.totalXp);
+    const nextLeagueKey = resolveMobileNextLeagueKey(leagueKey);
+    const nextLeagueName = nextLeagueKey ? resolveMobileLeagueInfo(nextLeagueKey).name : null;
     return {
       ok: true,
       stats: {
         displayName: displayNameBase,
         totalXp: xpStats.totalXp,
+        leagueKey,
+        leagueName: leagueInfo.name,
+        leagueColor: leagueInfo.color,
+        nextLeagueKey,
+        nextLeagueName,
         streak: xpStats.streak,
         ritualsCount: xpStats.ritualsCount,
         daysPresent: xpStats.daysPresent,
@@ -313,11 +331,19 @@ export const fetchMobileProfileStats = async (): Promise<MobileProfileStatsResul
 
   const timeline = await readRitualTimeline(userId);
   const uniqueDays = Array.from(new Set(timeline.dateKeys));
+  const { leagueKey, leagueInfo } = resolveMobileLeagueInfoFromXp(0);
+  const nextLeagueKey = resolveMobileNextLeagueKey(leagueKey);
+  const nextLeagueName = nextLeagueKey ? resolveMobileLeagueInfo(nextLeagueKey).name : null;
   return {
     ok: true,
     stats: {
       displayName: displayNameBase,
       totalXp: 0,
+      leagueKey,
+      leagueName: leagueInfo.name,
+      leagueColor: leagueInfo.color,
+      nextLeagueKey,
+      nextLeagueName,
       streak: computeCurrentStreak(uniqueDays),
       ritualsCount: timeline.ritualsCount,
       daysPresent: uniqueDays.length,
