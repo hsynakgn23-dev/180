@@ -315,6 +315,10 @@ export const registerForPushNotifications = async (): Promise<PushRegistrationRe
 export const subscribeToPushNotifications = (
   input: NotificationHandlerInput
 ): (() => void) => {
+  if (Platform.OS === 'web') {
+    return () => undefined;
+  }
+
   try {
     const receivedSub = Notifications.addNotificationReceivedListener((notification) => {
       input.onNotificationReceived?.(snapshotFromNotification(notification));
@@ -333,6 +337,8 @@ export const subscribeToPushNotifications = (
 };
 
 export const configureDefaultNotificationHandler = (): void => {
+  if (Platform.OS === 'web') return;
+
   try {
     Notifications.setNotificationHandler({
       handleNotification: async () => ({

@@ -54,6 +54,7 @@ import type { MobileProfileMovieArchiveEntry } from '../lib/mobileProfileMovieAr
 import type { MobilePublicProfileActivityItem } from '../lib/mobilePublicProfileActivity';
 
 const PRESSABLE_HIT_SLOP = { top: 8, right: 8, bottom: 8, left: 8 } as const;
+const SUPPORTS_NATIVE_DRIVER = Platform.OS !== 'web';
 const TMDB_POSTER_BASE_URL = 'https://image.tmdb.org/t/p/w342';
 const STORAGE_PUBLIC_PATH = '/storage/v1/object/public/';
 const STORAGE_OBJECT_PUBLIC_PATH = 'storage/v1/object/public/';
@@ -66,6 +67,42 @@ const MOBILE_SUPABASE_STORAGE_BUCKET =
     .replace(/^\/+|\/+$/g, '') || 'posters';
 const DAWN_TEXT_COLOR_STYLE = { color: '#A45E4A' } as const;
 let APP_SCREENS_THEME_MODE: MobileThemeMode = 'midnight';
+
+const blurActiveWebElement = (): void => {
+  if (Platform.OS !== 'web') return;
+  const activeElement = (
+    globalThis as {
+      document?: {
+        activeElement?: {
+          blur?: () => void;
+        } | null;
+      };
+    }
+  ).document?.activeElement;
+  if (activeElement && typeof activeElement.blur === 'function') {
+    activeElement.blur();
+  }
+};
+
+const useWebModalFocusReset = (visible: boolean): void => {
+  useEffect(() => {
+    if (!visible) return;
+    blurActiveWebElement();
+  }, [visible]);
+};
+
+const buildAccentShadowStyle = (accentColor: string): Record<string, unknown> =>
+  Platform.OS === 'web'
+    ? {
+        boxShadow: `0px 16px 28px ${accentColor}33`,
+      }
+    : {
+        shadowColor: accentColor,
+        shadowOpacity: 0.28,
+        shadowRadius: 18,
+        shadowOffset: { width: 0, height: 10 },
+        elevation: 8,
+      };
 
 const Text = ({ style, ...props }: TextProps) => (
   <RNText
@@ -92,6 +129,7 @@ const LeaguePromotionModal = ({
   event: MobileLeaguePromotionEvent | null;
   onClose: () => void;
 }) => {
+  useWebModalFocusReset(Boolean(event));
   if (!event) return null;
 
   const accentColor = String(event.leagueColor || '#8A9A5B').trim() || '#8A9A5B';
@@ -116,7 +154,7 @@ const LeaguePromotionModal = ({
             styles.leagueTransitionCard,
             {
               borderColor: `${accentColor}66`,
-              shadowColor: accentColor,
+              ...buildAccentShadowStyle(accentColor),
             },
           ]}
         >
@@ -328,13 +366,13 @@ const StatePanel = ({
           toValue: 1,
           duration: 900,
           easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
+          useNativeDriver: SUPPORTS_NATIVE_DRIVER,
         }),
         Animated.timing(pulse, {
           toValue: 0.45,
           duration: 900,
           easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
+          useNativeDriver: SUPPORTS_NATIVE_DRIVER,
         }),
       ])
     );
@@ -459,9 +497,9 @@ const CollapsibleSectionCard = ({
           {
             opacity: progress,
             maxHeight,
+            pointerEvents: expanded ? 'auto' : 'none',
           },
         ]}
-        pointerEvents={expanded ? 'auto' : 'none'}
       >
         <View style={styles.collapsibleBodyInner}>{children}</View>
       </Animated.View>
@@ -969,7 +1007,7 @@ const MobileMarkPill = ({
               toValue: 1,
               duration,
               easing: Easing.linear,
-              useNativeDriver: true,
+              useNativeDriver: SUPPORTS_NATIVE_DRIVER,
             })
           )
         : Animated.loop(
@@ -978,13 +1016,13 @@ const MobileMarkPill = ({
                 toValue: 1,
                 duration: Math.round(duration / 2),
                 easing: Easing.inOut(Easing.ease),
-                useNativeDriver: true,
+                useNativeDriver: SUPPORTS_NATIVE_DRIVER,
               }),
               Animated.timing(progress, {
                 toValue: 0,
                 duration: Math.round(duration / 2),
                 easing: Easing.inOut(Easing.ease),
-                useNativeDriver: true,
+                useNativeDriver: SUPPORTS_NATIVE_DRIVER,
               }),
             ])
           );
@@ -1523,11 +1561,16 @@ const PushInboxCard = ({
 }) => {
   const isBusy = state.status === 'loading';
   const unreadCount = state.items.filter((item) => !item.opened && Boolean(item.deepLink)).length;
+  const actionableCount = state.items.filter((item) => Boolean(item.deepLink)).length;
+  const openedCount = state.items.filter((item) => item.opened).length;
+  const statusTone =
+    state.status === 'error' ? 'clay' : state.status === 'ready' ? 'sage' : 'muted';
 
   const sortedItems = useMemo(() => {
     return [...state.items].sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt));
   }, [state.items]);
   const visibleItems = sortedItems.slice(0, 10);
+  const latestInboxTimestamp = visibleItems[0]?.receivedAt || '';
 
   const renderInboxRow = useCallback(
     ({ item }: { item: PushInboxItem }) => (
@@ -1542,27 +1585,49 @@ const PushInboxCard = ({
   );
 
   return (
-    <ScreenCard accent="sage">
-      <Text style={styles.screenTitle}>Bildirim Kutusu</Text>
-      <Text style={styles.screenBody}>
-        Son gelen bildirimler burada listelenir. Bildirime dokununca otomatik okundu olur.
-      </Text>
-      <Text style={styles.screenMeta}>
-        Toplam: {state.items.length} | Okunmamis link: {unreadCount}
-      </Text>
-      <Text style={styles.screenMeta}>Yenilemek icin sayfayi yukaridan asagi cek.</Text>
-      <Text
-        style={[
-          styles.screenMeta,
-          state.status === 'error'
-            ? styles.ritualStateError
-            : state.status === 'ready'
-              ? styles.ritualStateOk
-              : styles.screenMeta,
+    <>
+      <SectionLeadCard
+        accent="sage"
+        eyebrow="Inbox Relay"
+        title="Bildirim Kutusu"
+        body="Push ve deep-link olaylari burada toplanir. Satira dokununca ilgili akis tetiklenir ve bildirim okunduya alinir."
+        badges={[
+          { label: `${unreadCount} yeni link`, tone: unreadCount > 0 ? 'sage' : 'muted' },
+          { label: `${state.items.length} toplam`, tone: 'muted' },
+          { label: showOpsMeta ? 'ops meta acik' : 'urun gorunumu', tone: showOpsMeta ? 'clay' : 'muted' },
         ]}
-      >
-        {state.message}
-      </Text>
+        metrics={[
+          { label: 'Toplam', value: String(state.items.length) },
+          { label: 'Acilmis', value: String(openedCount) },
+          { label: 'Linkli', value: String(actionableCount) },
+        ]}
+        actions={[
+          {
+            label: isBusy ? 'Kutu Isleniyor...' : 'Kutuyu Temizle',
+            tone: 'neutral',
+            onPress: onClear,
+            disabled: isBusy || state.items.length === 0,
+          },
+        ]}
+      />
+
+      <StatusStrip
+        tone={statusTone}
+        eyebrow="Inbox State"
+        title={
+          state.status === 'error'
+            ? 'Bildirim kutusu sorun yasiyor'
+            : state.status === 'ready'
+              ? 'Inbox akis halinde'
+              : 'Inbox hazirlaniyor'
+        }
+        body={state.message}
+        meta={
+          latestInboxTimestamp
+            ? `Son olay: ${latestInboxTimestamp}`
+            : 'Yenilemek icin sayfayi yukaridan asagi cekebilirsin.'
+        }
+      />
 
       {sortedItems.length === 0 ? (
         <StatePanel
@@ -1586,32 +1651,53 @@ const PushInboxCard = ({
           meta={state.message}
         />
       ) : (
-        <FlatList
-          data={visibleItems}
-          keyExtractor={(item) => item.id}
-          renderItem={renderInboxRow}
-          scrollEnabled={false}
-          initialNumToRender={8}
-          maxToRenderPerBatch={12}
-          windowSize={5}
-          removeClippedSubviews={Platform.OS === 'android'}
-          ItemSeparatorComponent={() => <View style={styles.inboxItemSeparator} />}
-          contentContainerStyle={styles.inboxList}
-        />
+        <>
+          <StatusStrip
+            tone="muted"
+            eyebrow="Interaction"
+            title="Satira dokun, akisa gec"
+            body="Linkli bildirimler ilgili ekran planini acarken, digerleri bildirim kaydini okundu olarak gunceller."
+            meta={
+              showOpsMeta
+                ? 'Ops modu acik: kaynak, tip ve deep-link meta bilgileri satirda gosterilir.'
+                : 'Ops modu kapali: yalnizca urun akis bilgisi gosterilir.'
+            }
+          />
+
+          <ScreenCard accent="sage">
+            <Text style={styles.subSectionLabel}>Son 10 Bildirim</Text>
+            <View style={styles.detailInfoGrid}>
+              <View style={styles.detailInfoCard}>
+                <Text style={styles.detailInfoLabel}>Yeni Link</Text>
+                <Text style={styles.detailInfoValue}>{unreadCount}</Text>
+              </View>
+              <View style={styles.detailInfoCard}>
+                <Text style={styles.detailInfoLabel}>Acilmis</Text>
+                <Text style={styles.detailInfoValue}>{openedCount}</Text>
+              </View>
+              <View style={styles.detailInfoCard}>
+                <Text style={styles.detailInfoLabel}>Linkli</Text>
+                <Text style={styles.detailInfoValue}>{actionableCount}</Text>
+              </View>
+            </View>
+
+            <FlatList
+              data={visibleItems}
+              keyExtractor={(item) => item.id}
+              renderItem={renderInboxRow}
+              scrollEnabled={false}
+              initialNumToRender={8}
+              maxToRenderPerBatch={12}
+              windowSize={5}
+              removeClippedSubviews={Platform.OS === 'android'}
+              ItemSeparatorComponent={() => <View style={styles.inboxItemSeparator} />}
+              contentContainerStyle={styles.inboxList}
+            />
+          </ScreenCard>
+        </>
       )}
 
-      <Pressable
-        style={[styles.retryButton, isBusy || state.items.length === 0 ? styles.claimButtonDisabled : null]}
-        disabled={isBusy || state.items.length === 0}
-        onPress={onClear}
-        hitSlop={PRESSABLE_HIT_SLOP}
-        accessibilityRole="button"
-        accessibilityLabel="Bildirim kutusunu temizle"
-        accessibilityState={{ disabled: isBusy || state.items.length === 0 }}
-      >
-        <Text style={styles.retryText}>Bildirimleri Temizle</Text>
-      </Pressable>
-    </ScreenCard>
+    </>
   );
 };
 
@@ -2364,6 +2450,7 @@ const MovieDetailsModal = ({
   onClose: () => void;
   onOpenCommentComposer?: () => void;
 }) => {
+  useWebModalFocusReset(Boolean(movie));
   if (!movie) return null;
 
   const directorLabel =
@@ -2425,6 +2512,7 @@ const ProfileMovieArchiveModal = ({
   onRefresh: () => void;
   onClose: () => void;
 }) => {
+  useWebModalFocusReset(visible && Boolean(movie));
   if (!visible || !movie) return null;
 
   const posterUri = resolvePosterUrl(movie.posterPath || entries[0]?.posterPath || null);
@@ -2582,6 +2670,7 @@ const PublicProfileMovieArchiveModal = ({
   onRefresh: () => void;
   onClose: () => void;
 }) => {
+  useWebModalFocusReset(visible && Boolean(movie));
   if (!visible || !movie) return null;
 
   const posterUri = resolvePosterUrl(movie.posterPath || items[0]?.posterPath || null);
@@ -2720,85 +2809,186 @@ const RitualDraftCard = ({
 }) => {
   const textLength = draftText.length;
   const canRetryQueue = queueState.pendingCount > 0 && queueState.status !== 'syncing' && isSignedIn;
-
-  const submitToneStyle =
+  const filmTitle = targetMovie?.title || 'Ritual Notu';
+  const genreLabel = String(targetMovie?.genre || '').trim() || 'Tur bekleniyor';
+  const directorLabel =
+    String(targetMovie?.director || '').trim() || 'Yonetmen bilgisi bekleniyor';
+  const yearLabel = targetMovie?.year ? String(targetMovie.year) : '--';
+  const readinessTone =
+    !targetMovie || !isSignedIn
+      ? 'clay'
+      : canSubmit
+        ? 'sage'
+        : submitState.status === 'submitting'
+          ? 'muted'
+          : 'muted';
+  const submitTone =
     submitState.status === 'error'
-      ? styles.ritualStateError
-      : submitState.status === 'queued'
-        ? styles.ritualStateWarn
-        : styles.ritualStateOk;
-
-  const queueToneStyle = queueState.status === 'error' ? styles.ritualStateError : styles.ritualStateOk;
+      ? 'clay'
+      : submitState.status === 'synced'
+        ? 'sage'
+        : submitState.status === 'queued'
+          ? 'clay'
+          : 'muted';
+  const queueTone =
+    queueState.status === 'error'
+      ? 'clay'
+      : queueState.pendingCount > 0
+        ? 'clay'
+        : queueState.status === 'done'
+          ? 'sage'
+          : 'muted';
 
   return (
-    <ScreenCard accent="clay">
-      <Text style={styles.screenTitle}>Ritual Notu</Text>
-      <Text style={styles.screenBody}>
-        Daily listesinden bir filme kisa yorum yaz. Baglanti hatasinda taslak otomatik kuyruga alinir.
-      </Text>
-      <Text style={styles.screenMeta}>Film: {targetMovie?.title || 'Daily data bekleniyor'}</Text>
-      <Text style={styles.screenMeta}>Tur: {targetMovie?.genre || 'unknown'}</Text>
-
-      <TextInput
-        style={styles.ritualInput}
-        multiline
-        textAlignVertical="top"
-        placeholder="Ritual notlari..."
-        placeholderTextColor="#8e8b84"
-        value={draftText}
-        maxLength={180}
-        onChangeText={onDraftTextChange}
-        editable={targetMovie !== null && submitState.status !== 'submitting'}
-        accessibilityLabel="Ritual notu giris alani"
+    <>
+      <SectionLeadCard
+        accent="clay"
+        eyebrow="Ritual Studio"
+        title={filmTitle}
+        body="Daily listesinden bir filme kisa, net ve tekrar okunabilir bir not birak. Baglanti kopsa bile taslak kuyrukta korunur."
+        badges={[
+          { label: genreLabel, tone: 'muted' },
+          {
+            label: isSignedIn ? 'session ready' : 'session gerekli',
+            tone: isSignedIn ? 'sage' : 'clay',
+          },
+          {
+            label: queueState.pendingCount > 0 ? `${queueState.pendingCount} kuyruk` : 'kuyruk temiz',
+            tone: queueState.pendingCount > 0 ? 'clay' : 'sage',
+          },
+        ]}
+        metrics={[
+          { label: 'Karakter', value: `${textLength}/180` },
+          { label: 'Yil', value: yearLabel },
+          { label: 'Yonetmen', value: directorLabel !== 'Yonetmen bilgisi bekleniyor' ? 'hazir' : '--' },
+        ]}
       />
 
-      <View style={styles.ritualMetaRow}>
-        <Text style={styles.screenMeta}>{textLength}/180</Text>
-        <Text style={styles.screenMeta}>Bekleyen kuyruk: {queueState.pendingCount}</Text>
-      </View>
+      <StatusStrip
+        tone={readinessTone}
+        eyebrow="Composer State"
+        title={
+          !targetMovie
+            ? 'Once bir daily filmi sec'
+            : !isSignedIn
+              ? 'Ritual kaydi icin oturum ac'
+              : canSubmit
+                ? 'Yorum gonderime hazir'
+                : 'Taslagini sekillendir'
+        }
+        body={
+          !targetMovie
+            ? 'Film secimi yapildiginda ritual composer ilgili baslik ve metadata ile dolar.'
+            : !isSignedIn
+              ? 'Yorumu yazabilirsin ama gonderim ve kuyruk tekrar denemesi icin mobil session gerekir.'
+              : canSubmit
+                ? 'Notun hazirsa kaydet; baglanti sorunu olursa otomatik olarak kuyrukta tutulur.'
+                : 'Birkaç net cümle ile filmin sende biraktigi izi toparla, sonra kaydet.'
+        }
+        meta={targetMovie ? `${genreLabel}${yearLabel !== '--' ? ` | ${yearLabel}` : ''}` : undefined}
+      />
 
-      {!isSignedIn ? (
-        <Text style={[styles.screenMeta, styles.ritualStateWarn]}>
-          Ritual gonderimi icin once Session kartindan giris yap.
-        </Text>
-      ) : null}
+      <ScreenCard accent="clay">
+        <Text style={styles.subSectionLabel}>Film Brifi</Text>
+        <View style={styles.detailInfoGrid}>
+          <View style={styles.detailInfoCard}>
+            <Text style={styles.detailInfoLabel}>Film</Text>
+            <Text style={styles.detailInfoValue}>{filmTitle}</Text>
+          </View>
+          <View style={styles.detailInfoCard}>
+            <Text style={styles.detailInfoLabel}>Tur</Text>
+            <Text style={styles.detailInfoValue}>{genreLabel}</Text>
+          </View>
+          <View style={styles.detailInfoCard}>
+            <Text style={styles.detailInfoLabel}>Yonetmen</Text>
+            <Text style={styles.detailInfoValue}>{directorLabel}</Text>
+          </View>
+        </View>
 
-      {submitState.message ? <Text style={[styles.screenMeta, submitToneStyle]}>{submitState.message}</Text> : null}
-      {queueState.message ? <Text style={[styles.screenMeta, queueToneStyle]}>{queueState.message}</Text> : null}
+        <TextInput
+          style={styles.ritualInput}
+          multiline
+          textAlignVertical="top"
+          placeholder="Ritual notlari..."
+          placeholderTextColor="#8e8b84"
+          value={draftText}
+          maxLength={180}
+          onChangeText={onDraftTextChange}
+          editable={targetMovie !== null && submitState.status !== 'submitting'}
+          accessibilityLabel="Ritual notu giris alani"
+        />
 
-      <View style={styles.ritualActionRow}>
-        <Pressable
-          style={[
-            styles.claimButton,
-            submitState.status === 'submitting' || !canSubmit ? styles.claimButtonDisabled : null,
-          ]}
-          disabled={submitState.status === 'submitting' || !canSubmit}
-          onPress={onSubmit}
-          hitSlop={PRESSABLE_HIT_SLOP}
-          accessibilityRole="button"
-          accessibilityLabel={submitState.status === 'submitting' ? 'Ritual gonderiliyor' : 'Ritual kaydet'}
-          accessibilityState={{ disabled: submitState.status === 'submitting' || !canSubmit }}
-        >
-          <Text style={styles.claimButtonText}>
-            {submitState.status === 'submitting' ? 'Gonderiliyor...' : 'Ritual Kaydet'}
-          </Text>
-        </Pressable>
+        <View style={styles.ritualMetaRow}>
+          <Text style={styles.screenMeta}>{textLength}/180</Text>
+          <Text style={styles.screenMeta}>Bekleyen kuyruk: {queueState.pendingCount}</Text>
+        </View>
 
-        <Pressable
-          style={[styles.retryButton, !canRetryQueue ? styles.claimButtonDisabled : null]}
-          disabled={!canRetryQueue}
-          onPress={onFlushQueue}
-          hitSlop={PRESSABLE_HIT_SLOP}
-          accessibilityRole="button"
-          accessibilityLabel="Kuyrugu tekrar dene"
-          accessibilityState={{ disabled: !canRetryQueue }}
-        >
-          <Text style={styles.retryText}>
-            {queueState.status === 'syncing' ? 'Kuyruk Senkron...' : 'Kuyrugu Tekrar Dene'}
-          </Text>
-        </Pressable>
-      </View>
-    </ScreenCard>
+        {submitState.message ? (
+          <StatusStrip
+            tone={submitTone}
+            eyebrow="Submit State"
+            title={
+              submitState.status === 'synced'
+                ? 'Ritual clouda gitti'
+                : submitState.status === 'queued'
+                  ? 'Taslak kuyruga alindi'
+                  : submitState.status === 'error'
+                    ? 'Ritual gonderimi durdu'
+                    : submitState.status === 'submitting'
+                      ? 'Ritual gonderiliyor'
+                      : 'Taslak beklemede'
+            }
+            body={submitState.message}
+            meta={
+              submitState.status === 'queued'
+                ? 'Baglanti geri geldiginde kuyruktan tekrar denenebilir.'
+                : submitState.status === 'synced'
+                  ? 'Yeni yorum sosyal akis ve profil arsivine yansir.'
+                  : undefined
+            }
+          />
+        ) : null}
+
+        {queueState.message ? (
+          <StatusStrip
+            tone={queueTone}
+            eyebrow="Queue State"
+            title={
+              queueState.status === 'syncing'
+                ? 'Kuyruk tekrar deneniyor'
+                : queueState.status === 'done'
+                  ? 'Kuyruk temizlendi'
+                  : queueState.status === 'error'
+                    ? 'Kuyrukta bekleyen taslak var'
+                    : 'Kuyruk beklemede'
+            }
+            body={queueState.message}
+            meta={
+              queueState.pendingCount > 0
+                ? `${queueState.pendingCount} taslak hala bekliyor.`
+                : 'Bekleyen kuyruk yok.'
+            }
+          />
+        ) : null}
+
+        <View style={styles.sectionLeadActionRow}>
+          <UiButton
+            label={submitState.status === 'submitting' ? 'Gonderiliyor...' : 'Ritual Kaydet'}
+            tone="brand"
+            stretch
+            onPress={onSubmit}
+            disabled={submitState.status === 'submitting' || !canSubmit}
+          />
+          <UiButton
+            label={queueState.status === 'syncing' ? 'Kuyruk Senkron...' : 'Kuyrugu Tekrar Dene'}
+            tone="neutral"
+            stretch
+            onPress={onFlushQueue}
+            disabled={!canRetryQueue}
+          />
+        </View>
+      </ScreenCard>
+    </>
   );
 };
 
@@ -2857,6 +3047,7 @@ const RitualComposerModal = ({
   onFlushQueue: () => void;
   onClose: () => void;
 }) => {
+  useWebModalFocusReset(visible && Boolean(targetMovie));
   if (!visible || !targetMovie) return null;
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -2950,6 +3141,7 @@ const MobileSettingsModal = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'identity' | 'appearance' | 'session'>('identity');
   const [confirmLogout, setConfirmLogout] = useState(false);
+  useWebModalFocusReset(visible);
 
   useEffect(() => {
     if (!visible) return;
@@ -3925,33 +4117,38 @@ const ArenaChallengeCard = ({
   ritualsLabel: string;
   onOpenDaily: () => void;
 }) => (
-  <ScreenCard accent="clay">
-    <Text style={styles.screenTitle}>Arena Ozeti</Text>
-    <Text style={styles.screenBody}>
-      Haftalik challenge akisina hizli giris. Gunluk ritual ritmi Arena puanina dogrudan yansir.
-    </Text>
-    <View style={styles.arenaMetricGrid}>
-      <View style={styles.arenaMetricCard}>
-        <Text style={styles.arenaMetricValue}>{streakLabel}</Text>
-        <Text style={styles.arenaMetricLabel}>Seri</Text>
-      </View>
-      <View style={styles.arenaMetricCard}>
-        <Text style={styles.arenaMetricValue}>{ritualsLabel}</Text>
-        <Text style={styles.arenaMetricLabel}>Ritual</Text>
-      </View>
-      <View style={styles.arenaMetricCard}>
-        <Text style={styles.arenaMetricValue}>Haftalik</Text>
-        <Text style={styles.arenaMetricLabel}>Challenge</Text>
-      </View>
-    </View>
-    <Text style={styles.screenMeta}>Haftalik leaderboard ve profil gecisleri asagidaki kartta.</Text>
-    <UiButton
-      label="Gunluk Akisa Gec"
-      tone="brand"
-      onPress={onOpenDaily}
-      accessibilityLabel="Gunluk akis sekmesine git"
+  <>
+    <SectionLeadCard
+      accent="clay"
+      eyebrow="Arena Pulse"
+      title="Haftalik challenge nabzi"
+      body="Gunluk ritual ritmi, aktif seri ve yorum akisi Arena tablosundaki yerini belirler."
+      badges={[
+        { label: `Seri ${streakLabel}`, tone: 'sage' },
+        { label: `Ritual ${ritualsLabel}`, tone: 'muted' },
+        { label: 'haftalik tempo', tone: 'clay' },
+      ]}
+      metrics={[
+        { label: 'Seri', value: streakLabel },
+        { label: 'Ritual', value: ritualsLabel },
+        { label: 'Mod', value: 'Haftalik' },
+      ]}
+      actions={[
+        {
+          label: 'Gunluk Akisa Gec',
+          tone: 'brand',
+          onPress: onOpenDaily,
+        },
+      ]}
     />
-  </ScreenCard>
+    <StatusStrip
+      tone="clay"
+      eyebrow="Arena Rhythm"
+      title="Challenge skoru gunluk ritimden beslenir"
+      body="Bugunku yorumunu birak, yorum akisinda echo al ve haftalik leaderboarddaki ivmeni koru."
+      meta="Canli ya da fallback siralama asagidaki leaderboard kartinda guncellenir."
+    />
+  </>
 );
 
 const ArenaLeaderboardCard = ({
@@ -4322,20 +4519,41 @@ const PlatformRulesCard = () => {
   ];
 
   return (
-    <ScreenCard accent="sage">
-      <Text style={styles.screenTitle}>Platform Kurallari</Text>
-      <Text style={styles.screenBody}>
-        Webdeki manifesto ve kural diliyle ayni cekirdek prensipler mobile de gecerli.
-      </Text>
-      <View style={styles.rulesList}>
-        {rules.map((rule, index) => (
-          <View key={`rule-${index}`} style={styles.rulesRow}>
-            <View style={styles.rulesDot} />
-            <Text style={styles.rulesText}>{rule}</Text>
-          </View>
-        ))}
-      </View>
-    </ScreenCard>
+    <>
+      <SectionLeadCard
+        accent="sage"
+        eyebrow="Policy Layer"
+        title="Platform Kurallari"
+        body="Webdeki manifesto ve topluluk cizgisi mobile de ayni cekirdek prensiplerle isler."
+        badges={[
+          { label: `${rules.length} ilke`, tone: 'sage' },
+          { label: 'manifesto parity', tone: 'muted' },
+        ]}
+        metrics={[
+          { label: 'Yorum', value: 'Net' },
+          { label: 'Moderasyon', value: 'Aktif' },
+          { label: 'Kod', value: 'Koruma' },
+        ]}
+      />
+      <StatusStrip
+        tone="muted"
+        eyebrow="Enforcement"
+        title="Topluluk cizgisi net"
+        body="Spam, toksik dil ve davet sistemi kotuye kullanimi tek bir ilke seti altinda ele alinir."
+        meta="Mobil ve web ayni davranis sinirlarini tasir."
+      />
+      <ScreenCard accent="sage">
+        <Text style={styles.subSectionLabel}>Cekirdek Prensipler</Text>
+        <View style={styles.rulesList}>
+          {rules.map((rule, index) => (
+            <View key={`rule-${index}`} style={styles.rulesRow}>
+              <View style={styles.rulesDot} />
+              <Text style={styles.rulesText}>{rule}</Text>
+            </View>
+          ))}
+        </View>
+      </ScreenCard>
+    </>
   );
 };
 

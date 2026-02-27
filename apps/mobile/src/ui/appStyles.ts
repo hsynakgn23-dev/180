@@ -1,5 +1,52 @@
 ﻿import { StyleSheet } from 'react-native';
 
+import { Platform } from 'react-native';
+
+const toRgba = (color: string, opacity: number): string => {
+  const normalized = String(color || '').trim();
+  if (!normalized) return `rgba(0, 0, 0, ${opacity})`;
+  if (normalized.startsWith('rgba(') || normalized.startsWith('rgb(')) return normalized;
+
+  const hex = normalized.replace(/^#/, '');
+  if (hex.length !== 3 && hex.length !== 6) return normalized;
+  const expanded =
+    hex.length === 3 ? hex.split('').map((part) => `${part}${part}`).join('') : hex;
+  const red = Number.parseInt(expanded.slice(0, 2), 16);
+  const green = Number.parseInt(expanded.slice(2, 4), 16);
+  const blue = Number.parseInt(expanded.slice(4, 6), 16);
+  return `rgba(${red}, ${green}, ${blue}, ${opacity})`;
+};
+
+const buildViewShadow = (input: {
+  color: string;
+  opacity: number;
+  radius: number;
+  offsetY: number;
+  elevation: number;
+}): Record<string, unknown> =>
+  Platform.OS === 'web'
+    ? {
+        boxShadow: `0px ${input.offsetY}px ${input.radius}px ${toRgba(input.color, input.opacity)}`,
+      }
+    : {
+        shadowColor: input.color,
+        shadowOpacity: input.opacity,
+        shadowRadius: input.radius,
+        shadowOffset: { width: 0, height: input.offsetY },
+        elevation: input.elevation,
+      };
+
+const buildTextShadow = (input: { color: string; radius: number }): Record<string, unknown> =>
+  Platform.OS === 'web'
+    ? {
+        textShadow: `0px 0px ${input.radius}px ${input.color}`,
+      }
+    : {
+        textShadowColor: input.color,
+        textShadowOffset: { width: 0, height: 0 },
+        textShadowRadius: input.radius,
+      };
+
 export const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -81,11 +128,7 @@ export const styles = StyleSheet.create({
     paddingVertical: 24,
     gap: 8,
     overflow: 'hidden',
-    shadowColor: '#121212',
-    shadowOpacity: 0.6,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 8,
+    ...buildViewShadow({ color: '#121212', opacity: 0.6, radius: 24, offsetY: 12, elevation: 8 }),
   },
   heroAccent: {
     position: 'absolute',
@@ -224,11 +267,7 @@ export const styles = StyleSheet.create({
     height: 84,
     paddingBottom: 12,
     paddingTop: 10,
-    shadowColor: '#121212',
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 8,
+    ...buildViewShadow({ color: '#121212', opacity: 0.5, radius: 20, offsetY: 10, elevation: 8 }),
   },
   navTabLabel: {
     fontSize: 10,
@@ -380,11 +419,7 @@ export const styles = StyleSheet.create({
     borderRadius: 24,
     padding: 20,
     gap: 14,
-    shadowColor: '#121212',
-    shadowOpacity: 0.4,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 6,
+    ...buildViewShadow({ color: '#121212', opacity: 0.4, radius: 20, offsetY: 10, elevation: 6 }),
   },
   screenCardAccent: {
     width: 48,
@@ -1162,11 +1197,7 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
     justifyContent: 'center',
-    shadowColor: '#8A9A5B',
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    ...buildViewShadow({ color: '#8A9A5B', opacity: 0.15, radius: 10, offsetY: 4, elevation: 4 }),
   },
   retryText: {
     color: '#E5E4E2',
@@ -1248,11 +1279,7 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 12,
     justifyContent: 'center',
-    shadowColor: '#8A9A5B',
-    shadowOpacity: 0.2,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 5,
+    ...buildViewShadow({ color: '#8A9A5B', opacity: 0.2, radius: 14, offsetY: 4, elevation: 5 }),
   },
   claimButtonDisabled: {
     opacity: 0.7,
@@ -1444,21 +1471,13 @@ export const styles = StyleSheet.create({
   },
   themeModeSegmentActiveMidnight: {
     backgroundColor: 'rgba(31, 31, 31, 0.9)',
-    shadowColor: '#121212',
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    ...buildViewShadow({ color: '#121212', opacity: 0.3, radius: 8, offsetY: 4, elevation: 4 }),
     borderColor: '#8A9A5B',
     borderWidth: 1,
   },
   themeModeSegmentActiveDawn: {
     backgroundColor: 'rgba(165, 113, 100, 0.9)', // Clay accent for Dawn
-    shadowColor: '#121212',
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    ...buildViewShadow({ color: '#121212', opacity: 0.4, radius: 8, offsetY: 4, elevation: 4 }),
     borderColor: 'rgba(255, 255, 255, 0.4)',
     borderWidth: 1,
   },
@@ -1828,11 +1847,7 @@ export const styles = StyleSheet.create({
   },
   markPillGlyphFeatured: {
     backgroundColor: '#d9e2bf',
-    shadowColor: '#8A9A5B',
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 4,
+    ...buildViewShadow({ color: '#8A9A5B', opacity: 0.5, radius: 8, offsetY: 0, elevation: 4 }),
   },
   markPillText: {
     color: '#E5E4E2',
@@ -1846,20 +1861,14 @@ export const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 16,
     paddingVertical: 8,
-    shadowColor: '#8A9A5B',
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    ...buildViewShadow({ color: '#8A9A5B', opacity: 0.4, radius: 12, offsetY: 4, elevation: 6 }),
   },
   markPillFeaturedText: {
     color: '#d9e2bf',
     fontSize: 13,
     fontFamily: 'Inter_600SemiBold',
     fontWeight: '600',
-    textShadowColor: 'rgba(138, 154, 91, 0.4)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 8,
+    ...buildTextShadow({ color: 'rgba(138, 154, 91, 0.4)', radius: 8 }),
   },
 
   /* Daily Features Classes */

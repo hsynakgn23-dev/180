@@ -1,4 +1,4 @@
-import { isSupabaseLive, supabase } from './supabase';
+import { isSupabaseLive, readSupabaseSessionSafe, supabase } from './supabase';
 
 type SupabaseErrorLike = {
   code?: string | null;
@@ -48,8 +48,8 @@ const normalizeErrorMessage = (error: SupabaseErrorLike | null | undefined): str
 
 const readViewerUserId = async (): Promise<string | null> => {
   if (!isSupabaseLive() || !supabase) return null;
-  const { data } = await supabase.auth.getSession();
-  return normalizeText(data.session?.user?.id, 120) || null;
+  const sessionResult = await readSupabaseSessionSafe();
+  return normalizeText(sessionResult.session?.user?.id, 120) || null;
 };
 
 const readFollowExists = async (

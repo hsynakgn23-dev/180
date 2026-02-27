@@ -232,7 +232,6 @@ const hydrateArenaEntryUserIds = async (
 
 type ProfileAvatarRow = {
   user_id?: string | null;
-  avatar_url?: string | null;
   xp_state?: unknown;
 };
 
@@ -244,16 +243,12 @@ const readAvatarRowsByUserIds = async (userIds: string[]): Promise<ProfileAvatar
   );
   if (normalizedUserIds.length === 0) return [];
 
-  const variants = ['user_id,avatar_url,xp_state', 'user_id,xp_state'] as const;
-  for (const select of variants) {
-    const { data, error } = await supabase.from('profiles').select(select).in('user_id', normalizedUserIds);
-    if (error) {
-      if (isSupabaseCapabilityError(error)) continue;
-      return [];
-    }
-    return Array.isArray(data) ? (data as ProfileAvatarRow[]) : [];
-  }
-  return [];
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('user_id,xp_state')
+    .in('user_id', normalizedUserIds);
+  if (error) return [];
+  return Array.isArray(data) ? (data as ProfileAvatarRow[]) : [];
 };
 
 const hydrateArenaEntryAvatars = async (
@@ -269,7 +264,7 @@ const hydrateArenaEntryAvatars = async (
   for (const row of avatarRows) {
     const userId = normalizeText(row.user_id, 120);
     if (!userId || avatarMap.has(userId)) continue;
-    const avatarUrl = normalizeAvatarUrl(row.avatar_url) || resolveAvatarFromXpState(row.xp_state);
+    const avatarUrl = resolveAvatarFromXpState(row.xp_state);
     if (!avatarUrl) continue;
     avatarMap.set(userId, avatarUrl);
   }

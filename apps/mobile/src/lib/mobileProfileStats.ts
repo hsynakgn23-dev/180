@@ -1,4 +1,4 @@
-import { isSupabaseLive, supabase } from './supabase';
+import { isSupabaseLive, readSupabaseSessionSafe, supabase } from './supabase';
 import {
   resolveMobileLeagueInfoFromXp,
   resolveMobileNextLeagueKey,
@@ -269,9 +269,9 @@ export const fetchMobileProfileStats = async (): Promise<MobileProfileStatsResul
     };
   }
 
-  const { data: sessionData } = await supabase.auth.getSession();
-  const userId = normalizeText(sessionData.session?.user?.id, 80);
-  const userEmail = normalizeText(sessionData.session?.user?.email, 160);
+  const sessionResult = await readSupabaseSessionSafe();
+  const userId = normalizeText(sessionResult.session?.user?.id, 80);
+  const userEmail = normalizeText(sessionResult.session?.user?.email, 160);
   if (!userId) {
     return {
       ok: false,

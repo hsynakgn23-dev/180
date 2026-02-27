@@ -270,7 +270,7 @@ const readDailyFromSupabase = async (
   try {
     const { data: byDateData } = await supabase
       .from('daily_showcase')
-      .select('date,source,movies')
+      .select('date,movies')
       .eq('date', targetDate)
       .maybeSingle();
     const parsed = parseRow((byDateData || null) as DailyShowcaseRow | null);
@@ -290,7 +290,7 @@ const readDailyFromSupabase = async (
   try {
     const { data: latestRows } = await supabase
       .from('daily_showcase')
-      .select('date,source,movies')
+      .select('date,movies')
       .order('date', { ascending: false })
       .limit(1);
     const latestRow =

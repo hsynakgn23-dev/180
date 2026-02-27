@@ -1,4 +1,4 @@
-import { isSupabaseLive, supabase } from './supabase';
+import { isSupabaseLive, readSupabaseSessionSafe, supabase } from './supabase';
 import { resolveUserIdsByAuthorNames, toAuthorIdentityKey } from './mobileAuthorUserMap';
 import {
   normalizeMobileLeagueKey,
@@ -280,7 +280,6 @@ const hydrateMissingUserIds = async (items: RitualLiteItem[]): Promise<RitualLit
 
 type ProfileAvatarRow = {
   user_id?: string | null;
-  avatar_url?: string | null;
   xp_state?: unknown;
 };
 
@@ -292,16 +291,12 @@ const readAvatarRowsByUserIds = async (userIds: string[]): Promise<ProfileAvatar
   );
   if (normalizedUserIds.length === 0) return [];
 
-  const variants = ['user_id,avatar_url,xp_state', 'user_id,xp_state'] as const;
-  for (const select of variants) {
-    const { data, error } = await supabase.from('profiles').select(select).in('user_id', normalizedUserIds);
-    if (error) {
-      if (isSupabaseCapabilityError(error)) continue;
-      return [];
-    }
-    return Array.isArray(data) ? (data as ProfileAvatarRow[]) : [];
-  }
-  return [];
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('user_id,xp_state')
+    .in('user_id', normalizedUserIds);
+  if (error) return [];
+  return Array.isArray(data) ? (data as ProfileAvatarRow[]) : [];
 };
 
 const hydrateAuthorAvatars = async (items: RitualLiteItem[]): Promise<RitualLiteItem[]> => {
@@ -324,7 +319,7 @@ const hydrateAuthorAvatars = async (items: RitualLiteItem[]): Promise<RitualLite
     }
 
     if (!avatarMap.has(userId)) {
-      const avatarUrl = normalizeAvatarUrl(row.avatar_url) || resolveAvatarFromXpState(row.xp_state);
+      const avatarUrl = resolveAvatarFromXpState(row.xp_state);
       if (avatarUrl) {
         avatarMap.set(userId, avatarUrl);
       }
@@ -557,9 +552,9 @@ const toFeedItem = (
 const readFallbackFromXpState = async (): Promise<MobileCommentFeedItem[]> => {
   if (!supabase) return [];
 
-  const { data: sessionData } = await supabase.auth.getSession();
-  const userId = normalizeText(sessionData.session?.user?.id, 80);
-  const userEmail = normalizeText(sessionData.session?.user?.email, 160);
+  const sessionResult = await readSupabaseSessionSafe();
+  const userId = normalizeText(sessionResult.session?.user?.id, 80);
+  const userEmail = normalizeText(sessionResult.session?.user?.email, 160);
   if (!userId) return [];
 
   const { data: profileData, error } = await supabase
@@ -658,8 +653,8 @@ export const fetchMobileCommentFeed = async (
     };
   }
 
-  const { data: sessionData } = await supabase.auth.getSession();
-  const currentUserId = normalizeText(sessionData.session?.user?.id, 80);
+  const sessionResult = await readSupabaseSessionSafe();
+  const currentUserId = normalizeText(sessionResult.session?.user?.id, 80);
 
   const feedFetch = await fetchRitualRows({
     page,

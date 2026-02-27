@@ -1,4 +1,4 @@
-import { isSupabaseLive, supabase } from './supabase';
+import { isSupabaseLive, readSupabaseSessionSafe, supabase } from './supabase';
 
 type SupabaseErrorLike = {
   code?: string | null;
@@ -103,9 +103,9 @@ const readSessionIdentity = async (): Promise<
     };
   }
 
-  const { data } = await supabase.auth.getSession();
-  const userId = normalizeText(data.session?.user?.id, 120);
-  const userEmail = normalizeText(data.session?.user?.email, 220);
+  const sessionResult = await readSupabaseSessionSafe();
+  const userId = normalizeText(sessionResult.session?.user?.id, 120);
+  const userEmail = normalizeText(sessionResult.session?.user?.email, 220);
   if (!userId) {
     return {
       ok: false,

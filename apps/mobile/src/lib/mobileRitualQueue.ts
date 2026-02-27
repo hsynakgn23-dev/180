@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { isSupabaseLive, supabase } from './supabase';
+import { isSupabaseLive, readSupabaseSessionSafe, supabase } from './supabase';
 
 type SupabaseErrorLike = {
   code?: string | null;
@@ -176,10 +176,10 @@ const writeQueue = async (queue: QueuedRitualDraft[]): Promise<void> => {
 const getSessionIdentity = async (): Promise<SessionIdentity | null> => {
   if (!isSupabaseLive() || !supabase) return null;
   try {
-    const { data } = await supabase.auth.getSession();
-    const userId = normalizeText(data.session?.user?.id, 80);
+    const sessionResult = await readSupabaseSessionSafe();
+    const userId = normalizeText(sessionResult.session?.user?.id, 80);
     if (!userId) return null;
-    const emailPrefix = normalizeText(String(data.session?.user?.email || '').split('@')[0], 80);
+    const emailPrefix = normalizeText(String(sessionResult.session?.user?.email || '').split('@')[0], 80);
     return {
       userId,
       author: emailPrefix || 'Observer',

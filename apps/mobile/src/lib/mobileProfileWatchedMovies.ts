@@ -1,4 +1,4 @@
-import { isSupabaseLive, supabase } from './supabase';
+import { isSupabaseLive, readSupabaseSessionSafe, supabase } from './supabase';
 
 type SupabaseErrorLike = {
   code?: string | null;
@@ -134,8 +134,8 @@ export const fetchMobileProfileWatchedMovies = async ({
   const normalizedLimit = Math.max(6, Math.min(80, Math.floor(Number(limit) || 24)));
   const queryLimit = Math.max(30, Math.min(320, normalizedLimit * 4));
 
-  const { data: sessionData } = await supabase.auth.getSession();
-  const userId = normalizeText(sessionData.session?.user?.id, 120);
+  const sessionResult = await readSupabaseSessionSafe();
+  const userId = normalizeText(sessionResult.session?.user?.id, 120);
   if (!userId) {
     return {
       ok: false,

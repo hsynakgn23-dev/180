@@ -104,7 +104,7 @@ import {
   claimMobileShareReward,
   MOBILE_SHARE_REWARD_XP,
 } from './src/lib/mobileShareRewardSync';
-import { isSupabaseConfigured, supabase } from './src/lib/supabase';
+import { isSupabaseConfigured, readSupabaseSessionSafe, supabase } from './src/lib/supabase';
 import { UiButton } from './src/ui/primitives';
 import { styles } from './src/ui/appStyles';
 import {
@@ -121,6 +121,7 @@ import {
   type RitualSubmitState,
 } from './src/ui/appTypes';
 import {
+  ArenaChallengeCard,
   ArenaLeaderboardCard,
   AuthCard,
   CollapsibleSectionCard,
@@ -166,7 +167,7 @@ const INTERNAL_OPS_VISIBLE =
 const MOBILE_DEEP_LINK_BASE = 'absolutecinema://open';
 const MOBILE_AUTH_REDIRECT_TO =
   String(process.env.EXPO_PUBLIC_AUTH_REDIRECT_TO || '').trim() || MOBILE_DEEP_LINK_BASE;
-const MOBILE_UI_PACKAGE_LABEL = 'UI Package 6.41';
+const MOBILE_UI_PACKAGE_LABEL = 'UI Package 6.42';
 const MOBILE_PROFILE_IDENTITY_STORAGE_KEY = 'ac_mobile_profile_identity_v1';
 const MOBILE_PROFILE_LANGUAGE_STORAGE_KEY = 'ac_mobile_profile_language_v1';
 
@@ -638,9 +639,9 @@ export default function App() {
     }
 
     try {
-      const { data } = await supabase.auth.getSession();
-      const userEmail = String(data.session?.user?.email || '').trim();
-      if (data.session?.access_token && userEmail) {
+      const sessionResult = await readSupabaseSessionSafe();
+      const userEmail = String(sessionResult.session?.user?.email || '').trim();
+      if (sessionResult.session?.access_token && userEmail) {
         setAuthState({
           status: 'signed_in',
           message: 'Mobil oturum hazir.',
@@ -649,9 +650,19 @@ export default function App() {
         return;
       }
 
+      if (sessionResult.error) {
+        setAuthState({
+          status: 'error',
+          message: sessionResult.error.message,
+        });
+        return;
+      }
+
       setAuthState({
         status: 'signed_out',
-        message: 'Giris yapilmadi.',
+        message: sessionResult.clearedInvalidSession
+          ? 'Eski Supabase oturumu temizlendi. Tekrar giris yapabilirsin.'
+          : 'Giris yapilmadi.',
       });
     } catch (error) {
       setAuthState({
@@ -738,8 +749,8 @@ export default function App() {
     }
 
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const userId = String(sessionData.session?.user?.id || '').trim();
+      const sessionResult = await readSupabaseSessionSafe();
+      const userId = String(sessionResult.session?.user?.id || '').trim();
       if (!userId) {
         setProfileGenreDistribution([]);
         return;
@@ -1942,8 +1953,8 @@ export default function App() {
         return;
       }
 
-      const { data } = await supabase.auth.getSession();
-      const email = String(data.session?.user?.email || authEmail).trim().toLowerCase();
+      const sessionResult = await readSupabaseSessionSafe();
+      const email = String(sessionResult.session?.user?.email || authEmail).trim().toLowerCase();
       setAuthPassword('');
       setAuthConfirmPassword('');
       setAuthFlowMode('login');
@@ -2188,7 +2199,7 @@ export default function App() {
       }
 
       const email = supabase
-        ? String((await supabase.auth.getSession()).data.session?.user?.email || '').trim().toLowerCase()
+        ? String((await readSupabaseSessionSafe()).session?.user?.email || '').trim().toLowerCase()
         : '';
 
       if (callbackResult.recoveryMode) {
@@ -3918,8 +3929,11 @@ export default function App() {
     <SafeAreaProvider>
       <SafeAreaView style={[styles.safeArea, isDawnTheme ? styles.safeAreaDawn : null]}>
         <View
-          pointerEvents="none"
-          style={[styles.backdropLayer, isDawnTheme ? styles.backdropLayerDawn : null]}
+          style={[
+            styles.backdropLayer,
+            { pointerEvents: 'none' },
+            isDawnTheme ? styles.backdropLayerDawn : null,
+          ]}
         />
         <LeaguePromotionModal
           event={leaguePromotionEvent}
@@ -4129,6 +4143,11 @@ export default function App() {
                         <Text style={styles.sectionHeaderMeta}>Haftalik siralama</Text>
                       </View>
                     </View>
+                    <ArenaChallengeCard
+                      streakLabel={streakSummary}
+                      ritualsLabel={ritualsCountSummary}
+                      onOpenDaily={handleOpenDailyFromExplore}
+                    />
                     <ArenaLeaderboardCard
                       state={arenaState}
                       onRefresh={() => {

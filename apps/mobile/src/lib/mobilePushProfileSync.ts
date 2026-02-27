@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
-import { isSupabaseLive, supabase } from './supabase';
+import { isSupabaseLive, readSupabaseSessionSafe, supabase } from './supabase';
 
 type SupabaseErrorLike = {
   code?: string | null;
@@ -205,8 +205,8 @@ export const syncPushTokenToProfileState = async (
     };
   }
 
-  const { data: sessionData } = await supabase.auth.getSession();
-  const userId = normalizeText(sessionData.session?.user?.id, 80);
+  const sessionResult = await readSupabaseSessionSafe();
+  const userId = normalizeText(sessionResult.session?.user?.id, 80);
   if (!userId) {
     return {
       ok: false,
@@ -215,7 +215,7 @@ export const syncPushTokenToProfileState = async (
     };
   }
 
-  const userEmail = normalizeText(sessionData.session?.user?.email, 200);
+  const userEmail = normalizeText(sessionResult.session?.user?.email, 200);
   const deviceKey = await getPushDeviceKey();
   const syncedAt = new Date().toISOString();
 

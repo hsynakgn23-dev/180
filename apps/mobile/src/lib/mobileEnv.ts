@@ -28,6 +28,74 @@ const normalizeUrl = (url: URL): string => {
   return `${url.origin}${path}`;
 };
 
+const readBrowserLocation = (): URL | null => {
+  const maybeLocation = (globalThis as { location?: { href?: string } }).location;
+  const href = normalizeText(maybeLocation?.href, 1200);
+  if (!href) return null;
+  try {
+    return new URL(href);
+  } catch {
+    return null;
+  }
+};
+
+const isLoopbackHostname = (value: string): boolean => {
+  const normalized = normalizeText(value, 120).toLowerCase();
+  return normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '[::1]';
+};
+
+const isEmulatorHostname = (value: string): boolean => {
+  const normalized = normalizeText(value, 120).toLowerCase();
+  return normalized === '10.0.2.2' || normalized === '10.0.3.2';
+};
+
+const adaptBaseUrlForBrowser = (value: unknown): string => {
+  const parsed = parseAbsoluteHttpUrl(value);
+  if (!parsed) return '';
+
+  const browserLocation = readBrowserLocation();
+  if (!browserLocation) return normalizeUrl(parsed);
+
+  const browserHostname = normalizeText(browserLocation.hostname, 120).toLowerCase();
+  const targetHostname = normalizeText(parsed.hostname, 120).toLowerCase();
+  if (!isLoopbackHostname(browserHostname)) return normalizeUrl(parsed);
+  if (!isLoopbackHostname(targetHostname) && !isEmulatorHostname(targetHostname)) {
+    return normalizeUrl(parsed);
+  }
+
+  parsed.protocol = browserLocation.protocol;
+  parsed.hostname = browserLocation.hostname;
+  return normalizeUrl(parsed);
+};
+
+const resolveBrowserDevApiBase = (env: MobileEnvRecord): string => {
+  const browserLocation = readBrowserLocation();
+  if (!browserLocation || !isLoopbackHostname(browserLocation.hostname)) return '';
+
+  const candidates = [
+    readEnv(env, 'EXPO_PUBLIC_WEB_BASE_URL'),
+    readEnv(env, 'EXPO_PUBLIC_WEB_APP_URL'),
+    readEnv(env, 'EXPO_PUBLIC_REFERRAL_API_BASE'),
+    deriveOriginFromEndpoint(readEnv(env, 'EXPO_PUBLIC_ANALYTICS_ENDPOINT'), '/api/analytics'),
+    deriveOriginFromEndpoint(readEnv(env, 'EXPO_PUBLIC_DAILY_API_URL'), '/api/daily'),
+  ];
+
+  for (const candidate of candidates) {
+    const adapted = adaptBaseUrlForBrowser(candidate);
+    if (!adapted) continue;
+    try {
+      const parsed = new URL(adapted);
+      if (parsed.hostname === browserLocation.hostname) {
+        return adapted;
+      }
+    } catch {
+      // ignore invalid candidate
+    }
+  }
+
+  return '';
+};
+
 export const normalizeBaseUrl = (value: unknown): string => {
   const parsed = parseAbsoluteHttpUrl(value);
   if (!parsed) return '';
@@ -51,26 +119,38 @@ export const deriveOriginFromEndpoint = (value: unknown, marker: string): string
 const readEnv = (env: MobileEnvRecord, key: string): string => normalizeText(env[key], 1000);
 
 export const resolveMobileWebBaseUrl = (env: MobileEnvRecord = process.env): string => {
-  const explicitWebBaseAlias = normalizeBaseUrl(readEnv(env, 'EXPO_PUBLIC_WEB_BASE_URL'));
+  const browserDevBase = resolveBrowserDevApiBase(env);
+  if (browserDevBase) return browserDevBase;
+
+  const explicitWebBaseAlias = adaptBaseUrlForBrowser(readEnv(env, 'EXPO_PUBLIC_WEB_BASE_URL'));
   if (explicitWebBaseAlias) return explicitWebBaseAlias;
 
-  const explicitWebBase = normalizeBaseUrl(readEnv(env, 'EXPO_PUBLIC_WEB_APP_URL'));
+  const explicitWebBase = adaptBaseUrlForBrowser(readEnv(env, 'EXPO_PUBLIC_WEB_APP_URL'));
   if (explicitWebBase) return explicitWebBase;
 
-  const referralBase = normalizeBaseUrl(readEnv(env, 'EXPO_PUBLIC_REFERRAL_API_BASE'));
+  const referralBase = adaptBaseUrlForBrowser(readEnv(env, 'EXPO_PUBLIC_REFERRAL_API_BASE'));
   if (referralBase) return referralBase;
 
-  const analyticsBase = deriveOriginFromEndpoint(readEnv(env, 'EXPO_PUBLIC_ANALYTICS_ENDPOINT'), '/api/analytics');
+  const analyticsBase = adaptBaseUrlForBrowser(
+    deriveOriginFromEndpoint(readEnv(env, 'EXPO_PUBLIC_ANALYTICS_ENDPOINT'), '/api/analytics')
+  );
   if (analyticsBase) return analyticsBase;
 
-  return deriveOriginFromEndpoint(readEnv(env, 'EXPO_PUBLIC_DAILY_API_URL'), '/api/daily');
+  return adaptBaseUrlForBrowser(
+    deriveOriginFromEndpoint(readEnv(env, 'EXPO_PUBLIC_DAILY_API_URL'), '/api/daily')
+  );
 };
 
 export const resolveMobileDailyApiUrl = (env: MobileEnvRecord = process.env): string => {
-  const explicitDailyUrl = normalizeBaseUrl(readEnv(env, 'EXPO_PUBLIC_DAILY_API_URL'));
+  const browserDevBase = resolveBrowserDevApiBase(env);
+  if (browserDevBase) return `${browserDevBase}/api/daily`;
+
+  const explicitDailyUrl = adaptBaseUrlForBrowser(readEnv(env, 'EXPO_PUBLIC_DAILY_API_URL'));
   if (explicitDailyUrl) return explicitDailyUrl;
 
-  const analyticsBase = deriveOriginFromEndpoint(readEnv(env, 'EXPO_PUBLIC_ANALYTICS_ENDPOINT'), '/api/analytics');
+  const analyticsBase = adaptBaseUrlForBrowser(
+    deriveOriginFromEndpoint(readEnv(env, 'EXPO_PUBLIC_ANALYTICS_ENDPOINT'), '/api/analytics')
+  );
   if (analyticsBase) return `${analyticsBase}/api/daily`;
 
   const webBase = resolveMobileWebBaseUrl(env);
@@ -80,17 +160,27 @@ export const resolveMobileDailyApiUrl = (env: MobileEnvRecord = process.env): st
 };
 
 export const resolveMobileReferralApiBase = (env: MobileEnvRecord = process.env): string => {
-  const explicitReferralBase = normalizeBaseUrl(readEnv(env, 'EXPO_PUBLIC_REFERRAL_API_BASE'));
+  const browserDevBase = resolveBrowserDevApiBase(env);
+  if (browserDevBase) return browserDevBase;
+
+  const explicitReferralBase = adaptBaseUrlForBrowser(readEnv(env, 'EXPO_PUBLIC_REFERRAL_API_BASE'));
   if (explicitReferralBase) return explicitReferralBase;
 
-  const analyticsBase = deriveOriginFromEndpoint(readEnv(env, 'EXPO_PUBLIC_ANALYTICS_ENDPOINT'), '/api/analytics');
+  const analyticsBase = adaptBaseUrlForBrowser(
+    deriveOriginFromEndpoint(readEnv(env, 'EXPO_PUBLIC_ANALYTICS_ENDPOINT'), '/api/analytics')
+  );
   if (analyticsBase) return analyticsBase;
 
-  return deriveOriginFromEndpoint(readEnv(env, 'EXPO_PUBLIC_DAILY_API_URL'), '/api/daily');
+  return adaptBaseUrlForBrowser(
+    deriveOriginFromEndpoint(readEnv(env, 'EXPO_PUBLIC_DAILY_API_URL'), '/api/daily')
+  );
 };
 
 export const resolveMobilePushApiBase = (env: MobileEnvRecord = process.env): string => {
-  const explicitPushBase = normalizeBaseUrl(readEnv(env, 'EXPO_PUBLIC_PUSH_API_BASE'));
+  const browserDevBase = resolveBrowserDevApiBase(env);
+  if (browserDevBase) return browserDevBase;
+
+  const explicitPushBase = adaptBaseUrlForBrowser(readEnv(env, 'EXPO_PUBLIC_PUSH_API_BASE'));
   if (explicitPushBase) return explicitPushBase;
 
   const referralBase = resolveMobileReferralApiBase(env);

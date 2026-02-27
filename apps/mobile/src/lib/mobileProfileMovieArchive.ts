@@ -1,5 +1,5 @@
 import type { MobileCommentReply } from './mobileCommentInteractions';
-import { isSupabaseLive, supabase } from './supabase';
+import { isSupabaseLive, readSupabaseSessionSafe, supabase } from './supabase';
 
 type SupabaseErrorLike = {
   code?: string | null;
@@ -140,8 +140,8 @@ export const fetchMobileProfileMovieArchive = async (input: {
     };
   }
 
-  const { data: sessionData } = await supabase.auth.getSession();
-  const userId = normalizeText(sessionData.session?.user?.id, 120);
+  const sessionResult = await readSupabaseSessionSafe();
+  const userId = normalizeText(sessionResult.session?.user?.id, 120);
   if (!userId) {
     return {
       ok: false,

@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react';
-import { Animated, Easing } from 'react-native';
+import { Animated, Easing, Platform } from 'react-native';
 
 export const usePageEntranceAnimation = () => {
   const pageEntrance = useMemo(() => new Animated.Value(0), []);
@@ -9,7 +9,7 @@ export const usePageEntranceAnimation = () => {
       toValue: 1,
       duration: 520,
       easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== 'web',
     });
     animation.start();
     return () => animation.stop();
@@ -25,4 +25,3 @@ export const usePageEntranceAnimation = () => {
     pageEnterTranslateY,
   };
 };
-

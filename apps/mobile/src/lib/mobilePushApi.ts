@@ -1,4 +1,4 @@
-import { isSupabaseLive, supabase } from './supabase';
+import { isSupabaseLive, readSupabaseSessionSafe, supabase } from './supabase';
 import { resolveMobilePushApiBase } from './mobileEnv';
 import { fetchWithTimeout } from './network';
 
@@ -57,8 +57,8 @@ const getApiUrl = (path: string): string => {
 const getAuthToken = async (): Promise<string | null> => {
   if (!isSupabaseLive() || !supabase) return null;
   try {
-    const { data } = await supabase.auth.getSession();
-    return data.session?.access_token || null;
+    const sessionResult = await readSupabaseSessionSafe();
+    return sessionResult.session?.access_token || null;
   } catch {
     return null;
   }

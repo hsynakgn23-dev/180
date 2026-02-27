@@ -1,4 +1,4 @@
-import { isSupabaseLive, supabase } from './supabase';
+import { isSupabaseLive, readSupabaseSessionSafe, supabase } from './supabase';
 
 type SupabaseErrorLike = {
   code?: string | null;
@@ -197,9 +197,9 @@ const readSignedInIdentity = async (): Promise<
     return { ok: false, message: 'Supabase baglantisi hazir degil.' };
   }
 
-  const { data } = await supabase.auth.getSession();
-  const userId = normalizeText(data.session?.user?.id, 120);
-  const userEmail = normalizeText(data.session?.user?.email, 180);
+  const sessionResult = await readSupabaseSessionSafe();
+  const userId = normalizeText(sessionResult.session?.user?.id, 120);
+  const userEmail = normalizeText(sessionResult.session?.user?.email, 180);
   if (!userId || !userEmail) {
     return { ok: false, message: 'Profil senkronu icin once mobilde giris yap.' };
   }
