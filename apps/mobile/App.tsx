@@ -18,7 +18,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import {
   Animated,
-  Image,
   Linking,
   Platform,
   Pressable,
@@ -122,9 +121,9 @@ import {
   type RitualSubmitState,
 } from './src/ui/appTypes';
 import {
-  ArenaChallengeCard,
   ArenaLeaderboardCard,
   AuthCard,
+  CollapsibleSectionCard,
   CommentFeedCard,
   DailyHomeScreen,
   DiscoverRoutesCard,
@@ -136,9 +135,12 @@ import {
   ProfileMarksCard,
   PushInboxCard,
   PushStatusCard,
+  PublicProfileMovieArchiveModal,
   PublicProfileBridgeCard,
   RitualComposerModal,
+  SectionLeadCard,
   ShareHubScreen,
+  StatePanel,
   setAppScreensThemeMode,
   type MobileSettingsIdentityDraft,
   type MobileSettingsLanguage,
@@ -164,7 +166,7 @@ const INTERNAL_OPS_VISIBLE =
 const MOBILE_DEEP_LINK_BASE = 'absolutecinema://open';
 const MOBILE_AUTH_REDIRECT_TO =
   String(process.env.EXPO_PUBLIC_AUTH_REDIRECT_TO || '').trim() || MOBILE_DEEP_LINK_BASE;
-const MOBILE_UI_PACKAGE_LABEL = 'UI Package 6.32';
+const MOBILE_UI_PACKAGE_LABEL = 'UI Package 6.41';
 const MOBILE_PROFILE_IDENTITY_STORAGE_KEY = 'ac_mobile_profile_identity_v1';
 const MOBILE_PROFILE_LANGUAGE_STORAGE_KEY = 'ac_mobile_profile_language_v1';
 
@@ -277,12 +279,28 @@ type PublicProfileModalState = {
   isSelfProfile: boolean;
   source: PublicProfileOpenOrigin | null;
 };
+type PublicWatchedMovieSummary = {
+  id: string;
+  movieTitle: string;
+  posterPath: string | null;
+  year: number | null;
+  watchedDayKey: string;
+  watchCount: number;
+};
 type ProfileMovieArchiveModalState = {
   visible: boolean;
   status: 'idle' | 'loading' | 'ready' | 'error';
   message: string;
   movie: MobileWatchedMovie | null;
   entries: MobileProfileMovieArchiveEntry[];
+};
+type PublicProfileMovieArchiveModalState = {
+  visible: boolean;
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  message: string;
+  displayName: string;
+  movie: PublicWatchedMovieSummary | null;
+  items: MobilePublicProfileActivityItem[];
 };
 
 type MainTabParamList = {
@@ -524,6 +542,15 @@ export default function App() {
       message: 'Film arsivi hazir degil.',
       movie: null,
       entries: [],
+    });
+  const [publicProfileMovieArchiveModalState, setPublicProfileMovieArchiveModalState] =
+    useState<PublicProfileMovieArchiveModalState>({
+      visible: false,
+      status: 'idle',
+      message: 'Public film arsivi hazir degil.',
+      displayName: '',
+      movie: null,
+      items: [],
     });
   const [publicProfileModalState, setPublicProfileModalState] = useState<PublicProfileModalState>({
     visible: false,
@@ -849,6 +876,122 @@ export default function App() {
     void handleOpenProfileMovieArchive(movie);
   }, [handleOpenProfileMovieArchive, profileMovieArchiveModalState.movie]);
 
+  const resolvePublicMovieArchiveItems = useCallback(
+    (movie: PublicWatchedMovieSummary, sourceItems: MobilePublicProfileActivityItem[]) => {
+      const movieTitle = String(movie.movieTitle || '').trim().toLowerCase();
+      return sourceItems.filter((item) => {
+        const itemTitle = String(item.movieTitle || '').trim().toLowerCase();
+        if (!itemTitle || itemTitle !== movieTitle) return false;
+        if (typeof movie.year !== 'number') return true;
+        return item.year === null || item.year === movie.year;
+      });
+    },
+    []
+  );
+
+  const handleClosePublicProfileMovieArchive = useCallback(() => {
+    setPublicProfileMovieArchiveModalState((prev) => ({
+      ...prev,
+      visible: false,
+    }));
+  }, []);
+
+  const handleOpenPublicProfileMovieArchive = useCallback(
+    (movie: PublicWatchedMovieSummary) => {
+      const displayName =
+        String(publicProfileModalState.profile?.displayName || '').trim() ||
+        publicProfileFullState.displayName ||
+        publicProfileModalState.displayNameHint ||
+        '@bilinmeyen';
+      const items = resolvePublicMovieArchiveItems(movie, publicProfileFullState.items);
+      const hasEntries = items.length > 0;
+      setPublicProfileMovieArchiveModalState({
+        visible: true,
+        status: hasEntries ? 'ready' : 'error',
+        message: hasEntries
+          ? `${displayName} icin ${items.length} yorum kaydi bulundu.`
+          : 'Bu film icin public yorum kaydi bulunamadi.',
+        displayName,
+        movie,
+        items,
+      });
+      void trackMobileEvent(hasEntries ? 'public_movie_archive_opened' : 'public_movie_archive_failed', {
+        profileUserId: publicProfileTarget?.userId || publicProfileModalState.profile?.userId || null,
+        movieTitle: movie.movieTitle,
+        movieYear: movie.year ?? null,
+        itemCount: items.length,
+      });
+    },
+    [
+      publicProfileFullState.displayName,
+      publicProfileFullState.items,
+      publicProfileModalState.displayNameHint,
+      publicProfileModalState.profile?.displayName,
+      publicProfileModalState.profile?.userId,
+      publicProfileTarget?.userId,
+      resolvePublicMovieArchiveItems,
+    ]
+  );
+
+  const handleRefreshPublicProfileMovieArchive = useCallback(async () => {
+    const movie = publicProfileMovieArchiveModalState.movie;
+    const userId =
+      String(publicProfileTarget?.userId || '').trim() ||
+      String(publicProfileModalState.profile?.userId || '').trim();
+    const displayName =
+      String(publicProfileMovieArchiveModalState.displayName || '').trim() ||
+      String(publicProfileModalState.profile?.displayName || '').trim() ||
+      publicProfileFullState.displayName ||
+      publicProfileModalState.displayNameHint;
+
+    if (!movie || !userId) return;
+
+    setPublicProfileMovieArchiveModalState((prev) => ({
+      ...prev,
+      visible: true,
+      status: 'loading',
+      message: 'Public film arsivi yenileniyor...',
+      items: [],
+    }));
+
+    const result = await fetchMobilePublicProfileActivity({
+      userId,
+      limit: 100,
+    });
+
+    setPublicProfileFullState((prev) => ({
+      ...prev,
+      visible: true,
+      status: result.ok ? 'ready' : 'error',
+      message: result.message,
+      displayName: displayName || prev.displayName,
+      items: result.items,
+    }));
+
+    const items = result.ok ? resolvePublicMovieArchiveItems(movie, result.items) : [];
+    setPublicProfileMovieArchiveModalState({
+      visible: true,
+      status: result.ok && items.length > 0 ? 'ready' : 'error',
+      message: result.ok
+        ? items.length > 0
+          ? `${displayName || '@bilinmeyen'} icin ${items.length} yorum kaydi bulundu.`
+          : 'Bu film icin public yorum kaydi bulunamadi.'
+        : result.message,
+      displayName: displayName || '@bilinmeyen',
+      movie,
+      items,
+    });
+  }, [
+    publicProfileFullState.displayName,
+    publicProfileModalState.displayNameHint,
+    publicProfileModalState.profile?.displayName,
+    publicProfileModalState.profile?.userId,
+    publicProfileMovieArchiveModalState.displayName,
+    publicProfileMovieArchiveModalState.movie,
+    publicProfileTarget?.userId,
+    resolvePublicMovieArchiveItems,
+  ]);
+
   const resolvePublicProfileUserId = useCallback(
     async ({ userId, username }: { userId?: string | null; username?: string | null }) => {
       const normalizedUserId = String(userId || '').trim();
@@ -910,6 +1053,14 @@ export default function App() {
       displayNameHint: string;
       source: PublicProfileOpenOrigin;
     }) => {
+      setPublicProfileMovieArchiveModalState({
+        visible: false,
+        status: 'idle',
+        message: 'Public film arsivi hazir degil.',
+        displayName: displayNameHint,
+        movie: null,
+        items: [],
+      });
       setPublicProfileTarget({ userId, displayNameHint, source });
       setPublicProfileModalState((prev) => ({
         ...prev,
@@ -2505,7 +2656,6 @@ export default function App() {
     .toLowerCase();
   const profileBio = String(settingsIdentityDraft.bio || '').trim();
   const profileLink = String(settingsIdentityDraft.profileLink || '').trim();
-  const profileAvatarUrl = String(settingsIdentityDraft.avatarUrl || '').trim();
   const profileBirthDateLabel = normalizeDateLabel(settingsIdentityDraft.birthDate);
   const fallbackLeague = resolveMobileLeagueInfoFromXp(0);
   const profileStats = profileState.status === 'success'
@@ -2573,12 +2723,13 @@ export default function App() {
         status: 'idle',
         message: 'Public profil verisi hazir degil.',
       };
-  const publicWatchedMovies = useMemo(() => {
+  const publicWatchedMovies = useMemo<PublicWatchedMovieSummary[]>(() => {
     const deduped = new Map<
       string,
       {
         id: string;
         movieTitle: string;
+        posterPath: string | null;
         year: number | null;
         watchedDayKey: string;
         watchCount: number;
@@ -2606,6 +2757,7 @@ export default function App() {
         if (latestMs > existing.latestMs) {
           existing.latestMs = latestMs;
           existing.watchedDayKey = watchedDayKey;
+          existing.posterPath = String(item.posterPath || '').trim() || existing.posterPath;
         }
         continue;
       }
@@ -2613,6 +2765,7 @@ export default function App() {
       deduped.set(key, {
         id: `${key}-${index}`,
         movieTitle,
+        posterPath: String(item.posterPath || '').trim() || null,
         year,
         watchedDayKey,
         watchCount: 1,
@@ -2626,6 +2779,7 @@ export default function App() {
       .map((entry) => ({
         id: entry.id,
         movieTitle: entry.movieTitle,
+        posterPath: entry.posterPath,
         year: entry.year,
         watchedDayKey: entry.watchedDayKey,
         watchCount: entry.watchCount,
@@ -2663,6 +2817,23 @@ export default function App() {
   const shareLeagueLabel =
     profileState.status === 'success' ? profileState.leagueName : fallbackLeague.leagueInfo.name;
   const shareTotalXp = profileState.status === 'success' ? profileState.totalXp : 0;
+
+  const handleOpenShareHubFromProfile = useCallback(() => {
+    setManualIntent({
+      target: 'share',
+      invite: effectiveShareInviteCode || undefined,
+      platform: 'x',
+      goal: canShareStreak ? 'streak' : 'comment',
+    });
+    if (tabNavigationRef.isReady()) {
+      tabNavigationRef.navigate(MAIN_TAB_BY_KEY.profile);
+    }
+    void trackMobileEvent('page_view', {
+      reason: 'mobile_profile_open_share_hub',
+      hasInviteCode: Boolean(effectiveShareInviteCode),
+      preferredGoal: canShareStreak ? 'streak' : 'comment',
+    });
+  }, [canShareStreak, effectiveShareInviteCode, setManualIntent]);
 
   const handleCommentFeedScopeChange = useCallback((scope: CommentFeedScope) => {
     setCommentFeedScope(scope);
@@ -3082,6 +3253,10 @@ export default function App() {
       ...prev,
       visible: false,
     }));
+    setPublicProfileMovieArchiveModalState((prev) => ({
+      ...prev,
+      visible: false,
+    }));
     setPublicProfileTarget(null);
   }, []);
 
@@ -3106,6 +3281,17 @@ export default function App() {
       reason: 'mobile_explore_jump_to_daily',
     });
   }, [setManualIntent]);
+
+  const handleRefreshExploreSurface = useCallback(() => {
+    void refreshArenaLeaderboard();
+    void refreshCommentFeed(commentFeedScope, debouncedCommentFeedQuery, commentFeedSort);
+  }, [commentFeedScope, commentFeedSort, debouncedCommentFeedQuery, refreshArenaLeaderboard, refreshCommentFeed]);
+
+  const handleRefreshProfileSurface = useCallback(() => {
+    void refreshProfileStats();
+    void refreshWatchedMovies();
+    void refreshProfileGenreDistribution();
+  }, [refreshProfileGenreDistribution, refreshProfileStats, refreshWatchedMovies]);
 
   const handleClaimInvite = useCallback(async (rawInviteCode: string) => {
     const inviteCodeText = String(rawInviteCode || '').trim().toUpperCase();
@@ -3761,7 +3947,8 @@ export default function App() {
                 sceneStyle: [styles.navScene, isDawnTheme ? styles.navSceneDawn : null],
                 tabBarStyle: [styles.navTabBar, isDawnTheme ? styles.navTabBarDawn : null],
                 tabBarItemStyle: styles.navTabItem,
-                tabBarShowLabel: false,
+                tabBarShowLabel: true,
+                tabBarLabelStyle: styles.navTabLabel,
                 tabBarActiveTintColor: isDawnTheme ? '#A57164' : '#8A9A5B',
                 tabBarInactiveTintColor: isDawnTheme ? '#6f665c' : '#8e8b84',
                 tabBarBadgeStyle: styles.navTabBadge,
@@ -3867,21 +4054,67 @@ export default function App() {
                     keyboardDismissMode="on-drag"
                     showsVerticalScrollIndicator={false}
                   >
-                    {isDevSurfaceEnabled
-                      ? renderSurfaceIntro({
-                          title: 'Kesif ve Arena',
-                          body: 'Webdeki kesif, arena leaderboard ve public profile gecisleri mobile tasindi.',
-                          badges: [
-                            { label: `${DISCOVER_ROUTES.length} kesif rotasi` },
-                            { label: `${commentFeedSummary}` },
-                            { label: 'Arena + Profile + Kurallar', muted: true },
-                          ],
-                        })
-                      : null}
+                    <SectionLeadCard
+                      accent="sage"
+                      eyebrow="Kesif Merkezi"
+                      title="Nereye bakacagini once buradan sec"
+                      body="Rota ac, arena siralamasina bak ve yorum akisindan kullanici profillerine gec."
+                      badges={[
+                        { label: `${DISCOVER_ROUTES.length} rota`, tone: 'sage' },
+                        {
+                          label: commentFeedScope === 'today' ? 'Bugun filtresi' : 'Tum akis',
+                          tone: 'muted',
+                        },
+                        {
+                          label: arenaState.source === 'live' ? 'Arena canli' : 'Arena fallback',
+                          tone: arenaState.source === 'live' ? 'sage' : 'clay',
+                        },
+                      ]}
+                      metrics={[
+                        { label: 'Seri', value: streakSummary },
+                        { label: 'Ritual', value: ritualsCountSummary },
+                        { label: 'Arena', value: String(arenaState.entries.length || 0) },
+                        {
+                          label: 'Yorum',
+                          value:
+                            commentFeedState.status === 'ready'
+                              ? String(commentFeedState.items.length)
+                              : commentFeedState.status === 'loading'
+                                ? '...'
+                                : '--',
+                        },
+                      ]}
+                      actions={[
+                        {
+                          label: 'Gunluge Don',
+                          tone: 'brand',
+                          onPress: handleOpenDailyFromExplore,
+                        },
+                        {
+                          label: 'Arena Yenile',
+                          tone: 'neutral',
+                          onPress: handleRefreshExploreSurface,
+                        },
+                      ]}
+                    />
+                    <View style={styles.sectionAnchor}>
+                      <View style={styles.sectionHeaderRow}>
+                        <Text style={styles.sectionHeader}>Public Profil</Text>
+                        <Text style={styles.sectionHeaderMeta}>Kullanici ara</Text>
+                      </View>
+                    </View>
+                    <PublicProfileBridgeCard
+                      profileInput={publicProfileInput}
+                      onProfileInputChange={setPublicProfileInput}
+                      onOpenProfile={() => {
+                        void handleOpenManualPublicProfile();
+                      }}
+                      canOpenProfile={canOpenManualProfile}
+                    />
                     <View style={styles.sectionAnchor}>
                       <View style={styles.sectionHeaderRow}>
                         <Text style={styles.sectionHeader}>Kesif</Text>
-                        <Text style={styles.sectionHeaderMeta}>Web parity</Text>
+                        <Text style={styles.sectionHeaderMeta}>Rotalar</Text>
                       </View>
                     </View>
                     <DiscoverRoutesCard
@@ -3890,11 +4123,12 @@ export default function App() {
                         void handleOpenDiscoverRoute(route);
                       }}
                     />
-                    <ArenaChallengeCard
-                      streakLabel={streakSummary}
-                      ritualsLabel={ritualsCountSummary}
-                      onOpenDaily={handleOpenDailyFromExplore}
-                    />
+                    <View style={styles.sectionAnchor}>
+                      <View style={styles.sectionHeaderRow}>
+                        <Text style={styles.sectionHeader}>Arena</Text>
+                        <Text style={styles.sectionHeaderMeta}>Haftalik siralama</Text>
+                      </View>
+                    </View>
                     <ArenaLeaderboardCard
                       state={arenaState}
                       onRefresh={() => {
@@ -3904,6 +4138,12 @@ export default function App() {
                         void handleOpenArenaProfile(item);
                       }}
                     />
+                    <View style={styles.sectionAnchor}>
+                      <View style={styles.sectionHeaderRow}>
+                        <Text style={styles.sectionHeader}>Sosyal Akis</Text>
+                        <Text style={styles.sectionHeaderMeta}>{commentFeedSummary}</Text>
+                      </View>
+                    </View>
                     <CommentFeedCard
                       state={commentFeedState}
                       showFilters
@@ -3923,19 +4163,7 @@ export default function App() {
                         );
                       }}
                     />
-                    {isDevSurfaceEnabled ? (
-                      <>
-                        <PublicProfileBridgeCard
-                          profileInput={publicProfileInput}
-                          onProfileInputChange={setPublicProfileInput}
-                          onOpenProfile={() => {
-                            void handleOpenManualPublicProfile();
-                          }}
-                          canOpenProfile={canOpenManualProfile}
-                        />
-                        <PlatformRulesCard />
-                      </>
-                    ) : null}
+                    {isDevSurfaceEnabled ? <PlatformRulesCard /> : null}
                   </ScrollView>
                 )}
               </Tab.Screen>
@@ -4034,181 +4262,159 @@ export default function App() {
                       : null}
                     {publicProfileFullState.visible ? (
                       <>
-                        <View style={styles.card}>
-                          <View style={styles.profileHeroRow}>
-                            <View style={styles.profileHeroAvatarWrap}>
-                              <Text style={styles.profileHeroAvatarFallback}>
-                                {(
-                                  String(publicSnapshot?.displayName || publicProfileFullState.displayName || 'U')
-                                    .slice(0, 1) || 'U'
-                                ).toUpperCase()}
-                              </Text>
-                            </View>
-                            <View style={styles.profileHeroContent}>
-                              <Text style={[styles.cardTitle, isDawnTheme ? styles.dawnTextColor : null]}>
-                                {publicSnapshot?.displayName || publicProfileFullState.displayName || '@bilinmeyen'}
-                              </Text>
-                              {publicSnapshot?.lastRitualDate ? (
-                                <Text style={[styles.screenMeta, isDawnTheme ? styles.dawnTextMuted : null]}>
-                                  Son ritual: {publicSnapshot.lastRitualDate}
-                                </Text>
-                              ) : null}
-                              <Text style={[styles.screenMeta, isDawnTheme ? styles.dawnTextMuted : null]}>
-                                {publicProfileFullState.message}
-                              </Text>
-                            </View>
-                          </View>
-
-                          <View style={styles.profileGrid}>
-                            <View style={styles.profileMetricCard}>
-                              <Text style={[styles.profileMetricValue, isDawnTheme ? styles.dawnTextColor : null]}>
-                                {publicProfileStats.rituals}
-                              </Text>
-                              <Text style={[styles.profileMetricLabel, isDawnTheme ? styles.dawnTextMuted : null]}>
-                                Izlenen
-                              </Text>
-                            </View>
-                            <View style={styles.profileMetricCard}>
-                              <Text style={[styles.profileMetricValue, isDawnTheme ? styles.dawnTextColor : null]}>
-                                {publicProfileStats.streak}
-                              </Text>
-                              <Text style={[styles.profileMetricLabel, isDawnTheme ? styles.dawnTextMuted : null]}>
-                                Streak
-                              </Text>
-                            </View>
-                            <View style={styles.profileMetricCard}>
-                              <Text style={[styles.profileMetricValue, isDawnTheme ? styles.dawnTextColor : null]}>
-                                {publicProfileStats.marks}
-                              </Text>
-                              <Text style={[styles.profileMetricLabel, isDawnTheme ? styles.dawnTextMuted : null]}>
-                                Mark
-                              </Text>
-                            </View>
-                            <View style={styles.profileMetricCard}>
-                              <Text style={[styles.profileMetricValue, isDawnTheme ? styles.dawnTextColor : null]}>
-                                {publicProfileStats.followers}
-                              </Text>
-                              <Text style={[styles.profileMetricLabel, isDawnTheme ? styles.dawnTextMuted : null]}>
-                                Takipci
-                              </Text>
-                            </View>
-                            <View style={styles.profileMetricCard}>
-                              <Text style={[styles.profileMetricValue, isDawnTheme ? styles.dawnTextColor : null]}>
-                                {publicProfileStats.following}
-                              </Text>
-                              <Text style={[styles.profileMetricLabel, isDawnTheme ? styles.dawnTextMuted : null]}>
-                                Takip
-                              </Text>
-                            </View>
-                            <View style={styles.profileMetricCard}>
-                              <Text style={[styles.profileMetricValue, isDawnTheme ? styles.dawnTextColor : null]}>
-                                {publicProfileStats.days}
-                              </Text>
-                              <Text style={[styles.profileMetricLabel, isDawnTheme ? styles.dawnTextMuted : null]}>
-                                Gun
-                              </Text>
-                            </View>
-                          </View>
-
-                          <View style={styles.profileAboutBox}>
-                            {!publicProfileModalState.isSelfProfile && publicProfileModalState.followsYou ? (
-                              <Text style={[styles.screenMeta, styles.ritualStateOk]}>
-                                Bu kisi seni takip ediyor.
-                              </Text>
-                            ) : null}
-                            {publicProfileModalState.followMessage ? (
-                              <Text
-                                style={[
-                                  styles.screenMeta,
-                                  publicProfileModalState.followStatus === 'error'
-                                    ? styles.ritualStateError
-                                    : publicProfileModalState.followStatus === 'ready'
-                                      ? styles.ritualStateOk
-                                      : styles.screenMeta,
-                                ]}
-                              >
-                                {publicProfileModalState.followMessage}
-                              </Text>
-                            ) : null}
-                          </View>
-
-                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-                            {!publicProfileModalState.isSelfProfile && isSignedIn ? (
-                              <Pressable
-                                style={[
-                                  styles.claimButton,
-                                  publicProfileModalState.followStatus === 'loading'
-                                    ? styles.claimButtonDisabled
-                                    : null,
-                                ]}
-                                onPress={() => {
-                                  void handleTogglePublicProfileFollow();
-                                }}
-                                disabled={publicProfileModalState.followStatus === 'loading'}
-                                hitSlop={8}
-                              >
-                                <Text style={styles.claimButtonText}>
-                                  {publicProfileModalState.isFollowing ? 'Takipten Cik' : 'Takip Et'}
-                                </Text>
-                              </Pressable>
-                            ) : null}
-                            <Pressable
-                              style={styles.retryButton}
-                              onPress={() => {
+                        <SectionLeadCard
+                          accent="clay"
+                          eyebrow="Public Profil"
+                          title={
+                            publicSnapshot?.displayName || publicProfileFullState.displayName || '@bilinmeyen'
+                          }
+                          body={
+                            publicProfileModalState.followMessage ||
+                            publicProfileFullState.message ||
+                            'Bu kullanicinin film izi ve yorum akisina bak.'
+                          }
+                          badges={[
+                            {
+                              label: publicProfileModalState.isSelfProfile ? 'Kendi Profilin' : 'Public Yuzey',
+                              tone: 'muted',
+                            },
+                            ...(publicSnapshot?.lastRitualDate
+                              ? [{ label: `Son ritual ${publicSnapshot.lastRitualDate}`, tone: 'sage' as const }]
+                              : []),
+                            ...(publicProfileModalState.followsYou
+                              ? [{ label: 'Seni takip ediyor', tone: 'clay' as const }]
+                              : []),
+                          ]}
+                          metrics={[
+                            { label: 'Ritual', value: String(publicProfileStats.rituals) },
+                            { label: 'Streak', value: String(publicProfileStats.streak) },
+                            { label: 'Takipci', value: String(publicProfileStats.followers) },
+                            { label: 'Takip', value: String(publicProfileStats.following) },
+                          ]}
+                          actions={[
+                            ...(!publicProfileModalState.isSelfProfile && isSignedIn
+                              ? [
+                                  {
+                                    label: publicProfileModalState.isFollowing ? 'Takipten Cik' : 'Takip Et',
+                                    tone: 'brand' as const,
+                                    onPress: () => {
+                                      void handleTogglePublicProfileFollow();
+                                    },
+                                    disabled: publicProfileModalState.followStatus === 'loading',
+                                  },
+                                ]
+                              : []),
+                            {
+                              label: 'Yenile',
+                              tone: 'neutral' as const,
+                              onPress: () => {
                                 void handleRefreshPublicProfileFull();
-                              }}
-                              hitSlop={8}
-                            >
-                              <Text style={styles.retryText}>Yenile</Text>
-                            </Pressable>
-                            <Pressable
-                              style={[styles.retryButton, { backgroundColor: 'transparent' }]}
-                              onPress={handleClosePublicProfileFull}
-                              hitSlop={8}
-                            >
-                              <Text style={styles.retryText}>Kendi Profilime Don</Text>
-                            </Pressable>
-                          </View>
-                        </View>
+                              },
+                            },
+                            {
+                              label: 'Kendi Profilim',
+                              tone: 'teal' as const,
+                              onPress: handleClosePublicProfileFull,
+                            },
+                          ]}
+                        />
 
-                        <View style={styles.card}>
-                          <Text style={[styles.cardTitle, isDawnTheme ? styles.dawnTextColor : null]}>
-                            Izlenen Filmler
-                          </Text>
+                        <CollapsibleSectionCard
+                          accent="sage"
+                          title="Film Arsivi"
+                          meta={`${publicWatchedMovies.length} film`}
+                          defaultExpanded
+                        >
                           {publicWatchedMovies.length > 0 ? (
                             <View style={styles.movieList}>
                               {publicWatchedMovies.map((movie) => (
-                                <View key={movie.id} style={styles.movieRow}>
+                                <Pressable
+                                  key={movie.id}
+                                  style={({ pressed }) => [
+                                    styles.movieRow,
+                                    pressed ? styles.movieRowPressed : null,
+                                  ]}
+                                  onPress={() => {
+                                    handleOpenPublicProfileMovieArchive(movie);
+                                  }}
+                                  hitSlop={8}
+                                  accessibilityRole="button"
+                                  accessibilityLabel={`${movie.movieTitle} public film arsivini ac`}
+                                >
                                   <Text style={styles.movieTitle}>{movie.movieTitle}</Text>
                                   <Text style={styles.movieMeta}>
                                     {movie.year ? `${movie.year} | ` : ''}
                                     Son izleme: {movie.watchedDayKey || '-'}
                                     {movie.watchCount > 1 ? ` | Tekrar: ${movie.watchCount}` : ''}
                                   </Text>
-                                </View>
+                                  <Text style={styles.movieRowActionHint}>Public Arsivi Ac</Text>
+                                </Pressable>
                               ))}
                             </View>
                           ) : (
-                            <Text style={[styles.screenMeta, isDawnTheme ? styles.dawnTextMuted : null]}>
-                              Bu profilde izlenen film kaydi henuz yok.
-                            </Text>
+                            <StatePanel
+                              tone="sage"
+                              variant={
+                                publicProfileFullState.status === 'loading'
+                                  ? 'loading'
+                                  : publicProfileFullState.status === 'error'
+                                    ? 'error'
+                                    : 'empty'
+                              }
+                              eyebrow="Public Film Arsivi"
+                              title={
+                                publicProfileFullState.status === 'loading'
+                                  ? 'Film izi taraniyor'
+                                  : publicProfileFullState.status === 'error'
+                                    ? 'Film arsivi okunamadi'
+                                    : 'Bu profilde henuz film izi yok'
+                              }
+                              body={
+                                publicProfileFullState.status === 'error'
+                                  ? publicProfileFullState.message ||
+                                    'Public film arsivi okunurken gecici bir sorun olustu.'
+                                  : 'Izlenen filmler ve tekrar sayilari burada gruplanir.'
+                              }
+                              meta="Film satirina dokununca o filme ait public yorum arsivi acilir."
+                              actionLabel={
+                                publicProfileFullState.status === 'loading'
+                                  ? undefined
+                                  : 'Public Profili Yenile'
+                              }
+                              onAction={() => {
+                                void handleRefreshPublicProfileFull();
+                              }}
+                            />
                           )}
-                        </View>
+                        </CollapsibleSectionCard>
 
+                        <View style={styles.sectionAnchor}>
+                          <View style={styles.sectionHeaderRow}>
+                            <Text style={styles.sectionHeader}>Marklar</Text>
+                            <Text style={styles.sectionHeaderMeta}>{publicProfileStats.marks} acik mark</Text>
+                          </View>
+                        </View>
                         <ProfileMarksCard
                           state={publicProfileMarksState}
                           isSignedIn={isSignedIn || Boolean(publicSnapshot)}
                           mode="unlocked"
                         />
 
-                        <View style={styles.card}>
-                          <Text style={[styles.cardTitle, isDawnTheme ? styles.dawnTextColor : null]}>
-                            Yorumlar
-                          </Text>
+                        <CollapsibleSectionCard
+                          accent="clay"
+                          title="Yorum Akisi"
+                          meta={`${publicProfileFullState.items.length} kayit`}
+                          defaultExpanded={false}
+                        >
                           {publicProfileFullState.status === 'loading' ? (
-                            <Text style={[styles.screenMeta, isDawnTheme ? styles.dawnTextMuted : null]}>
-                              Aktivite yukleniyor...
-                            </Text>
+                            <StatePanel
+                              tone="clay"
+                              variant="loading"
+                              eyebrow="Public Yorum Akisi"
+                              title="Aktivite akisi yukleniyor"
+                              body="Bu kullanicinin acik ritual yorumlari ve film izleri cekiliyor."
+                              meta="Yorum akisi tarih sirasiyla siralanir."
+                            />
                           ) : publicProfileFullState.items.length > 0 ? (
                             <View style={styles.commentFeedList}>
                               {publicProfileFullState.items.map((item) => (
@@ -4223,142 +4429,110 @@ export default function App() {
                               ))}
                             </View>
                           ) : (
-                            <Text style={[styles.screenMeta, isDawnTheme ? styles.dawnTextMuted : null]}>
-                              Bu profilde henuz yorum yok.
-                            </Text>
+                            <StatePanel
+                              tone="clay"
+                              variant={publicProfileFullState.status === 'error' ? 'error' : 'empty'}
+                              eyebrow="Public Yorum Akisi"
+                              title={
+                                publicProfileFullState.status === 'error'
+                                  ? 'Yorum akisi okunamadi'
+                                  : 'Bu profilde henuz yorum yok'
+                              }
+                              body={
+                                publicProfileFullState.status === 'error'
+                                  ? publicProfileFullState.message ||
+                                    'Public yorum akisi okunurken gecici bir sorun olustu.'
+                                  : 'Kullanici yeni ritual yazdikca yorum akisi burada gorunur.'
+                              }
+                              meta="Yorumlara dokunmadan once ustteki film arsivinden baglam alabilirsin."
+                              actionLabel="Public Profili Yenile"
+                              onAction={() => {
+                                void handleRefreshPublicProfileFull();
+                              }}
+                            />
                           )}
-                        </View>
+                        </CollapsibleSectionCard>
                       </>
                     ) : null}
                     {!publicProfileFullState.visible ? (
                       <>
-                    <View style={styles.card}>
-                      <View style={styles.profileHeroRow}>
-                        <View style={styles.profileHeroAvatarWrap}>
-                          {profileAvatarUrl ? (
-                            <Image
-                              source={{ uri: profileAvatarUrl }}
-                              style={styles.profileHeroAvatarImage}
-                              resizeMode="cover"
-                            />
-                          ) : (
-                            <Text style={styles.profileHeroAvatarFallback}>
-                              {(profileDisplayName.slice(0, 1) || 'O').toUpperCase()}
-                            </Text>
-                          )}
-                        </View>
-                        <View style={styles.profileHeroContent}>
-                          <Text style={[styles.cardTitle, isDawnTheme ? styles.dawnTextColor : null]}>
-                            {profileDisplayName || 'Observer'}
-                          </Text>
-                          {profileUsername ? (
-                            <Text style={[styles.screenMeta, isDawnTheme ? styles.dawnTextMuted : null]}>
-                              @{profileUsername}
-                            </Text>
-                          ) : null}
-                          {profileBirthDateLabel ? (
-                            <Text style={[styles.screenMeta, isDawnTheme ? styles.dawnTextMuted : null]}>
-                              Dogum: {profileBirthDateLabel}
-                            </Text>
-                          ) : null}
-                        </View>
-                        <Pressable
-                          style={styles.profileSettingsButton}
-                          onPress={() => setSettingsVisible(true)}
-                          accessibilityRole="button"
-                          accessibilityLabel="Ayarlar ekranini ac"
-                        >
-                          <Ionicons
-                            name="settings-outline"
-                            size={20}
-                            color={isDawnTheme ? '#A45E4A' : '#E5E4E2'}
-                          />
-                        </Pressable>
-                      </View>
+                    <SectionLeadCard
+                      accent="sage"
+                      eyebrow="Profil Merkezi"
+                      title={profileDisplayName || 'Observer'}
+                      body={profileBio || 'Profilini, arsivini ve hesabini buradan yonet.'}
+                      badges={[
+                        { label: profileStats.league, tone: 'sage' },
+                        { label: themeModeLabel, tone: 'muted' },
+                        {
+                          label: isSignedIn ? 'Oturum hazir' : 'Oturum gerekli',
+                          tone: isSignedIn ? 'sage' : 'clay',
+                        },
+                        ...(profileUsername ? [{ label: `@${profileUsername}`, tone: 'muted' as const }] : []),
+                      ]}
+                      metrics={[
+                        { label: 'Ritual', value: String(profileStats.rituals) },
+                        { label: 'Streak', value: String(profileStats.streak) },
+                        { label: 'Mark', value: String(profileStats.marks) },
+                        { label: 'Takipci', value: String(profileStats.followers) },
+                      ]}
+                      actions={[
+                        {
+                          label: 'Ayarlar',
+                          tone: 'brand',
+                          onPress: () => setSettingsVisible(true),
+                        },
+                        {
+                          label: profileLink ? 'Linki Ac' : 'Share Hub',
+                          tone: 'teal',
+                          onPress: () => {
+                            if (profileLink) {
+                              void handleOpenProfileLink();
+                              return;
+                            }
+                            handleOpenShareHubFromProfile();
+                          },
+                        },
+                        {
+                          label: 'Yenile',
+                          tone: 'neutral',
+                          onPress: handleRefreshProfileSurface,
+                        },
+                      ]}
+                    />
 
-                      <View style={styles.profileGrid}>
-                        <View style={styles.profileMetricCard}>
-                          <Text style={[styles.profileMetricValue, isDawnTheme ? styles.dawnTextColor : null]}>
-                            {profileStats.rituals}
-                          </Text>
-                          <Text style={[styles.profileMetricLabel, isDawnTheme ? styles.dawnTextMuted : null]}>
-                            Izlenen
-                          </Text>
-                        </View>
-                        <View style={styles.profileMetricCard}>
-                          <Text style={[styles.profileMetricValue, isDawnTheme ? styles.dawnTextColor : null]}>
-                            {profileStats.streak}
-                          </Text>
-                          <Text style={[styles.profileMetricLabel, isDawnTheme ? styles.dawnTextMuted : null]}>
-                            Streak
-                          </Text>
-                        </View>
-                        <View style={styles.profileMetricCard}>
-                          <Text style={[styles.profileMetricValue, isDawnTheme ? styles.dawnTextColor : null]}>
-                            {profileStats.league}
-                          </Text>
-                          <Text style={[styles.profileMetricLabel, isDawnTheme ? styles.dawnTextMuted : null]}>
-                            Lig
-                          </Text>
-                        </View>
-                        <View style={styles.profileMetricCard}>
-                          <Text style={[styles.profileMetricValue, isDawnTheme ? styles.dawnTextColor : null]}>
-                            {profileStats.marks}
-                          </Text>
-                          <Text style={[styles.profileMetricLabel, isDawnTheme ? styles.dawnTextMuted : null]}>
-                            Mark
-                          </Text>
-                        </View>
-                        <View style={styles.profileMetricCard}>
-                          <Text style={[styles.profileMetricValue, isDawnTheme ? styles.dawnTextColor : null]}>
-                            {profileStats.followers}
-                          </Text>
-                          <Text style={[styles.profileMetricLabel, isDawnTheme ? styles.dawnTextMuted : null]}>
-                            Takipci
-                          </Text>
-                        </View>
-                        <View style={styles.profileMetricCard}>
-                          <Text style={[styles.profileMetricValue, isDawnTheme ? styles.dawnTextColor : null]}>
-                            {profileStats.following}
-                          </Text>
-                          <Text style={[styles.profileMetricLabel, isDawnTheme ? styles.dawnTextMuted : null]}>
-                            Takip
-                          </Text>
-                        </View>
-                        <View style={styles.profileMetricCard}>
-                          <Text style={[styles.profileMetricValue, isDawnTheme ? styles.dawnTextColor : null]}>
-                            {profileStats.days}
-                          </Text>
-                          <Text style={[styles.profileMetricLabel, isDawnTheme ? styles.dawnTextMuted : null]}>
-                            Gun
-                          </Text>
-                        </View>
-                      </View>
-
-                      <View style={styles.profileAboutBox}>
-                        <Text style={[styles.subSectionLabel, isDawnTheme ? styles.dawnTextMuted : null]}>
-                          Hakkinda
-                        </Text>
-                        <Text style={[styles.screenBody, isDawnTheme ? styles.dawnTextColor : null]}>
-                          {profileBio || 'Profilini ayarlardan duzenleyebilirsin.'}
-                        </Text>
+                    <CollapsibleSectionCard
+                      accent="clay"
+                      title="Kimlik ve Not"
+                      meta={profileBirthDateLabel ? `Dogum ${profileBirthDateLabel}` : 'Profil detayi'}
+                      defaultExpanded
+                    >
+                      {profileBirthDateLabel ? (
                         <Text style={[styles.screenMeta, isDawnTheme ? styles.dawnTextMuted : null]}>
-                          Takip: {profileStats.following} | Takipci: {profileStats.followers}
+                          Dogum: {profileBirthDateLabel}
                         </Text>
-                        {profileLink ? (
-                          <Pressable onPress={() => void handleOpenProfileLink()} hitSlop={8}>
-                            <Text style={[styles.profileLinkText, isDawnTheme ? styles.dawnLinkText : null]}>
-                              {profileLink}
-                            </Text>
-                          </Pressable>
-                        ) : null}
-                      </View>
-                    </View>
-
-                    <View style={styles.card}>
-                      <Text style={[styles.cardTitle, isDawnTheme ? styles.dawnTextColor : null]}>
-                        Tur Dagilimi
+                      ) : null}
+                      <Text style={[styles.screenBody, isDawnTheme ? styles.dawnTextColor : null]}>
+                        {profileBio || 'Profilini ayarlardan duzenleyebilirsin.'}
                       </Text>
+                      <Text style={[styles.screenMeta, isDawnTheme ? styles.dawnTextMuted : null]}>
+                        Takip: {profileStats.following} | Takipci: {profileStats.followers}
+                      </Text>
+                      {profileLink ? (
+                        <Pressable onPress={() => void handleOpenProfileLink()} hitSlop={8}>
+                          <Text style={[styles.profileLinkText, isDawnTheme ? styles.dawnLinkText : null]}>
+                            {profileLink}
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                    </CollapsibleSectionCard>
+
+                    <CollapsibleSectionCard
+                      accent="sage"
+                      title="Tur Dagilimi"
+                      meta={`${profileGenreDistribution.length} gorunen tur`}
+                      defaultExpanded={false}
+                    >
                       {profileGenreDistribution.length > 0 ? (
                         <View style={styles.profileGenreList}>
                           {profileGenreDistribution.map((item) => (
@@ -4391,21 +4565,27 @@ export default function App() {
                       >
                         <Text style={styles.retryText}>Tur Dagilimini Yenile</Text>
                       </Pressable>
-                    </View>
+                    </CollapsibleSectionCard>
 
-                    <View style={styles.card}>
-                      <Text style={[styles.cardTitle, isDawnTheme ? styles.dawnTextColor : null]}>
-                        Izlenen Filmler
-                      </Text>
-                      <Text style={[styles.screenMeta, isDawnTheme ? styles.dawnTextMuted : null]}>
-                        {watchedMoviesState.message}
-                      </Text>
+                    <CollapsibleSectionCard
+                      accent="sage"
+                      title="Izlenen Filmler"
+                      meta={`${watchedMoviesState.items.length} film`}
+                      defaultExpanded
+                    >
                       {watchedMoviesState.items.length > 0 ? (
-                        <View style={styles.movieList}>
+                        <>
+                          <Text style={[styles.screenMeta, isDawnTheme ? styles.dawnTextMuted : null]}>
+                            {watchedMoviesState.message}
+                          </Text>
+                          <View style={styles.movieList}>
                           {watchedMoviesState.items.slice(0, 20).map((movie) => (
                             <Pressable
                               key={movie.id}
-                              style={styles.movieRow}
+                              style={({ pressed }) => [
+                                styles.movieRow,
+                                pressed ? styles.movieRowPressed : null,
+                              ]}
                               onPress={() => {
                                 void handleOpenProfileMovieArchive(movie);
                               }}
@@ -4422,29 +4602,76 @@ export default function App() {
                               <Text style={styles.movieRowActionHint}>Yorum Arsivini Ac</Text>
                             </Pressable>
                           ))}
-                        </View>
+                          </View>
+                        </>
                       ) : (
-                        <Text style={[styles.screenMeta, isDawnTheme ? styles.dawnTextMuted : null]}>
-                          Izlenen film kaydi henuz yok.
-                        </Text>
+                        <StatePanel
+                          tone="sage"
+                          variant={
+                            watchedMoviesState.status === 'loading'
+                              ? 'loading'
+                              : watchedMoviesState.status === 'error'
+                                ? 'error'
+                                : 'empty'
+                          }
+                          eyebrow="Film Arsivi"
+                          title={
+                            watchedMoviesState.status === 'loading'
+                              ? 'Film arsivi tazeleniyor'
+                              : watchedMoviesState.status === 'error'
+                                ? 'Izlenen filmler okunamadi'
+                                : 'Henuz film izi olusmadi'
+                          }
+                          body={
+                            watchedMoviesState.status === 'error'
+                              ? watchedMoviesState.message ||
+                                'Film arsivi okunurken gecici bir sorun olustu.'
+                              : watchedMoviesState.message ||
+                                'Yazdigin yorumlar geldikce burada film bazli bir arsiv olusur.'
+                          }
+                          meta="Film satirina dokununca o filme ait yorum ve yanit arsivi acilir."
+                          actionLabel={
+                            !isSignedIn || watchedMoviesState.status === 'loading'
+                              ? undefined
+                              : 'Izlenen Filmleri Yenile'
+                          }
+                          onAction={() => {
+                            void refreshWatchedMovies();
+                          }}
+                        />
                       )}
-                      <Pressable
-                        style={styles.retryButton}
-                        onPress={() => {
-                          void refreshWatchedMovies();
-                        }}
-                        disabled={!isSignedIn || watchedMoviesState.status === 'loading'}
-                        hitSlop={8}
-                      >
-                        <Text style={styles.retryText}>
-                          {watchedMoviesState.status === 'loading'
-                            ? 'Yukleniyor...'
-                            : 'Izlenen Filmleri Yenile'}
-                        </Text>
-                      </Pressable>
-                    </View>
+                      {watchedMoviesState.items.length > 0 ? (
+                        <Pressable
+                          style={styles.retryButton}
+                          onPress={() => {
+                            void refreshWatchedMovies();
+                          }}
+                          disabled={!isSignedIn || watchedMoviesState.status === 'loading'}
+                          hitSlop={8}
+                        >
+                          <Text style={styles.retryText}>
+                            {watchedMoviesState.status === 'loading'
+                              ? 'Yukleniyor...'
+                              : 'Izlenen Filmleri Yenile'}
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                    </CollapsibleSectionCard>
 
+                    <View style={styles.sectionAnchor}>
+                      <View style={styles.sectionHeaderRow}>
+                        <Text style={styles.sectionHeader}>Marklar</Text>
+                        <Text style={styles.sectionHeaderMeta}>{profileStats.marks} acik mark</Text>
+                      </View>
+                    </View>
                     <ProfileMarksCard state={profileState} isSignedIn={isSignedIn} mode="unlocked" />
+
+                    <View style={styles.sectionAnchor}>
+                      <View style={styles.sectionHeaderRow}>
+                        <Text style={styles.sectionHeader}>Hesap</Text>
+                        <Text style={styles.sectionHeaderMeta}>{isSignedIn ? 'Cloud bagli' : 'Giris gerekli'}</Text>
+                      </View>
+                    </View>
                     <AuthCard
                       authState={authState}
                       email={authEmail}
@@ -4605,6 +4832,19 @@ export default function App() {
             entries={profileMovieArchiveModalState.entries}
             onRefresh={handleRefreshProfileMovieArchive}
             onClose={handleCloseProfileMovieArchive}
+          />
+
+          <PublicProfileMovieArchiveModal
+            visible={publicProfileMovieArchiveModalState.visible}
+            status={publicProfileMovieArchiveModalState.status}
+            message={publicProfileMovieArchiveModalState.message}
+            displayName={publicProfileMovieArchiveModalState.displayName}
+            movie={publicProfileMovieArchiveModalState.movie}
+            items={publicProfileMovieArchiveModalState.items}
+            onRefresh={() => {
+              void handleRefreshPublicProfileMovieArchive();
+            }}
+            onClose={handleClosePublicProfileMovieArchive}
           />
 
           <MobileSettingsModal

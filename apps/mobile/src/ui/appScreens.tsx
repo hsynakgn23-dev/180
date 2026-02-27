@@ -51,6 +51,7 @@ import {
 import type { MobileCommentReply } from '../lib/mobileCommentInteractions';
 import type { MobileWatchedMovie } from '../lib/mobileProfileWatchedMovies';
 import type { MobileProfileMovieArchiveEntry } from '../lib/mobileProfileMovieArchive';
+import type { MobilePublicProfileActivityItem } from '../lib/mobilePublicProfileActivity';
 
 const PRESSABLE_HIT_SLOP = { top: 8, right: 8, bottom: 8, left: 8 } as const;
 const TMDB_POSTER_BASE_URL = 'https://image.tmdb.org/t/p/w342';
@@ -201,10 +202,272 @@ const resolvePosterUrl = (posterPath: string | null | undefined): string | null 
 
 const ScreenCard = ({
   children,
+  accent = 'sage',
 }: {
   children: ReactNode;
   accent?: 'sage' | 'clay';
-}) => <View style={styles.screenCard}>{children}</View>;
+}) => (
+  <View style={styles.screenCard}>
+    <View
+      style={[
+        styles.screenCardAccent,
+        accent === 'clay' ? styles.screenCardAccentClay : styles.screenCardAccentSage,
+      ]}
+    />
+    {children}
+  </View>
+);
+
+const SectionLeadCard = ({
+  accent = 'sage',
+  eyebrow,
+  title,
+  body,
+  badges,
+  metrics,
+  actions,
+}: {
+  accent?: 'sage' | 'clay';
+  eyebrow: string;
+  title: string;
+  body: string;
+  badges?: Array<{ label: string; tone?: 'sage' | 'clay' | 'muted' }>;
+  metrics?: Array<{ label: string; value: string }>;
+  actions?: Array<{
+    label: string;
+    tone?: 'neutral' | 'brand' | 'teal' | 'danger';
+    onPress: () => void;
+    disabled?: boolean;
+  }>;
+}) => (
+  <ScreenCard accent={accent}>
+    <Text style={styles.sectionLeadEyebrow}>{eyebrow}</Text>
+    <Text style={styles.sectionLeadTitle}>{title}</Text>
+    <Text style={styles.sectionLeadBody}>{body}</Text>
+
+    {Array.isArray(badges) && badges.length > 0 ? (
+      <View style={styles.sectionLeadBadgeRow}>
+        {badges.map((badge, index) => (
+          <View
+            key={`${title}-badge-${index}`}
+            style={[
+              styles.sectionLeadBadge,
+              badge.tone === 'clay'
+                ? styles.sectionLeadBadgeClay
+                : badge.tone === 'muted'
+                  ? styles.sectionLeadBadgeMuted
+                  : styles.sectionLeadBadgeSage,
+            ]}
+          >
+            <Text style={styles.sectionLeadBadgeText}>{badge.label}</Text>
+          </View>
+        ))}
+      </View>
+    ) : null}
+
+    {Array.isArray(metrics) && metrics.length > 0 ? (
+      <View style={styles.sectionLeadMetricRow}>
+        {metrics.map((metric, index) => (
+          <View key={`${title}-metric-${index}`} style={styles.sectionLeadMetricCard}>
+            <Text style={styles.sectionLeadMetricValue}>{metric.value}</Text>
+            <Text style={styles.sectionLeadMetricLabel}>{metric.label}</Text>
+          </View>
+        ))}
+      </View>
+    ) : null}
+
+    {Array.isArray(actions) && actions.length > 0 ? (
+      <View style={styles.sectionLeadActionRow}>
+        {actions.map((action, index) => (
+          <UiButton
+            key={`${title}-action-${index}`}
+            label={action.label}
+            tone={action.tone || 'neutral'}
+            stretch
+            onPress={action.onPress}
+            disabled={action.disabled}
+          />
+        ))}
+      </View>
+    ) : null}
+  </ScreenCard>
+);
+
+const StatePanel = ({
+  tone = 'sage',
+  variant,
+  eyebrow,
+  title,
+  body,
+  meta,
+  actionLabel,
+  onAction,
+  actionTone = 'brand',
+}: {
+  tone?: 'sage' | 'clay';
+  variant: 'loading' | 'empty' | 'error';
+  eyebrow: string;
+  title: string;
+  body: string;
+  meta?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  actionTone?: 'neutral' | 'brand' | 'teal' | 'danger';
+}) => {
+  const [pulse] = useState(() => new Animated.Value(0.6));
+
+  useEffect(() => {
+    if (variant !== 'loading') {
+      pulse.setValue(1);
+      return;
+    }
+
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0.45,
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    animation.start();
+    return () => animation.stop();
+  }, [pulse, variant]);
+
+  const toneStyle =
+    tone === 'clay' ? styles.statePanelToneClay : styles.statePanelToneSage;
+
+  return (
+    <View style={[styles.statePanel, toneStyle]}>
+      <Text style={styles.statePanelEyebrow}>{eyebrow}</Text>
+      <Text style={styles.statePanelTitle}>{title}</Text>
+      <Text style={styles.statePanelBody}>{body}</Text>
+      {meta ? <Text style={styles.statePanelMeta}>{meta}</Text> : null}
+
+      {variant === 'loading' ? (
+        <View style={styles.statePanelSkeletonStack}>
+          <Animated.View style={[styles.statePanelSkeletonWide, { opacity: pulse }]} />
+          <Animated.View style={[styles.statePanelSkeletonMid, { opacity: pulse }]} />
+          <Animated.View style={[styles.statePanelSkeletonShort, { opacity: pulse }]} />
+        </View>
+      ) : null}
+
+      {actionLabel && onAction ? (
+        <UiButton label={actionLabel} tone={actionTone} onPress={onAction} />
+      ) : null}
+    </View>
+  );
+};
+
+const StatusStrip = ({
+  tone = 'muted',
+  eyebrow,
+  title,
+  body,
+  meta,
+}: {
+  tone?: 'sage' | 'clay' | 'muted';
+  eyebrow: string;
+  title?: string;
+  body: string;
+  meta?: string;
+}) => (
+  <View
+    style={[
+      styles.statusStrip,
+      tone === 'clay'
+        ? styles.statusStripToneClay
+        : tone === 'sage'
+          ? styles.statusStripToneSage
+          : styles.statusStripToneMuted,
+    ]}
+  >
+    <Text style={styles.statusStripEyebrow}>{eyebrow}</Text>
+    {title ? <Text style={styles.statusStripTitle}>{title}</Text> : null}
+    <Text style={styles.statusStripBody}>{body}</Text>
+    {meta ? <Text style={styles.statusStripMeta}>{meta}</Text> : null}
+  </View>
+);
+
+const CollapsibleSectionCard = ({
+  accent = 'sage',
+  title,
+  meta,
+  defaultExpanded = false,
+  children,
+}: {
+  accent?: 'sage' | 'clay';
+  title: string;
+  meta?: string;
+  defaultExpanded?: boolean;
+  children: ReactNode;
+}) => {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const [progress] = useState(() => new Animated.Value(defaultExpanded ? 1 : 0));
+
+  useEffect(() => {
+    const animation = Animated.timing(progress, {
+      toValue: expanded ? 1 : 0,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [expanded, progress]);
+
+  const chevronRotate = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '90deg'],
+  });
+  const maxHeight = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1200],
+  });
+
+  return (
+    <ScreenCard accent={accent}>
+      <Pressable
+        style={({ pressed }) => [styles.collapsibleHeader, pressed ? styles.collapsibleHeaderPressed : null]}
+        onPress={() => setExpanded((prev) => !prev)}
+        hitSlop={PRESSABLE_HIT_SLOP}
+        accessibilityRole="button"
+        accessibilityLabel={`${title} bolumunu ${expanded ? 'daralt' : 'genislet'}`}
+        accessibilityState={{ expanded }}
+      >
+        <View style={styles.collapsibleHeaderContent}>
+          <Text style={styles.collapsibleTitle}>{title}</Text>
+          {meta ? <Text style={styles.collapsibleMeta}>{meta}</Text> : null}
+        </View>
+        <Animated.View style={{ transform: [{ rotate: chevronRotate }] }}>
+          <Text style={styles.collapsibleChevron}>{'>'}</Text>
+        </Animated.View>
+      </Pressable>
+
+      <Animated.View
+        style={[
+          styles.collapsibleBodyWrap,
+          {
+            opacity: progress,
+            maxHeight,
+          },
+        ]}
+        pointerEvents={expanded ? 'auto' : 'none'}
+      >
+        <View style={styles.collapsibleBodyInner}>{children}</View>
+      </Animated.View>
+    </ScreenCard>
+  );
+};
 
 class ScreenErrorBoundary extends Component<
   { section: string; children: ReactNode },
@@ -278,6 +541,12 @@ const AuthCard = ({
   const isConfigured = isSupabaseConfigured;
   const isRecoveryMode = mode === 'recovery';
   const isForgotMode = mode === 'forgot';
+  const authStatusTone =
+    !isConfigured || authState.status === 'error'
+      ? 'clay'
+      : isSignedIn && !isRecoveryMode
+        ? 'sage'
+        : 'muted';
   const submitLabel = isRecoveryMode
     ? isBusy
       ? 'Sifre guncelleniyor...'
@@ -295,168 +564,225 @@ const AuthCard = ({
     : isForgotMode
       ? 'Hesabina bagli e-postayi gir. Mobil uygulamaya geri donecek bir yenileme linki gonderelim.'
       : 'Invite claim ve cloud senkronu icin mobilde Supabase oturumu gerekiyor.';
+  const modeMeta = isRecoveryMode
+    ? 'Recovery linkiyle geldin. Iki sifre alani ayni olmali.'
+    : isForgotMode
+      ? 'Sadece e-postayi gir. Baglanti cihazdan uygulamaya geri doner.'
+      : 'Email, sifre veya Google OAuth ile devam edebilirsin.';
+  const authStatusTitle = !isConfigured
+    ? 'Supabase baglanmadi'
+    : isRecoveryMode
+      ? 'Recovery akisi aktif'
+      : isSignedIn
+        ? 'Cloud oturumu bagli'
+        : 'Oturum bekleniyor';
+  const authStatusBody = !isConfigured
+    ? 'EXPO_PUBLIC_SUPABASE_URL ve EXPO_PUBLIC_SUPABASE_ANON_KEY olmadan hesap akislarini acamayiz.'
+    : authState.message;
 
   return (
     <ScreenCard accent="clay">
-      <Text style={styles.screenTitle}>{title}</Text>
-      <Text style={styles.screenBody}>{body}</Text>
-      <Text style={styles.screenMeta}>Status: {authState.status}</Text>
-      <Text style={styles.screenMeta}>{authState.message}</Text>
-      {!isConfigured ? (
-        <Text style={styles.screenMeta}>
-          EXPO_PUBLIC_SUPABASE_URL ve EXPO_PUBLIC_SUPABASE_ANON_KEY ayarlanmali.
-        </Text>
+      <Text style={styles.sectionLeadEyebrow}>Account Access</Text>
+      <Text style={styles.sectionLeadTitle}>{title}</Text>
+      <Text style={styles.sectionLeadBody}>{body}</Text>
+      <View style={styles.sectionLeadBadgeRow}>
+        <View
+          style={[
+            styles.sectionLeadBadge,
+            isRecoveryMode
+              ? styles.sectionLeadBadgeClay
+              : isSignedIn && !isForgotMode
+                ? styles.sectionLeadBadgeSage
+                : styles.sectionLeadBadgeMuted,
+          ]}
+        >
+          <Text style={styles.sectionLeadBadgeText}>
+            {isRecoveryMode ? 'Recovery' : isForgotMode ? 'Reset Link' : 'Session'}
+          </Text>
+        </View>
+        <View
+          style={[
+            styles.sectionLeadBadge,
+            isConfigured ? styles.sectionLeadBadgeSage : styles.sectionLeadBadgeClay,
+          ]}
+        >
+          <Text style={styles.sectionLeadBadgeText}>
+            {isConfigured ? 'Supabase Ready' : 'Config Missing'}
+          </Text>
+        </View>
+        <View
+          style={[
+            styles.sectionLeadBadge,
+            authStatusTone === 'sage'
+              ? styles.sectionLeadBadgeSage
+              : authStatusTone === 'clay'
+                ? styles.sectionLeadBadgeClay
+                : styles.sectionLeadBadgeMuted,
+          ]}
+        >
+          <Text style={styles.sectionLeadBadgeText}>
+            {isBusy ? 'Working' : authState.status.replace(/_/g, ' ')}
+          </Text>
+        </View>
+      </View>
+
+      <StatusStrip
+        tone={authStatusTone}
+        eyebrow="Oturum Durumu"
+        title={authStatusTitle}
+        body={authStatusBody}
+        meta={isSignedIn && authState.email ? `Bagli hesap: ${authState.email}` : modeMeta}
+      />
+
+      {isConfigured && isBusy ? (
+        <StatePanel
+          tone="sage"
+          variant="loading"
+          eyebrow="Auth Flow"
+          title="Oturum akisi isleniyor"
+          body="Supabase istegi tamamlanirken bu kart acik kalabilir."
+          meta={isRecoveryMode ? 'Recovery session yenileniyor.' : 'Yeni session bilgisi dogrulaniyor.'}
+        />
       ) : null}
 
       {!isSignedIn || isRecoveryMode ? (
         <View style={styles.authForm}>
-          {!isRecoveryMode ? (
-            <View style={styles.themeModeSegmentContainer}>
-              <Pressable
-                style={[
-                  styles.themeModeSegmentOption,
-                  mode === 'login' ? styles.themeModeSegmentActiveMidnight : null,
-                ]}
-                onPress={() => onModeChange('login')}
-                accessibilityRole="button"
-                accessibilityLabel="Giris modunu sec"
-              >
-                <Text
-                  style={[
-                    styles.themeModeSegmentText,
-                    mode === 'login' ? styles.themeModeSegmentTextActiveMidnight : null,
-                  ]}
-                >
-                  Giris
-                </Text>
-              </Pressable>
-              <Pressable
-                style={[
-                  styles.themeModeSegmentOption,
-                  mode === 'forgot' ? styles.themeModeSegmentActiveMidnight : null,
-                ]}
-                onPress={() => onModeChange('forgot')}
-                accessibilityRole="button"
-                accessibilityLabel="Sifre sifirlama modunu sec"
-              >
-                <Text
-                  style={[
-                    styles.themeModeSegmentText,
-                    mode === 'forgot' ? styles.themeModeSegmentTextActiveMidnight : null,
-                  ]}
-                >
-                  Sifre Sifirla
-                </Text>
-              </Pressable>
-            </View>
-          ) : null}
+          <View style={styles.authModeSurface}>
+            {!isRecoveryMode ? (
+              <>
+                <Text style={styles.subSectionLabel}>Akis Sec</Text>
+                <View style={styles.themeModeSegmentContainer}>
+                  <Pressable
+                    style={[
+                      styles.themeModeSegmentOption,
+                      mode === 'login' ? styles.themeModeSegmentActiveMidnight : null,
+                    ]}
+                    onPress={() => onModeChange('login')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Giris modunu sec"
+                  >
+                    <Text
+                      style={[
+                        styles.themeModeSegmentText,
+                        mode === 'login' ? styles.themeModeSegmentTextActiveMidnight : null,
+                      ]}
+                    >
+                      Giris
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[
+                      styles.themeModeSegmentOption,
+                      mode === 'forgot' ? styles.themeModeSegmentActiveMidnight : null,
+                    ]}
+                    onPress={() => onModeChange('forgot')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Sifre sifirlama modunu sec"
+                  >
+                    <Text
+                      style={[
+                        styles.themeModeSegmentText,
+                        mode === 'forgot' ? styles.themeModeSegmentTextActiveMidnight : null,
+                      ]}
+                    >
+                      Sifre Sifirla
+                    </Text>
+                  </Pressable>
+                </View>
+              </>
+            ) : null}
+            <Text style={styles.screenMeta}>{modeMeta}</Text>
+          </View>
 
-          {!isRecoveryMode ? (
-            <TextInput
-              style={styles.input}
-              value={email}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              placeholder="Email"
-              placeholderTextColor="#8e8b84"
-              onChangeText={onEmailChange}
-              accessibilityLabel="Email adresi"
-            />
-          ) : null}
-          {!isForgotMode ? (
-            <TextInput
-              style={styles.input}
-              value={password}
-              autoCapitalize="none"
-              secureTextEntry
-              returnKeyType={isRecoveryMode ? 'next' : 'done'}
-              placeholder={isRecoveryMode ? 'Yeni sifre' : 'Password'}
-              placeholderTextColor="#8e8b84"
-              onChangeText={onPasswordChange}
-              onSubmitEditing={isRecoveryMode ? undefined : onSignIn}
-              accessibilityLabel={isRecoveryMode ? 'Yeni sifre' : 'Sifre'}
-            />
-          ) : null}
-          {isRecoveryMode ? (
-            <TextInput
-              style={styles.input}
-              value={confirmPassword}
-              autoCapitalize="none"
-              secureTextEntry
-              returnKeyType="done"
-              placeholder="Yeni sifre tekrar"
-              placeholderTextColor="#8e8b84"
-              onChangeText={onConfirmPasswordChange}
-              onSubmitEditing={onCompletePasswordReset}
-              accessibilityLabel="Yeni sifre tekrar"
-            />
-          ) : null}
-          <Pressable
-            style={[
-              styles.claimButton,
-              isBusy ? styles.claimButtonDisabled : null,
-              !isConfigured ? styles.claimButtonDisabled : null,
-            ]}
-            onPress={
-              isRecoveryMode
-                ? onCompletePasswordReset
-                : isForgotMode
-                  ? onRequestPasswordReset
-                  : onSignIn
-            }
-            disabled={isBusy || !isConfigured}
-            hitSlop={PRESSABLE_HIT_SLOP}
-            accessibilityRole="button"
-            accessibilityLabel={submitLabel}
-            accessibilityState={{ disabled: isBusy || !isConfigured }}
-          >
-            <Text style={styles.claimButtonText}>{submitLabel}</Text>
-          </Pressable>
-          {mode === 'login' ? (
-            <Pressable
-              style={[
-                styles.retryButton,
-                isBusy || !isConfigured ? styles.claimButtonDisabled : null,
-              ]}
-              onPress={onGoogleSignIn}
+          <View style={styles.authFieldStack}>
+            {!isRecoveryMode ? (
+              <TextInput
+                style={styles.input}
+                value={email}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                placeholder="Email"
+                placeholderTextColor="#8e8b84"
+                onChangeText={onEmailChange}
+                accessibilityLabel="Email adresi"
+              />
+            ) : null}
+            {!isForgotMode ? (
+              <TextInput
+                style={styles.input}
+                value={password}
+                autoCapitalize="none"
+                secureTextEntry
+                returnKeyType={isRecoveryMode ? 'next' : 'done'}
+                placeholder={isRecoveryMode ? 'Yeni sifre' : 'Password'}
+                placeholderTextColor="#8e8b84"
+                onChangeText={onPasswordChange}
+                onSubmitEditing={isRecoveryMode ? undefined : onSignIn}
+                accessibilityLabel={isRecoveryMode ? 'Yeni sifre' : 'Sifre'}
+              />
+            ) : null}
+            {isRecoveryMode ? (
+              <TextInput
+                style={styles.input}
+                value={confirmPassword}
+                autoCapitalize="none"
+                secureTextEntry
+                returnKeyType="done"
+                placeholder="Yeni sifre tekrar"
+                placeholderTextColor="#8e8b84"
+                onChangeText={onConfirmPasswordChange}
+                onSubmitEditing={onCompletePasswordReset}
+                accessibilityLabel="Yeni sifre tekrar"
+              />
+            ) : null}
+          </View>
+
+          <View style={styles.authActionStack}>
+            <UiButton
+              label={submitLabel}
+              tone="brand"
+              stretch
+              onPress={
+                isRecoveryMode
+                  ? onCompletePasswordReset
+                  : isForgotMode
+                    ? onRequestPasswordReset
+                    : onSignIn
+              }
               disabled={isBusy || !isConfigured}
-              hitSlop={PRESSABLE_HIT_SLOP}
-              accessibilityRole="button"
-              accessibilityLabel="Google ile devam et"
-              accessibilityState={{ disabled: isBusy || !isConfigured }}
-            >
-              <Text style={styles.retryText}>
-                {isBusy ? 'Yonlendiriliyor...' : 'Google ile Devam Et'}
-              </Text>
-            </Pressable>
-          ) : null}
-          {mode !== 'login' ? (
-            <Pressable
-              style={styles.retryButton}
-              onPress={() => onModeChange('login')}
-              disabled={isBusy}
-              hitSlop={PRESSABLE_HIT_SLOP}
-              accessibilityRole="button"
-              accessibilityLabel="Giris ekranina don"
-            >
-              <Text style={styles.retryText}>Giris ekranina don</Text>
-            </Pressable>
-          ) : null}
+            />
+            {mode === 'login' ? (
+              <UiButton
+                label={isBusy ? 'Yonlendiriliyor...' : 'Google ile Devam Et'}
+                tone="neutral"
+                stretch
+                onPress={onGoogleSignIn}
+                disabled={isBusy || !isConfigured}
+              />
+            ) : null}
+            {mode !== 'login' ? (
+              <UiButton
+                label="Giris ekranina don"
+                tone="neutral"
+                onPress={() => onModeChange('login')}
+                disabled={isBusy}
+              />
+            ) : null}
+          </View>
         </View>
       ) : (
         <View style={styles.authSignedInBox}>
-          <Text style={styles.screenMeta}>User: {authState.email}</Text>
-          <Pressable
-            style={[styles.signOutButton, isBusy ? styles.claimButtonDisabled : null]}
-            onPress={onSignOut}
-            disabled={isBusy}
-            hitSlop={PRESSABLE_HIT_SLOP}
-            accessibilityRole="button"
-            accessibilityLabel="Cikis yap"
-            accessibilityState={{ disabled: isBusy }}
-          >
-            <Text style={styles.claimButtonText}>Cikis Yap</Text>
-          </Pressable>
+          <View style={styles.detailInfoGrid}>
+            <View style={styles.detailInfoCard}>
+              <Text style={styles.detailInfoLabel}>Hesap</Text>
+              <Text style={styles.detailInfoValue}>{authState.email || 'bagli kullanici'}</Text>
+            </View>
+            <View style={styles.detailInfoCard}>
+              <Text style={styles.detailInfoLabel}>Cloud</Text>
+              <Text style={styles.detailInfoValue}>Invite, share ve sync hazir</Text>
+            </View>
+          </View>
+          <UiButton label="Cikis Yap" tone="danger" onPress={onSignOut} disabled={isBusy} />
         </View>
       )}
     </ScreenCard>
@@ -919,6 +1245,14 @@ const PushStatusCard = ({
   const isBusy = state.status === 'loading';
   const isTestBusy = testState.status === 'loading';
   const isLocalSimBusy = localSimState.status === 'loading';
+  const stateTone =
+    state.status === 'error'
+      ? 'clay'
+      : state.status === 'unsupported'
+        ? 'muted'
+        : state.cloudStatus === 'synced'
+          ? 'sage'
+          : 'muted';
   const tokenPreview =
     state.token.length > 20
       ? `${state.token.slice(0, 18)}...${state.token.slice(-10)}`
@@ -927,155 +1261,186 @@ const PushStatusCard = ({
     state.deviceKey.length > 20
       ? `${state.deviceKey.slice(0, 12)}...${state.deviceKey.slice(-6)}`
       : state.deviceKey || 'none';
-
-  const toneStyle =
-    state.status === 'error'
-      ? styles.ritualStateError
-      : state.status === 'unsupported'
-        ? styles.ritualStateWarn
-        : styles.ritualStateOk;
-  const testToneStyle =
-    testState.status === 'error'
-      ? styles.ritualStateError
-      : testState.status === 'success'
-        ? styles.ritualStateOk
-        : styles.screenMeta;
-  const receiptToneStyle =
-    testState.receiptStatus === 'unavailable'
-      ? styles.ritualStateWarn
-      : testState.receiptStatus === 'ok'
-        ? styles.ritualStateOk
-        : styles.screenMeta;
   const canSendTest = pushEnabled && isSignedIn && state.cloudStatus === 'synced' && !isBusy;
+  const testTone =
+    testState.status === 'error' ? 'clay' : testState.status === 'success' ? 'sage' : 'muted';
+  const receiptTone =
+    testState.receiptStatus === 'unavailable'
+      ? 'clay'
+      : testState.receiptStatus === 'ok'
+        ? 'sage'
+        : 'muted';
+  const localTone =
+    localSimState.status === 'error'
+      ? 'clay'
+      : localSimState.status === 'success'
+        ? 'sage'
+        : 'muted';
 
   return (
-    <ScreenCard accent="clay">
-      <Text style={styles.screenTitle}>Push Durumu</Text>
-      <Text style={styles.screenBody}>
-        Expo push token kaydi ve izin durumu. Bildirim datasi icinde `deepLink` varsa mobil routinge aktarilir.
-      </Text>
+    <>
+      <SectionLeadCard
+        accent="clay"
+        eyebrow="Push Ops"
+        title={pushEnabled ? 'Bildirim kanali hazirlikta' : 'Push modulu kapali'}
+        body="Expo push token kaydi, cloud senkronu ve local sim aksiyonlari bu yuzeyden kontrol edilir."
+        badges={[
+          { label: pushEnabled ? 'Push enabled' : 'Push disabled', tone: pushEnabled ? 'sage' : 'clay' },
+          { label: isSignedIn ? 'Session ready' : 'Session required', tone: isSignedIn ? 'sage' : 'clay' },
+          { label: state.cloudStatus, tone: state.cloudStatus === 'synced' ? 'sage' : state.cloudStatus === 'error' ? 'clay' : 'muted' },
+        ]}
+        metrics={[
+          { label: 'Permission', value: state.permissionStatus || 'unknown' },
+          { label: 'Test', value: testState.status },
+          { label: 'Local', value: localSimState.status },
+          { label: 'Cloud', value: state.cloudStatus },
+        ]}
+        actions={[
+          {
+            label: isBusy ? 'Push Kaydi Suruyor...' : 'Push Izin + Token Yenile',
+            tone: 'brand',
+            onPress: onRegister,
+            disabled: isBusy || !isSignedIn || !pushEnabled,
+          },
+          {
+            label: isTestBusy ? 'Test Push Gonderiliyor...' : 'Kendime Test Push Gonder',
+            tone: 'teal',
+            onPress: onSendTest,
+            disabled: isTestBusy || !canSendTest || !pushEnabled,
+          },
+          {
+            label: isLocalSimBusy ? 'Local Sim Gonderiliyor...' : 'Emulator Local Push Simule Et',
+            tone: 'neutral',
+            onPress: onSimulateLocal,
+            disabled: isLocalSimBusy || !pushEnabled,
+          },
+        ]}
+      />
+
       {!pushEnabled ? (
-        <Text style={[styles.screenMeta, styles.ritualStateWarn]}>
-          Push modulu su an gecici olarak devre disi. EXPO_PUBLIC_PUSH_ENABLED=1 ile tekrar acilir.
-        </Text>
-      ) : null}
-      {!isSignedIn ? (
-        <Text style={[styles.screenMeta, styles.ritualStateWarn]}>
-          Push kaydi icin once Session kartindan giris yap.
-        </Text>
-      ) : null}
-      <Text style={styles.screenMeta}>Permission: {state.permissionStatus || 'unknown'}</Text>
-      <Text style={styles.screenMeta}>ProjectId: {state.projectId || 'unset'}</Text>
-      <Text style={styles.screenMeta}>Token: {tokenPreview}</Text>
-      <Text style={styles.screenMeta}>Cloud sync: {state.cloudStatus}</Text>
-      <Text style={styles.screenMeta}>Device key: {deviceKeyPreview}</Text>
-      <Text style={styles.screenMeta}>Last notification: {state.lastNotification}</Text>
-      <Text style={[styles.screenMeta, toneStyle]}>{state.message}</Text>
-      <Text
-        style={[
-          styles.screenMeta,
-          state.cloudStatus === 'error'
-            ? styles.ritualStateError
-            : state.cloudStatus === 'synced'
-              ? styles.ritualStateOk
-              : styles.screenMeta,
-        ]}
-      >
-        {state.cloudMessage}
-      </Text>
-      <Text style={[styles.screenMeta, testToneStyle]}>Test push: {testState.message}</Text>
-      <Text
-        style={[
-          styles.screenMeta,
-          localSimState.status === 'error'
-            ? styles.ritualStateError
-            : localSimState.status === 'success'
-              ? styles.ritualStateOk
-              : styles.screenMeta,
-        ]}
-      >
-        Local sim: {localSimState.message}
-      </Text>
-      {testState.status === 'success' ? (
-        <>
-          <Text style={styles.screenMeta}>
-            Sent: {testState.sentCount} | Tickets: {testState.ticketCount} | Ticket IDs:{' '}
-            {testState.ticketIdCount} | Expo errors: {testState.errorCount}
-          </Text>
-          <Text style={[styles.screenMeta, receiptToneStyle]}>
-            Receipt: {testState.receiptStatus} | Checked: {testState.receiptCheckedCount} | Ok:{' '}
-            {testState.receiptOkCount} | Error: {testState.receiptErrorCount} | Pending:{' '}
-            {testState.receiptPendingCount}
-          </Text>
-          {testState.receiptMessage ? (
-            <Text style={[styles.screenMeta, receiptToneStyle]}>{testState.receiptMessage}</Text>
-          ) : null}
-          {testState.receiptErrorPreview ? (
-            <Text style={[styles.screenMeta, styles.ritualStateError]}>
-              Receipt error sample: {testState.receiptErrorPreview}
-            </Text>
-          ) : null}
-        </>
+        <StatePanel
+          tone="clay"
+          variant="empty"
+          eyebrow="Push Module"
+          title="Push modulu su an kapali"
+          body="Remote push aksiyonlari gecici olarak devre disi. EXPO_PUBLIC_PUSH_ENABLED=1 ile geri acilir."
+          meta="Local sim ve diger kartlar sadece mod aktifken anlamli veri uretir."
+        />
       ) : null}
 
-      <View style={styles.ritualActionRow}>
-        <Pressable
-          style={[
-            styles.retryButton,
-            isBusy || !isSignedIn || !pushEnabled ? styles.claimButtonDisabled : null,
-          ]}
-          disabled={isBusy || !isSignedIn || !pushEnabled}
-          onPress={onRegister}
-          hitSlop={PRESSABLE_HIT_SLOP}
-          accessibilityRole="button"
-          accessibilityLabel="Push izin ve token yenile"
-          accessibilityState={{ disabled: isBusy || !isSignedIn || !pushEnabled }}
-        >
-          <Text style={styles.retryText}>
-            {isBusy ? 'Push Kaydi Suruyor...' : 'Push Izin + Token Yenile'}
-          </Text>
-        </Pressable>
+      {pushEnabled && !isSignedIn ? (
+        <StatePanel
+          tone="clay"
+          variant="empty"
+          eyebrow="Session Gate"
+          title="Push kaydi icin giris yapman gerekiyor"
+          body="Token kaydi ve cloud sync sadece mobil session acikken tamamlanir."
+          meta="Local sim aksiyonu yine de debug icin kullanilabilir."
+        />
+      ) : null}
 
-        <Pressable
-          style={[
-            styles.retryButton,
-            isTestBusy || !canSendTest || !pushEnabled ? styles.claimButtonDisabled : null,
-          ]}
-          disabled={isTestBusy || !canSendTest || !pushEnabled}
-          onPress={onSendTest}
-          hitSlop={PRESSABLE_HIT_SLOP}
-          accessibilityRole="button"
-          accessibilityLabel="Kendime test push gonder"
-          accessibilityState={{ disabled: isTestBusy || !canSendTest || !pushEnabled }}
-        >
-          <Text style={styles.retryText}>
-            {isTestBusy ? 'Test Push Gonderiliyor...' : 'Kendime Test Push Gonder'}
-          </Text>
-        </Pressable>
+      <StatusStrip
+        tone={stateTone}
+        eyebrow="Registration"
+        title={
+          state.status === 'unsupported'
+            ? 'Remote push bu ortamda sinirli'
+            : state.status === 'error'
+              ? 'Push kaydi hata verdi'
+              : state.cloudStatus === 'synced'
+                ? 'Push kaydi cloud ile senkron'
+                : 'Push kaydi hazirlaniyor'
+        }
+        body={state.message}
+        meta={state.cloudMessage}
+      />
 
-        <Pressable
-          style={[
-            styles.retryButton,
-            isLocalSimBusy || !pushEnabled ? styles.claimButtonDisabled : null,
-          ]}
-          disabled={isLocalSimBusy || !pushEnabled}
-          onPress={onSimulateLocal}
-          hitSlop={PRESSABLE_HIT_SLOP}
-          accessibilityRole="button"
-          accessibilityLabel="Local push simulasyonu baslat"
-          accessibilityState={{ disabled: isLocalSimBusy || !pushEnabled }}
-        >
-          <Text style={styles.retryText}>
-            {isLocalSimBusy ? 'Local Sim Gonderiliyor...' : 'Emulator Local Push Simule Et'}
-          </Text>
-        </Pressable>
-      </View>
+      <ScreenCard accent="sage">
+        <Text style={styles.subSectionLabel}>Device ve Cloud Detayi</Text>
+        <View style={styles.detailInfoGrid}>
+          <View style={styles.detailInfoCard}>
+            <Text style={styles.detailInfoLabel}>Permission</Text>
+            <Text style={styles.detailInfoValue}>{state.permissionStatus || 'unknown'}</Text>
+          </View>
+          <View style={styles.detailInfoCard}>
+            <Text style={styles.detailInfoLabel}>ProjectId</Text>
+            <Text style={styles.detailInfoValue}>{state.projectId || 'unset'}</Text>
+          </View>
+          <View style={styles.detailInfoCard}>
+            <Text style={styles.detailInfoLabel}>Cloud Sync</Text>
+            <Text style={styles.detailInfoValue}>{state.cloudStatus}</Text>
+          </View>
+          <View style={styles.detailInfoCard}>
+            <Text style={styles.detailInfoLabel}>Last Notification</Text>
+            <Text style={styles.detailInfoValue}>{state.lastNotification || 'none'}</Text>
+          </View>
+          <View style={styles.detailInfoCard}>
+            <Text style={styles.detailInfoLabel}>Token</Text>
+            <Text style={styles.detailInfoValue}>{tokenPreview}</Text>
+          </View>
+          <View style={styles.detailInfoCard}>
+            <Text style={styles.detailInfoLabel}>Device Key</Text>
+            <Text style={styles.detailInfoValue}>{deviceKeyPreview}</Text>
+          </View>
+        </View>
+      </ScreenCard>
+
       {!canSendTest ? (
-        <Text style={[styles.screenMeta, styles.ritualStateWarn]}>
-          Test push icin cloud sync status "synced" olmali.
-        </Text>
-      ) : null}
-    </ScreenCard>
+        <StatePanel
+          tone="clay"
+          variant="empty"
+          eyebrow="Test Readiness"
+          title="Test push henuz hazir degil"
+          body="Server test gonderimi icin cloud sync durumunun `synced` olmasi gerekir."
+          meta={
+            !pushEnabled
+              ? 'Once push modulu acilmali.'
+              : !isSignedIn
+                ? 'Once mobil session acilmali.'
+                : 'Register aksiyonunu calistirip cloud sync tamamlaninca tekrar dene.'
+          }
+        />
+      ) : (
+        <StatusStrip
+          tone="sage"
+          eyebrow="Test Readiness"
+          title="Server test push gonderimine hazir"
+          body="Kendime test push gonder aksiyonu bu cihaz ve session icin aktif."
+        />
+      )}
+
+      <ScreenCard accent="clay">
+        <Text style={styles.subSectionLabel}>Dispatch Sonucu</Text>
+        <StatusStrip
+          tone={testTone}
+          eyebrow="Remote Test"
+          title={testState.status === 'success' ? 'Test push tamamlandi' : testState.status === 'error' ? 'Test push basarisiz' : 'Test push beklemede'}
+          body={testState.message}
+          meta={
+            testState.status === 'success'
+              ? `Sent ${testState.sentCount} | Tickets ${testState.ticketCount} | Errors ${testState.errorCount}`
+              : 'Server dispatch sonucu burada ozetlenir.'
+          }
+        />
+        <StatusStrip
+          tone={receiptTone}
+          eyebrow="Receipt"
+          title={testState.receiptStatus === 'ok' ? 'Receipt kontrolu olumlu' : testState.receiptStatus === 'unavailable' ? 'Receipt sinirli' : 'Receipt bekleniyor'}
+          body={
+            testState.receiptMessage ||
+            `Checked ${testState.receiptCheckedCount} | Ok ${testState.receiptOkCount} | Error ${testState.receiptErrorCount} | Pending ${testState.receiptPendingCount}`
+          }
+          meta={testState.receiptErrorPreview || undefined}
+        />
+        <StatusStrip
+          tone={localTone}
+          eyebrow="Local Sim"
+          title={localSimState.status === 'success' ? 'Local bildirim tetiklendi' : localSimState.status === 'error' ? 'Local sim hata verdi' : 'Local sim beklemede'}
+          body={localSimState.message}
+          meta="Emulator akisi remote token gerekmeden deep-link ve inbox testini dogrular."
+        />
+      </ScreenCard>
+    </>
   );
 };
 
@@ -1200,9 +1565,26 @@ const PushInboxCard = ({
       </Text>
 
       {sortedItems.length === 0 ? (
-        <Text style={styles.screenMeta}>
-          Kutunda hic bildirim bulunmuyor.
-        </Text>
+        <StatePanel
+          tone="sage"
+          variant={state.status === 'loading' ? 'loading' : state.status === 'error' ? 'error' : 'empty'}
+          eyebrow="Inbox"
+          title={
+            state.status === 'loading'
+              ? 'Bildirim kutusu hazirlaniyor'
+              : state.status === 'error'
+                ? 'Bildirimler okunamadi'
+                : 'Kutu su an bos'
+          }
+          body={
+            state.status === 'loading'
+              ? 'Yeni deep link ve push olaylari icin kutu senkronize ediliyor.'
+              : state.status === 'error'
+                ? 'Bildirim akisi gecici olarak okunamadi. Bir sonraki push ile tekrar deneyebilirsin.'
+                : 'Yeni bir bildirim geldiginde burada daha okunur kartlar halinde gorunecek.'
+          }
+          meta={state.message}
+        />
       ) : (
         <FlatList
           data={visibleItems}
@@ -1494,9 +1876,39 @@ const CommentFeedCard = ({
       ) : null}
 
       {waitingMovieSelection ? (
-        <Text style={styles.screenMeta}>Yorumlari gormek icin once bir film sec.</Text>
+        <StatePanel
+          tone="clay"
+          variant="empty"
+          eyebrow="Film Filtresi"
+          title="Once bir film sec"
+          body="Ana sayfada secili filme odaklandigin zaman yorum akisi burada sade bir sekilde acilir."
+          meta="Film secildiginde yorumlar ve yanitlar bu panelin altinda listelenir."
+        />
+      ) : isBusy && visibleItems.length === 0 ? (
+        <StatePanel
+          tone="clay"
+          variant="loading"
+          eyebrow="Yorum Akisi"
+          title="Sosyal akis toparlaniyor"
+          body="Yorumlar, echo sayilari ve yanitlar yenileniyor."
+          meta={state.message}
+        />
       ) : visibleItems.length === 0 ? (
-        <Text style={styles.screenMeta}>Bu filtrede yorum bulunamadi.</Text>
+        <StatePanel
+          tone="clay"
+          variant={state.status === 'error' ? 'error' : 'empty'}
+          eyebrow="Yorum Akisi"
+          title={state.status === 'error' ? 'Yorumlar alinamadi' : 'Bu filtrede yorum yok'}
+          body={
+            state.status === 'error'
+              ? 'Akis gecici olarak okunamadi. Yenileyip tekrar deneyebilirsin.'
+              : 'Filtreyi degistirerek daha genis bir akis gorebilir ya da yeni yorumlar geldikce burayi tekrar kontrol edebilirsin.'
+          }
+          meta={state.message}
+          actionLabel="Akisi Yenile"
+          onAction={onRefresh}
+          actionTone={state.status === 'error' ? 'danger' : 'brand'}
+        />
       ) : (
         <View style={styles.commentFeedList}>
           {visibleItems.map((item) => (
@@ -1788,35 +2200,32 @@ const DailyHomeScreen = ({
 
   if (state.status === 'loading' || state.status === 'idle') {
     return (
-      <ScreenCard accent="sage">
-        <Text style={styles.screenTitle}>Gunun Secimi</Text>
-        <Text style={styles.screenBody}>Bugunun secimi yukleniyor...</Text>
-      </ScreenCard>
+      <StatePanel
+        tone="sage"
+        variant="loading"
+        eyebrow="Daily Selection"
+        title="Bugunun secimi kuruluyor"
+        body="Poster, editorial not ve secili film aksiyonlari hazirlaniyor."
+        meta="Canli veri, cache ya da fallback kaynagi kontrol ediliyor."
+      />
     );
   }
 
   if (state.status === 'error') {
     return (
-      <ScreenCard accent="sage">
-        <Text style={styles.screenTitle}>Gunun Secimi</Text>
-        <Text style={styles.screenBody}>Bugunun secimi su an yuklenemedi.</Text>
-        <View style={styles.errorBox}>
-          <Text style={styles.errorText}>
-            {state.message}
-          </Text>
-          {showOpsMeta ? <Text style={styles.screenMeta}>Error Trace: {state.message}</Text> : null}
-          {showOpsMeta ? <Text style={styles.screenMeta}>Endpoint: {state.endpoint || 'unset'}</Text> : null}
-        </View>
-        <Pressable
-          style={styles.retryButton}
-          onPress={onRetry}
-          hitSlop={PRESSABLE_HIT_SLOP}
-          accessibilityRole="button"
-          accessibilityLabel="Gunluk secimi tekrar dene"
-        >
-          <Text style={styles.retryText}>Tekrar Dene</Text>
-        </Pressable>
-      </ScreenCard>
+      <StatePanel
+        tone="clay"
+        variant="error"
+        eyebrow="Daily Selection"
+        title="Bugunun secimi su an acilamadi"
+        body="Kaynak akisinda gecici bir sorun var. Tekrar denediginde canli secim, cache ya da fallback geri gelebilir."
+        meta={
+          showOpsMeta ? `Trace: ${state.message} | Endpoint: ${state.endpoint || 'unset'}` : state.message
+        }
+        actionLabel="Tekrar Dene"
+        onAction={onRetry}
+        actionTone="danger"
+      />
     );
   }
 
@@ -1825,6 +2234,21 @@ const DailyHomeScreen = ({
   }
 
   const successState = state;
+  if (successState.movies.length === 0) {
+    return (
+      <StatePanel
+        tone="sage"
+        variant="empty"
+        eyebrow="Daily Selection"
+        title="Bugun icin film bulunmadi"
+        body="Secim listesi bos dondu. Servis yenilendiginde yeni gunluk secim burada gorunecek."
+        meta={successState.message}
+        actionLabel="Yenile"
+        onAction={onRetry}
+      />
+    );
+  }
+
   const dataSourceLabel =
     successState.dataSource === 'live'
       ? 'canli'
@@ -2061,15 +2485,31 @@ const ProfileMovieArchiveModal = ({
             </View>
 
             {status === 'loading' ? (
-              <View style={styles.modalContentSurface}>
-                <Text style={styles.screenBody}>Film arsivi ve yanitlar yukleniyor...</Text>
-              </View>
+              <StatePanel
+                tone="sage"
+                variant="loading"
+                eyebrow="Film Arsivi"
+                title="Arsiv ritmi tazeleniyor"
+                body="Secilen filme ait yorumlar ve yanitlar yeniden yukleniyor."
+                meta="Yanitlar tekrar sayisi ile birlikte gruplanir."
+              />
             ) : null}
 
             {status !== 'loading' && entries.length === 0 ? (
-              <View style={styles.modalContentSurface}>
-                <Text style={styles.screenBody}>Bu film icin mobilde gosterilecek yorum kaydi bulunamadi.</Text>
-              </View>
+              <StatePanel
+                tone="clay"
+                variant={status === 'error' ? 'error' : 'empty'}
+                eyebrow="Film Arsivi"
+                title={status === 'error' ? 'Arsiv okunamadi' : 'Bu filmde henuz arsiv yok'}
+                body={
+                  status === 'error'
+                    ? message || 'Film arsivi okunurken gecici bir sorun olustu.'
+                    : 'Bu film icin mobil yuzeyde gosterilecek yorum kaydi bulunamadi.'
+                }
+                meta="Yeni ritual geldikce bu alan otomatik dolar."
+                actionLabel="Arsivi Yenile"
+                onAction={onRefresh}
+              />
             ) : null}
 
             {entries.length > 0 ? (
@@ -2108,6 +2548,146 @@ const ProfileMovieArchiveModal = ({
 
             <View style={styles.modalActionStack}>
               <UiButton label="Arsivi Yenile" tone="brand" stretch onPress={onRefresh} />
+              <UiButton label="Kapat" tone="neutral" stretch onPress={onClose} />
+            </View>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+const PublicProfileMovieArchiveModal = ({
+  visible,
+  status,
+  message,
+  displayName,
+  movie,
+  items,
+  onRefresh,
+  onClose,
+}: {
+  visible: boolean;
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  message: string;
+  displayName: string;
+  movie: {
+    movieTitle: string;
+    posterPath: string | null;
+    year: number | null;
+    watchedDayKey: string;
+    watchCount: number;
+  } | null;
+  items: MobilePublicProfileActivityItem[];
+  onRefresh: () => void;
+  onClose: () => void;
+}) => {
+  if (!visible || !movie) return null;
+
+  const posterUri = resolvePosterUrl(movie.posterPath || items[0]?.posterPath || null);
+  const profileLabel = String(displayName || '@bilinmeyen').trim() || '@bilinmeyen';
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.modalOverlaySurface}>
+        <Pressable style={{ flex: 1 }} onPress={onClose} />
+        <View style={styles.modalSheetSurface}>
+          <View style={styles.modalNavRow}>
+            <Text style={styles.sectionHeader}>Public Film Arsivi</Text>
+            <Pressable onPress={onClose} hitSlop={PRESSABLE_HIT_SLOP}>
+              <Text style={styles.modalCloseTextBtn}>Kapat</Text>
+            </Pressable>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.modalSheetScroll} showsVerticalScrollIndicator={false}>
+            <View style={styles.modalContentSurface}>
+              <View style={styles.movieArchiveHeader}>
+                {posterUri ? (
+                  <Image source={{ uri: posterUri }} style={styles.movieArchivePoster} resizeMode="cover" />
+                ) : (
+                  <View style={styles.movieArchivePosterFallback}>
+                    <Text style={styles.movieArchivePosterFallbackText}>180</Text>
+                  </View>
+                )}
+                <View style={styles.movieArchiveHeaderContent}>
+                  <Text style={styles.movieDetailTitle}>{movie.movieTitle}</Text>
+                  <Text style={styles.movieDetailMeta}>
+                    {movie.year ? `${movie.year} | ` : ''}
+                    Son izleme: {movie.watchedDayKey || '-'}
+                  </Text>
+                  <View style={styles.movieArchiveBadgeRow}>
+                    <View style={styles.movieArchiveBadge}>
+                      <Text style={styles.movieArchiveBadgeText}>{items.length} yorum kaydi</Text>
+                    </View>
+                    {movie.watchCount > 1 ? (
+                      <View style={styles.movieArchiveBadge}>
+                        <Text style={styles.movieArchiveBadgeText}>Tekrar {movie.watchCount}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={styles.screenMeta}>Profil: {profileLabel}</Text>
+                  <Text
+                    style={[
+                      styles.screenMeta,
+                      status === 'error'
+                        ? styles.ritualStateError
+                        : status === 'ready'
+                          ? styles.ritualStateOk
+                          : styles.screenMeta,
+                    ]}
+                  >
+                    {message}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {status === 'loading' ? (
+              <StatePanel
+                tone="clay"
+                variant="loading"
+                eyebrow="Public Arsiv"
+                title="Public akis tazeleniyor"
+                body="Secilen kullanicinin bu filme ait yorumlari yeniden yukleniyor."
+                meta={`${profileLabel} profilinden gelen ritual izi taraniyor.`}
+              />
+            ) : null}
+
+            {status !== 'loading' && items.length === 0 ? (
+              <StatePanel
+                tone="clay"
+                variant={status === 'error' ? 'error' : 'empty'}
+                eyebrow="Public Arsiv"
+                title={status === 'error' ? 'Public arsiv okunamadi' : 'Public yorum izine rastlanmadi'}
+                body={
+                  status === 'error'
+                    ? message || 'Public film arsivi okunurken gecici bir sorun olustu.'
+                    : 'Bu film icin public yorum kaydi bulunamadi.'
+                }
+                meta={`${profileLabel} yeni ritual biraktikca bu alan dolacak.`}
+                actionLabel="Public Arsivi Yenile"
+                onAction={onRefresh}
+              />
+            ) : null}
+
+            {items.length > 0 ? (
+              <View style={styles.movieArchiveEntryList}>
+                {items.map((item) => (
+                  <View key={item.id} style={styles.movieArchiveEntryCard}>
+                    <View style={styles.movieArchiveEntryHeader}>
+                      <Text style={styles.movieArchiveEntryDate}>{item.timestampLabel}</Text>
+                      {item.year ? (
+                        <Text style={styles.movieArchiveEntryGenre}>{item.year}</Text>
+                      ) : null}
+                    </View>
+                    <Text style={styles.movieArchiveEntryBody}>"{item.text}"</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
+            <View style={styles.modalActionStack}>
+              <UiButton label="Public Arsivi Yenile" tone="brand" stretch onPress={onRefresh} />
               <UiButton label="Kapat" tone="neutral" stretch onPress={onClose} />
             </View>
           </ScrollView>
@@ -2380,16 +2960,14 @@ const MobileSettingsModal = ({
   if (!visible) return null;
   const isSaving = saveState.status === 'saving';
   const saveTone =
-    saveState.status === 'error'
-      ? styles.ritualStateError
-      : saveState.status === 'success'
-        ? styles.ritualStateOk
-        : styles.screenMeta;
-  const inviteStatusTone = inviteStatus.toLowerCase().includes('hata')
-    ? styles.ritualStateError
-    : inviteStatus.toLowerCase().includes('uygulandi') || inviteStatus.toLowerCase().includes('kopyalandi')
-      ? styles.ritualStateOk
-      : styles.screenMeta;
+    saveState.status === 'error' ? 'clay' : saveState.status === 'success' ? 'sage' : 'muted';
+  const inviteStatusTone =
+    inviteStatus.toLowerCase().includes('hata')
+      ? 'clay'
+      : inviteStatus.toLowerCase().includes('uygulandi') ||
+          inviteStatus.toLowerCase().includes('kopyalandi')
+        ? 'sage'
+        : 'muted';
   const handleSignOutPress = () => {
     if (!isSignedIn || isInviteActionBusy) return;
     if (!confirmLogout) {
@@ -2399,6 +2977,17 @@ const MobileSettingsModal = ({
     setConfirmLogout(false);
     onSignOut();
   };
+  const identityDisplayName = String(identityDraft.fullName || '').trim();
+  const identityUsername = String(identityDraft.username || '')
+    .trim()
+    .replace(/^@+/, '');
+  const identityBirthDate = String(identityDraft.birthDate || '').trim();
+  const identityBio = String(identityDraft.bio || '').trim();
+  const identityProfileLink = String(identityDraft.profileLink || '').trim();
+  const activeGenderLabel =
+    SETTINGS_GENDER_OPTIONS.find((option) => option.key === identityDraft.gender)?.label || 'Sec';
+  const themeLabel = themeMode === 'dawn' ? 'Gunduz' : 'Gece';
+  const languageLabel = language === 'tr' ? 'Turkce' : 'English';
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -2435,270 +3024,482 @@ const MobileSettingsModal = ({
             ))}
           </View>
 
-          {saveState.message ? <Text style={[styles.screenMeta, saveTone]}>{saveState.message}</Text> : null}
+          {saveState.message ? (
+            <StatusStrip
+              tone={saveTone}
+              eyebrow="Save State"
+              title={saveTone === 'clay' ? 'Kayit basarisiz' : saveTone === 'sage' ? 'Kayit tamamlandi' : 'Taslak guncellendi'}
+              body={saveState.message}
+              meta={
+                isSignedIn
+                  ? 'Kimlik degisiklikleri cloud ile senkron tutulur.'
+                  : 'Cloud kaydi icin once mobil oturum ac.'
+              }
+            />
+          ) : null}
 
           <ScrollView contentContainerStyle={styles.modalSheetScroll}>
             {activeTab === 'identity' ? (
-              <ScreenCard accent="clay">
-                <Text style={styles.screenTitle}>Kimlik</Text>
-                <Text style={styles.subSectionLabel}>Avatar</Text>
-                <View style={styles.settingsAvatarPickerRow}>
-                  <View style={styles.settingsAvatarPreviewWrap}>
-                    {identityDraft.avatarUrl ? (
-                      <Image
-                        source={{ uri: identityDraft.avatarUrl }}
-                        style={styles.settingsAvatarPreviewImage}
-                        resizeMode="cover"
+              <>
+                <SectionLeadCard
+                  accent="clay"
+                  eyebrow="Identity Layer"
+                  title={identityDisplayName || 'Profil Kimligi'}
+                  body={identityBio || 'Avatar, kullanici adi ve profil notunu burada sekillendir.'}
+                  badges={[
+                    {
+                      label: identityUsername ? `@${identityUsername}` : 'handle bekleniyor',
+                      tone: identityUsername ? 'sage' : 'muted',
+                    },
+                    {
+                      label: identityDraft.avatarUrl ? 'Avatar hazir' : 'Avatar bos',
+                      tone: identityDraft.avatarUrl ? 'sage' : 'muted',
+                    },
+                    { label: activeGenderLabel, tone: 'muted' },
+                  ]}
+                  metrics={[
+                    { label: 'Bio', value: String(identityBio.length) },
+                    { label: 'Link', value: identityProfileLink ? 'hazir' : '--' },
+                    { label: 'Dogum', value: identityBirthDate ? 'var' : '--' },
+                  ]}
+                />
+
+                {!isSignedIn ? (
+                  <StatusStrip
+                    tone="muted"
+                    eyebrow="Cloud Save"
+                    title="Yerel taslak acik"
+                    body="Bu alanlari doldurabilirsin ama cloud kayit icin once mobil oturum acman gerekir."
+                    meta="Giris yaptiginda Kaydet aksiyonu aktif hale gelir."
+                  />
+                ) : null}
+
+                <CollapsibleSectionCard
+                  accent="clay"
+                  title="Avatar ve Temel Bilgiler"
+                  meta={identityUsername ? `@${identityUsername}` : 'Profil girisi'}
+                  defaultExpanded
+                >
+                  <View style={styles.settingsAvatarPickerRow}>
+                    <View style={styles.settingsAvatarPreviewWrap}>
+                      {identityDraft.avatarUrl ? (
+                        <Image
+                          source={{ uri: identityDraft.avatarUrl }}
+                          style={styles.settingsAvatarPreviewImage}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <Text style={styles.settingsAvatarPreviewFallback}>
+                          {(identityDraft.fullName.slice(0, 1) || identityDraft.username.slice(0, 1) || 'A')
+                            .toUpperCase()}
+                        </Text>
+                      )}
+                    </View>
+                    <View style={styles.settingsAvatarActionRow}>
+                      <UiButton
+                        label={isPickingAvatar ? 'Seciliyor...' : 'Cihazdan Sec'}
+                        tone="neutral"
+                        onPress={onPickAvatar}
+                        disabled={isPickingAvatar || !isSignedIn}
+                        style={styles.exploreRouteAction}
                       />
-                    ) : (
-                      <Text style={styles.settingsAvatarPreviewFallback}>
-                        {(identityDraft.fullName.slice(0, 1) || identityDraft.username.slice(0, 1) || 'A')
-                          .toUpperCase()}
+                      <UiButton
+                        label="Temizle"
+                        tone="neutral"
+                        onPress={onClearAvatar}
+                        disabled={isPickingAvatar || !identityDraft.avatarUrl || !isSignedIn}
+                        style={styles.exploreRouteAction}
+                      />
+                    </View>
+                  </View>
+
+                  <StatusStrip
+                    tone={identityDraft.avatarUrl ? 'sage' : 'muted'}
+                    eyebrow="Avatar"
+                    title={identityDraft.avatarUrl ? 'Profil gorseli secildi' : 'Avatar opsiyonel'}
+                    body={
+                      identityDraft.avatarUrl
+                        ? 'Secilen avatar kimlik katmaninda kullanilacak.'
+                        : 'Avatar URL yerine cihazdan manuel secim kullaniliyor.'
+                    }
+                  />
+
+                  <TextInput
+                    style={styles.input}
+                    value={identityDraft.fullName}
+                    onChangeText={(value) => onChangeIdentity({ fullName: value })}
+                    placeholder="Ad Soyad"
+                    placeholderTextColor="#8e8b84"
+                    autoCapitalize="words"
+                    accessibilityLabel="Ad Soyad"
+                  />
+                  <TextInput
+                    style={styles.input}
+                    value={identityDraft.username}
+                    onChangeText={(value) => onChangeIdentity({ username: value.replace(/\s+/g, '').toLowerCase() })}
+                    placeholder="Kullanici adi"
+                    placeholderTextColor="#8e8b84"
+                    autoCapitalize="none"
+                    accessibilityLabel="Kullanici adi"
+                  />
+                  <TextInput
+                    style={styles.input}
+                    value={identityDraft.birthDate}
+                    onChangeText={(value) => onChangeIdentity({ birthDate: value })}
+                    placeholder="Dogum tarihi (GG/AA/YYYY)"
+                    placeholderTextColor="#8e8b84"
+                    autoCapitalize="none"
+                    accessibilityLabel="Dogum tarihi"
+                  />
+
+                  <View style={styles.detailInfoGrid}>
+                    <View style={styles.detailInfoCard}>
+                      <Text style={styles.detailInfoLabel}>Handle</Text>
+                      <Text style={styles.detailInfoValue}>
+                        {identityUsername ? `@${identityUsername}` : 'Kullanici adi bekleniyor'}
                       </Text>
-                    )}
+                    </View>
+                    <View style={styles.detailInfoCard}>
+                      <Text style={styles.detailInfoLabel}>Dogum</Text>
+                      <Text style={styles.detailInfoValue}>
+                        {identityBirthDate || 'Henuz dogum tarihi girilmedi'}
+                      </Text>
+                    </View>
+                    <View style={styles.detailInfoCard}>
+                      <Text style={styles.detailInfoLabel}>Cinsiyet</Text>
+                      <Text style={styles.detailInfoValue}>{activeGenderLabel}</Text>
+                    </View>
                   </View>
-                  <View style={styles.settingsAvatarActionRow}>
-                    <UiButton
-                      label={isPickingAvatar ? 'Seciliyor...' : 'Cihazdan Sec'}
-                      tone="neutral"
-                      onPress={onPickAvatar}
-                      disabled={isPickingAvatar || !isSignedIn}
-                      style={styles.exploreRouteAction}
-                    />
-                    <UiButton
-                      label="Temizle"
-                      tone="neutral"
-                      onPress={onClearAvatar}
-                      disabled={isPickingAvatar || !identityDraft.avatarUrl || !isSignedIn}
-                      style={styles.exploreRouteAction}
-                    />
+
+                  <Text style={styles.subSectionLabel}>Cinsiyet</Text>
+                  <View style={styles.settingsGenderRow}>
+                    {SETTINGS_GENDER_OPTIONS.map((option) => (
+                      <Pressable
+                        key={option.key || 'empty'}
+                        style={[
+                          styles.settingsGenderChip,
+                          identityDraft.gender === option.key ? styles.settingsGenderChipActive : null,
+                        ]}
+                        onPress={() => onChangeIdentity({ gender: option.key })}
+                        hitSlop={PRESSABLE_HIT_SLOP}
+                      >
+                        <Text
+                          style={[
+                            styles.settingsGenderChipText,
+                            identityDraft.gender === option.key ? styles.settingsGenderChipTextActive : null,
+                          ]}
+                        >
+                          {option.label}
+                        </Text>
+                      </Pressable>
+                    ))}
                   </View>
-                </View>
-                <Text style={styles.screenMeta}>
-                  Avatar URL yerine cihazdan manuel secim kullaniliyor.
-                </Text>
-                <TextInput
-                  style={styles.input}
-                  value={identityDraft.fullName}
-                  onChangeText={(value) => onChangeIdentity({ fullName: value })}
-                  placeholder="Ad Soyad"
-                  placeholderTextColor="#8e8b84"
-                  autoCapitalize="words"
-                  accessibilityLabel="Ad Soyad"
+                </CollapsibleSectionCard>
+
+                <CollapsibleSectionCard
+                  accent="sage"
+                  title="Bio ve Profil Linki"
+                  meta={`${identityBio.length}/180 karakter`}
+                  defaultExpanded
+                >
+                  <TextInput
+                    style={styles.ritualInput}
+                    multiline
+                    textAlignVertical="top"
+                    value={identityDraft.bio}
+                    onChangeText={(value) => onChangeIdentity({ bio: value.slice(0, 180) })}
+                    placeholder="Bio (maks 180)"
+                    placeholderTextColor="#8e8b84"
+                    accessibilityLabel="Bio"
+                  />
+                  <TextInput
+                    style={styles.input}
+                    value={identityDraft.profileLink}
+                    onChangeText={(value) => onChangeIdentity({ profileLink: value })}
+                    placeholder="Web sitesi veya sosyal profil URL"
+                    placeholderTextColor="#8e8b84"
+                    autoCapitalize="none"
+                    accessibilityLabel="Profil Linki"
+                  />
+
+                  <StatusStrip
+                    tone={identityProfileLink ? 'sage' : 'muted'}
+                    eyebrow="Profil Linki"
+                    title={identityProfileLink ? 'Harici profil hazir' : 'Link opsiyonel'}
+                    body={
+                      identityProfileLink
+                        ? identityProfileLink
+                        : 'Web sitesi veya sosyal profil URL bilgisini burada saklayabilirsin.'
+                    }
+                    meta="Letterboxd import mobilde sonraki surumde acilacak."
+                  />
+
+                  <UiButton
+                    label={isSaving ? 'Kaydediliyor...' : 'Kimligi Kaydet'}
+                    tone="brand"
+                    onPress={onSaveIdentity}
+                    disabled={isSaving || !isSignedIn}
+                  />
+                </CollapsibleSectionCard>
+              </>
+            ) : null}
+
+            {activeTab === 'appearance' ? (
+              <>
+                <SectionLeadCard
+                  accent={themeMode === 'dawn' ? 'clay' : 'sage'}
+                  eyebrow="Appearance"
+                  title={`${themeLabel} Modu`}
+                  body="Tema ve dil secimleri arayuz yuzeyine aninda uygulanir."
+                  badges={[
+                    { label: themeLabel, tone: themeMode === 'dawn' ? 'clay' : 'sage' },
+                    { label: languageLabel, tone: 'muted' },
+                  ]}
+                  metrics={[
+                    { label: 'Theme', value: themeLabel },
+                    { label: 'Dil', value: languageLabel },
+                  ]}
                 />
-                <TextInput
-                  style={styles.input}
-                  value={identityDraft.username}
-                  onChangeText={(value) => onChangeIdentity({ username: value.replace(/\s+/g, '').toLowerCase() })}
-                  placeholder="Kullanici adi"
-                  placeholderTextColor="#8e8b84"
-                  autoCapitalize="none"
-                  accessibilityLabel="Kullanici adi"
+
+                <StatusStrip
+                  tone="sage"
+                  eyebrow="Live Preview"
+                  title="Degisiklikler aninda gorunur"
+                  body="Tema ve dil secimleri kayit beklemeden uygulama yuzeyine islenir."
                 />
-                <TextInput
-                  style={styles.input}
-                  value={identityDraft.birthDate}
-                  onChangeText={(value) => onChangeIdentity({ birthDate: value })}
-                  placeholder="Dogum tarihi (GG/AA/YYYY)"
-                  placeholderTextColor="#8e8b84"
-                  autoCapitalize="none"
-                  accessibilityLabel="Dogum tarihi"
-                />
-                <Text style={styles.subSectionLabel}>Cinsiyet</Text>
-                <View style={styles.settingsGenderRow}>
-                  {SETTINGS_GENDER_OPTIONS.map((option) => (
+
+                <CollapsibleSectionCard
+                  accent={themeMode === 'dawn' ? 'clay' : 'sage'}
+                  title="Tema"
+                  meta={themeLabel}
+                  defaultExpanded
+                >
+                  <Text style={styles.screenBody}>
+                    Gece ve gunduz gorunumleri arasinda cihaz hissine uygun akisi sec.
+                  </Text>
+                  <View style={styles.themeModeSegmentContainer}>
                     <Pressable
-                      key={option.key || 'empty'}
                       style={[
-                        styles.settingsGenderChip,
-                        identityDraft.gender === option.key ? styles.settingsGenderChipActive : null,
+                        styles.themeModeSegmentOption,
+                        themeMode === 'midnight' ? styles.themeModeSegmentActiveMidnight : null,
                       ]}
-                      onPress={() => onChangeIdentity({ gender: option.key })}
-                      hitSlop={PRESSABLE_HIT_SLOP}
+                      onPress={() => onSetThemeMode('midnight')}
+                    >
+                      <Text
+                        style={[
+                          styles.themeModeSegmentText,
+                          themeMode === 'midnight' ? styles.themeModeSegmentTextActiveMidnight : null,
+                        ]}
+                      >
+                        Gece
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[
+                        styles.themeModeSegmentOption,
+                        themeMode === 'dawn' ? styles.themeModeSegmentActiveDawn : null,
+                      ]}
+                      onPress={() => onSetThemeMode('dawn')}
+                    >
+                      <Text
+                        style={[
+                          styles.themeModeSegmentText,
+                          themeMode === 'dawn' ? styles.themeModeSegmentTextActiveDawn : null,
+                        ]}
+                      >
+                        Gunduz
+                      </Text>
+                    </Pressable>
+                  </View>
+                  <StatusStrip
+                    tone={themeMode === 'dawn' ? 'clay' : 'sage'}
+                    eyebrow="Tema Durumu"
+                    title={`${themeLabel} temasi aktif`}
+                    body={
+                      themeMode === 'dawn'
+                        ? 'Daha aydinlik ve sicak tonlu yuzeyler acik.'
+                        : 'Koyu sinema hissini koruyan gece temasi aktif.'
+                    }
+                  />
+                </CollapsibleSectionCard>
+
+                <CollapsibleSectionCard
+                  accent="sage"
+                  title="Dil"
+                  meta={languageLabel}
+                  defaultExpanded
+                >
+                  <Text style={styles.screenBody}>
+                    Arayuz kopyasini tercih ettigin dile cek. Diger yuzeyler ayni davranir.
+                  </Text>
+                  <View style={styles.settingsGenderRow}>
+                    <Pressable
+                      style={[styles.settingsGenderChip, language === 'tr' ? styles.settingsGenderChipActive : null]}
+                      onPress={() => onSetLanguage('tr')}
                     >
                       <Text
                         style={[
                           styles.settingsGenderChipText,
-                          identityDraft.gender === option.key ? styles.settingsGenderChipTextActive : null,
+                          language === 'tr' ? styles.settingsGenderChipTextActive : null,
                         ]}
                       >
-                        {option.label}
+                        Turkce
                       </Text>
                     </Pressable>
-                  ))}
-                </View>
-                <TextInput
-                  style={styles.ritualInput}
-                  multiline
-                  textAlignVertical="top"
-                  value={identityDraft.bio}
-                  onChangeText={(value) => onChangeIdentity({ bio: value.slice(0, 180) })}
-                  placeholder="Bio (maks 180)"
-                  placeholderTextColor="#8e8b84"
-                  accessibilityLabel="Bio"
-                />
-                <Text style={styles.subSectionLabel}>Profil Linki</Text>
-                <TextInput
-                  style={styles.input}
-                  value={identityDraft.profileLink}
-                  onChangeText={(value) => onChangeIdentity({ profileLink: value })}
-                  placeholder="Web sitesi veya sosyal profil URL"
-                  placeholderTextColor="#8e8b84"
-                  autoCapitalize="none"
-                  accessibilityLabel="Profil Linki"
-                />
-                <UiButton
-                  label={isSaving ? 'Kaydediliyor...' : 'Kimligi Kaydet'}
-                  tone="brand"
-                  onPress={onSaveIdentity}
-                  disabled={isSaving || !isSignedIn}
-                />
-                <Text style={styles.subSectionLabel}>Letterboxd Import</Text>
-                <Text style={styles.screenMeta}>
-                  Webdeki CSV import akisi mobilde sonraki surumde acilacak.
-                </Text>
-              </ScreenCard>
-            ) : null}
-
-            {activeTab === 'appearance' ? (
-              <ScreenCard accent="sage">
-                <Text style={styles.screenTitle}>Gorunum</Text>
-                <Text style={styles.subSectionLabel}>Tema</Text>
-                <View style={styles.themeModeSegmentContainer}>
-                  <Pressable
-                    style={[
-                      styles.themeModeSegmentOption,
-                      themeMode === 'midnight' ? styles.themeModeSegmentActiveMidnight : null,
-                    ]}
-                    onPress={() => onSetThemeMode('midnight')}
-                  >
-                    <Text
-                      style={[
-                        styles.themeModeSegmentText,
-                        themeMode === 'midnight' ? styles.themeModeSegmentTextActiveMidnight : null,
-                      ]}
+                    <Pressable
+                      style={[styles.settingsGenderChip, language === 'en' ? styles.settingsGenderChipActive : null]}
+                      onPress={() => onSetLanguage('en')}
                     >
-                      Gece
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    style={[
-                      styles.themeModeSegmentOption,
-                      themeMode === 'dawn' ? styles.themeModeSegmentActiveDawn : null,
-                    ]}
-                    onPress={() => onSetThemeMode('dawn')}
-                  >
-                    <Text
-                      style={[
-                        styles.themeModeSegmentText,
-                        themeMode === 'dawn' ? styles.themeModeSegmentTextActiveDawn : null,
-                      ]}
-                    >
-                      Gunduz
-                    </Text>
-                  </Pressable>
-                </View>
-                <Text style={styles.subSectionLabel}>Dil</Text>
-                <View style={styles.settingsGenderRow}>
-                  <Pressable
-                    style={[styles.settingsGenderChip, language === 'tr' ? styles.settingsGenderChipActive : null]}
-                    onPress={() => onSetLanguage('tr')}
-                  >
-                    <Text
-                      style={[
-                        styles.settingsGenderChipText,
-                        language === 'tr' ? styles.settingsGenderChipTextActive : null,
-                      ]}
-                    >
-                      Turkce
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.settingsGenderChip, language === 'en' ? styles.settingsGenderChipActive : null]}
-                    onPress={() => onSetLanguage('en')}
-                  >
-                    <Text
-                      style={[
-                        styles.settingsGenderChipText,
-                        language === 'en' ? styles.settingsGenderChipTextActive : null,
-                      ]}
-                    >
-                      English
-                    </Text>
-                  </Pressable>
-                </View>
-              </ScreenCard>
+                      <Text
+                        style={[
+                          styles.settingsGenderChipText,
+                          language === 'en' ? styles.settingsGenderChipTextActive : null,
+                        ]}
+                      >
+                        English
+                      </Text>
+                    </Pressable>
+                  </View>
+                  <StatusStrip
+                    tone="muted"
+                    eyebrow="Language"
+                    title={language === 'tr' ? 'Turkce arayuz aktif' : 'English interface active'}
+                    body={
+                      language === 'tr'
+                        ? 'Metinler Turkce gosteriliyor.'
+                        : 'Labels and interface copy are shown in English.'
+                    }
+                    meta="Yerellesme kapsami ekran bazli olarak genislemeye devam eder."
+                  />
+                </CollapsibleSectionCard>
+              </>
             ) : null}
 
             {activeTab === 'session' ? (
               <>
-                <ScreenCard accent="clay">
-                  <Text style={styles.screenTitle}>Oturum</Text>
-                  <Text style={styles.screenMeta}>Aktif hesap: {activeAccountLabel}</Text>
-                  <Text style={styles.screenMeta}>Email: {activeEmailLabel}</Text>
-                </ScreenCard>
+                <SectionLeadCard
+                  accent="clay"
+                  eyebrow="Account Center"
+                  title={isSignedIn ? activeAccountLabel : 'Cloud oturumu bagli degil'}
+                  body={
+                    isSignedIn
+                      ? 'Davet programi, cikis ve platform kurallarini ayni sekmeden yonet.'
+                      : 'Cloud baglamak icin once profil sekmesindeki oturum kartindan giris yap.'
+                  }
+                  badges={[
+                    { label: isSignedIn ? 'Cloud hazir' : 'Giris gerekli', tone: isSignedIn ? 'sage' : 'clay' },
+                    { label: activeEmailLabel || 'email yok', tone: 'muted' },
+                    { label: inviteCode ? `Kod ${inviteCode}` : 'Kod bekleniyor', tone: inviteCode ? 'muted' : 'clay' },
+                  ]}
+                  metrics={[
+                    { label: 'Invite', value: inviteCode ? 'hazir' : '--' },
+                    { label: 'Status', value: isInviteActionBusy ? 'busy' : isSignedIn ? 'ready' : 'guest' },
+                    { label: 'Referral', value: invitedByCode ? 'bagli' : 'acik' },
+                  ]}
+                  actions={[
+                    {
+                      label: confirmLogout ? 'Tekrar Tikla ve Cik' : 'Cikis Yap',
+                      tone: confirmLogout ? 'danger' : 'neutral',
+                      onPress: handleSignOutPress,
+                      disabled: !isSignedIn || isInviteActionBusy,
+                    },
+                  ]}
+                />
 
-                <ScreenCard accent="sage">
-                  <Text style={styles.screenTitle}>Davet Programi</Text>
-                  <Text style={styles.screenBody}>
-                    Linkini paylas; yeni kullanici geldiginde iki taraf da XP kazanir.
-                  </Text>
-                  <Text style={styles.subSectionLabel}>Kodun</Text>
-                  <Text style={styles.screenMeta}>{inviteCode || '-'}</Text>
-                  <Text style={styles.screenMeta}>Link: {inviteLink || 'hazirlaniyor'}</Text>
-                  <UiButton
-                    label={isInviteActionBusy ? 'Isleniyor...' : 'Linki Kopyala'}
-                    tone="neutral"
-                    onPress={onCopyInviteLink}
-                    disabled={!canCopyInviteLink || isInviteActionBusy}
-                    style={styles.exploreRouteAction}
+                {inviteStatus ? (
+                  <StatusStrip
+                    tone={inviteStatusTone}
+                    eyebrow="Invite Status"
+                    title={inviteStatusTone === 'clay' ? 'Davet akisi hata verdi' : 'Davet akisi guncellendi'}
+                    body={inviteStatus}
+                    meta={inviteStatsLabel}
                   />
+                ) : null}
 
-                  <Text style={[styles.screenMeta, styles.ritualStateWarn]}>{inviteStatsLabel}</Text>
-                  <Text style={styles.screenMeta}>{inviteRewardLabel}</Text>
-
-                  {invitedByCode ? (
-                    <Text style={styles.screenMeta}>Kullanilan kod: {invitedByCode}</Text>
+                <CollapsibleSectionCard
+                  accent="sage"
+                  title="Davet Programi"
+                  meta={inviteCode ? `Kod ${inviteCode}` : 'Kod hazirlaniyor'}
+                  defaultExpanded
+                >
+                  {!isSignedIn ? (
+                    <StatePanel
+                      tone="clay"
+                      variant="empty"
+                      eyebrow="Referral"
+                      title="Davet programi icin once giris yap"
+                      body="Link kopyalama ve kod uygulama akislari cloud oturumu gerektirir."
+                      meta="Oturum acildiginda bu bolum otomatik olarak aktiflesir."
+                    />
                   ) : (
                     <>
-                      <Text style={styles.subSectionLabel}>Davet Kodu Gir</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={inviteCodeDraft}
-                        onChangeText={(value) =>
-                          onInviteCodeDraftChange(value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase())
-                        }
-                        autoCapitalize="characters"
-                        maxLength={12}
-                        placeholder="ABCD1234"
-                        placeholderTextColor="#8e8b84"
-                        accessibilityLabel="Davet kodu gir"
-                      />
+                      <View style={styles.detailInfoGrid}>
+                        <View style={styles.detailInfoCard}>
+                          <Text style={styles.detailInfoLabel}>Kod</Text>
+                          <Text style={styles.detailInfoValue}>{inviteCode || '-'}</Text>
+                        </View>
+                        <View style={styles.detailInfoCard}>
+                          <Text style={styles.detailInfoLabel}>Link</Text>
+                          <Text style={styles.detailInfoValue} numberOfLines={3}>
+                            {inviteLink || 'hazirlaniyor'}
+                          </Text>
+                        </View>
+                      </View>
+
                       <UiButton
-                        label={isInviteActionBusy ? 'Uygulaniyor...' : 'Kodu Uygula'}
-                        tone="brand"
-                        onPress={onApplyInviteCode}
-                        disabled={isInviteActionBusy || !isSignedIn || !inviteCodeDraft.trim()}
+                        label={isInviteActionBusy ? 'Isleniyor...' : 'Linki Kopyala'}
+                        tone="neutral"
+                        onPress={onCopyInviteLink}
+                        disabled={!canCopyInviteLink || isInviteActionBusy}
                       />
+
+                      <StatusStrip
+                        tone="sage"
+                        eyebrow="Referral Notu"
+                        body={inviteRewardLabel}
+                        meta={inviteStatsLabel}
+                      />
+
+                      {invitedByCode ? (
+                        <StatusStrip
+                          tone="sage"
+                          eyebrow="Kullanilan Kod"
+                          title={invitedByCode}
+                          body="Bu hesap daha once bir davet baglantisi ile iliskilendirildi."
+                        />
+                      ) : (
+                        <>
+                          <Text style={styles.subSectionLabel}>Davet Kodu Gir</Text>
+                          <TextInput
+                            style={styles.input}
+                            value={inviteCodeDraft}
+                            onChangeText={(value) =>
+                              onInviteCodeDraftChange(value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase())
+                            }
+                            autoCapitalize="characters"
+                            maxLength={12}
+                            placeholder="ABCD1234"
+                            placeholderTextColor="#8e8b84"
+                            accessibilityLabel="Davet kodu gir"
+                          />
+                          <UiButton
+                            label={isInviteActionBusy ? 'Uygulaniyor...' : 'Kodu Uygula'}
+                            tone="brand"
+                            onPress={onApplyInviteCode}
+                            disabled={isInviteActionBusy || !inviteCodeDraft.trim()}
+                          />
+                        </>
+                      )}
                     </>
                   )}
+                </CollapsibleSectionCard>
 
-                  {inviteStatus ? <Text style={[styles.screenMeta, inviteStatusTone]}>{inviteStatus}</Text> : null}
-                </ScreenCard>
-
-                <ScreenCard accent="clay">
-                  <Text style={styles.subSectionLabel}>Oturum Kontrolu</Text>
-                  <UiButton
-                    label={confirmLogout ? 'Tekrar Tikla ve Cik' : 'Cikis Yap'}
-                    tone="neutral"
-                    onPress={handleSignOutPress}
-                    disabled={!isSignedIn || isInviteActionBusy}
-                    style={styles.exploreRouteAction}
-                  />
-                </ScreenCard>
-
-                <ScreenCard accent="sage">
-                  <Text style={styles.screenTitle}>Platform Kurallari</Text>
+                <CollapsibleSectionCard
+                  accent="clay"
+                  title="Platform Kurallari"
+                  meta="Topluluk notlari"
+                  defaultExpanded={false}
+                >
                   <Text style={styles.screenBody}>
                     Topluluk guvenligi ve kalite standartlari bu ayar panelinde de gorunur.
                   </Text>
@@ -2710,7 +3511,7 @@ const MobileSettingsModal = ({
                       </View>
                     ))}
                   </View>
-                </ScreenCard>
+                </CollapsibleSectionCard>
               </>
             ) : null}
           </ScrollView>
@@ -2730,47 +3531,93 @@ const InviteClaimScreen = ({
   onClaim: (inviteCode: string) => void;
 }) => {
   const isLoading = claimState.status === 'loading';
+  const hasInviteCode = Boolean(inviteCode);
 
   return (
-    <ScreenCard accent="clay">
-      <Text style={styles.screenTitle}>Davet Onayi</Text>
-      <Text style={styles.screenBody}>Davet kodunu backend uzerinden dogrula ve uygula.</Text>
-      <Text style={styles.screenMeta}>Invite: {inviteCode || 'none'}</Text>
+    <>
+      <SectionLeadCard
+        accent="clay"
+        eyebrow="Invite Gateway"
+        title="Davet Onayi"
+        body="Davet kodunu backend uzerinden dogrula ve odul akisina bagla."
+        badges={[
+          { label: hasInviteCode ? `Kod ${inviteCode}` : 'Kod yok', tone: hasInviteCode ? 'sage' : 'clay' },
+          { label: claimState.status, tone: claimState.status === 'error' ? 'clay' : 'muted' },
+        ]}
+        actions={
+          hasInviteCode
+            ? [
+                {
+                  label: isLoading ? 'Kontrol ediliyor...' : 'Davet Kodunu Uygula',
+                  tone: 'brand',
+                  onPress: () => onClaim(inviteCode as string),
+                  disabled: isLoading,
+                },
+              ]
+            : undefined
+        }
+      />
 
-      {inviteCode ? (
-        <Pressable
-          style={[styles.claimButton, isLoading ? styles.claimButtonDisabled : null]}
-          onPress={() => onClaim(inviteCode)}
-          disabled={isLoading}
-          hitSlop={PRESSABLE_HIT_SLOP}
-          accessibilityRole="button"
-          accessibilityLabel={isLoading ? 'Davet kodu kontrol ediliyor' : 'Davet kodunu uygula'}
-          accessibilityState={{ disabled: isLoading }}
-        >
-          <Text style={styles.claimButtonText}>
-            {isLoading ? 'Kontrol ediliyor...' : 'Davet Kodunu Uygula'}
-          </Text>
-        </Pressable>
-      ) : (
-        <Text style={styles.screenMeta}>Deep link icinde davet kodu yok.</Text>
-      )}
+      {!hasInviteCode ? (
+        <StatePanel
+          tone="clay"
+          variant="empty"
+          eyebrow="Invite Link"
+          title="Deep link icinde davet kodu yok"
+          body="Bu ekran bir davet kodu yakaladiginda odul akisini burada calistirir."
+          meta="Yeni bir davet baglantisiyla uygulamaya geri dondugunde tekrar dene."
+        />
+      ) : null}
+
+      {claimState.status === 'loading' ? (
+        <StatePanel
+          tone="sage"
+          variant="loading"
+          eyebrow="Invite Claim"
+          title="Kod dogrulaniyor"
+          body="Kod gecerliligi ve odul haklari backend tarafinda kontrol ediliyor."
+          meta={`Kod: ${inviteCode}`}
+        />
+      ) : null}
 
       {claimState.status === 'success' ? (
-        <View style={styles.claimSuccess}>
-          <Text style={styles.claimSuccessText}>{claimState.message}</Text>
-          <Text style={styles.screenMeta}>Invitee XP: +{claimState.inviteeRewardXp}</Text>
-          <Text style={styles.screenMeta}>Inviter XP: +{claimState.inviterRewardXp}</Text>
-          <Text style={styles.screenMeta}>Claim count: {claimState.claimCount}</Text>
-        </View>
+        <ScreenCard accent="sage">
+          <Text style={styles.sectionLeadEyebrow}>Claim Success</Text>
+          <Text style={styles.sectionLeadTitle}>Odul uygulandi</Text>
+          <Text style={styles.sectionLeadBody}>{claimState.message}</Text>
+          <View style={styles.sectionLeadMetricRow}>
+            <View style={styles.sectionLeadMetricCard}>
+              <Text style={styles.sectionLeadMetricValue}>+{claimState.inviteeRewardXp}</Text>
+              <Text style={styles.sectionLeadMetricLabel}>Invitee XP</Text>
+            </View>
+            <View style={styles.sectionLeadMetricCard}>
+              <Text style={styles.sectionLeadMetricValue}>+{claimState.inviterRewardXp}</Text>
+              <Text style={styles.sectionLeadMetricLabel}>Inviter XP</Text>
+            </View>
+            <View style={styles.sectionLeadMetricCard}>
+              <Text style={styles.sectionLeadMetricValue}>{claimState.claimCount}</Text>
+              <Text style={styles.sectionLeadMetricLabel}>Claim Count</Text>
+            </View>
+          </View>
+        </ScreenCard>
       ) : null}
 
       {claimState.status === 'error' ? (
-        <View style={styles.claimError}>
-          <Text style={styles.claimErrorText}>{claimState.message}</Text>
-          <Text style={styles.screenMeta}>Error code: {claimState.errorCode}</Text>
-        </View>
+        <StatePanel
+          tone="clay"
+          variant="error"
+          eyebrow="Invite Claim"
+          title="Kod uygulanamadi"
+          body={claimState.message}
+          meta={claimState.errorCode ? `Error code: ${claimState.errorCode}` : undefined}
+          actionLabel="Tekrar Dene"
+          onAction={() => {
+            if (inviteCode) onClaim(inviteCode);
+          }}
+          actionTone="danger"
+        />
       ) : null}
-    </ScreenCard>
+    </>
   );
 };
 
@@ -2832,125 +3679,147 @@ const ShareHubScreen = ({
   const canShareSelectedGoal = normalizedGoal === 'comment' ? canShareComment : canShareStreak;
 
   return (
-    <ScreenCard accent={normalizedGoal === 'streak' ? 'clay' : 'sage'}>
-      <Text style={styles.screenTitle}>{title}</Text>
-      <Text style={styles.screenBody}>{body}</Text>
-
-      <View style={styles.arenaMetricGrid}>
-        <View style={styles.arenaMetricCard}>
-          <Text style={styles.arenaMetricValue}>{normalizedGoal || 'none'}</Text>
-          <Text style={styles.arenaMetricLabel}>Goal</Text>
-        </View>
-        <View style={styles.arenaMetricCard}>
-          <Text style={styles.arenaMetricValue}>{normalizedPlatform || 'none'}</Text>
-          <Text style={styles.arenaMetricLabel}>Platform</Text>
-        </View>
-        <View style={styles.arenaMetricCard}>
-          <Text style={styles.arenaMetricValue}>{safeStreak}</Text>
-          <Text style={styles.arenaMetricLabel}>Streak</Text>
-        </View>
-      </View>
-
-      <Text style={styles.screenMeta}>Invite: {inviteCode || 'none'}</Text>
-      <Text style={styles.screenMeta}>Link: {inviteLink || 'hazirlaniyor'}</Text>
-
-      <View style={styles.themeModeSegmentContainer}>
-        <Pressable
-          style={[
-            styles.themeModeSegmentOption,
-            normalizedGoal === 'comment' ? styles.themeModeSegmentActiveMidnight : null,
-          ]}
-          onPress={() => onSetGoal('comment')}
-          accessibilityRole="button"
-          accessibilityLabel="Yorum paylasimini sec"
-        >
-          <Text
-            style={[
-              styles.themeModeSegmentText,
-              normalizedGoal === 'comment' ? styles.themeModeSegmentTextActiveMidnight : null,
-            ]}
-          >
-            Yorum Paylas
-          </Text>
-        </Pressable>
-        <Pressable
-          style={[
-            styles.themeModeSegmentOption,
-            normalizedGoal === 'streak' ? styles.themeModeSegmentActiveMidnight : null,
-          ]}
-          onPress={() => onSetGoal('streak')}
-          accessibilityRole="button"
-          accessibilityLabel="Streak paylasimini sec"
-        >
-          <Text
-            style={[
-              styles.themeModeSegmentText,
-              normalizedGoal === 'streak' ? styles.themeModeSegmentTextActiveMidnight : null,
-            ]}
-          >
-            Streak Paylas
-          </Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.subSectionLabel}>
-          {normalizedGoal === 'streak' ? 'Preview / Streak' : 'Preview / Yorum'}
-        </Text>
-        <Text style={styles.screenBody}>
-          {normalizedGoal === 'streak'
-            ? `Bugunku streak tamamlandi: ${safeStreak} gun`
-            : `"${commentPreview}"`}
-        </Text>
-        <Text
-          style={[
-            styles.screenMeta,
-            canShareSelectedGoal ? styles.ritualStateOk : styles.ritualStateWarn,
-          ]}
-        >
-          {normalizedGoal === 'comment'
-            ? canShareComment
-              ? 'Yorum paylasimi hazir.'
-              : 'Paylasim icin bugun bir yorumun olmali.'
-            : canShareStreak
-              ? 'Streak paylasimi hazir.'
-              : 'Streak paylasimi icin bugunku yorum ve aktif streak gerekiyor.'}
-        </Text>
-      </View>
-
-      <View style={styles.actionsRow}>
-        <UiButton
-          label="Instagram"
-          tone={normalizedPlatform === 'instagram' ? 'teal' : 'neutral'}
-          stretch
-          onPress={() => onShare('instagram')}
-          disabled={!canShareSelectedGoal}
-        />
-        <UiButton
-          label="TikTok"
-          tone={normalizedPlatform === 'tiktok' ? 'teal' : 'neutral'}
-          stretch
-          onPress={() => onShare('tiktok')}
-          disabled={!canShareSelectedGoal}
-        />
-        <UiButton
-          label="X"
-          tone={normalizedPlatform === 'x' ? 'teal' : 'neutral'}
-          stretch
-          onPress={() => onShare('x')}
-          disabled={!canShareSelectedGoal}
-        />
-      </View>
-
-      <Text style={[styles.screenMeta, statusStyle]}>{shareStatus}</Text>
-
-      <UiButton
-        label="Gunluk Akisa Don"
-        tone="brand"
-        onPress={() => onOpenDaily?.()}
-        accessibilityLabel="Gunluk akis sekmesine git"
+    <>
+      <SectionLeadCard
+        accent={normalizedGoal === 'streak' ? 'clay' : 'sage'}
+        eyebrow="Share Hub"
+        title={title}
+        body={body}
+        badges={[
+          { label: normalizedGoal === 'streak' ? 'Streak modu' : 'Yorum modu', tone: normalizedGoal === 'streak' ? 'clay' : 'sage' },
+          { label: normalizedPlatform || 'platform sec', tone: 'muted' },
+          { label: inviteCode ? `Kod ${inviteCode}` : 'Kod yok', tone: inviteCode ? 'muted' : 'clay' },
+        ]}
+        metrics={[
+          { label: 'Streak', value: String(safeStreak) },
+          { label: 'Ready', value: canShareSelectedGoal ? 'yes' : 'no' },
+          { label: 'Platform', value: normalizedPlatform || '--' },
+        ]}
+        actions={
+          onOpenDaily
+            ? [{ label: 'Gunluk Akisa Don', tone: 'brand', onPress: () => onOpenDaily() }]
+            : undefined
+        }
       />
-    </ScreenCard>
+
+      <ScreenCard accent={normalizedGoal === 'streak' ? 'clay' : 'sage'}>
+        <Text style={styles.subSectionLabel}>Paylasim Hedefi</Text>
+        <View style={styles.themeModeSegmentContainer}>
+          <Pressable
+            style={[
+              styles.themeModeSegmentOption,
+              normalizedGoal === 'comment' ? styles.themeModeSegmentActiveMidnight : null,
+            ]}
+            onPress={() => onSetGoal('comment')}
+            accessibilityRole="button"
+            accessibilityLabel="Yorum paylasimini sec"
+          >
+            <Text
+              style={[
+                styles.themeModeSegmentText,
+                normalizedGoal === 'comment' ? styles.themeModeSegmentTextActiveMidnight : null,
+              ]}
+            >
+              Yorum Paylas
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.themeModeSegmentOption,
+              normalizedGoal === 'streak' ? styles.themeModeSegmentActiveMidnight : null,
+            ]}
+            onPress={() => onSetGoal('streak')}
+            accessibilityRole="button"
+            accessibilityLabel="Streak paylasimini sec"
+          >
+            <Text
+              style={[
+                styles.themeModeSegmentText,
+                normalizedGoal === 'streak' ? styles.themeModeSegmentTextActiveMidnight : null,
+              ]}
+            >
+              Streak Paylas
+            </Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.detailInfoGrid}>
+          <View style={styles.detailInfoCard}>
+            <Text style={styles.detailInfoLabel}>Invite</Text>
+            <Text style={styles.detailInfoValue}>{inviteCode || 'none'}</Text>
+          </View>
+          <View style={styles.detailInfoCard}>
+            <Text style={styles.detailInfoLabel}>Link</Text>
+            <Text style={styles.detailInfoValue} numberOfLines={3}>
+              {inviteLink || 'hazirlaniyor'}
+            </Text>
+          </View>
+        </View>
+
+        {canShareSelectedGoal ? (
+          <StatusStrip
+            tone="sage"
+            eyebrow="Preview"
+            title={normalizedGoal === 'streak' ? 'Streak paketi hazir' : 'Yorum paketi hazir'}
+            body={
+              normalizedGoal === 'streak'
+                ? `Bugunku streak tamamlandi: ${safeStreak} gun`
+                : `"${commentPreview}"`
+            }
+            meta="Platform sectiginde native share paneli ve odul akisi devreye girer."
+          />
+        ) : (
+          <StatePanel
+            tone="clay"
+            variant="empty"
+            eyebrow="Share Readiness"
+            title={normalizedGoal === 'comment' ? 'Yorum paylasimi henuz hazir degil' : 'Streak paketi henuz hazir degil'}
+            body={
+              normalizedGoal === 'comment'
+                ? 'Paylasim icin bugun bir yorumun olmali.'
+                : 'Streak paylasimi icin bugunku yorum ve aktif streak gerekiyor.'
+            }
+            meta="Gunluk akisa donup yeni ritual biraktiginda bu alan otomatik olarak acilir."
+          />
+        )}
+      </ScreenCard>
+
+      <ScreenCard accent={normalizedGoal === 'streak' ? 'clay' : 'sage'}>
+        <Text style={styles.subSectionLabel}>Platform Sec</Text>
+        <View style={styles.sectionLeadActionRow}>
+          <UiButton
+            label="Instagram"
+            tone={normalizedPlatform === 'instagram' ? 'teal' : 'neutral'}
+            stretch
+            onPress={() => onShare('instagram')}
+            disabled={!canShareSelectedGoal}
+          />
+          <UiButton
+            label="TikTok"
+            tone={normalizedPlatform === 'tiktok' ? 'teal' : 'neutral'}
+            stretch
+            onPress={() => onShare('tiktok')}
+            disabled={!canShareSelectedGoal}
+          />
+          <UiButton
+            label="X"
+            tone={normalizedPlatform === 'x' ? 'teal' : 'neutral'}
+            stretch
+            onPress={() => onShare('x')}
+            disabled={!canShareSelectedGoal}
+          />
+        </View>
+        <StatusStrip
+          tone={shareStatusTone === 'error' ? 'clay' : shareStatusTone === 'ready' ? 'sage' : 'muted'}
+          eyebrow="Share Status"
+          body={shareStatus}
+          meta={canShareSelectedGoal ? 'Platform secimi hazir.' : 'Paylasim oncesi hedef gereksinimleri eksik.'}
+        />
+        <Text style={[styles.screenMeta, statusStyle]}>
+          {normalizedPlatform ? `Secili platform: ${normalizedPlatform}` : 'Henuz platform secilmedi.'}
+        </Text>
+      </ScreenCard>
+    </>
   );
 };
 
@@ -2983,37 +3852,69 @@ const DiscoverRoutesCard = ({
 }: {
   routes: DiscoverRouteItem[];
   onOpenRoute: (route: DiscoverRouteItem) => void;
-}) => (
-  <ScreenCard accent="sage">
-    <Text style={styles.screenTitle}>Kesif Rotalari</Text>
-    <Text style={styles.screenBody}>
-      Webdeki kesif alanlarini mobile ayni dilde tasidik. Kategori secip ilgili rotayi ac.
-    </Text>
-    <View style={styles.exploreRouteList}>
-      {routes.map((route) => (
-        <View key={route.id} style={styles.exploreRouteRow}>
-          <View style={styles.exploreRouteContent}>
-            <Text style={styles.exploreRouteTitle}>{route.title}</Text>
-            <Text style={styles.exploreRouteBody}>{route.description}</Text>
-            {!route.href ? (
-              <Text style={[styles.screenMeta, styles.ritualStateWarn]}>
-                Web URL konfigrasyonu bekleniyor.
-              </Text>
-            ) : null}
-          </View>
-          <UiButton
-            label={route.href ? 'Ac' : 'Bekle'}
-            tone="neutral"
-            onPress={() => onOpenRoute(route)}
-            style={styles.exploreRouteAction}
-            accessibilityLabel={`${route.title} rotasini ac`}
-            disabled={!route.href}
-          />
+}) => {
+  const readyCount = routes.filter((route) => Boolean(route.href)).length;
+
+  return (
+    <>
+      <SectionLeadCard
+        accent="sage"
+        eyebrow="Explore Routes"
+        title="Kesif Rotalari"
+        body="Webdeki kesif alanlarini mobile ayni dilde tasidik. Kategori secip ilgili rotayi ac."
+        badges={[
+          { label: `${routes.length} rota`, tone: 'sage' },
+          { label: `${readyCount} hazir`, tone: readyCount > 0 ? 'sage' : 'clay' },
+        ]}
+        metrics={[
+          { label: 'Hazir', value: String(readyCount) },
+          { label: 'Beklemede', value: String(Math.max(0, routes.length - readyCount)) },
+        ]}
+      />
+
+      {routes.length === 0 ? (
+        <StatePanel
+          tone="clay"
+          variant="empty"
+          eyebrow="Kesif"
+          title="Henuz rota gelmedi"
+          body="Kesif rotalari yuklendiginde bu alanda kategori bazli giris kartlari gorunecek."
+          meta="Web kaynaklari veya route envanteri tekrar senkronlandiginda dolacak."
+        />
+      ) : (
+        <View style={styles.exploreRouteList}>
+          {routes.map((route) => (
+            <View key={route.id} style={styles.exploreRouteRow}>
+              <View style={styles.exploreRouteContent}>
+                <Text style={styles.exploreRouteTitle}>{route.title}</Text>
+                <Text style={styles.exploreRouteBody}>{route.description}</Text>
+                <StatusStrip
+                  tone={route.href ? 'sage' : 'clay'}
+                  eyebrow="Route State"
+                  title={route.href ? 'Rota acilmaya hazir' : 'URL konfigrasyonu bekleniyor'}
+                  body={
+                    route.href
+                      ? 'Bu rota mobil yuzeyden web kesfine dogrudan gecer.'
+                      : 'Bu rota icin web URL konfigrasyonu tamamlanmamis.'
+                  }
+                  meta={route.href || undefined}
+                />
+              </View>
+              <UiButton
+                label={route.href ? 'Ac' : 'Bekle'}
+                tone={route.href ? 'brand' : 'neutral'}
+                onPress={() => onOpenRoute(route)}
+                style={styles.exploreRouteAction}
+                accessibilityLabel={`${route.title} rotasini ac`}
+                disabled={!route.href}
+              />
+            </View>
+          ))}
         </View>
-      ))}
-    </View>
-  </ScreenCard>
-);
+      )}
+    </>
+  );
+};
 
 const ArenaChallengeCard = ({
   streakLabel,
@@ -3062,73 +3963,118 @@ const ArenaLeaderboardCard = ({
   onRefresh: () => void;
   onOpenProfile: (item: ArenaLeaderboardItem) => void;
 }) => (
-  <ScreenCard accent="sage">
-    <Text style={styles.screenTitle}>Arena Leaderboard</Text>
-    <Text style={styles.screenBody}>
-      Son ritual aktivitesinden uretilen haftalik siralama. Nick uzerine dokunarak profili ac.
-    </Text>
-    <Text style={styles.screenMeta}>Kaynak: {state.source === 'live' ? 'canli' : 'fallback'}</Text>
-    <Text
-      style={[
-        styles.screenMeta,
-        state.status === 'error'
-          ? styles.ritualStateError
-          : state.source === 'live'
-            ? styles.ritualStateOk
-            : styles.ritualStateWarn,
+  <>
+    <SectionLeadCard
+      accent="sage"
+      eyebrow="Arena Board"
+      title="Arena Leaderboard"
+      body="Son ritual aktivitesinden uretilen haftalik siralama. Nick uzerine dokunarak profili ac."
+      badges={[
+        { label: state.source === 'live' ? 'canli kaynak' : 'fallback kaynak', tone: state.source === 'live' ? 'sage' : 'clay' },
+        { label: `${state.entries.length} oyuncu`, tone: 'muted' },
       ]}
-    >
-      {state.message}
-    </Text>
-    <View style={styles.arenaLeaderboardList}>
-      {state.entries.map((item) => {
-        const canOpenProfile = Boolean(
-          String(item.userId || '').trim() || String(item.displayName || '').trim()
-        );
-        return (
-          <View key={`${item.rank}-${item.displayName}`} style={styles.arenaLeaderboardRow}>
-            <View style={styles.arenaLeaderboardRankWrap}>
-              <Text style={styles.arenaLeaderboardRank}>{item.rank}</Text>
-            </View>
-            <View style={styles.arenaLeaderboardAvatarWrap}>
-              {item.avatarUrl ? (
-                <Image
-                  source={{ uri: item.avatarUrl }}
-                  style={styles.arenaLeaderboardAvatarImage}
-                  resizeMode="cover"
-                />
-              ) : (
-                <Text style={styles.arenaLeaderboardAvatarFallback}>
-                  {(String(item.displayName || '').trim().slice(0, 1) || 'U').toUpperCase()}
+      metrics={[
+        { label: 'Kaynak', value: state.source === 'live' ? 'live' : 'fallback' },
+        { label: 'Durum', value: state.status },
+      ]}
+      actions={[
+        {
+          label: state.status === 'loading' ? 'Yenileniyor...' : 'Leaderboard Yenile',
+          tone: 'neutral',
+          onPress: onRefresh,
+          disabled: state.status === 'loading',
+        },
+      ]}
+    />
+
+    <StatusStrip
+      tone={state.status === 'error' ? 'clay' : state.source === 'live' ? 'sage' : 'muted'}
+      eyebrow="Arena Feed"
+      title={state.status === 'error' ? 'Leaderboard okunamadi' : state.source === 'live' ? 'Canli siralama acik' : 'Fallback siralama aktif'}
+      body={state.message}
+      meta="Profil acilislari siralama satirlarindan tetiklenir."
+    />
+
+    {state.status === 'loading' && state.entries.length === 0 ? (
+      <StatePanel
+        tone="sage"
+        variant="loading"
+        eyebrow="Arena"
+        title="Haftalik siralama yukleniyor"
+        body="Canli ritual aktivitesi ve profil gecisleri toparlaniyor."
+        meta="Kaynak canli degilse fallback tablo devreye girebilir."
+      />
+    ) : null}
+
+    {state.entries.length === 0 && state.status !== 'loading' ? (
+      <StatePanel
+        tone={state.status === 'error' ? 'clay' : 'sage'}
+        variant={state.status === 'error' ? 'error' : 'empty'}
+        eyebrow="Arena"
+        title={state.status === 'error' ? 'Arena tablosu acilamadi' : 'Bu hafta henuz arena izi yok'}
+        body={
+          state.status === 'error'
+            ? 'Siralama okunurken gecici bir sorun olustu.'
+            : 'Yeni ritual ve echo hareketleri geldikce arena siralamasi burada gorunecek.'
+        }
+        meta={state.message}
+        actionLabel="Leaderboard Yenile"
+        onAction={onRefresh}
+      />
+    ) : null}
+
+    {state.entries.length > 0 ? (
+      <View style={styles.arenaLeaderboardList}>
+        {state.entries.map((item) => {
+          const canOpenProfile = Boolean(
+            String(item.userId || '').trim() || String(item.displayName || '').trim()
+          );
+          return (
+            <View key={`${item.rank}-${item.displayName}`} style={styles.arenaLeaderboardRow}>
+              <View style={styles.arenaLeaderboardRankWrap}>
+                <Text style={styles.arenaLeaderboardRank}>{item.rank}</Text>
+              </View>
+              <View style={styles.arenaLeaderboardAvatarWrap}>
+                {item.avatarUrl ? (
+                  <Image
+                    source={{ uri: item.avatarUrl }}
+                    style={styles.arenaLeaderboardAvatarImage}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <Text style={styles.arenaLeaderboardAvatarFallback}>
+                    {(String(item.displayName || '').trim().slice(0, 1) || 'U').toUpperCase()}
+                  </Text>
+                )}
+              </View>
+              <View style={styles.arenaLeaderboardContent}>
+                <Pressable
+                  onPress={() => onOpenProfile(item)}
+                  disabled={!canOpenProfile}
+                  hitSlop={PRESSABLE_HIT_SLOP}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${item.displayName} profilini ac`}
+                >
+                  <Text style={styles.arenaLeaderboardName}>{item.displayName}</Text>
+                </Pressable>
+                <Text style={styles.arenaLeaderboardMeta}>
+                  Ritual {item.ritualsCount} | Echo {item.echoCount}
                 </Text>
-              )}
-            </View>
-            <View style={styles.arenaLeaderboardContent}>
-              <Pressable
+              </View>
+              <UiButton
+                label={canOpenProfile ? 'Profil' : 'Kilitli'}
+                tone={canOpenProfile ? 'neutral' : 'danger'}
                 onPress={() => onOpenProfile(item)}
                 disabled={!canOpenProfile}
-                hitSlop={PRESSABLE_HIT_SLOP}
-                accessibilityRole="button"
-                accessibilityLabel={`${item.displayName} profilini ac`}
-              >
-                <Text style={styles.arenaLeaderboardName}>{item.displayName}</Text>
-              </Pressable>
-              <Text style={styles.arenaLeaderboardMeta}>
-                Ritual {item.ritualsCount} | Echo {item.echoCount}
-              </Text>
+                style={styles.arenaLeaderboardAction}
+                accessibilityLabel={`${item.displayName} profiline git`}
+              />
             </View>
-          </View>
-        );
-      })}
-    </View>
-    <UiButton
-      label={state.status === 'loading' ? 'Yenileniyor...' : 'Leaderboard Yenile'}
-      tone="neutral"
-      onPress={onRefresh}
-      disabled={state.status === 'loading'}
-      accessibilityLabel="Arena leaderboard yenile"
-    />
-  </ScreenCard>
+          );
+        })}
+      </View>
+    ) : null}
+  </>
 );
 
 type PublicProfileDetail = {
@@ -3148,28 +4094,71 @@ const PublicProfileBridgeCard = ({
   onProfileInputChange: (value: string) => void;
   onOpenProfile: () => void;
   canOpenProfile: boolean;
-}) => (
-  <ScreenCard accent="clay">
-    <Text style={styles.screenTitle}>Public Profile Gecisi</Text>
-    <Text style={styles.screenBody}>Kullanici adini girip profili mobil icinde ac.</Text>
-    <TextInput
-      style={styles.publicProfileInput}
-      value={profileInput}
-      onChangeText={onProfileInputChange}
-      autoCapitalize="none"
-      placeholder="kullanici-adi"
-      placeholderTextColor="#8e8b84"
-      accessibilityLabel="Public profile kullanici adi"
-    />
-    <UiButton
-      label={canOpenProfile ? 'Profili Ac' : 'Kullanici Adi Bekleniyor'}
-      tone="neutral"
-      onPress={onOpenProfile}
-      disabled={!canOpenProfile}
-      accessibilityLabel="Public profile ac"
-    />
-  </ScreenCard>
-);
+}) => {
+  const normalizedInput = String(profileInput || '').trim().replace(/^@+/, '');
+
+  return (
+    <ScreenCard accent="clay">
+      <Text style={styles.sectionLeadEyebrow}>Public Bridge</Text>
+      <Text style={styles.sectionLeadTitle}>Public Profile Gecisi</Text>
+      <Text style={styles.sectionLeadBody}>
+        Kullanici adini gir, profili mobil icinde ac ve yorum/film arsivine dogrudan gec.
+      </Text>
+      <View style={styles.sectionLeadBadgeRow}>
+        <View
+          style={[
+            styles.sectionLeadBadge,
+            canOpenProfile ? styles.sectionLeadBadgeSage : styles.sectionLeadBadgeMuted,
+          ]}
+        >
+          <Text style={styles.sectionLeadBadgeText}>
+            {canOpenProfile ? 'profil hazir' : 'handle bekleniyor'}
+          </Text>
+        </View>
+        <View style={[styles.sectionLeadBadge, styles.sectionLeadBadgeMuted]}>
+          <Text style={styles.sectionLeadBadgeText}>@kullanici-adi</Text>
+        </View>
+      </View>
+
+      <TextInput
+        style={styles.publicProfileInput}
+        value={profileInput}
+        onChangeText={onProfileInputChange}
+        autoCapitalize="none"
+        placeholder="kullanici-adi"
+        placeholderTextColor="#8e8b84"
+        accessibilityLabel="Public profile kullanici adi"
+      />
+
+      {canOpenProfile ? (
+        <StatusStrip
+          tone="sage"
+          eyebrow="Hazir Profil"
+          title={`@${normalizedInput}`}
+          body="Bu handle ile native public profile ekranini acabilirsin."
+          meta="Giris yapmadan da profil, film ve yorum akislarini inceleyebilirsin."
+        />
+      ) : (
+        <StatePanel
+          tone="clay"
+          variant="empty"
+          eyebrow="Profil Arama"
+          title="Once bir kullanici adi yaz"
+          body="Public profile acilisi handle bazli calisir. Bosluk olmadan kullanici adini gir."
+          meta="Ornek: @cinephile ya da cinephile"
+        />
+      )}
+
+      <UiButton
+        label={canOpenProfile ? 'Profili Ac' : 'Kullanici Adi Bekleniyor'}
+        tone={canOpenProfile ? 'brand' : 'neutral'}
+        onPress={onOpenProfile}
+        disabled={!canOpenProfile}
+        accessibilityLabel="Public profile ac"
+      />
+    </ScreenCard>
+  );
+};
 
 const PublicProfileDetailCard = ({
   status,
@@ -3207,63 +4196,120 @@ const PublicProfileDetailCard = ({
   const followingCount = Math.max(0, Number(profile?.followingCount || 0));
   const followersCount = Math.max(0, Number(profile?.followersCount || 0));
   const isFollowBusy = followStatus === 'loading';
+  const followTone =
+    followStatus === 'error' ? 'clay' : followStatus === 'ready' ? 'sage' : 'muted';
 
   return (
-    <ScreenCard accent="clay">
-      <Pressable onPress={onOpenFullProfile} hitSlop={PRESSABLE_HIT_SLOP}>
-        <Text style={styles.screenTitle}>{profileDisplayName || '@bilinmeyen'}</Text>
-        <Text style={styles.screenBody}>{status === 'loading' ? 'Profil yukleniyor...' : message}</Text>
-        {profile ? (
-          <View style={styles.profileBadgeList}>
-            <Text style={styles.screenMeta}>Rituals: {ritualsCount}</Text>
-            <Text style={styles.screenMeta}>Takip: {followingCount} / Takipci: {followersCount}</Text>
+    <>
+      <SectionLeadCard
+        accent="clay"
+        eyebrow="Public Detail"
+        title={profileDisplayName || '@bilinmeyen'}
+        body={status === 'loading' ? 'Profil yukleniyor...' : message}
+        badges={[
+          { label: status, tone: status === 'error' ? 'clay' : status === 'ready' ? 'sage' : 'muted' },
+          ...(isSelfProfile ? [{ label: 'kendi profilin', tone: 'muted' as const }] : []),
+          ...(!isSelfProfile && followsYou ? [{ label: 'seni takip ediyor', tone: 'sage' as const }] : []),
+        ]}
+        metrics={[
+          { label: 'Ritual', value: String(ritualsCount) },
+          { label: 'Takip', value: String(followingCount) },
+          { label: 'Takipci', value: String(followersCount) },
+        ]}
+        actions={[
+          {
+            label: 'Profili Tam Ac',
+            tone: 'brand',
+            onPress: onOpenFullProfile,
+          },
+          {
+            label: 'Yenile',
+            tone: 'neutral',
+            onPress: onRefresh,
+          },
+          {
+            label: 'Kapat',
+            tone: 'neutral',
+            onPress: onBack,
+          },
+        ]}
+      />
+
+      {status === 'loading' && !profile ? (
+        <StatePanel
+          tone="sage"
+          variant="loading"
+          eyebrow="Public Profil"
+          title="Profil verisi toparlaniyor"
+          body="Temel metrikler ve follow durumu okunuyor."
+          meta="Profil acildiginda film ve yorum arsivine asagidan gecersin."
+        />
+      ) : null}
+
+      {status === 'error' && !profile ? (
+        <StatePanel
+          tone="clay"
+          variant="error"
+          eyebrow="Public Profil"
+          title="Profil su an acilamadi"
+          body={message}
+          meta="Kullanici adi dogruysa yenileyip tekrar deneyebilirsin."
+          actionLabel="Yenile"
+          onAction={onRefresh}
+          actionTone="danger"
+        />
+      ) : null}
+
+      {profile ? (
+        <ScreenCard accent="sage">
+          <Text style={styles.subSectionLabel}>Toplu Ozet</Text>
+          <View style={styles.detailInfoGrid}>
+            <View style={styles.detailInfoCard}>
+              <Text style={styles.detailInfoLabel}>Ritual</Text>
+              <Text style={styles.detailInfoValue}>{ritualsCount}</Text>
+            </View>
+            <View style={styles.detailInfoCard}>
+              <Text style={styles.detailInfoLabel}>Takip</Text>
+              <Text style={styles.detailInfoValue}>{followingCount}</Text>
+            </View>
+            <View style={styles.detailInfoCard}>
+              <Text style={styles.detailInfoLabel}>Takipci</Text>
+              <Text style={styles.detailInfoValue}>{followersCount}</Text>
+            </View>
           </View>
-        ) : null}
-        {!isSelfProfile && followsYou ? (
-          <Text style={[styles.screenMeta, styles.ritualStateOk]}>Bu kisi seni takip ediyor.</Text>
-        ) : null}
-        <Text style={styles.screenMeta}>Detayli profil icin bu alana dokun.</Text>
-      </Pressable>
-      {!isSelfProfile && isSignedIn && profile ? (
-        <Pressable
-          style={[styles.claimButton, isFollowBusy ? styles.claimButtonDisabled : null]}
-          onPress={onToggleFollow}
-          disabled={isFollowBusy}
-          hitSlop={PRESSABLE_HIT_SLOP}
-        >
-          <Text style={styles.claimButtonText}>{isFollowing ? 'Takipten Cik' : 'Takip Et'}</Text>
-        </Pressable>
+
+          <StatusStrip
+            tone={followTone}
+            eyebrow="Follow State"
+            title={
+              isSelfProfile
+                ? 'Bu profil sana ait'
+                : isFollowing
+                  ? 'Takip durumu aktif'
+                  : 'Takip durumu acik'
+            }
+            body={
+              followMessage ||
+              (isSelfProfile
+                ? 'Kendi profilinde follow aksiyonu gosterilmez.'
+                : isSignedIn
+                  ? 'Istersen bu profili takip edip sosyal akisina ekleyebilirsin.'
+                  : 'Takip etmek icin once mobil session acman gerekir.')
+            }
+            meta={!isSelfProfile && followsYou ? 'Bu kisi seni takip ediyor.' : 'Detayli profil icin ustteki aksiyonu kullan.'}
+          />
+
+          {!isSelfProfile && isSignedIn ? (
+            <UiButton
+              label={isFollowBusy ? 'Isleniyor...' : isFollowing ? 'Takipten Cik' : 'Takip Et'}
+              tone={isFollowing ? 'danger' : 'brand'}
+              onPress={onToggleFollow}
+              disabled={isFollowBusy || !profile}
+            />
+          ) : null}
+        </ScreenCard>
       ) : null}
-      {followMessage ? (
-        <Text
-          style={[
-            styles.screenMeta,
-            followStatus === 'error'
-              ? styles.ritualStateError
-              : followStatus === 'ready'
-                ? styles.ritualStateOk
-                : styles.screenMeta,
-          ]}
-        >
-          {followMessage}
-        </Text>
-      ) : null}
-      <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
-        <Pressable style={styles.retryButton} onPress={onOpenFullProfile} hitSlop={PRESSABLE_HIT_SLOP}>
-          <Text style={styles.retryText}>Profili Tam Ac</Text>
-        </Pressable>
-        <Pressable style={styles.retryButton} onPress={onRefresh} hitSlop={PRESSABLE_HIT_SLOP}>
-          <Text style={styles.retryText}>Yenile</Text>
-        </Pressable>
-        <Pressable
-          style={[styles.retryButton, { backgroundColor: 'transparent' }]}
-          onPress={onBack}
-          hitSlop={PRESSABLE_HIT_SLOP}
-        >
-          <Text style={styles.retryText}>Kapat</Text>
-        </Pressable>
-      </View>
-    </ScreenCard>
+    </>
   );
 };
 
@@ -3296,6 +4342,9 @@ const PlatformRulesCard = () => {
 export {
   setAppScreensThemeMode,
   AuthCard,
+  CollapsibleSectionCard,
+  SectionLeadCard,
+  StatePanel,
   ThemeModeCard,
   ScreenErrorBoundary,
   MobileSettingsModal,
@@ -3317,6 +4366,7 @@ export {
   PublicProfileDetailCard,
   PlatformRulesCard,
   ProfileMovieArchiveModal,
+  PublicProfileMovieArchiveModal,
   MovieDetailsModal,
 };
 
