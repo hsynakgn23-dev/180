@@ -72,6 +72,7 @@ export type MobileCommentFeedItem = {
   createdAtMs: number | null;
   echoCount: number;
   replyCount: number;
+  isEchoedByMe: boolean;
   isMine: boolean;
 };
 
@@ -430,17 +431,19 @@ const buildCountMap = (rows: Array<{ ritual_id: string }>): Map<string, number> 
 };
 
 const readEngagementMaps = async (
-  ritualIds: string[]
-): Promise<{ echoMap: Map<string, number>; replyMap: Map<string, number> }> => {
+  ritualIds: string[],
+  currentUserId: string
+): Promise<{ echoMap: Map<string, number>; replyMap: Map<string, number>; echoedByMe: Set<string> }> => {
   if (!supabase || ritualIds.length === 0) {
     return {
       echoMap: new Map<string, number>(),
       replyMap: new Map<string, number>(),
+      echoedByMe: new Set<string>(),
     };
   }
 
   const [echoRes, replyRes] = await Promise.all([
-    supabase.from('ritual_echoes').select('ritual_id').in('ritual_id', ritualIds),
+    supabase.from('ritual_echoes').select('ritual_id,user_id').in('ritual_id', ritualIds),
     supabase.from('ritual_replies').select('ritual_id').in('ritual_id', ritualIds),
   ]);
 
@@ -448,7 +451,7 @@ const readEngagementMaps = async (
     echoRes.error && isSupabaseCapabilityError(echoRes.error)
       ? []
       : Array.isArray(echoRes.data)
-        ? (echoRes.data as Array<{ ritual_id: string }>)
+        ? (echoRes.data as Array<{ ritual_id: string; user_id?: string | null }>)
         : [];
   const replyRows =
     replyRes.error && isSupabaseCapabilityError(replyRes.error)
@@ -457,9 +460,18 @@ const readEngagementMaps = async (
         ? (replyRes.data as Array<{ ritual_id: string }>)
         : [];
 
+  const echoedByMe = new Set<string>();
+  for (const row of echoRows) {
+    const ritualId = normalizeText(row.ritual_id, 120);
+    const userId = normalizeText(row.user_id, 120);
+    if (!ritualId || !userId || !currentUserId) continue;
+    if (userId === currentUserId) echoedByMe.add(ritualId);
+  }
+
   return {
     echoMap: buildCountMap(echoRows),
     replyMap: buildCountMap(replyRows),
+    echoedByMe,
   };
 };
 
@@ -521,6 +533,7 @@ const toFeedItem = (
   options: {
     echoCount: number;
     replyCount: number;
+    isEchoedByMe: boolean;
     currentUserId: string;
   }
 ): MobileCommentFeedItem => ({
@@ -537,6 +550,7 @@ const toFeedItem = (
   createdAtMs: ritual.createdAtMs,
   echoCount: Math.max(0, options.echoCount),
   replyCount: Math.max(0, options.replyCount),
+  isEchoedByMe: options.isEchoedByMe,
   isMine: Boolean(options.currentUserId && ritual.userId === options.currentUserId),
 });
 
@@ -601,6 +615,7 @@ const readFallbackFromXpState = async (): Promise<MobileCommentFeedItem[]> => {
         createdAtMs,
         echoCount: 0,
         replyCount: 0,
+        isEchoedByMe: false,
         isMine: true,
       } as MobileCommentFeedItem;
     })
@@ -689,7 +704,7 @@ export const fetchMobileCommentFeed = async (
     await hydrateMissingUserIds(normalizeRitualRows(feedFetch.rows))
   );
   const ritualIds = normalizedRows.map((row) => row.id);
-  const { echoMap, replyMap } = await readEngagementMaps(ritualIds);
+  const { echoMap, replyMap, echoedByMe } = await readEngagementMaps(ritualIds, currentUserId);
 
   const mappedItems = normalizedRows
     .sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0))
@@ -697,6 +712,7 @@ export const fetchMobileCommentFeed = async (
       toFeedItem(ritual, {
         echoCount: echoMap.get(ritual.id) || 0,
         replyCount: replyMap.get(ritual.id) || 0,
+        isEchoedByMe: echoedByMe.has(ritual.id),
         currentUserId,
       })
     );

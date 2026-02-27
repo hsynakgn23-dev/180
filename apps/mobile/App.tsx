@@ -22,13 +22,14 @@ import {
   Linking,
   Platform,
   Pressable,
+  Share,
   ScrollView,
   Text,
   View,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { buildMobileDeepLinkFromRouteIntent } from '../../packages/shared/src/mobile';
+import { appendMobileDeepLinkParams, buildMobileDeepLinkFromRouteIntent } from '../../packages/shared/src/mobile';
 import { fetchDailyMovies } from './src/lib/dailyApi';
 import { useMobileRouteIntent } from './src/hooks/useMobileRouteIntent';
 import { usePageEntranceAnimation } from './src/hooks/usePageEntranceAnimation';
@@ -66,11 +67,18 @@ import {
   readMobileProfileIdentityFromCloud,
   syncMobileProfileIdentityToCloud,
 } from './src/lib/mobileProfileIdentitySync';
+import { applyMobileAuthCallbackFromUrl } from './src/lib/mobileAuthCallback';
 import {
   fetchMobileCommentFeed,
   type CommentFeedScope,
   type CommentFeedSort,
 } from './src/lib/mobileCommentsFeed';
+import {
+  echoMobileCommentRitual,
+  fetchMobileCommentReplies,
+  submitMobileCommentReply,
+  type MobileCommentReply,
+} from './src/lib/mobileCommentInteractions';
 import {
   configureDefaultNotificationHandler,
   readStoredPushToken,
@@ -89,6 +97,10 @@ import {
 import { sendPushTestNotification } from './src/lib/mobilePushApi';
 import { syncPushTokenToProfileState } from './src/lib/mobilePushProfileSync';
 import { claimInviteCodeViaApi, ensureInviteCodeViaApi } from './src/lib/mobileReferralApi';
+import {
+  claimMobileShareReward,
+  MOBILE_SHARE_REWARD_XP,
+} from './src/lib/mobileShareRewardSync';
 import { isSupabaseConfigured, supabase } from './src/lib/supabase';
 import { UiButton } from './src/ui/primitives';
 import { styles } from './src/ui/appStyles';
@@ -145,7 +157,9 @@ const PUSH_FEATURE_ENABLED = isEnvFlagEnabled(process.env.EXPO_PUBLIC_PUSH_ENABL
 const INTERNAL_OPS_VISIBLE =
   __DEV__ && isEnvFlagEnabled(process.env.EXPO_PUBLIC_MOBILE_INTERNAL_SURFACES, false);
 const MOBILE_DEEP_LINK_BASE = 'absolutecinema://open';
-const MOBILE_UI_PACKAGE_LABEL = 'UI Package 6.26';
+const MOBILE_AUTH_REDIRECT_TO =
+  String(process.env.EXPO_PUBLIC_AUTH_REDIRECT_TO || '').trim() || MOBILE_DEEP_LINK_BASE;
+const MOBILE_UI_PACKAGE_LABEL = 'UI Package 6.30';
 const MOBILE_PROFILE_IDENTITY_STORAGE_KEY = 'ac_mobile_profile_identity_v1';
 const MOBILE_PROFILE_LANGUAGE_STORAGE_KEY = 'ac_mobile_profile_language_v1';
 
@@ -236,6 +250,8 @@ const DISCOVER_ROUTES = DISCOVER_ROUTE_CONFIG.map((route) => ({
 }));
 
 type ArenaEntryView = MobileArenaEntry;
+type SharePlatform = 'instagram' | 'tiktok' | 'x';
+type ShareGoal = 'comment' | 'streak';
 type PublicProfileOpenOrigin = 'arena' | 'comment' | 'manual';
 type PublicProfileOpenTarget = {
   userId?: string | null;
@@ -343,6 +359,7 @@ const inviteMessageByCode: Record<string, string> = {
 
 export default function App() {
   type MainTabKey = 'daily' | 'explore' | 'inbox' | 'marks' | 'profile';
+  type AuthFlowMode = 'login' | 'forgot' | 'recovery';
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -353,6 +370,8 @@ export default function App() {
   const [inviteClaimState, setInviteClaimState] = useState<InviteClaimState>({ status: 'idle' });
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
+  const [authConfirmPassword, setAuthConfirmPassword] = useState('');
+  const [authFlowMode, setAuthFlowMode] = useState<AuthFlowMode>('login');
   const [authState, setAuthState] = useState<AuthState>({
     status: 'idle',
     message: 'Session kontrol ediliyor...',
@@ -436,6 +455,14 @@ export default function App() {
     code: '',
     inviteLink: '',
     claimCount: 0,
+  });
+  const [selectedShareGoal, setSelectedShareGoal] = useState<ShareGoal>('comment');
+  const [shareHubState, setShareHubState] = useState<{
+    status: 'idle' | 'loading' | 'ready' | 'error';
+    message: string;
+  }>({
+    status: 'idle',
+    message: 'Paylasim hedefini sec.',
   });
   const [profileGenreDistribution, setProfileGenreDistribution] = useState<
     Array<{ genre: string; count: number }>
@@ -523,6 +550,7 @@ export default function App() {
   const { pageEntrance, pageEnterTranslateY } = usePageEntranceAnimation();
   const hasCloudIdentityHydratedRef = useRef(false);
   const lastObservedLeagueIndexRef = useRef<number | null>(null);
+  const lastHandledAuthCallbackUrlRef = useRef<string | null>(null);
 
   const primaryDailyMovie =
     dailyState.status === 'success' && dailyState.movies.length > 0 ? dailyState.movies[0] : null;
@@ -1473,6 +1501,8 @@ export default function App() {
         email: data.user?.email || email,
       });
       setAuthPassword('');
+      setAuthConfirmPassword('');
+      setAuthFlowMode('login');
       void trackMobileEvent('login_success', {
         method: 'password',
       });
@@ -1488,6 +1518,151 @@ export default function App() {
       });
     }
   }, [authEmail, authPassword]);
+
+  const handleRequestPasswordReset = useCallback(async () => {
+    const email = authEmail.trim().toLowerCase();
+
+    if (!isSupabaseConfigured || !supabase) {
+      setAuthState({
+        status: 'error',
+        message: 'Supabase ayarlari eksik.',
+      });
+      return;
+    }
+
+    if (!email) {
+      setAuthState({
+        status: 'error',
+        message: 'Sifre yenileme icin e-posta gerekli.',
+      });
+      return;
+    }
+
+    setAuthState({
+      status: 'loading',
+      message: 'Sifre yenileme baglantisi gonderiliyor...',
+    });
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: MOBILE_AUTH_REDIRECT_TO,
+      });
+      if (error) {
+        setAuthState({
+          status: 'error',
+          message: error.message || 'Sifre yenileme baglantisi gonderilemedi.',
+        });
+        void trackMobileEvent('auth_failure', {
+          method: 'password_reset',
+          reason: error.message || 'reset_password_request_failed',
+        });
+        return;
+      }
+
+      setAuthPassword('');
+      setAuthConfirmPassword('');
+      setAuthFlowMode('forgot');
+      setAuthState({
+        status: 'signed_out',
+        message: 'Sifre yenileme baglantisi e-posta adresine gonderildi.',
+      });
+      void trackMobileEvent('password_reset_requested', {
+        method: 'email',
+        redirectTo: MOBILE_AUTH_REDIRECT_TO,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Sifre yenileme baglantisi gonderilemedi.';
+      setAuthState({
+        status: 'error',
+        message,
+      });
+      void trackMobileEvent('auth_failure', {
+        method: 'password_reset',
+        reason: message,
+      });
+    }
+  }, [authEmail]);
+
+  const handleCompletePasswordReset = useCallback(async () => {
+    const password = authPassword.trim();
+    const confirmPassword = authConfirmPassword.trim();
+
+    if (!supabase) {
+      setAuthState({
+        status: 'error',
+        message: 'Supabase hazir degil.',
+      });
+      return;
+    }
+
+    if (password.length < 6) {
+      setAuthState({
+        status: 'error',
+        message: 'Sifre en az 6 karakter olmali.',
+      });
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setAuthState({
+        status: 'error',
+        message: 'Sifre tekrar alanlari ayni olmali.',
+      });
+      return;
+    }
+
+    setAuthState({
+      status: 'loading',
+      message: 'Sifre guncelleniyor...',
+    });
+
+    try {
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) {
+        setAuthState({
+          status: 'error',
+          message: error.message || 'Sifre guncellenemedi.',
+        });
+        void trackMobileEvent('auth_failure', {
+          method: 'password_recovery',
+          reason: error.message || 'password_reset_complete_failed',
+        });
+        return;
+      }
+
+      const { data } = await supabase.auth.getSession();
+      const email = String(data.session?.user?.email || authEmail).trim().toLowerCase();
+      setAuthPassword('');
+      setAuthConfirmPassword('');
+      setAuthFlowMode('login');
+      setAuthState(
+        email
+          ? {
+              status: 'signed_in',
+              message: 'Sifre guncellendi. Yeni sifren artik aktif.',
+              email,
+            }
+          : {
+              status: 'signed_out',
+              message: 'Sifre guncellendi. Yeni sifrenle tekrar giris yapabilirsin.',
+            }
+      );
+      void trackMobileEvent('password_reset_completed', {
+        method: 'recovery',
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Sifre guncellenemedi.';
+      setAuthState({
+        status: 'error',
+        message,
+      });
+      void trackMobileEvent('auth_failure', {
+        method: 'password_recovery',
+        reason: message,
+      });
+    }
+  }, [authConfirmPassword, authEmail, authPassword]);
 
   const handleSignOut = useCallback(async () => {
     if (!supabase) {
@@ -1509,6 +1684,9 @@ export default function App() {
         status: 'signed_out',
         message: 'Cikis yapildi.',
       });
+      setAuthPassword('');
+      setAuthConfirmPassword('');
+      setAuthFlowMode('login');
     } catch (error) {
       setAuthState({
         status: 'error',
@@ -1655,6 +1833,77 @@ export default function App() {
     });
     return () => data.subscription.unsubscribe();
   }, [refreshAuthState, refreshRitualQueue]);
+
+  useEffect(() => {
+    const incomingUrl = String(lastIncomingUrl || '').trim();
+    if (!incomingUrl) return;
+    if (lastHandledAuthCallbackUrlRef.current === incomingUrl) return;
+    lastHandledAuthCallbackUrlRef.current = incomingUrl;
+
+    let active = true;
+
+    void (async () => {
+      const callbackResult = await applyMobileAuthCallbackFromUrl(incomingUrl);
+      if (!active || !callbackResult.matched) return;
+
+      if (!callbackResult.ok) {
+        setAuthFlowMode(callbackResult.recoveryMode ? 'recovery' : 'login');
+        setAuthPassword('');
+        setAuthConfirmPassword('');
+        setAuthState({
+          status: 'error',
+          message: callbackResult.message,
+        });
+        void trackMobileEvent(
+          callbackResult.recoveryMode ? 'auth_failure' : 'oauth_failure',
+          callbackResult.recoveryMode
+            ? {
+                method: 'password_recovery',
+                reason: callbackResult.message,
+              }
+            : {
+                reason: callbackResult.message,
+                method: callbackResult.method,
+              }
+        );
+        return;
+      }
+
+      const email = supabase
+        ? String((await supabase.auth.getSession()).data.session?.user?.email || '').trim().toLowerCase()
+        : '';
+
+      if (callbackResult.recoveryMode) {
+        setAuthFlowMode('recovery');
+        setAuthPassword('');
+        setAuthConfirmPassword('');
+      } else {
+        setAuthFlowMode('login');
+        if (email) {
+          void trackMobileEvent('login_success', {
+            method: callbackResult.method,
+          });
+        }
+      }
+
+      setAuthState(
+        email
+          ? {
+              status: 'signed_in',
+              message: callbackResult.message,
+              email,
+            }
+          : {
+              status: 'signed_out',
+              message: callbackResult.message,
+            }
+      );
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [lastIncomingUrl]);
 
   useEffect(() => {
     if (authState.status === 'signed_in') {
@@ -2221,6 +2470,32 @@ export default function App() {
   const inviteRewardLabel = 'Invitee +180 XP | Inviter +120 XP';
   const activeAccountLabel = profileDisplayName || 'Observer';
   const activeEmailLabel = authState.status === 'signed_in' ? authState.email : '-';
+  const shareHandle = String(
+    profileUsername || (authState.status === 'signed_in' ? authState.email.split('@')[0] : 'observer')
+  )
+    .trim()
+    .replace(/\s+/g, '')
+    .toLowerCase();
+  const todayKey = getLocalDateKey();
+  const latestOwnComment = useMemo(
+    () =>
+      commentFeedState.items.find((item) => item.isMine && item.dayKey === todayKey && item.text.trim()) ||
+      commentFeedState.items.find((item) => item.isMine && item.text.trim()) ||
+      null,
+    [commentFeedState.items, todayKey]
+  );
+  const shareCommentPreview = useMemo(() => {
+    const raw = String(latestOwnComment?.text || '').trim();
+    if (!raw) return 'Bugunun yorumu henuz hazir degil.';
+    return raw.length > 120 ? `${raw.slice(0, 120).trimEnd()}...` : raw;
+  }, [latestOwnComment?.text]);
+  const effectiveShareInviteCode = String(inviteProgram.code || inviteCode || '').trim();
+  const effectiveShareInviteLink = String(inviteProgram.inviteLink || '').trim();
+  const canShareComment = Boolean(String(latestOwnComment?.text || '').trim());
+  const canShareStreak = canShareComment && profileStats.streak > 0;
+  const shareLeagueLabel =
+    profileState.status === 'success' ? profileState.leagueName : fallbackLeague.leagueInfo.name;
+  const shareTotalXp = profileState.status === 'success' ? profileState.totalXp : 0;
 
   const handleCommentFeedScopeChange = useCallback((scope: CommentFeedScope) => {
     setCommentFeedScope(scope);
@@ -2245,6 +2520,115 @@ export default function App() {
       sort,
     }));
   }, []);
+
+  const handleEchoComment = useCallback(async (item: CommentFeedState['items'][number]) => {
+    if (item.isEchoedByMe) {
+      return {
+        ok: false,
+        message: 'Bu yoruma zaten echo verdin.',
+      };
+    }
+
+    setCommentFeedState((prev) => ({
+      ...prev,
+      message: 'Echo senkronize ediliyor...',
+      items: prev.items.map((entry) =>
+        entry.id === item.id
+          ? {
+              ...entry,
+              echoCount: entry.echoCount + 1,
+              isEchoedByMe: true,
+            }
+          : entry
+      ),
+    }));
+
+    const result = await echoMobileCommentRitual(item.id);
+    if (!result.ok) {
+      setCommentFeedState((prev) => ({
+        ...prev,
+        message: result.message,
+        items: prev.items.map((entry) =>
+          entry.id === item.id
+            ? {
+                ...entry,
+                echoCount: Math.max(0, entry.echoCount - 1),
+                isEchoedByMe: false,
+              }
+            : entry
+        ),
+      }));
+      void trackMobileEvent('page_view', {
+        reason: 'mobile_comment_echo_failed',
+        ritualId: item.id,
+      });
+      return result;
+    }
+
+    setCommentFeedState((prev) => ({
+      ...prev,
+      message: result.message,
+    }));
+    void trackMobileEvent('page_view', {
+      reason: 'mobile_comment_echoed',
+      ritualId: item.id,
+    });
+    return result;
+  }, []);
+
+  const handleLoadCommentReplies = useCallback(
+    async (item: CommentFeedState['items'][number]) => {
+      const result = await fetchMobileCommentReplies(item.id);
+      void trackMobileEvent('page_view', {
+        reason: result.ok ? 'mobile_comment_replies_loaded' : 'mobile_comment_replies_failed',
+        ritualId: item.id,
+        replyCount: result.replies.length,
+      });
+      return result;
+    },
+    []
+  );
+
+  const handleSubmitCommentReply = useCallback(
+    async (item: CommentFeedState['items'][number], text: string) => {
+      const result = await submitMobileCommentReply({
+        ritualId: item.id,
+        text,
+        fallbackAuthor: profileDisplayName,
+      });
+
+      if (result.ok) {
+        setCommentFeedState((prev) => ({
+          ...prev,
+          message: result.message,
+          items: prev.items.map((entry) =>
+            entry.id === item.id
+              ? {
+                  ...entry,
+                  replyCount: entry.replyCount + 1,
+                }
+              : entry
+          ),
+        }));
+        void trackMobileEvent('page_view', {
+          reason: 'mobile_comment_reply_submitted',
+          ritualId: item.id,
+        });
+        return result as { ok: true; reply: MobileCommentReply; message: string };
+      }
+
+      setCommentFeedState((prev) => ({
+        ...prev,
+        message: result.message,
+      }));
+      void trackMobileEvent('page_view', {
+        reason: 'mobile_comment_reply_failed',
+        ritualId: item.id,
+      });
+      return result;
+    },
+    [profileDisplayName]
+  );
 
   useEffect(() => {
     setInviteClaimState({ status: 'idle' });
@@ -2749,6 +3133,283 @@ export default function App() {
     void refreshInviteProgram();
   }, [authState.status, inviteProgram.code, refreshInviteProgram, settingsVisible]);
 
+  useEffect(() => {
+    if (!isShareRouteActive) return;
+    setSelectedShareGoal(shareGoal === 'streak' ? 'streak' : 'comment');
+    setShareHubState({
+      status: 'idle',
+      message:
+        shareGoal === 'streak'
+          ? 'Streak paylasimi hazir. Platform secip devam et.'
+          : 'Yorum paylasimi hazir. Platform secip devam et.',
+    });
+  }, [isShareRouteActive, shareGoal]);
+
+  useEffect(() => {
+    if (!isShareRouteActive) return;
+    if (authState.status !== 'signed_in') return;
+    if (inviteProgram.code) return;
+    if (isInviteActionBusy) return;
+    void refreshInviteProgram();
+  }, [
+    authState.status,
+    inviteProgram.code,
+    isInviteActionBusy,
+    isShareRouteActive,
+    refreshInviteProgram,
+  ]);
+
+  const handleShareHubShare = useCallback(
+    async (platform: SharePlatform) => {
+      const goal: ShareGoal = selectedShareGoal;
+      const isReady = goal === 'comment' ? canShareComment : canShareStreak;
+
+      void trackMobileEvent('share_click', {
+        platform,
+        goal,
+        isReady,
+        hasInviteLink: Boolean(effectiveShareInviteLink),
+        hasInviteCode: Boolean(effectiveShareInviteCode),
+        hasCommentToday: canShareComment,
+        streakValue: profileStats.streak,
+      });
+
+      if (!isReady) {
+        const message =
+          goal === 'comment'
+            ? 'Paylasim icin bugun bir yorumun olmali.'
+            : 'Streak paylasimi icin bugunku yorum ve aktif streak gerekiyor.';
+        setShareHubState({
+          status: 'error',
+          message,
+        });
+        void trackMobileEvent('share_failed', {
+          platform,
+          goal,
+          reason: 'goal_not_ready',
+        });
+        void trackMobileEvent('share_reward_denied', {
+          platform,
+          goal,
+          reason: 'goal_not_ready',
+        });
+        return;
+      }
+
+      const platformTag =
+        platform === 'x' ? '#X' : platform === 'tiktok' ? '#TikTok' : '#Instagram';
+      const payload =
+        goal === 'streak'
+          ? [
+              '180 Absolute Cinema',
+              `${profileDisplayName} (@${shareHandle || 'observer'})`,
+              `Bugunku streak tamamlandi: ${profileStats.streak} gun`,
+              `${shareLeagueLabel} - ${Math.floor(shareTotalXp)} XP`,
+              `${platformTag} #180AbsoluteCinema`,
+            ].join('\n')
+          : [
+              '180 Absolute Cinema',
+              `${profileDisplayName} (@${shareHandle || 'observer'})`,
+              `${shareLeagueLabel} - ${Math.floor(shareTotalXp)} XP`,
+              `"${shareCommentPreview}"`,
+              `${platformTag} #180AbsoluteCinema`,
+            ].join('\n');
+
+      const shareBaseUrl = normalizeExternalUrl(
+        effectiveShareInviteLink || MOBILE_WEB_BASE_URL || 'https://www.180absolutecinema.com'
+      );
+
+      let destinationUrl = shareBaseUrl;
+      try {
+        const shareUrl = new URL(shareBaseUrl);
+        shareUrl.searchParams.set('utm_source', 'invite_share');
+        shareUrl.searchParams.set('utm_medium', platform);
+        shareUrl.searchParams.set('utm_campaign', 'mobile_share_hub');
+        shareUrl.searchParams.set('utm_content', `${platform}_${goal}`);
+        if (effectiveShareInviteCode) {
+          shareUrl.searchParams.set('invite', effectiveShareInviteCode);
+        }
+        appendMobileDeepLinkParams(shareUrl, {
+          type: 'share',
+          platform,
+          goal,
+          inviteCode: effectiveShareInviteCode || undefined,
+        });
+        destinationUrl = shareUrl.toString();
+      } catch {
+        setShareHubState({
+          status: 'error',
+          message: 'Paylasim linki hazirlanamadi.',
+        });
+        void trackMobileEvent('share_failed', {
+          platform,
+          goal,
+          reason: 'invalid_share_url',
+        });
+        return;
+      }
+
+      const shareMessage = `${payload}\n${destinationUrl}`;
+      let copiedToClipboard = false;
+
+      setShareHubState({
+        status: 'loading',
+        message: 'Paylasim paneli hazirlaniyor...',
+      });
+
+      if (platform !== 'x') {
+        try {
+          await Clipboard.setStringAsync(shareMessage);
+          copiedToClipboard = true;
+        } catch {
+          copiedToClipboard = false;
+        }
+      }
+
+      try {
+        const result = await Share.share({
+          title: goal === 'streak' ? 'Streak Paylasimi' : 'Yorum Paylasimi',
+          message: shareMessage,
+          url: destinationUrl,
+        });
+        const dismissed = result.action === Share.dismissedAction;
+        if (dismissed) {
+          setShareHubState({
+            status: 'idle',
+            message: copiedToClipboard
+              ? 'Paylasim iptal edildi. Metin panoda hazir.'
+              : 'Paylasim iptal edildi.',
+          });
+          void trackMobileEvent('share_failed', {
+            platform,
+            goal,
+            reason: 'native_share_dismissed',
+            clipboardPrepared: copiedToClipboard,
+          });
+          return;
+        }
+
+        setShareHubState({
+          status: 'ready',
+          message: copiedToClipboard
+            ? 'Paylasim paneli acildi. Metin panoya da kopyalandi.'
+            : 'Paylasim paneli acildi.',
+        });
+        void trackMobileEvent('share_opened', {
+          platform,
+          goal,
+          destinationUrl,
+          clipboardPrepared: copiedToClipboard,
+          hasInviteCode: Boolean(effectiveShareInviteCode),
+          hasAppLink: destinationUrl.includes('app_link='),
+        });
+
+        const rewardResult = await claimMobileShareReward({
+          platform,
+          goal,
+          fallbackTotalXp: shareTotalXp,
+          fallbackStreak: profileStats.streak,
+          fallbackDisplayName: profileDisplayName,
+          fallbackLastRitualDate:
+            profileState.status === 'success' ? profileState.lastRitualDate : latestOwnComment?.dayKey || null,
+          fallbackMarks: profileState.status === 'success' ? profileState.marks : [],
+          fallbackFeaturedMarks:
+            profileState.status === 'success' ? profileState.featuredMarks : [],
+          fallbackReferralCode: effectiveShareInviteCode || undefined,
+          fallbackFollowersCount:
+            profileState.status === 'success' ? profileState.followersCount : 0,
+          fallbackIdentity: {
+            fullName: settingsIdentityDraft.fullName || profileDisplayName,
+            username: settingsIdentityDraft.username || shareHandle,
+            gender: settingsIdentityDraft.gender,
+            birthDate: settingsIdentityDraft.birthDate,
+            bio: settingsIdentityDraft.bio,
+            avatarUrl: settingsIdentityDraft.avatarUrl,
+            profileLink: settingsIdentityDraft.profileLink,
+          },
+          fallbackComment: latestOwnComment
+            ? {
+                id: latestOwnComment.id,
+                text: latestOwnComment.text,
+                movieTitle: latestOwnComment.movieTitle,
+                dayKey: latestOwnComment.dayKey,
+              }
+            : null,
+        });
+
+        if (rewardResult.ok) {
+          setShareHubState({
+            status: 'ready',
+            message: copiedToClipboard
+              ? `Paylasim paneli acildi. Metin panoya kopyalandi. +${MOBILE_SHARE_REWARD_XP} XP eklendi.`
+              : `Paylasim paneli acildi. +${MOBILE_SHARE_REWARD_XP} XP eklendi.`,
+          });
+          void trackMobileEvent('share_reward_claimed', {
+            platform,
+            goal,
+            awardedXp: rewardResult.awardedXp,
+            totalXp: rewardResult.totalXp,
+            rewardDate: rewardResult.rewardDate,
+          });
+          void refreshProfileStats();
+          return;
+        }
+
+        setShareHubState({
+          status: rewardResult.reason === 'already_claimed' ? 'ready' : 'error',
+          message:
+            rewardResult.reason === 'already_claimed'
+              ? copiedToClipboard
+                ? 'Paylasim paneli acildi. Metin panoda hazir. Bugunki bonus zaten alinmis.'
+                : 'Paylasim paneli acildi. Bugunki bonus zaten alinmis.'
+              : copiedToClipboard
+                ? 'Paylasim acildi ama XP bonusu kaydedilemedi. Metin panoda hazir.'
+                : 'Paylasim acildi ama XP bonusu kaydedilemedi.',
+        });
+        void trackMobileEvent('share_reward_denied', {
+          platform,
+          goal,
+          reason: rewardResult.reason,
+          rewardDate: rewardResult.rewardDate || null,
+          totalXp: rewardResult.totalXp ?? null,
+          message: rewardResult.message,
+        });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'native_share_failed';
+        setShareHubState({
+          status: 'error',
+          message: copiedToClipboard
+            ? 'Paylasim acilamadi. Metin panoda hazir.'
+            : 'Paylasim acilamadi. Tekrar dene.',
+        });
+        void trackMobileEvent('share_failed', {
+          platform,
+          goal,
+          reason: 'native_share_exception',
+          clipboardPrepared: copiedToClipboard,
+          errorMessage,
+        });
+      }
+    },
+    [
+      canShareComment,
+      canShareStreak,
+      effectiveShareInviteCode,
+      effectiveShareInviteLink,
+      profileDisplayName,
+      profileState,
+      profileStats.streak,
+      refreshProfileStats,
+      selectedShareGoal,
+      settingsIdentityDraft,
+      shareCommentPreview,
+      shareHandle,
+      shareLeagueLabel,
+      shareTotalXp,
+      latestOwnComment,
+    ]
+  );
+
   const renderHeroCard = (tabLabel: string) => (
     <View style={styles.heroCard}>
       <View style={styles.heroAccent} />
@@ -2986,6 +3647,9 @@ export default function App() {
                       onScopeChange={() => undefined}
                       onSortChange={() => undefined}
                       onQueryChange={() => undefined}
+                      onEcho={handleEchoComment}
+                      onLoadReplies={handleLoadCommentReplies}
+                      onSubmitReply={handleSubmitCommentReply}
                       onOpenAuthorProfile={handleOpenCommentAuthorProfile}
                       onRefresh={() => {
                         void refreshCommentFeed('today', '', 'latest');
@@ -3080,6 +3744,9 @@ export default function App() {
                       onScopeChange={handleCommentFeedScopeChange}
                       onSortChange={handleCommentFeedSortChange}
                       onQueryChange={handleCommentFeedQueryChange}
+                      onEcho={handleEchoComment}
+                      onLoadReplies={handleLoadCommentReplies}
+                      onSubmitReply={handleSubmitCommentReply}
                       onOpenAuthorProfile={handleOpenCommentAuthorProfile}
                       onRefresh={() => {
                         void refreshCommentFeed(
@@ -3601,17 +4268,21 @@ export default function App() {
                     </View>
 
                     <ProfileMarksCard state={profileState} isSignedIn={isSignedIn} mode="unlocked" />
-                    {!isSignedIn ? (
-                      <AuthCard
-                        authState={authState}
-                        email={authEmail}
-                        password={authPassword}
-                        onEmailChange={setAuthEmail}
-                        onPasswordChange={setAuthPassword}
-                        onSignIn={handleSignIn}
-                        onSignOut={handleSignOut}
-                      />
-                    ) : null}
+                    <AuthCard
+                      authState={authState}
+                      email={authEmail}
+                      password={authPassword}
+                      confirmPassword={authConfirmPassword}
+                      mode={authFlowMode}
+                      onEmailChange={setAuthEmail}
+                      onPasswordChange={setAuthPassword}
+                      onConfirmPasswordChange={setAuthConfirmPassword}
+                      onModeChange={setAuthFlowMode}
+                      onSignIn={handleSignIn}
+                      onRequestPasswordReset={handleRequestPasswordReset}
+                      onCompletePasswordReset={handleCompletePasswordReset}
+                      onSignOut={handleSignOut}
+                    />
                     {screenPlan.screen === 'invite_claim' ? (
                       <InviteClaimScreen
                         inviteCode={inviteCode}
@@ -3622,9 +4293,17 @@ export default function App() {
                     {screenPlan.screen === 'share_hub' ? (
                       <ShareHubScreen
                         inviteCode={inviteCode}
+                        inviteLink={effectiveShareInviteLink}
                         platform={sharePlatform}
-                        goal={shareGoal}
+                        goal={selectedShareGoal}
                         streakValue={profileState.status === 'success' ? profileState.streak : 0}
+                        commentPreview={shareCommentPreview}
+                        canShareComment={canShareComment}
+                        canShareStreak={canShareStreak}
+                        shareStatus={shareHubState.message}
+                        shareStatusTone={shareHubState.status}
+                        onSetGoal={setSelectedShareGoal}
+                        onShare={handleShareHubShare}
                         onOpenDaily={() => setManualIntent({ target: 'daily' })}
                       />
                     ) : null}

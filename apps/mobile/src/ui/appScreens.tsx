@@ -48,6 +48,7 @@ import {
   type RitualQueueState,
   type RitualSubmitState,
 } from './appTypes';
+import type { MobileCommentReply } from '../lib/mobileCommentInteractions';
 
 const PRESSABLE_HIT_SLOP = { top: 8, right: 8, bottom: 8, left: 8 } as const;
 const TMDB_POSTER_BASE_URL = 'https://image.tmdb.org/t/p/w342';
@@ -243,29 +244,58 @@ const AuthCard = ({
   authState,
   email,
   password,
+  confirmPassword,
+  mode,
   onEmailChange,
   onPasswordChange,
+  onConfirmPasswordChange,
+  onModeChange,
   onSignIn,
+  onRequestPasswordReset,
+  onCompletePasswordReset,
   onSignOut,
 }: {
   authState: AuthState;
   email: string;
   password: string;
+  confirmPassword: string;
+  mode: 'login' | 'forgot' | 'recovery';
   onEmailChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
+  onConfirmPasswordChange: (value: string) => void;
+  onModeChange: (value: 'login' | 'forgot' | 'recovery') => void;
   onSignIn: () => void;
+  onRequestPasswordReset: () => void;
+  onCompletePasswordReset: () => void;
   onSignOut: () => void;
 }) => {
   const isBusy = authState.status === 'loading';
   const isSignedIn = authState.status === 'signed_in';
   const isConfigured = isSupabaseConfigured;
+  const isRecoveryMode = mode === 'recovery';
+  const isForgotMode = mode === 'forgot';
+  const submitLabel = isRecoveryMode
+    ? isBusy
+      ? 'Sifre guncelleniyor...'
+      : 'Yeni Sifreyi Kaydet'
+    : isForgotMode
+      ? isBusy
+        ? 'Baglanti gonderiliyor...'
+        : 'Sifirla Linki Gonder'
+      : isBusy
+        ? 'Giris yapiliyor...'
+        : 'Giris Yap';
+  const title = isRecoveryMode ? 'Sifre Yenileme' : isForgotMode ? 'Sifremi Unuttum' : 'Oturum';
+  const body = isRecoveryMode
+    ? 'E-postadaki recovery linkinden sonra yeni sifreni burada belirle.'
+    : isForgotMode
+      ? 'Hesabina bagli e-postayi gir. Mobil uygulamaya geri donecek bir yenileme linki gonderelim.'
+      : 'Invite claim ve cloud senkronu icin mobilde Supabase oturumu gerekiyor.';
 
   return (
     <ScreenCard accent="clay">
-      <Text style={styles.screenTitle}>Oturum</Text>
-      <Text style={styles.screenBody}>
-        Invite claim icin mobilde Supabase oturumu gerekiyor.
-      </Text>
+      <Text style={styles.screenTitle}>{title}</Text>
+      <Text style={styles.screenBody}>{body}</Text>
       <Text style={styles.screenMeta}>Status: {authState.status}</Text>
       <Text style={styles.screenMeta}>{authState.message}</Text>
       {!isConfigured ? (
@@ -274,45 +304,122 @@ const AuthCard = ({
         </Text>
       ) : null}
 
-      {!isSignedIn ? (
+      {!isSignedIn || isRecoveryMode ? (
         <View style={styles.authForm}>
-          <TextInput
-            style={styles.input}
-            value={email}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            placeholder="Email"
-            placeholderTextColor="#8e8b84"
-            onChangeText={onEmailChange}
-            accessibilityLabel="Email adresi"
-          />
-          <TextInput
-            style={styles.input}
-            value={password}
-            autoCapitalize="none"
-            secureTextEntry
-            returnKeyType="done"
-            placeholder="Password"
-            placeholderTextColor="#8e8b84"
-            onChangeText={onPasswordChange}
-            onSubmitEditing={onSignIn}
-            accessibilityLabel="Sifre"
-          />
+          {!isRecoveryMode ? (
+            <View style={styles.themeModeSegmentContainer}>
+              <Pressable
+                style={[
+                  styles.themeModeSegmentOption,
+                  mode === 'login' ? styles.themeModeSegmentActiveMidnight : null,
+                ]}
+                onPress={() => onModeChange('login')}
+                accessibilityRole="button"
+                accessibilityLabel="Giris modunu sec"
+              >
+                <Text
+                  style={[
+                    styles.themeModeSegmentText,
+                    mode === 'login' ? styles.themeModeSegmentTextActiveMidnight : null,
+                  ]}
+                >
+                  Giris
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.themeModeSegmentOption,
+                  mode === 'forgot' ? styles.themeModeSegmentActiveMidnight : null,
+                ]}
+                onPress={() => onModeChange('forgot')}
+                accessibilityRole="button"
+                accessibilityLabel="Sifre sifirlama modunu sec"
+              >
+                <Text
+                  style={[
+                    styles.themeModeSegmentText,
+                    mode === 'forgot' ? styles.themeModeSegmentTextActiveMidnight : null,
+                  ]}
+                >
+                  Sifre Sifirla
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          {!isRecoveryMode ? (
+            <TextInput
+              style={styles.input}
+              value={email}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              placeholder="Email"
+              placeholderTextColor="#8e8b84"
+              onChangeText={onEmailChange}
+              accessibilityLabel="Email adresi"
+            />
+          ) : null}
+          {!isForgotMode ? (
+            <TextInput
+              style={styles.input}
+              value={password}
+              autoCapitalize="none"
+              secureTextEntry
+              returnKeyType={isRecoveryMode ? 'next' : 'done'}
+              placeholder={isRecoveryMode ? 'Yeni sifre' : 'Password'}
+              placeholderTextColor="#8e8b84"
+              onChangeText={onPasswordChange}
+              onSubmitEditing={isRecoveryMode ? undefined : onSignIn}
+              accessibilityLabel={isRecoveryMode ? 'Yeni sifre' : 'Sifre'}
+            />
+          ) : null}
+          {isRecoveryMode ? (
+            <TextInput
+              style={styles.input}
+              value={confirmPassword}
+              autoCapitalize="none"
+              secureTextEntry
+              returnKeyType="done"
+              placeholder="Yeni sifre tekrar"
+              placeholderTextColor="#8e8b84"
+              onChangeText={onConfirmPasswordChange}
+              onSubmitEditing={onCompletePasswordReset}
+              accessibilityLabel="Yeni sifre tekrar"
+            />
+          ) : null}
           <Pressable
             style={[
               styles.claimButton,
               isBusy ? styles.claimButtonDisabled : null,
               !isConfigured ? styles.claimButtonDisabled : null,
             ]}
-            onPress={onSignIn}
+            onPress={
+              isRecoveryMode
+                ? onCompletePasswordReset
+                : isForgotMode
+                  ? onRequestPasswordReset
+                  : onSignIn
+            }
             disabled={isBusy || !isConfigured}
             hitSlop={PRESSABLE_HIT_SLOP}
             accessibilityRole="button"
-            accessibilityLabel={isBusy ? 'Giris yapiliyor' : 'Giris yap'}
+            accessibilityLabel={submitLabel}
             accessibilityState={{ disabled: isBusy || !isConfigured }}
           >
-            <Text style={styles.claimButtonText}>{isBusy ? 'Giris yapiliyor...' : 'Giris Yap'}</Text>
+            <Text style={styles.claimButtonText}>{submitLabel}</Text>
           </Pressable>
+          {mode !== 'login' ? (
+            <Pressable
+              style={styles.retryButton}
+              onPress={() => onModeChange('login')}
+              disabled={isBusy}
+              hitSlop={PRESSABLE_HIT_SLOP}
+              accessibilityRole="button"
+              accessibilityLabel="Giris ekranina don"
+            >
+              <Text style={styles.retryText}>Giris ekranina don</Text>
+            </Pressable>
+          ) : null}
         </View>
       ) : (
         <View style={styles.authSignedInBox}>
@@ -1112,6 +1219,9 @@ const CommentFeedCard = ({
   onSortChange,
   onQueryChange,
   onLoadMore,
+  onEcho,
+  onLoadReplies,
+  onSubmitReply,
   onOpenAuthorProfile,
   onRefresh,
   selectedMovieTitle,
@@ -1124,12 +1234,29 @@ const CommentFeedCard = ({
   onSortChange: (sort: CommentFeedSort) => void;
   onQueryChange: (query: string) => void;
   onLoadMore?: () => void;
+  onEcho?: (
+    item: CommentFeedState['items'][number]
+  ) => Promise<{ ok: boolean; message: string }>;
+  onLoadReplies?: (
+    item: CommentFeedState['items'][number]
+  ) => Promise<{ ok: boolean; replies: MobileCommentReply[]; message: string }>;
+  onSubmitReply?: (
+    item: CommentFeedState['items'][number],
+    text: string
+  ) => Promise<{ ok: boolean; message: string; reply?: MobileCommentReply }>;
   onOpenAuthorProfile: (item: CommentFeedState['items'][number]) => void;
   onRefresh: () => void;
   selectedMovieTitle?: string | null;
   movieFilterMode?: 'all' | 'selected_movie';
 }) => {
   const isBusy = state.status === 'loading';
+  const [expandedReplies, setExpandedReplies] = useState<Record<string, boolean>>({});
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [replyMessages, setReplyMessages] = useState<Record<string, string>>({});
+  const [replyLoading, setReplyLoading] = useState<Record<string, boolean>>({});
+  const [replySubmitting, setReplySubmitting] = useState<Record<string, boolean>>({});
+  const [echoSubmitting, setEchoSubmitting] = useState<Record<string, boolean>>({});
+  const [repliesByItemId, setRepliesByItemId] = useState<Record<string, MobileCommentReply[]>>({});
   const normalizedSelectedMovieTitle = String(selectedMovieTitle || '').trim();
   const isMovieFiltering = movieFilterMode === 'selected_movie';
   const waitingMovieSelection = isMovieFiltering && !normalizedSelectedMovieTitle;
@@ -1143,6 +1270,104 @@ const CommentFeedCard = ({
             String(item.movieTitle || '').trim().toLowerCase() ===
             normalizedSelectedMovieTitle.toLowerCase()
         );
+
+  useEffect(() => {
+    const visibleIds = new Set(visibleItems.map((item) => item.id));
+    setExpandedReplies((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => visibleIds.has(key))));
+    setReplyDrafts((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => visibleIds.has(key))));
+    setReplyMessages((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => visibleIds.has(key))));
+    setReplyLoading((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => visibleIds.has(key))));
+    setReplySubmitting((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => visibleIds.has(key))));
+    setEchoSubmitting((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => visibleIds.has(key))));
+    setRepliesByItemId((prev) =>
+      Object.fromEntries(Object.entries(prev).filter(([key]) => visibleIds.has(key)))
+    );
+  }, [visibleItems]);
+
+  const handleEchoPress = useCallback(
+    async (item: CommentFeedState['items'][number]) => {
+      if (!onEcho || item.isEchoedByMe || echoSubmitting[item.id]) return;
+      setEchoSubmitting((prev) => ({
+        ...prev,
+        [item.id]: true,
+      }));
+      const result = await onEcho(item);
+      setReplyMessages((prev) => ({
+        ...prev,
+        [item.id]: result.message,
+      }));
+      setEchoSubmitting((prev) => ({
+        ...prev,
+        [item.id]: false,
+      }));
+    },
+    [echoSubmitting, onEcho]
+  );
+
+  const handleToggleReplies = useCallback(
+    async (item: CommentFeedState['items'][number]) => {
+      const nextExpanded = !expandedReplies[item.id];
+      setExpandedReplies((prev) => ({
+        ...prev,
+        [item.id]: nextExpanded,
+      }));
+
+      if (!nextExpanded || !onLoadReplies || replyLoading[item.id]) return;
+      const currentReplies = repliesByItemId[item.id] || [];
+      if (currentReplies.length >= item.replyCount && currentReplies.length > 0) return;
+
+      setReplyLoading((prev) => ({
+        ...prev,
+        [item.id]: true,
+      }));
+      const result = await onLoadReplies(item);
+      setRepliesByItemId((prev) => ({
+        ...prev,
+        [item.id]: result.replies,
+      }));
+      setReplyMessages((prev) => ({
+        ...prev,
+        [item.id]: result.message,
+      }));
+      setReplyLoading((prev) => ({
+        ...prev,
+        [item.id]: false,
+      }));
+    },
+    [expandedReplies, onLoadReplies, repliesByItemId, replyLoading]
+  );
+
+  const handleSubmitReply = useCallback(
+    async (item: CommentFeedState['items'][number]) => {
+      const draft = String(replyDrafts[item.id] || '').trim();
+      if (!draft || !onSubmitReply || replySubmitting[item.id]) return;
+
+      setReplySubmitting((prev) => ({
+        ...prev,
+        [item.id]: true,
+      }));
+      const result = await onSubmitReply(item, draft);
+      if (result.ok && result.reply) {
+        setRepliesByItemId((prev) => ({
+          ...prev,
+          [item.id]: [...(prev[item.id] || []), result.reply!],
+        }));
+        setReplyDrafts((prev) => ({
+          ...prev,
+          [item.id]: '',
+        }));
+      }
+      setReplyMessages((prev) => ({
+        ...prev,
+        [item.id]: result.message,
+      }));
+      setReplySubmitting((prev) => ({
+        ...prev,
+        [item.id]: false,
+      }));
+    },
+    [onSubmitReply, replyDrafts, replySubmitting]
+  );
 
   return (
     <ScreenCard accent="clay">
@@ -1301,7 +1526,122 @@ const CommentFeedCard = ({
                   Echo: {item.echoCount} | Reply: {item.replyCount}
                   {showOpsMeta ? `  |  ops::day:${item.dayKey || '?'}` : ''}
                 </Text>
+                <View style={styles.commentFeedInlineActions}>
+                  <Pressable
+                    style={[
+                      styles.commentFeedActionButton,
+                      item.isEchoedByMe ? styles.commentFeedActionButtonActive : null,
+                      echoSubmitting[item.id] ? styles.claimButtonDisabled : null,
+                    ]}
+                    onPress={() => {
+                      void handleEchoPress(item);
+                    }}
+                    disabled={item.isEchoedByMe || echoSubmitting[item.id]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${item.author} yorumuna echo ver`}
+                  >
+                    <Text
+                      style={[
+                        styles.commentFeedActionButtonText,
+                        item.isEchoedByMe ? styles.commentFeedActionButtonTextActive : null,
+                      ]}
+                    >
+                      {item.isEchoedByMe ? 'Echoed' : 'Echo'}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[
+                      styles.commentFeedActionButton,
+                      expandedReplies[item.id] ? styles.commentFeedActionButtonActive : null,
+                    ]}
+                    onPress={() => {
+                      void handleToggleReplies(item);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${item.author} yorumunun yanitlarini ac`}
+                  >
+                    <Text
+                      style={[
+                        styles.commentFeedActionButtonText,
+                        expandedReplies[item.id] ? styles.commentFeedActionButtonTextActive : null,
+                      ]}
+                    >
+                      Reply
+                    </Text>
+                  </Pressable>
+                </View>
               </View>
+              {replyMessages[item.id] ? (
+                <Text
+                  style={[
+                    styles.commentFeedRowStatus,
+                    replyMessages[item.id].toLowerCase().includes('edilemedi') ||
+                    replyMessages[item.id].toLowerCase().includes('gerekli') ||
+                    replyMessages[item.id].toLowerCase().includes('bulunamadi')
+                      ? styles.ritualStateError
+                      : styles.ritualStateOk,
+                  ]}
+                >
+                  {replyMessages[item.id]}
+                </Text>
+              ) : null}
+              {expandedReplies[item.id] ? (
+                <View style={styles.commentFeedReplyPanel}>
+                  {replyLoading[item.id] ? (
+                    <Text style={styles.commentFeedMeta}>Yanitlar yukleniyor...</Text>
+                  ) : (repliesByItemId[item.id] || []).length > 0 ? (
+                    <View style={styles.commentFeedReplyList}>
+                      {(repliesByItemId[item.id] || []).map((reply) => (
+                        <View key={reply.id} style={styles.commentFeedReplyRow}>
+                          <View style={styles.commentFeedReplyHeader}>
+                            <Text style={styles.commentFeedReplyAuthor}>{reply.author}</Text>
+                            <Text style={styles.commentFeedMeta}>{reply.timestampLabel}</Text>
+                          </View>
+                          <Text style={styles.commentFeedReplyText}>{reply.text}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : (
+                    <Text style={styles.commentFeedMeta}>Bu yorum icin henuz yanit yok.</Text>
+                  )}
+                  <View style={styles.commentFeedReplyComposer}>
+                    <TextInput
+                      style={styles.commentFeedReplyInput}
+                      value={replyDrafts[item.id] || ''}
+                      onChangeText={(value) =>
+                        setReplyDrafts((prev) => ({
+                          ...prev,
+                          [item.id]: value,
+                        }))
+                      }
+                      autoCapitalize="sentences"
+                      multiline
+                      placeholder="Yanit yaz..."
+                      placeholderTextColor="#8e8b84"
+                      maxLength={180}
+                      accessibilityLabel={`${item.author} yorumuna yanit yaz`}
+                    />
+                    <Pressable
+                      style={[
+                        styles.commentFeedReplySendButton,
+                        !String(replyDrafts[item.id] || '').trim() || replySubmitting[item.id]
+                          ? styles.claimButtonDisabled
+                          : null,
+                      ]}
+                      onPress={() => {
+                        void handleSubmitReply(item);
+                      }}
+                      disabled={!String(replyDrafts[item.id] || '').trim() || replySubmitting[item.id]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${item.author} yorumuna yanit gonder`}
+                    >
+                      <Text style={styles.commentFeedReplySendButtonText}>
+                        {replySubmitting[item.id] ? 'Gonderiliyor...' : 'Yanitla'}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
             </View>
           ))}
         </View>
@@ -2281,18 +2621,34 @@ const InviteClaimScreen = ({
 
 const ShareHubScreen = ({
   inviteCode,
+  inviteLink,
   platform,
   goal,
   streakValue,
+  commentPreview,
+  canShareComment,
+  canShareStreak,
+  shareStatus,
+  shareStatusTone,
+  onSetGoal,
+  onShare,
   onOpenDaily,
 }: {
   inviteCode?: string;
+  inviteLink?: string;
   platform?: string;
-  goal?: string;
+  goal: 'comment' | 'streak';
   streakValue?: number;
+  commentPreview: string;
+  canShareComment: boolean;
+  canShareStreak: boolean;
+  shareStatus: string;
+  shareStatusTone: 'idle' | 'loading' | 'ready' | 'error';
+  onSetGoal: (goal: 'comment' | 'streak') => void;
+  onShare: (platform: 'instagram' | 'tiktok' | 'x') => void;
   onOpenDaily?: () => void;
 }) => {
-  const normalizedGoal = goal === 'streak' || goal === 'comment' ? goal : undefined;
+  const normalizedGoal = goal === 'streak' ? 'streak' : 'comment';
   const normalizedPlatform =
     platform === 'instagram' || platform === 'tiktok' || platform === 'x' ? platform : undefined;
   const safeStreak = Math.max(0, Number(streakValue || 0));
@@ -2310,6 +2666,15 @@ const ShareHubScreen = ({
       : normalizedGoal === 'comment'
         ? 'Yorum paylasimi niyeti deep link ile alindi; mobilde route bilgisi hazir.'
         : 'Paylasim hedefi bilgisi bulunamadi. Varsayilan route acildi.';
+  const statusStyle =
+    shareStatusTone === 'error'
+      ? styles.ritualStateError
+      : shareStatusTone === 'ready'
+        ? styles.ritualStateOk
+        : shareStatusTone === 'loading'
+          ? styles.ritualStateWarn
+          : styles.screenMeta;
+  const canShareSelectedGoal = normalizedGoal === 'comment' ? canShareComment : canShareStreak;
 
   return (
     <ScreenCard accent={normalizedGoal === 'streak' ? 'clay' : 'sage'}>
@@ -2332,14 +2697,97 @@ const ShareHubScreen = ({
       </View>
 
       <Text style={styles.screenMeta}>Invite: {inviteCode || 'none'}</Text>
-      {normalizedGoal === 'streak' && safeStreak === 0 ? (
-        <Text style={[styles.screenMeta, styles.ritualStateWarn]}>
-          Streak verisi henuz senkron degil. Profil kartini yenileyip tekrar dene.
+      <Text style={styles.screenMeta}>Link: {inviteLink || 'hazirlaniyor'}</Text>
+
+      <View style={styles.themeModeSegmentContainer}>
+        <Pressable
+          style={[
+            styles.themeModeSegmentOption,
+            normalizedGoal === 'comment' ? styles.themeModeSegmentActiveMidnight : null,
+          ]}
+          onPress={() => onSetGoal('comment')}
+          accessibilityRole="button"
+          accessibilityLabel="Yorum paylasimini sec"
+        >
+          <Text
+            style={[
+              styles.themeModeSegmentText,
+              normalizedGoal === 'comment' ? styles.themeModeSegmentTextActiveMidnight : null,
+            ]}
+          >
+            Yorum Paylas
+          </Text>
+        </Pressable>
+        <Pressable
+          style={[
+            styles.themeModeSegmentOption,
+            normalizedGoal === 'streak' ? styles.themeModeSegmentActiveMidnight : null,
+          ]}
+          onPress={() => onSetGoal('streak')}
+          accessibilityRole="button"
+          accessibilityLabel="Streak paylasimini sec"
+        >
+          <Text
+            style={[
+              styles.themeModeSegmentText,
+              normalizedGoal === 'streak' ? styles.themeModeSegmentTextActiveMidnight : null,
+            ]}
+          >
+            Streak Paylas
+          </Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.subSectionLabel}>
+          {normalizedGoal === 'streak' ? 'Preview / Streak' : 'Preview / Yorum'}
         </Text>
-      ) : null}
-      <Text style={[styles.screenMeta, styles.ritualStateWarn]}>
-        Not: Mobilde tam sosyal paylasim aksiyonu bir sonraki pakette acilacak.
-      </Text>
+        <Text style={styles.screenBody}>
+          {normalizedGoal === 'streak'
+            ? `Bugunku streak tamamlandi: ${safeStreak} gun`
+            : `"${commentPreview}"`}
+        </Text>
+        <Text
+          style={[
+            styles.screenMeta,
+            canShareSelectedGoal ? styles.ritualStateOk : styles.ritualStateWarn,
+          ]}
+        >
+          {normalizedGoal === 'comment'
+            ? canShareComment
+              ? 'Yorum paylasimi hazir.'
+              : 'Paylasim icin bugun bir yorumun olmali.'
+            : canShareStreak
+              ? 'Streak paylasimi hazir.'
+              : 'Streak paylasimi icin bugunku yorum ve aktif streak gerekiyor.'}
+        </Text>
+      </View>
+
+      <View style={styles.actionsRow}>
+        <UiButton
+          label="Instagram"
+          tone={normalizedPlatform === 'instagram' ? 'teal' : 'neutral'}
+          stretch
+          onPress={() => onShare('instagram')}
+          disabled={!canShareSelectedGoal}
+        />
+        <UiButton
+          label="TikTok"
+          tone={normalizedPlatform === 'tiktok' ? 'teal' : 'neutral'}
+          stretch
+          onPress={() => onShare('tiktok')}
+          disabled={!canShareSelectedGoal}
+        />
+        <UiButton
+          label="X"
+          tone={normalizedPlatform === 'x' ? 'teal' : 'neutral'}
+          stretch
+          onPress={() => onShare('x')}
+          disabled={!canShareSelectedGoal}
+        />
+      </View>
+
+      <Text style={[styles.screenMeta, statusStyle]}>{shareStatus}</Text>
 
       <UiButton
         label="Gunluk Akisa Don"
