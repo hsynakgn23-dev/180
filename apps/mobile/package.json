@@ -13,7 +13,9 @@
     "eas:whoami": "npx eas-cli whoami",
     "eas:project:info": "npx eas-cli project:info --json",
     "eas:build:android:development": "npx eas-cli build --platform android --profile development",
-    "eas:build:android:preview": "npx eas-cli build --platform android --profile preview"
+    "eas:build:android:preview": "npx eas-cli build --platform android --profile preview",
+    "eas:build:android:production": "npx eas-cli build --platform android --profile production",
+    "eas:submit:android:production": "npx eas-cli submit --platform android --profile production"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
