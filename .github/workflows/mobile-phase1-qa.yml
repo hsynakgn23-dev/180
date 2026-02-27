@@ -74,7 +74,37 @@ jobs:
           fi
 
       - name: Run mobile phase-1 release strict gate
-        run: npm run mobile:phase1:release:check:ci
+        shell: bash
+        run: |
+          mkdir -p artifacts/mobile-release
+
+          qa_status=0
+          release_env_status=0
+          ready_status=0
+
+          npm run mobile:phase1:qa || qa_status=$?
+          npm run mobile:release:env:sync || release_env_status=$?
+          node scripts/mobile-release-ready.mjs \
+            --env-file=apps/mobile/.env.release \
+            --strict \
+            --report-file=artifacts/mobile-release/release-ready-report.json \
+            --checklist-file=artifacts/mobile-release/release-checklist.md || ready_status=$?
+
+          if [ "$qa_status" -ne 0 ]; then
+            echo "::error::mobile:phase1:qa failed with exit code $qa_status."
+          fi
+
+          if [ "$release_env_status" -ne 0 ]; then
+            echo "::error::mobile:release:env:sync failed with exit code $release_env_status."
+          fi
+
+          if [ "$ready_status" -ne 0 ]; then
+            echo "::error::mobile-release-ready failed with exit code $ready_status."
+          fi
+
+          if [ "$qa_status" -ne 0 ] || [ "$release_env_status" -ne 0 ] || [ "$ready_status" -ne 0 ]; then
+            exit 1
+          fi
 
       - name: Upload mobile release artifacts
         if: always()
