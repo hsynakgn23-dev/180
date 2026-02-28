@@ -1,3 +1,5 @@
+import { createCorsHeaders } from '../lib/cors.js';
+
 export const config = {
     runtime: 'nodejs'
 };
@@ -114,7 +116,6 @@ const getSupabaseConfig = (): { url: string; serviceRoleKey: string; anonKey: st
     const anonKey = String(
         process.env.SUPABASE_ANON_KEY ||
         process.env.VITE_SUPABASE_ANON_KEY ||
-        process.env.SUPABASE_SERVICE_ROLE_KEY ||
         ''
     ).trim();
 
@@ -202,11 +203,10 @@ const mapRpcErrorMessage = (message: string): string => {
 };
 
 export default async function handler(req: ApiRequest, res: ApiResponse) {
-    const corsHeaders = {
-        'access-control-allow-origin': '*',
-        'access-control-allow-methods': 'POST,OPTIONS',
-        'access-control-allow-headers': 'content-type,authorization'
-    };
+    const corsHeaders = createCorsHeaders(req, {
+        methods: 'POST,OPTIONS',
+        headers: 'content-type,authorization'
+    });
 
     if (req.method === 'OPTIONS') {
         return sendJson(res, 204, { ok: true }, corsHeaders);

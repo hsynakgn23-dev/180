@@ -61,6 +61,28 @@ runCase('normalizeMobileRouteIntent strips invalid share params', () => {
   });
 });
 
+runCase('normalizeMobileRouteIntent keeps valid public profile and discover params', () => {
+  const profileIntent = normalizeMobileRouteIntent({
+    target: 'public_profile',
+    userId: '123e4567-e89b-12d3-a456-426614174000',
+    username: '@Neo User',
+  });
+  assert.deepEqual(profileIntent, {
+    target: 'public_profile',
+    userId: '123e4567-e89b-12d3-a456-426614174000',
+    username: 'Neo_User',
+  });
+
+  const discoverIntent = normalizeMobileRouteIntent({
+    target: 'discover',
+    route: 'director_deep_dives',
+  });
+  assert.deepEqual(discoverIntent, {
+    target: 'discover',
+    route: 'director_deep_dives',
+  });
+});
+
 runCase('route encode/parse roundtrip is stable', () => {
   const intent = {
     target: 'share',
@@ -73,11 +95,43 @@ runCase('route encode/parse roundtrip is stable', () => {
   assert.deepEqual(parsed, intent);
 });
 
+runCase('route encode/parse handles public profile roundtrip', () => {
+  const intent = {
+    target: 'public_profile',
+    userId: '123e4567',
+    username: 'neo',
+  };
+  const params = new URLSearchParams(encodeMobileRouteIntentToParams(intent));
+  const parsed = parseMobileRouteIntentFromParams(params);
+  assert.deepEqual(parsed, intent);
+});
+
 runCase('screen map resolves invite target', () => {
   const screenPlan = resolveMobileScreenPlan({ target: 'invite', invite: 'ABC12345' });
   assert.deepEqual(screenPlan, {
     screen: 'invite_claim',
     params: { invite: 'ABC12345' },
+  });
+});
+
+runCase('screen map resolves public profile and discover targets', () => {
+  const publicProfileScreen = resolveMobileScreenPlan({
+    target: 'public_profile',
+    userId: '123e4567',
+    username: 'neo',
+  });
+  assert.deepEqual(publicProfileScreen, {
+    screen: 'public_profile',
+    params: { user_id: '123e4567', username: 'neo' },
+  });
+
+  const discoverScreen = resolveMobileScreenPlan({
+    target: 'discover',
+    route: 'mood_films',
+  });
+  assert.deepEqual(discoverScreen, {
+    screen: 'discover_home',
+    params: { route: 'mood_films' },
   });
 });
 
@@ -99,6 +153,21 @@ runCase('deep link builder emits route + screen params', () => {
   assert.equal(parsed.searchParams.get('goal'), 'streak');
 });
 
+runCase('deep link builder emits public profile params', () => {
+  const link = buildMobileDeepLinkFromRouteIntent(
+    {
+      target: 'public_profile',
+      userId: '123e4567',
+      username: 'neo',
+    },
+    { base: 'absolutecinema://open' }
+  );
+  const parsed = new URL(link);
+  assert.equal(parsed.searchParams.get('target'), 'public_profile');
+  assert.equal(parsed.searchParams.get('screen'), 'public_profile');
+  assert.equal(parsed.searchParams.get('user_id'), '123e4567');
+  assert.equal(parsed.searchParams.get('username'), 'neo');
+});
 runCase('deep link parser handles valid and invalid URLs', () => {
   const valid = parseMobileDeepLink(
     'absolutecinema://open?target=invite&invite=abc12345&screen=invite_claim'

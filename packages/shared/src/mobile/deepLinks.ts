@@ -9,7 +9,9 @@ import { resolveMobileScreenPlan } from './mobileScreenMap';
 export type MobileDeepLinkInput =
     | { type: 'daily' }
     | { type: 'invite'; inviteCode?: string }
-    | { type: 'share'; platform?: string; goal?: string; inviteCode?: string };
+    | { type: 'share'; platform?: string; goal?: string; inviteCode?: string }
+    | { type: 'public_profile'; userId?: string; username?: string }
+    | { type: 'discover'; route?: string };
 
 export type MobileDeepLinkOptions = {
     base?: string | null;
@@ -38,6 +40,23 @@ const toRouteIntent = (input: MobileDeepLinkInput): MobileRouteIntent => {
     }
     if (input.type === 'invite') {
         return { target: 'invite', invite: input.inviteCode };
+    }
+    if (input.type === 'public_profile') {
+        return {
+            target: 'public_profile',
+            userId: input.userId,
+            username: input.username
+        };
+    }
+    if (input.type === 'discover') {
+        return {
+            target: 'discover',
+            route: input.route as
+                | 'mood_films'
+                | 'director_deep_dives'
+                | 'daily_curated_picks'
+                | undefined
+        };
     }
     return {
         target: 'share',

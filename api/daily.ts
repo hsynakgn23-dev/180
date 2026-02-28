@@ -1,3 +1,4 @@
+import { createCorsHeaders } from './lib/cors.js';
 import { getCachedDailyMovies, setCachedDailyMovies } from './lib/dailyCache.js';
 
 export const config = {
@@ -13,6 +14,7 @@ type Movie = {
 };
 
 type ApiRequest = {
+    method?: string;
     query?: Record<string, string | string[] | undefined>;
     url?: string;
     headers?: Record<string, string | undefined>;
@@ -76,7 +78,6 @@ const getSupabaseReadKey = (): string => {
     return (
         process.env.SUPABASE_ANON_KEY ||
         process.env.VITE_SUPABASE_ANON_KEY ||
-        process.env.SUPABASE_SERVICE_ROLE_KEY ||
         ''
     );
 };
@@ -180,6 +181,15 @@ const toErrorMessage = (error: unknown): string => {
 };
 
 export default async function handler(req: ApiRequest, res: ApiResponse) {
+    const corsHeaders = createCorsHeaders(req, {
+        methods: 'GET,OPTIONS',
+        headers: 'content-type'
+    });
+
+    if (req.method === 'OPTIONS') {
+        return sendJson(res, 204, { ok: true }, corsHeaders);
+    }
+
     try {
         const ping = getQueryParam(req, 'ping');
         const dateQuery = getQueryParam(req, 'date');
@@ -191,10 +201,11 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
                 date: dateKey,
                 timezone: DAILY_ROLLOVER_TIMEZONE_RESOLVED,
                 runtime: 'node'
-            });
+            }, corsHeaders);
         }
 
         const cacheHeaders = {
+            ...corsHeaders,
             'cache-control': 'public, s-maxage=300, stale-while-revalidate=3600'
         };
 
@@ -234,6 +245,6 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         return sendJson(res, 500, {
             ok: false,
             error: toErrorMessage(error)
-        });
+        }, corsHeaders);
     }
 }

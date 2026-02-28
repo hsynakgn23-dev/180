@@ -1,18 +1,33 @@
-export const MOBILE_ROUTE_TARGETS = ['daily', 'invite', 'share'] as const;
+export const MOBILE_ROUTE_TARGETS = [
+    'daily',
+    'invite',
+    'share',
+    'public_profile',
+    'discover'
+] as const;
 
 export type MobileRouteTarget = (typeof MOBILE_ROUTE_TARGETS)[number];
 
 export type MobileSharePlatform = 'instagram' | 'tiktok' | 'x';
 export type MobileShareGoal = 'comment' | 'streak';
+export const MOBILE_DISCOVER_ROUTE_IDS = [
+    'mood_films',
+    'director_deep_dives',
+    'daily_curated_picks'
+] as const;
+export type MobileDiscoverRouteId = (typeof MOBILE_DISCOVER_ROUTE_IDS)[number];
 
 export type MobileRouteIntent =
     | { target: 'daily' }
     | { target: 'invite'; invite?: string }
-    | { target: 'share'; invite?: string; platform?: MobileSharePlatform; goal?: MobileShareGoal };
+    | { target: 'share'; invite?: string; platform?: MobileSharePlatform; goal?: MobileShareGoal }
+    | { target: 'public_profile'; userId?: string; username?: string }
+    | { target: 'discover'; route?: MobileDiscoverRouteId };
 
 const INVITE_CODE_REGEX = /^[A-Z0-9]{6,12}$/;
 const SHARE_PLATFORMS = new Set<MobileSharePlatform>(['instagram', 'tiktok', 'x']);
 const SHARE_GOALS = new Set<MobileShareGoal>(['comment', 'streak']);
+const DISCOVER_ROUTE_IDS = new Set<MobileDiscoverRouteId>(MOBILE_DISCOVER_ROUTE_IDS);
 
 const normalizeValue = (value: string | null | undefined, maxLength = 40): string =>
     String(value || '').trim().slice(0, maxLength);
@@ -36,6 +51,24 @@ const normalizeShareGoal = (value: string | null | undefined): MobileShareGoal |
         : undefined;
 };
 
+const normalizePublicProfileUserId = (value: string | null | undefined): string => {
+    return normalizeValue(value, 120).replace(/[^a-zA-Z0-9-]/g, '');
+};
+
+const normalizePublicProfileUsername = (value: string | null | undefined): string => {
+    return normalizeValue(value, 80)
+        .replace(/^@+/, '')
+        .replace(/\s+/g, '_')
+        .replace(/[^a-zA-Z0-9._-]/g, '');
+};
+
+const normalizeDiscoverRouteId = (value: string | null | undefined): MobileDiscoverRouteId | undefined => {
+    const normalized = normalizeValue(value, 40).toLowerCase();
+    return DISCOVER_ROUTE_IDS.has(normalized as MobileDiscoverRouteId)
+        ? (normalized as MobileDiscoverRouteId)
+        : undefined;
+};
+
 export const normalizeMobileRouteIntent = (input: MobileRouteIntent): MobileRouteIntent => {
     if (input.target === 'daily') {
         return { target: 'daily' };
@@ -46,6 +79,23 @@ export const normalizeMobileRouteIntent = (input: MobileRouteIntent): MobileRout
         return invite
             ? { target: 'invite', invite }
             : { target: 'invite' };
+    }
+
+    if (input.target === 'public_profile') {
+        const userId = normalizePublicProfileUserId(input.userId);
+        const username = normalizePublicProfileUsername(input.username);
+        return {
+            target: 'public_profile',
+            ...(userId ? { userId } : {}),
+            ...(username ? { username } : {})
+        };
+    }
+
+    if (input.target === 'discover') {
+        const route = normalizeDiscoverRouteId(input.route);
+        return route
+            ? { target: 'discover', route }
+            : { target: 'discover' };
     }
 
     const invite = normalizeInviteCode(input.invite);
@@ -69,6 +119,15 @@ export const encodeMobileRouteIntentToParams = (input: MobileRouteIntent): Recor
         params.invite = normalized.invite;
     }
 
+    if (normalized.target === 'public_profile') {
+        if (normalized.userId) params.user_id = normalized.userId;
+        if (normalized.username) params.username = normalized.username;
+    }
+
+    if (normalized.target === 'discover' && normalized.route) {
+        params.route = normalized.route;
+    }
+
     if (normalized.target === 'share') {
         if (normalized.invite) params.invite = normalized.invite;
         if (normalized.platform) params.platform = normalized.platform;
@@ -79,7 +138,7 @@ export const encodeMobileRouteIntentToParams = (input: MobileRouteIntent): Recor
 };
 
 export const parseMobileRouteIntentFromParams = (params: URLSearchParams): MobileRouteIntent | null => {
-    const target = normalizeValue(params.get('target'), 16).toLowerCase() as MobileRouteTarget;
+    const target = normalizeValue(params.get('target'), 24).toLowerCase() as MobileRouteTarget;
     if (!MOBILE_ROUTE_TARGETS.includes(target)) return null;
 
     if (target === 'daily') {
@@ -91,6 +150,23 @@ export const parseMobileRouteIntentFromParams = (params: URLSearchParams): Mobil
         return invite
             ? { target: 'invite', invite }
             : { target: 'invite' };
+    }
+
+    if (target === 'public_profile') {
+        const userId = normalizePublicProfileUserId(params.get('user_id'));
+        const username = normalizePublicProfileUsername(params.get('username'));
+        return {
+            target: 'public_profile',
+            ...(userId ? { userId } : {}),
+            ...(username ? { username } : {})
+        };
+    }
+
+    if (target === 'discover') {
+        const route = normalizeDiscoverRouteId(params.get('route'));
+        return route
+            ? { target: 'discover', route }
+            : { target: 'discover' };
     }
 
     const invite = normalizeInviteCode(params.get('invite'));

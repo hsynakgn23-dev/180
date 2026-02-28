@@ -257,6 +257,22 @@ const normalizeRitualLog = (ritual: RitualLog): RitualLog => {
     };
 };
 
+const REFERRAL_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+const generateReferralCode = (): string => {
+    const cryptoApi = globalThis.crypto;
+    if (cryptoApi?.getRandomValues) {
+        const bytes = new Uint8Array(8);
+        cryptoApi.getRandomValues(bytes);
+        return Array.from(bytes, (value) => REFERRAL_CODE_ALPHABET[value % REFERRAL_CODE_ALPHABET.length]).join('');
+    }
+
+    return Array.from({ length: 8 }, () => {
+        const index = Math.floor(Math.random() * REFERRAL_CODE_ALPHABET.length);
+        return REFERRAL_CODE_ALPHABET[index];
+    }).join('');
+};
+
 const buildInitialXPState = (bio = "A silent observer."): XPState => ({
     totalXP: 0,
     lastLoginDate: null,
@@ -282,7 +298,7 @@ const buildInitialXPState = (bio = "A silent observer."): XPState => ({
     bio,
     avatarId: "geo_1",
     lastShareRewardDate: null,
-    referralCode: Math.random().toString(36).substring(2, 8).toUpperCase(),
+    referralCode: generateReferralCode(),
     referralCount: 0,
     invitedBy: undefined
 });

@@ -170,7 +170,7 @@ const INTERNAL_OPS_VISIBLE =
 const MOBILE_DEEP_LINK_BASE = 'absolutecinema://open';
 const MOBILE_AUTH_REDIRECT_TO =
   String(process.env.EXPO_PUBLIC_AUTH_REDIRECT_TO || '').trim() || MOBILE_DEEP_LINK_BASE;
-const MOBILE_UI_PACKAGE_LABEL = 'UI Package 6.44';
+const MOBILE_UI_PACKAGE_LABEL = 'UI Package 6.46';
 const MOBILE_PROFILE_IDENTITY_STORAGE_KEY = 'ac_mobile_profile_identity_v1';
 const MOBILE_PROFILE_LANGUAGE_STORAGE_KEY = 'ac_mobile_profile_language_v1';
 
@@ -263,7 +263,7 @@ const DISCOVER_ROUTES = DISCOVER_ROUTE_CONFIG.map((route) => ({
 type ArenaEntryView = MobileArenaEntry;
 type SharePlatform = 'instagram' | 'tiktok' | 'x';
 type ShareGoal = 'comment' | 'streak';
-type PublicProfileOpenOrigin = 'arena' | 'comment' | 'manual';
+type PublicProfileOpenOrigin = 'arena' | 'comment' | 'manual' | 'deeplink';
 type PublicProfileOpenTarget = {
   userId?: string | null;
   username?: string | null;
@@ -339,7 +339,12 @@ const MAIN_TAB_BY_SCREEN = {
   daily_home: 'Daily',
   invite_claim: 'Profile',
   share_hub: 'Profile',
-} as const satisfies Record<'daily_home' | 'invite_claim' | 'share_hub', keyof MainTabParamList>;
+  public_profile: 'Profile',
+  discover_home: 'Explore',
+} as const satisfies Record<
+  'daily_home' | 'invite_claim' | 'share_hub' | 'public_profile' | 'discover_home',
+  keyof MainTabParamList
+>;
 const TAB_ICON_BY_ROUTE = {
   Daily: { active: 'today', inactive: 'today-outline' },
   Explore: { active: 'compass', inactive: 'compass-outline' },
@@ -603,6 +608,8 @@ export default function App() {
   const hasCloudIdentityHydratedRef = useRef(false);
   const lastObservedLeagueIndexRef = useRef<number | null>(null);
   const lastHandledAuthCallbackUrlRef = useRef<string | null>(null);
+  const lastHandledPublicProfileIntentRef = useRef<string | null>(null);
+  const lastAutoOpenedAuthRouteRef = useRef<string | null>(null);
 
   const primaryDailyMovie =
     dailyState.status === 'success' && dailyState.movies.length > 0 ? dailyState.movies[0] : null;
@@ -2256,6 +2263,25 @@ export default function App() {
   }, [authFlowMode, authState.status]);
 
   useEffect(() => {
+    const requiresAuth = activeIntent.target === 'invite' || activeIntent.target === 'share';
+    if (!requiresAuth) {
+      lastAutoOpenedAuthRouteRef.current = null;
+      return;
+    }
+    if (authState.status === 'signed_in') {
+      lastAutoOpenedAuthRouteRef.current = null;
+      return;
+    }
+
+    const routeKey = JSON.stringify(activeIntent);
+    if (lastAutoOpenedAuthRouteRef.current === routeKey) return;
+
+    lastAutoOpenedAuthRouteRef.current = routeKey;
+    setAuthFlowMode('login');
+    setAuthModalVisible(true);
+  }, [activeIntent, authState.status]);
+
+  useEffect(() => {
     if (authState.status === 'signed_in') {
       void refreshProfileStats();
       return;
@@ -2578,6 +2604,26 @@ export default function App() {
   }, [screenPlan.screen, dailyState.status]);
 
   useEffect(() => {
+    if (activeIntent.target !== 'public_profile') {
+      lastHandledPublicProfileIntentRef.current = null;
+      return;
+    }
+
+    const normalizedUserId = String(activeIntent.userId || '').trim();
+    const normalizedUsername = String(activeIntent.username || '').trim();
+    const intentKey = `${normalizedUserId}::${normalizedUsername}`;
+    if (!intentKey || lastHandledPublicProfileIntentRef.current === intentKey) return;
+
+    lastHandledPublicProfileIntentRef.current = intentKey;
+    void openPublicProfileInApp({
+      userId: normalizedUserId || undefined,
+      username: normalizedUsername || undefined,
+      displayNameHint: normalizedUsername || normalizedUserId,
+      origin: 'deeplink',
+    });
+  }, [activeIntent, openPublicProfileInApp]);
+
+  useEffect(() => {
     if (dailyState.status !== 'success') {
       setSelectedDailyMovieId(null);
       setRitualComposerVisible(false);
@@ -2620,11 +2666,17 @@ export default function App() {
   );
   const isInviteRouteActive = screenPlan.screen === 'invite_claim';
   const isShareRouteActive = screenPlan.screen === 'share_hub';
+  const isPublicProfileRouteActive = screenPlan.screen === 'public_profile';
+  const isDiscoverRouteActive = screenPlan.screen === 'discover_home';
   const activeRouteLabel = isInviteRouteActive
     ? 'Davet'
     : isShareRouteActive
       ? 'Paylas'
-      : 'Gunluk';
+      : isPublicProfileRouteActive
+        ? 'Public Profil'
+        : isDiscoverRouteActive
+          ? 'Kesif'
+          : 'Gunluk';
   const isDevSurfaceEnabled = INTERNAL_OPS_VISIBLE;
   const handleTabNavigationStateChange = useCallback(() => {
     const currentRouteName = tabNavigationRef.getCurrentRoute()?.name;
@@ -2698,12 +2750,16 @@ export default function App() {
       ? 'Davet kodu icin giris yap'
       : screenPlan.screen === 'share_hub'
         ? 'Paylasim merkezi icin giris yap'
+        : screenPlan.screen === 'public_profile'
+          ? 'Profilin icin giris yap'
         : 'Uye girisi gerekli';
   const profileAccessBody =
     screenPlan.screen === 'invite_claim'
       ? 'Kodu uygulamak ve odulu almak icin hesabini ac.'
       : screenPlan.screen === 'share_hub'
         ? 'Paylasim, odul ve link akislarini acmak icin hesabina gir.'
+        : screenPlan.screen === 'public_profile'
+          ? 'Kendi profil detaylarini yonetmek icin hesabina gir.'
         : 'Profil detaylari ve sosyal ozellikler girisle acilir.';
   const fallbackLeague = resolveMobileLeagueInfoFromXp(0);
   const profileStats = profileState.status === 'success'

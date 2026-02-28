@@ -1,3 +1,5 @@
+import { createCorsHeaders } from './lib/cors.js';
+
 export const config = {
     runtime: 'nodejs'
 };
@@ -223,11 +225,10 @@ const insertEvents = async (rows: InsertRow[]): Promise<{ ok: boolean; error?: s
 };
 
 export default async function handler(req: ApiRequest, res: ApiResponse) {
-    const corsHeaders = {
-        'access-control-allow-origin': '*',
-        'access-control-allow-methods': 'POST,OPTIONS',
-        'access-control-allow-headers': 'content-type'
-    };
+    const corsHeaders = createCorsHeaders(req, {
+        methods: 'POST,OPTIONS',
+        headers: 'content-type'
+    });
 
     if (req.method === 'OPTIONS') {
         return sendJson(res, 204, { ok: true }, corsHeaders);
