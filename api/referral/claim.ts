@@ -525,13 +525,14 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
                 deviceKey
             });
 
-            if (fallback.ok) {
+            if (fallback.ok === false) {
                 return sendJson(
                     res,
-                    200,
+                    fallback.status,
                     {
-                        ok: true,
-                        data: fallback.data
+                        ok: false,
+                        errorCode: fallback.errorCode,
+                        message: fallback.message
                     },
                     corsHeaders
                 );
@@ -539,11 +540,10 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
             return sendJson(
                 res,
-                fallback.status,
+                200,
                 {
-                    ok: false,
-                    errorCode: fallback.errorCode,
-                    message: fallback.message
+                    ok: true,
+                    data: fallback.data
                 },
                 corsHeaders
             );
