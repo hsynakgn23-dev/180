@@ -123,7 +123,7 @@ import {
 import {
   ArenaChallengeCard,
   ArenaLeaderboardCard,
-  AuthCard,
+  AuthModal,
   CollapsibleSectionCard,
   CommentFeedCard,
   DailyHomeScreen,
@@ -132,6 +132,8 @@ import {
   LeaguePromotionModal,
   MobileSettingsModal,
   PlatformRulesCard,
+  ProfileGenreDistributionCard,
+  ProfileIdentityCard,
   ProfileMovieArchiveModal,
   ProfileMarksCard,
   PushInboxCard,
@@ -142,6 +144,7 @@ import {
   SectionLeadCard,
   ShareHubScreen,
   StatePanel,
+  WatchedMoviesCard,
   setAppScreensThemeMode,
   type MobileSettingsIdentityDraft,
   type MobileSettingsLanguage,
@@ -167,7 +170,7 @@ const INTERNAL_OPS_VISIBLE =
 const MOBILE_DEEP_LINK_BASE = 'absolutecinema://open';
 const MOBILE_AUTH_REDIRECT_TO =
   String(process.env.EXPO_PUBLIC_AUTH_REDIRECT_TO || '').trim() || MOBILE_DEEP_LINK_BASE;
-const MOBILE_UI_PACKAGE_LABEL = 'UI Package 6.42';
+const MOBILE_UI_PACKAGE_LABEL = 'UI Package 6.44';
 const MOBILE_PROFILE_IDENTITY_STORAGE_KEY = 'ac_mobile_profile_identity_v1';
 const MOBILE_PROFILE_LANGUAGE_STORAGE_KEY = 'ac_mobile_profile_language_v1';
 
@@ -403,6 +406,7 @@ export default function App() {
   const [authPassword, setAuthPassword] = useState('');
   const [authConfirmPassword, setAuthConfirmPassword] = useState('');
   const [authFlowMode, setAuthFlowMode] = useState<AuthFlowMode>('login');
+  const [authModalVisible, setAuthModalVisible] = useState(false);
   const [authState, setAuthState] = useState<AuthState>({
     status: 'idle',
     message: 'Session kontrol ediliyor...',
@@ -1734,6 +1738,7 @@ export default function App() {
         message: 'Giris basarili.',
         email: data.user?.email || email,
       });
+      setAuthModalVisible(false);
       setAuthPassword('');
       setAuthConfirmPassword('');
       setAuthFlowMode('login');
@@ -1887,6 +1892,7 @@ export default function App() {
         provider: 'google',
         redirectTo: MOBILE_AUTH_REDIRECT_TO,
       });
+      setAuthModalVisible(false);
       await Linking.openURL(redirectUrl);
       setAuthFlowMode('login');
       setAuthState({
@@ -2176,6 +2182,7 @@ export default function App() {
       if (!active || !callbackResult.matched) return;
 
       if (!callbackResult.ok) {
+        setAuthModalVisible(true);
         setAuthFlowMode(callbackResult.recoveryMode ? 'recovery' : 'login');
         setAuthPassword('');
         setAuthConfirmPassword('');
@@ -2203,10 +2210,12 @@ export default function App() {
         : '';
 
       if (callbackResult.recoveryMode) {
+        setAuthModalVisible(true);
         setAuthFlowMode('recovery');
         setAuthPassword('');
         setAuthConfirmPassword('');
       } else {
+        setAuthModalVisible(false);
         setAuthFlowMode('login');
         if (email) {
           void trackMobileEvent('login_success', {
@@ -2233,6 +2242,18 @@ export default function App() {
       active = false;
     };
   }, [lastIncomingUrl]);
+
+  useEffect(() => {
+    if (authFlowMode === 'recovery') {
+      setAuthModalVisible(true);
+    }
+  }, [authFlowMode]);
+
+  useEffect(() => {
+    if (authState.status === 'signed_in' && authFlowMode !== 'recovery') {
+      setAuthModalVisible(false);
+    }
+  }, [authFlowMode, authState.status]);
 
   useEffect(() => {
     if (authState.status === 'signed_in') {
@@ -2668,6 +2689,22 @@ export default function App() {
   const profileBio = String(settingsIdentityDraft.bio || '').trim();
   const profileLink = String(settingsIdentityDraft.profileLink || '').trim();
   const profileBirthDateLabel = normalizeDateLabel(settingsIdentityDraft.birthDate);
+  const profileShellTitle = isSignedIn ? profileDisplayName || 'Observer' : 'Profil';
+  const profileShellBody = isSignedIn
+    ? profileBio || 'Profilini ve arsivini buradan yonet.'
+    : 'Arsiv, mark ve davet akislari icin giris yap.';
+  const profileAccessTitle =
+    screenPlan.screen === 'invite_claim'
+      ? 'Davet kodu icin giris yap'
+      : screenPlan.screen === 'share_hub'
+        ? 'Paylasim merkezi icin giris yap'
+        : 'Uye girisi gerekli';
+  const profileAccessBody =
+    screenPlan.screen === 'invite_claim'
+      ? 'Kodu uygulamak ve odulu almak icin hesabini ac.'
+      : screenPlan.screen === 'share_hub'
+        ? 'Paylasim, odul ve link akislarini acmak icin hesabina gir.'
+        : 'Profil detaylari ve sosyal ozellikler girisle acilir.';
   const fallbackLeague = resolveMobileLeagueInfoFromXp(0);
   const profileStats = profileState.status === 'success'
     ? {
@@ -4478,15 +4515,11 @@ export default function App() {
                     <SectionLeadCard
                       accent="sage"
                       eyebrow="Profil Merkezi"
-                      title={profileDisplayName || 'Observer'}
-                      body={profileBio || 'Profilini, arsivini ve hesabini buradan yonet.'}
+                      title={profileShellTitle}
+                      body={profileShellBody}
                       badges={[
                         { label: profileStats.league, tone: 'sage' },
                         { label: themeModeLabel, tone: 'muted' },
-                        {
-                          label: isSignedIn ? 'Oturum hazir' : 'Oturum gerekli',
-                          tone: isSignedIn ? 'sage' : 'clay',
-                        },
                         ...(profileUsername ? [{ label: `@${profileUsername}`, tone: 'muted' as const }] : []),
                       ]}
                       metrics={[
@@ -4497,14 +4530,24 @@ export default function App() {
                       ]}
                       actions={[
                         {
-                          label: 'Ayarlar',
+                          label: isSignedIn ? 'Ayarlar' : 'Giris Yap',
                           tone: 'brand',
-                          onPress: () => setSettingsVisible(true),
+                          onPress: () => {
+                            if (isSignedIn) {
+                              setSettingsVisible(true);
+                              return;
+                            }
+                            setAuthModalVisible(true);
+                          },
                         },
                         {
-                          label: profileLink ? 'Linki Ac' : 'Share Hub',
-                          tone: 'teal',
+                          label: isSignedIn ? (profileLink ? 'Linki Ac' : 'Share Hub') : 'Ayarlar',
+                          tone: isSignedIn ? 'teal' : 'neutral',
                           onPress: () => {
+                            if (!isSignedIn) {
+                              setSettingsVisible(true);
+                              return;
+                            }
                             if (profileLink) {
                               void handleOpenProfileLink();
                               return;
@@ -4519,218 +4562,85 @@ export default function App() {
                         },
                       ]}
                     />
-
-                    <CollapsibleSectionCard
-                      accent="clay"
-                      title="Kimlik ve Not"
-                      meta={profileBirthDateLabel ? `Dogum ${profileBirthDateLabel}` : 'Profil detayi'}
-                      defaultExpanded
-                    >
-                      {profileBirthDateLabel ? (
-                        <Text style={[styles.screenMeta, isDawnTheme ? styles.dawnTextMuted : null]}>
-                          Dogum: {profileBirthDateLabel}
-                        </Text>
-                      ) : null}
-                      <Text style={[styles.screenBody, isDawnTheme ? styles.dawnTextColor : null]}>
-                        {profileBio || 'Profilini ayarlardan duzenleyebilirsin.'}
-                      </Text>
-                      <Text style={[styles.screenMeta, isDawnTheme ? styles.dawnTextMuted : null]}>
-                        Takip: {profileStats.following} | Takipci: {profileStats.followers}
-                      </Text>
-                      {profileLink ? (
-                        <Pressable onPress={() => void handleOpenProfileLink()} hitSlop={8}>
-                          <Text style={[styles.profileLinkText, isDawnTheme ? styles.dawnLinkText : null]}>
-                            {profileLink}
-                          </Text>
-                        </Pressable>
-                      ) : null}
-                    </CollapsibleSectionCard>
-
-                    <CollapsibleSectionCard
-                      accent="sage"
-                      title="Tur Dagilimi"
-                      meta={`${profileGenreDistribution.length} gorunen tur`}
-                      defaultExpanded={false}
-                    >
-                      {profileGenreDistribution.length > 0 ? (
-                        <View style={styles.profileGenreList}>
-                          {profileGenreDistribution.map((item) => (
-                            <View key={`${item.genre}-${item.count}`} style={styles.profileGenreRow}>
-                              <Text
-                                style={[styles.profileGenreLabel, isDawnTheme ? styles.dawnTextColor : null]}
-                              >
-                                {item.genre}
-                              </Text>
-                              <Text
-                                style={[styles.profileGenreValue, isDawnTheme ? styles.dawnTextMuted : null]}
-                              >
-                                x{item.count}
-                              </Text>
-                            </View>
-                          ))}
-                        </View>
-                      ) : (
-                        <Text style={[styles.screenMeta, isDawnTheme ? styles.dawnTextMuted : null]}>
-                          Tur dagilimi verisi ritual kayitlari geldikce olusur.
-                        </Text>
-                      )}
-                      <Pressable
-                        style={styles.retryButton}
-                        onPress={() => {
-                          void refreshProfileGenreDistribution();
-                        }}
-                        disabled={!isSignedIn}
-                        hitSlop={8}
-                      >
-                        <Text style={styles.retryText}>Tur Dagilimini Yenile</Text>
-                      </Pressable>
-                    </CollapsibleSectionCard>
-
-                    <CollapsibleSectionCard
-                      accent="sage"
-                      title="Izlenen Filmler"
-                      meta={`${watchedMoviesState.items.length} film`}
-                      defaultExpanded
-                    >
-                      {watchedMoviesState.items.length > 0 ? (
-                        <>
-                          <Text style={[styles.screenMeta, isDawnTheme ? styles.dawnTextMuted : null]}>
-                            {watchedMoviesState.message}
-                          </Text>
-                          <View style={styles.movieList}>
-                          {watchedMoviesState.items.slice(0, 20).map((movie) => (
-                            <Pressable
-                              key={movie.id}
-                              style={({ pressed }) => [
-                                styles.movieRow,
-                                pressed ? styles.movieRowPressed : null,
-                              ]}
-                              onPress={() => {
-                                void handleOpenProfileMovieArchive(movie);
-                              }}
-                              hitSlop={8}
-                              accessibilityRole="button"
-                              accessibilityLabel={`${movie.movieTitle} film arsivini ac`}
-                            >
-                              <Text style={styles.movieTitle}>{movie.movieTitle}</Text>
-                              <Text style={styles.movieMeta}>
-                                {movie.year ? `${movie.year} | ` : ''}
-                                Son izleme: {movie.watchedDayKey || '-'}
-                                {movie.watchCount > 1 ? ` | Tekrar: ${movie.watchCount}` : ''}
-                              </Text>
-                              <Text style={styles.movieRowActionHint}>Yorum Arsivini Ac</Text>
-                            </Pressable>
-                          ))}
-                          </View>
-                        </>
-                      ) : (
-                        <StatePanel
-                          tone="sage"
-                          variant={
-                            watchedMoviesState.status === 'loading'
-                              ? 'loading'
-                              : watchedMoviesState.status === 'error'
-                                ? 'error'
-                                : 'empty'
-                          }
-                          eyebrow="Film Arsivi"
-                          title={
-                            watchedMoviesState.status === 'loading'
-                              ? 'Film arsivi tazeleniyor'
-                              : watchedMoviesState.status === 'error'
-                                ? 'Izlenen filmler okunamadi'
-                                : 'Henuz film izi olusmadi'
-                          }
-                          body={
-                            watchedMoviesState.status === 'error'
-                              ? watchedMoviesState.message ||
-                                'Film arsivi okunurken gecici bir sorun olustu.'
-                              : watchedMoviesState.message ||
-                                'Yazdigin yorumlar geldikce burada film bazli bir arsiv olusur.'
-                          }
-                          meta="Film satirina dokununca o filme ait yorum ve yanit arsivi acilir."
-                          actionLabel={
-                            !isSignedIn || watchedMoviesState.status === 'loading'
-                              ? undefined
-                              : 'Izlenen Filmleri Yenile'
-                          }
-                          onAction={() => {
-                            void refreshWatchedMovies();
+                    {!isSignedIn ? (
+                      <StatePanel
+                        tone="clay"
+                        variant="empty"
+                        eyebrow="Uye Girisi"
+                        title={profileAccessTitle}
+                        body={profileAccessBody}
+                        meta="Profil sekmesinde gereksiz oturum bloklari yerine giris ekrani kullaniliyor."
+                        actionLabel="Giris Ekranini Ac"
+                        onAction={() => setAuthModalVisible(true)}
+                      />
+                    ) : (
+                      <>
+                        <ProfileIdentityCard
+                          displayName={profileDisplayName || 'Observer'}
+                          username={profileUsername}
+                          bio={profileBio}
+                          birthDateLabel={profileBirthDateLabel}
+                          followingCount={profileStats.following}
+                          followersCount={profileStats.followers}
+                          profileLink={profileLink}
+                          onOpenProfileLink={() => {
+                            void handleOpenProfileLink();
                           }}
                         />
-                      )}
-                      {watchedMoviesState.items.length > 0 ? (
-                        <Pressable
-                          style={styles.retryButton}
-                          onPress={() => {
+
+                        <ProfileGenreDistributionCard
+                          items={profileGenreDistribution}
+                          isSignedIn={isSignedIn}
+                          onRefresh={() => {
+                            void refreshProfileGenreDistribution();
+                          }}
+                        />
+
+                        <WatchedMoviesCard
+                          state={watchedMoviesState}
+                          isSignedIn={isSignedIn}
+                          onRefresh={() => {
                             void refreshWatchedMovies();
                           }}
-                          disabled={!isSignedIn || watchedMoviesState.status === 'loading'}
-                          hitSlop={8}
-                        >
-                          <Text style={styles.retryText}>
-                            {watchedMoviesState.status === 'loading'
-                              ? 'Yukleniyor...'
-                              : 'Izlenen Filmleri Yenile'}
-                          </Text>
-                        </Pressable>
-                      ) : null}
-                    </CollapsibleSectionCard>
+                          onOpenMovieArchive={(movie) => {
+                            void handleOpenProfileMovieArchive(movie);
+                          }}
+                        />
 
-                    <View style={styles.sectionAnchor}>
-                      <View style={styles.sectionHeaderRow}>
-                        <Text style={styles.sectionHeader}>Marklar</Text>
-                        <Text style={styles.sectionHeaderMeta}>{profileStats.marks} acik mark</Text>
-                      </View>
-                    </View>
-                    <ProfileMarksCard state={profileState} isSignedIn={isSignedIn} mode="unlocked" />
+                        <View style={styles.sectionAnchor}>
+                          <View style={styles.sectionHeaderRow}>
+                            <Text style={styles.sectionHeader}>Marklar</Text>
+                            <Text style={styles.sectionHeaderMeta}>{profileStats.marks} acik mark</Text>
+                          </View>
+                        </View>
+                        <ProfileMarksCard state={profileState} isSignedIn={isSignedIn} mode="unlocked" />
 
-                    <View style={styles.sectionAnchor}>
-                      <View style={styles.sectionHeaderRow}>
-                        <Text style={styles.sectionHeader}>Hesap</Text>
-                        <Text style={styles.sectionHeaderMeta}>{isSignedIn ? 'Cloud bagli' : 'Giris gerekli'}</Text>
-                      </View>
-                    </View>
-                    <AuthCard
-                      authState={authState}
-                      email={authEmail}
-                      password={authPassword}
-                      confirmPassword={authConfirmPassword}
-                      mode={authFlowMode}
-                      onEmailChange={setAuthEmail}
-                      onPasswordChange={setAuthPassword}
-                      onConfirmPasswordChange={setAuthConfirmPassword}
-                      onModeChange={setAuthFlowMode}
-                      onSignIn={handleSignIn}
-                      onGoogleSignIn={handleGoogleSignIn}
-                      onRequestPasswordReset={handleRequestPasswordReset}
-                      onCompletePasswordReset={handleCompletePasswordReset}
-                      onSignOut={handleSignOut}
-                    />
-                    {screenPlan.screen === 'invite_claim' ? (
-                      <InviteClaimScreen
-                        inviteCode={inviteCode}
-                        claimState={inviteClaimState}
-                        onClaim={handleClaimInvite}
-                      />
-                    ) : null}
-                    {screenPlan.screen === 'share_hub' ? (
-                      <ShareHubScreen
-                        inviteCode={inviteCode}
-                        inviteLink={effectiveShareInviteLink}
-                        platform={sharePlatform}
-                        goal={selectedShareGoal}
-                        streakValue={profileState.status === 'success' ? profileState.streak : 0}
-                        commentPreview={shareCommentPreview}
-                        canShareComment={canShareComment}
-                        canShareStreak={canShareStreak}
-                        shareStatus={shareHubState.message}
-                        shareStatusTone={shareHubState.status}
-                        onSetGoal={setSelectedShareGoal}
-                        onShare={handleShareHubShare}
-                        onOpenDaily={() => setManualIntent({ target: 'daily' })}
-                      />
-                    ) : null}
+                        {screenPlan.screen === 'invite_claim' ? (
+                          <InviteClaimScreen
+                            inviteCode={inviteCode}
+                            claimState={inviteClaimState}
+                            onClaim={handleClaimInvite}
+                          />
+                        ) : null}
+                        {screenPlan.screen === 'share_hub' ? (
+                          <ShareHubScreen
+                            inviteCode={inviteCode}
+                            inviteLink={effectiveShareInviteLink}
+                            platform={sharePlatform}
+                            goal={selectedShareGoal}
+                            streakValue={profileState.status === 'success' ? profileState.streak : 0}
+                            commentPreview={shareCommentPreview}
+                            canShareComment={canShareComment}
+                            canShareStreak={canShareStreak}
+                            shareStatus={shareHubState.message}
+                            shareStatusTone={shareHubState.status}
+                            onSetGoal={setSelectedShareGoal}
+                            onShare={handleShareHubShare}
+                            onOpenDaily={() => setManualIntent({ target: 'daily' })}
+                          />
+                        ) : null}
+                      </>
+                    )}
 
                     {isDevSurfaceEnabled ? (
                       <>
@@ -4804,6 +4714,30 @@ export default function App() {
               </Tab.Screen>
             </Tab.Navigator>
           </NavigationContainer>
+
+          <AuthModal
+            visible={authModalVisible}
+            onClose={() => {
+              if (authState.status === 'loading') return;
+              setAuthModalVisible(false);
+            }}
+            authState={authState}
+            email={authEmail}
+            password={authPassword}
+            confirmPassword={authConfirmPassword}
+            mode={authFlowMode}
+            onEmailChange={setAuthEmail}
+            onPasswordChange={setAuthPassword}
+            onConfirmPasswordChange={setAuthConfirmPassword}
+            onModeChange={setAuthFlowMode}
+            onSignIn={handleSignIn}
+            onGoogleSignIn={handleGoogleSignIn}
+            onRequestPasswordReset={handleRequestPasswordReset}
+            onCompletePasswordReset={handleCompletePasswordReset}
+            onSignOut={() => {
+              void handleSignOut();
+            }}
+          />
 
           <RitualComposerModal
             visible={ritualComposerVisible}

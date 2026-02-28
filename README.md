@@ -285,6 +285,8 @@ Optional edge-friendly cache (`api/daily.ts`, Redis/KV REST):
 - Mobile productization/UI package 6.40 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_40.md`
 - Mobile productization/UI package 6.41 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_41.md`
 - Mobile productization/UI package 6.42 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_42.md`
+- Mobile productization/UI package 6.43 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_43.md`
+- Mobile productization/UI package 6.44 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_44.md`
 - UI i18n/mobile consistency audit notes: `docs/UI_I18N_MOBILE_AUDIT_2026Q1_P1.md`
 
 ## Notes

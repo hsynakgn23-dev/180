@@ -596,17 +596,17 @@ const AuthCard = ({
       : isBusy
         ? 'Giris yapiliyor...'
         : 'Giris Yap';
-  const title = isRecoveryMode ? 'Sifre Yenileme' : isForgotMode ? 'Sifremi Unuttum' : 'Oturum';
+  const title = isRecoveryMode ? 'Yeni Sifre' : isForgotMode ? 'Sifre Sifirla' : 'Uye Girisi';
   const body = isRecoveryMode
-    ? 'E-postadaki recovery linkinden sonra yeni sifreni burada belirle.'
+    ? 'Yeni sifreni kaydet.'
     : isForgotMode
-      ? 'Hesabina bagli e-postayi gir. Mobil uygulamaya geri donecek bir yenileme linki gonderelim.'
-      : 'Invite claim ve cloud senkronu icin mobilde Supabase oturumu gerekiyor.';
+      ? 'E-postani gir.'
+      : 'Email veya Google ile devam et.';
   const modeMeta = isRecoveryMode
-    ? 'Recovery linkiyle geldin. Iki sifre alani ayni olmali.'
+    ? 'Iki alan ayni olmali.'
     : isForgotMode
-      ? 'Sadece e-postayi gir. Baglanti cihazdan uygulamaya geri doner.'
-      : 'Email, sifre veya Google OAuth ile devam edebilirsin.';
+      ? 'Baglanti e-postana gider.'
+      : 'Supabase oturumu ile devam edilir.';
   const authStatusTitle = !isConfigured
     ? 'Supabase baglanmadi'
     : isRecoveryMode
@@ -620,75 +620,22 @@ const AuthCard = ({
 
   return (
     <ScreenCard accent="clay">
-      <Text style={styles.sectionLeadEyebrow}>Account Access</Text>
       <Text style={styles.sectionLeadTitle}>{title}</Text>
       <Text style={styles.sectionLeadBody}>{body}</Text>
-      <View style={styles.sectionLeadBadgeRow}>
-        <View
-          style={[
-            styles.sectionLeadBadge,
-            isRecoveryMode
-              ? styles.sectionLeadBadgeClay
-              : isSignedIn && !isForgotMode
-                ? styles.sectionLeadBadgeSage
-                : styles.sectionLeadBadgeMuted,
-          ]}
-        >
-          <Text style={styles.sectionLeadBadgeText}>
-            {isRecoveryMode ? 'Recovery' : isForgotMode ? 'Reset Link' : 'Session'}
-          </Text>
-        </View>
-        <View
-          style={[
-            styles.sectionLeadBadge,
-            isConfigured ? styles.sectionLeadBadgeSage : styles.sectionLeadBadgeClay,
-          ]}
-        >
-          <Text style={styles.sectionLeadBadgeText}>
-            {isConfigured ? 'Supabase Ready' : 'Config Missing'}
-          </Text>
-        </View>
-        <View
-          style={[
-            styles.sectionLeadBadge,
-            authStatusTone === 'sage'
-              ? styles.sectionLeadBadgeSage
-              : authStatusTone === 'clay'
-                ? styles.sectionLeadBadgeClay
-                : styles.sectionLeadBadgeMuted,
-          ]}
-        >
-          <Text style={styles.sectionLeadBadgeText}>
-            {isBusy ? 'Working' : authState.status.replace(/_/g, ' ')}
-          </Text>
-        </View>
-      </View>
 
       <StatusStrip
         tone={authStatusTone}
-        eyebrow="Oturum Durumu"
-        title={authStatusTitle}
+        eyebrow="Auth"
+        title={!isConfigured || isRecoveryMode || isSignedIn || authState.status === 'error' ? authStatusTitle : undefined}
         body={authStatusBody}
         meta={isSignedIn && authState.email ? `Bagli hesap: ${authState.email}` : modeMeta}
       />
-
-      {isConfigured && isBusy ? (
-        <StatePanel
-          tone="sage"
-          variant="loading"
-          eyebrow="Auth Flow"
-          title="Oturum akisi isleniyor"
-          body="Supabase istegi tamamlanirken bu kart acik kalabilir."
-          meta={isRecoveryMode ? 'Recovery session yenileniyor.' : 'Yeni session bilgisi dogrulaniyor.'}
-        />
-      ) : null}
 
       {!isSignedIn || isRecoveryMode ? (
         <View style={styles.authForm}>
           <View style={styles.authModeSurface}>
             {!isRecoveryMode ? (
               <>
-                <Text style={styles.subSectionLabel}>Akis Sec</Text>
                 <View style={styles.themeModeSegmentContainer}>
                   <Pressable
                     style={[
@@ -729,7 +676,6 @@ const AuthCard = ({
                 </View>
               </>
             ) : null}
-            <Text style={styles.screenMeta}>{modeMeta}</Text>
           </View>
 
           <View style={styles.authFieldStack}>
@@ -810,20 +756,87 @@ const AuthCard = ({
         </View>
       ) : (
         <View style={styles.authSignedInBox}>
-          <View style={styles.detailInfoGrid}>
-            <View style={styles.detailInfoCard}>
-              <Text style={styles.detailInfoLabel}>Hesap</Text>
-              <Text style={styles.detailInfoValue}>{authState.email || 'bagli kullanici'}</Text>
-            </View>
-            <View style={styles.detailInfoCard}>
-              <Text style={styles.detailInfoLabel}>Cloud</Text>
-              <Text style={styles.detailInfoValue}>Invite, share ve sync hazir</Text>
-            </View>
-          </View>
+          <Text style={styles.screenMeta}>{authState.email || 'Bagli hesap'}</Text>
           <UiButton label="Cikis Yap" tone="danger" onPress={onSignOut} disabled={isBusy} />
         </View>
       )}
     </ScreenCard>
+  );
+};
+
+const AuthModal = ({
+  visible,
+  onClose,
+  authState,
+  email,
+  password,
+  confirmPassword,
+  mode,
+  onEmailChange,
+  onPasswordChange,
+  onConfirmPasswordChange,
+  onModeChange,
+  onSignIn,
+  onGoogleSignIn,
+  onRequestPasswordReset,
+  onCompletePasswordReset,
+  onSignOut,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  authState: AuthState;
+  email: string;
+  password: string;
+  confirmPassword: string;
+  mode: 'login' | 'forgot' | 'recovery';
+  onEmailChange: (value: string) => void;
+  onPasswordChange: (value: string) => void;
+  onConfirmPasswordChange: (value: string) => void;
+  onModeChange: (value: 'login' | 'forgot' | 'recovery') => void;
+  onSignIn: () => void;
+  onGoogleSignIn: () => void;
+  onRequestPasswordReset: () => void;
+  onCompletePasswordReset: () => void;
+  onSignOut: () => void;
+}) => {
+  useWebModalFocusReset(visible);
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.modalOverlaySurface}>
+        <Pressable style={{ flex: 1 }} onPress={onClose} />
+        <View style={styles.modalSheetSurface}>
+          <View style={styles.modalNavRow}>
+            <Text style={styles.sectionHeader}>Uye Girisi</Text>
+            <Pressable onPress={onClose} hitSlop={PRESSABLE_HIT_SLOP}>
+              <Text style={styles.modalCloseTextBtn}>Kapat</Text>
+            </Pressable>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.modalSheetScroll} showsVerticalScrollIndicator={false}>
+            <View style={styles.modalContentSurface}>
+              <AuthCard
+                authState={authState}
+                email={email}
+                password={password}
+                confirmPassword={confirmPassword}
+                mode={mode}
+                onEmailChange={onEmailChange}
+                onPasswordChange={onPasswordChange}
+                onConfirmPasswordChange={onConfirmPasswordChange}
+                onModeChange={onModeChange}
+                onSignIn={onSignIn}
+                onGoogleSignIn={onGoogleSignIn}
+                onRequestPasswordReset={onRequestPasswordReset}
+                onCompletePasswordReset={onCompletePasswordReset}
+                onSignOut={onSignOut}
+              />
+            </View>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 };
 
@@ -964,6 +977,331 @@ const ThemeModeCard = ({
     </View>
   </ScreenCard>
 );
+
+const ProfileIdentityCard = ({
+  displayName,
+  username,
+  bio,
+  birthDateLabel,
+  followingCount,
+  followersCount,
+  profileLink,
+  onOpenProfileLink,
+}: {
+  displayName: string;
+  username?: string;
+  bio?: string;
+  birthDateLabel?: string;
+  followingCount: number;
+  followersCount: number;
+  profileLink?: string;
+  onOpenProfileLink?: () => void;
+}) => {
+  const normalizedDisplayName = String(displayName || '').trim() || 'Observer';
+  const normalizedUsername = String(username || '').trim().replace(/^@+/, '');
+  const normalizedBio =
+    String(bio || '').trim() || 'Profil notunu ayarlardan duzenleyerek kendini daha net anlatabilirsin.';
+  const normalizedLink = String(profileLink || '').trim();
+  const hasLink = Boolean(normalizedLink);
+  const hasBirthDate = Boolean(String(birthDateLabel || '').trim());
+
+  return (
+    <>
+      <SectionLeadCard
+        accent="clay"
+        eyebrow="Identity File"
+        title={normalizedDisplayName}
+        body={normalizedBio}
+        badges={[
+          {
+            label: normalizedUsername ? `@${normalizedUsername}` : 'handle bekleniyor',
+            tone: normalizedUsername ? 'sage' : 'clay',
+          },
+          {
+            label: hasBirthDate ? `Dogum ${birthDateLabel}` : 'dogum bilgisi bos',
+            tone: hasBirthDate ? 'muted' : 'clay',
+          },
+          { label: hasLink ? 'profil linki hazir' : 'link opsiyonel', tone: hasLink ? 'sage' : 'muted' },
+        ]}
+        metrics={[
+          { label: 'Takip', value: String(followingCount) },
+          { label: 'Takipci', value: String(followersCount) },
+          { label: 'Link', value: hasLink ? 'hazir' : '--' },
+        ]}
+        actions={
+          hasLink && onOpenProfileLink
+            ? [{ label: 'Profili Ac', tone: 'brand', onPress: onOpenProfileLink }]
+            : undefined
+        }
+      />
+
+      <StatusStrip
+        tone={hasLink ? 'sage' : 'muted'}
+        eyebrow="Identity State"
+        title={hasLink ? 'Profil baglantisi hazir' : 'Kimlik katmani hazir'}
+        body={
+          hasLink
+            ? 'Dis profil linki ayarlandi. Profil yuzeyinden tek dokunusla acilabilir.'
+            : 'Bio, handle ve sosyal baglam burada toplanir. Link eklemek istersen ayarlardan tamamlayabilirsin.'
+        }
+        meta={
+          normalizedUsername
+            ? `Profil handle: @${normalizedUsername}`
+            : 'Kullanici adi alanini ayarlardan doldurabilirsin.'
+        }
+      />
+
+      <ScreenCard accent="clay">
+        <Text style={styles.subSectionLabel}>Kimlik Notu</Text>
+        <View style={styles.detailInfoGrid}>
+          <View style={styles.detailInfoCard}>
+            <Text style={styles.detailInfoLabel}>Gorunen Ad</Text>
+            <Text style={styles.detailInfoValue}>{normalizedDisplayName}</Text>
+          </View>
+          <View style={styles.detailInfoCard}>
+            <Text style={styles.detailInfoLabel}>Handle</Text>
+            <Text style={styles.detailInfoValue}>
+              {normalizedUsername ? `@${normalizedUsername}` : 'Belirtilmedi'}
+            </Text>
+          </View>
+          <View style={styles.detailInfoCard}>
+            <Text style={styles.detailInfoLabel}>Dogum</Text>
+            <Text style={styles.detailInfoValue}>{birthDateLabel || '--'}</Text>
+          </View>
+        </View>
+
+        <Text style={styles.screenBody}>{normalizedBio}</Text>
+        <Text style={styles.screenMeta}>
+          Takip: {followingCount} | Takipci: {followersCount}
+        </Text>
+
+        {hasLink ? (
+          <Pressable
+            onPress={() => onOpenProfileLink?.()}
+            hitSlop={PRESSABLE_HIT_SLOP}
+            accessibilityRole="button"
+            accessibilityLabel="Profil linkini ac"
+          >
+            <Text style={styles.profileLinkText}>{normalizedLink}</Text>
+          </Pressable>
+        ) : null}
+      </ScreenCard>
+    </>
+  );
+};
+
+const ProfileGenreDistributionCard = ({
+  items,
+  isSignedIn,
+  onRefresh,
+}: {
+  items: Array<{ genre: string; count: number }>;
+  isSignedIn: boolean;
+  onRefresh: () => void;
+}) => {
+  const topGenre = items[0];
+  const totalCount = items.reduce((sum, item) => sum + Math.max(0, Number(item.count || 0)), 0);
+
+  return (
+    <>
+      <SectionLeadCard
+        accent="sage"
+        eyebrow="Taste Map"
+        title="Tur Dagilimi"
+        body="Ritual kayitlarindan cikan baskin tur izi. Profilin hangi sinema damarinda aktigini hizli gosterir."
+        badges={[
+          { label: isSignedIn ? 'profil verisi hazir' : 'oturum gerekli', tone: isSignedIn ? 'sage' : 'clay' },
+          { label: `${items.length} tur`, tone: items.length > 0 ? 'sage' : 'muted' },
+          { label: topGenre ? `zirvede ${topGenre.genre}` : 'dagilim bekleniyor', tone: topGenre ? 'muted' : 'clay' },
+        ]}
+        metrics={[
+          { label: 'Toplam', value: String(totalCount) },
+          { label: 'Gorunen', value: String(items.length) },
+          { label: 'Lider', value: topGenre ? String(topGenre.count) : '--' },
+        ]}
+        actions={[
+          {
+            label: isSignedIn ? 'Dagilimi Yenile' : 'Oturum Bekleniyor',
+            tone: 'neutral',
+            onPress: onRefresh,
+            disabled: !isSignedIn,
+          },
+        ]}
+      />
+
+      {!isSignedIn ? (
+        <StatePanel
+          tone="clay"
+          variant="empty"
+          eyebrow="Genre"
+          title="Tur haritasi icin oturum ac"
+          body="Tur dagilimi, profiline yazilan ritual verileri uzerinden hesaplanir."
+          meta="Giris yaptiginda bu alan favori eksenlerini otomatik olarak listeler."
+        />
+      ) : items.length === 0 ? (
+        <StatePanel
+          tone="sage"
+          variant="empty"
+          eyebrow="Genre"
+          title="Henuz dagilim olusmadi"
+          body="Farkli turlerde ritual biraktikca burada baskin sinema haritan gorunecek."
+          meta="Veri geldikten sonra en guclu bes kategori listelenir."
+          actionLabel="Dagilimi Yenile"
+          onAction={onRefresh}
+        />
+      ) : (
+        <>
+          <StatusStrip
+            tone="sage"
+            eyebrow="Taste Pulse"
+            title={`${topGenre?.genre || 'Baskin tur'} onde gidiyor`}
+            body={`Toplam ${totalCount} ritual kaydi icinde en guclu genre izi ${topGenre?.genre || 'belirsiz'}.`}
+            meta="Bu dagilim yeni yorumlar geldikce profil tarafinda yenilenir."
+          />
+
+          <ScreenCard accent="sage">
+            <Text style={styles.subSectionLabel}>Ilk 5 Tur</Text>
+            <View style={styles.profileGenreList}>
+              {items.map((item) => (
+                <View key={`${item.genre}-${item.count}`} style={styles.profileGenreRow}>
+                  <Text style={styles.profileGenreLabel}>{item.genre}</Text>
+                  <Text style={styles.profileGenreValue}>x{item.count}</Text>
+                </View>
+              ))}
+            </View>
+          </ScreenCard>
+        </>
+      )}
+    </>
+  );
+};
+
+const WatchedMoviesCard = ({
+  state,
+  isSignedIn,
+  onRefresh,
+  onOpenMovieArchive,
+}: {
+  state: {
+    status: 'idle' | 'loading' | 'ready' | 'error';
+    message: string;
+    items: MobileWatchedMovie[];
+  };
+  isSignedIn: boolean;
+  onRefresh: () => void;
+  onOpenMovieArchive: (movie: MobileWatchedMovie) => void;
+}) => {
+  const repeatedCount = state.items.filter((movie) => movie.watchCount > 1).length;
+  const latestMovie = state.items[0];
+  const statusTone =
+    state.status === 'error' ? 'clay' : state.status === 'ready' ? 'sage' : 'muted';
+
+  return (
+    <>
+      <SectionLeadCard
+        accent="sage"
+        eyebrow="Watch Archive"
+        title="Izlenen Filmler"
+        body="Yazdigin ritual notlari film bazli bir arsive donusur. Satira dokunarak ilgili yorum arsivini ac."
+        badges={[
+          { label: isSignedIn ? 'cloud bagli' : 'oturum gerekli', tone: isSignedIn ? 'sage' : 'clay' },
+          { label: `${state.items.length} film`, tone: state.items.length > 0 ? 'sage' : 'muted' },
+          { label: repeatedCount > 0 ? `${repeatedCount} tekrar izleme` : 'tekil izler', tone: repeatedCount > 0 ? 'clay' : 'muted' },
+        ]}
+        metrics={[
+          { label: 'Film', value: String(state.items.length) },
+          { label: 'Tekrar', value: String(repeatedCount) },
+          { label: 'Son Gun', value: latestMovie?.watchedDayKey || '--' },
+        ]}
+        actions={[
+          {
+            label: state.status === 'loading' ? 'Yukleniyor...' : 'Arsivi Yenile',
+            tone: 'neutral',
+            onPress: onRefresh,
+            disabled: !isSignedIn || state.status === 'loading',
+          },
+        ]}
+      />
+
+      <StatusStrip
+        tone={statusTone}
+        eyebrow="Archive State"
+        title={
+          state.status === 'error'
+            ? 'Film arsivi okunamadi'
+            : state.status === 'ready'
+              ? 'Film arsivi hazir'
+              : state.status === 'loading'
+                ? 'Film arsivi yukleniyor'
+                : 'Film arsivi beklemede'
+        }
+        body={state.message}
+        meta={
+          latestMovie
+            ? `Son iz: ${latestMovie.movieTitle}${latestMovie.year ? ` (${latestMovie.year})` : ''}`
+            : 'Film satirina dokununca ilgili yorum arsivi acilir.'
+        }
+      />
+
+      {state.items.length === 0 ? (
+        <StatePanel
+          tone={state.status === 'error' || !isSignedIn ? 'clay' : 'sage'}
+          variant={
+            state.status === 'loading'
+              ? 'loading'
+              : state.status === 'error'
+                ? 'error'
+                : 'empty'
+          }
+          eyebrow="Film Arsivi"
+          title={
+            !isSignedIn
+              ? 'Izlenen filmler icin giris yap'
+              : state.status === 'loading'
+                ? 'Film arsivi tazeleniyor'
+                : state.status === 'error'
+                  ? 'Izlenen filmler okunamadi'
+                  : 'Henuz film izi olusmadi'
+          }
+          body={
+            !isSignedIn
+              ? 'Film bazli arsiv, mobil session ve ritual kayitlari ile olusur.'
+              : state.status === 'error'
+                ? state.message || 'Film arsivi okunurken gecici bir sorun olustu.'
+                : state.message || 'Yazdigin yorumlar geldikce burada film bazli bir arsiv olusur.'
+          }
+          meta="Film satirina dokununca o filme ait yorum ve yanit arsivi acilir."
+          actionLabel={!isSignedIn || state.status === 'loading' ? undefined : 'Izlenen Filmleri Yenile'}
+          onAction={!isSignedIn || state.status === 'loading' ? undefined : onRefresh}
+        />
+      ) : (
+        <ScreenCard accent="sage">
+          <Text style={styles.subSectionLabel}>Son Izler</Text>
+          <View style={styles.movieList}>
+            {state.items.slice(0, 20).map((movie) => (
+              <Pressable
+                key={movie.id}
+                style={({ pressed }) => [styles.movieRow, pressed ? styles.movieRowPressed : null]}
+                onPress={() => onOpenMovieArchive(movie)}
+                hitSlop={PRESSABLE_HIT_SLOP}
+                accessibilityRole="button"
+                accessibilityLabel={`${movie.movieTitle} film arsivini ac`}
+              >
+                <Text style={styles.movieTitle}>{movie.movieTitle}</Text>
+                <Text style={styles.movieMeta}>
+                  {movie.year ? `${movie.year} | ` : ''}
+                  Son izleme: {movie.watchedDayKey || '-'}
+                  {movie.watchCount > 1 ? ` | Tekrar: ${movie.watchCount}` : ''}
+                </Text>
+                <Text style={styles.movieRowActionHint}>Yorum Arsivini Ac</Text>
+              </Pressable>
+            ))}
+          </View>
+        </ScreenCard>
+      )}
+    </>
+  );
+};
 
 const markMotionDurationMs = (motion: string): number => {
   switch (motion) {
@@ -4559,6 +4897,7 @@ const PlatformRulesCard = () => {
 
 export {
   setAppScreensThemeMode,
+  AuthModal,
   AuthCard,
   CollapsibleSectionCard,
   SectionLeadCard,
@@ -4566,10 +4905,13 @@ export {
   ThemeModeCard,
   ScreenErrorBoundary,
   MobileSettingsModal,
+  ProfileIdentityCard,
+  ProfileGenreDistributionCard,
   ProfileSnapshotCard,
   ProfileMarksCard,
   PushStatusCard,
   PushInboxCard,
+  WatchedMoviesCard,
   CommentFeedCard,
   DailyHomeScreen,
   RitualDraftCard,
