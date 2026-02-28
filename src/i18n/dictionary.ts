@@ -134,6 +134,10 @@ export type UiDictionary = {
         sessionControl: string;
         logout: string;
         logoutConfirm: string;
+        accountDeletion: string;
+        accountDeletionDescription: string;
+        accountDeletionOpen: string;
+        accountDeletionMeta: string;
         statusThemeUpdated: string;
         statusLanguageSaved: string;
         statusIdentitySaveFailed: string;
@@ -366,6 +370,8 @@ export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
             bio: 'Biyografi', bioPlaceholder: 'Kisa bir profil notu yaz...', saveIdentity: 'Kimligi Kaydet',
             theme: 'Tema', themeMidnight: 'Gece', themeDawn: 'Gunduz', language: 'Dil', languageTr: 'Türkçe', languageEn: 'İngilizce',
             activeAccount: 'Aktif Hesap', unknown: 'bilinmiyor', sessionControl: 'Oturum Kontrolu', logout: 'Cikis Yap', logoutConfirm: 'Tekrar Tikla ve Cik',
+            accountDeletion: 'Hesap Silme', accountDeletionDescription: 'Hesap silme talebini baslatmak ve saklama notlarini incelemek icin yayindaki talep sayfasini ac.',
+            accountDeletionOpen: 'Talep Sayfasini Ac', accountDeletionMeta: 'Talebi, hesaba bagli e-posta ile app store support kanali uzerinden gonder.',
             statusThemeUpdated: 'Tema guncellendi', statusLanguageSaved: 'Dil tercihi kaydedildi', statusIdentitySaveFailed: 'Kimlik kaydi basarisiz',
             statusIdentitySaved: 'Kimlik kaydedildi', statusAvatarUpdated: 'Avatar guncellendi'
         },
@@ -488,6 +494,8 @@ export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
             bio: 'Bio', bioPlaceholder: 'Write a short profile note...', saveIdentity: 'Save Identity',
             theme: 'Theme', themeMidnight: 'Midnight', themeDawn: 'Dawn', language: 'Language', languageTr: 'Turkish', languageEn: 'English',
             activeAccount: 'Active Account', unknown: 'unknown', sessionControl: 'Session Control', logout: 'Logout', logoutConfirm: 'Click Again to Logout',
+            accountDeletion: 'Account Deletion', accountDeletionDescription: 'Open the published account deletion instructions and retention notes for this product.',
+            accountDeletionOpen: 'Open Deletion Page', accountDeletionMeta: 'Submit the request from the email tied to the account through the app store support channel.',
             statusThemeUpdated: 'Theme updated', statusLanguageSaved: 'Language preference saved', statusIdentitySaveFailed: 'Identity save failed',
             statusIdentitySaved: 'Identity saved', statusAvatarUpdated: 'Avatar updated'
         },

@@ -3445,6 +3445,7 @@ const MobileSettingsModal = ({
   isInviteActionBusy,
   canCopyInviteLink,
   isSignedIn,
+  onOpenAccountDeletion,
   onSignOut,
 }: {
   visible: boolean;
@@ -3475,6 +3476,7 @@ const MobileSettingsModal = ({
   isInviteActionBusy: boolean;
   canCopyInviteLink: boolean;
   isSignedIn: boolean;
+  onOpenAccountDeletion: () => void;
   onSignOut: () => void;
 }) => {
   const [activeTab, setActiveTab] = useState<'identity' | 'appearance' | 'session'>('identity');
@@ -3518,6 +3520,16 @@ const MobileSettingsModal = ({
     SETTINGS_GENDER_OPTIONS.find((option) => option.key === identityDraft.gender)?.label || 'Sec';
   const themeLabel = themeMode === 'dawn' ? 'Gunduz' : 'Gece';
   const languageLabel = language === 'tr' ? 'Turkce' : 'English';
+  const accountDeletionTitle = language === 'en' ? 'Account Deletion' : 'Hesap Silme';
+  const accountDeletionBody =
+    language === 'en'
+      ? 'Open the published deletion page to review the request path, deleted data, and retained records.'
+      : 'Talep yolu, silinen veriler ve saklanan kayit notlari icin yayindaki hesap silme sayfasini ac.';
+  const accountDeletionMeta =
+    language === 'en'
+      ? 'Submit the request from the email tied to the account through the app store support channel.'
+      : 'Talebi, hesaba bagli e-posta ile app store support kanali uzerinden gonder.';
+  const accountDeletionButton = language === 'en' ? 'Open Deletion Page' : 'Silme Sayfasini Ac';
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -4022,6 +4034,27 @@ const MobileSettingsModal = ({
                       )}
                     </>
                   )}
+                </CollapsibleSectionCard>
+
+                <CollapsibleSectionCard
+                  accent="clay"
+                  title={accountDeletionTitle}
+                  meta={language === 'en' ? 'Web request path' : 'Web talep yolu'}
+                  defaultExpanded
+                >
+                  <StatusStrip
+                    tone="muted"
+                    eyebrow={language === 'en' ? 'Request Flow' : 'Talep Akisi'}
+                    title={accountDeletionTitle}
+                    body={accountDeletionBody}
+                    meta={accountDeletionMeta}
+                  />
+
+                  <UiButton
+                    label={accountDeletionButton}
+                    tone="neutral"
+                    onPress={onOpenAccountDeletion}
+                  />
                 </CollapsibleSectionCard>
 
                 <CollapsibleSectionCard

@@ -439,6 +439,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         onClose();
     };
 
+    const handleOpenAccountDeletion = () => {
+        trackEvent('page_view', {
+            reason: 'web_settings_account_deletion_open',
+            source: 'web_settings_modal'
+        });
+        window.open('/account-deletion/', '_blank', 'noopener,noreferrer');
+    };
+
     if (!isOpen) return null;
 
     return (
@@ -813,6 +821,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                 {inviteStatus && (
                                     <p className="mt-3 text-[10px] uppercase tracking-[0.12em] text-sage/90">{inviteStatus}</p>
                                 )}
+                            </div>
+
+                            <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+                                <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-2">
+                                    {text.settings.accountDeletion}
+                                </p>
+                                <p className="text-xs text-gray-500 mb-4">{text.settings.accountDeletionDescription}</p>
+
+                                <div className="rounded border border-white/10 bg-[#141414] px-3 py-2 mb-4">
+                                    <p className="text-[9px] uppercase tracking-[0.14em] text-gray-500">
+                                        {text.settings.accountDeletionMeta}
+                                    </p>
+                                    <p className="text-xs text-gray-400 mt-2">
+                                        {user?.email || text.settings.unknown}
+                                    </p>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={handleOpenAccountDeletion}
+                                    className="w-full border border-sage/30 text-sage rounded py-2.5 text-[10px] uppercase tracking-[0.2em] font-bold hover:bg-sage/10 transition-colors"
+                                >
+                                    {text.settings.accountDeletionOpen}
+                                </button>
                             </div>
 
                             <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-5">

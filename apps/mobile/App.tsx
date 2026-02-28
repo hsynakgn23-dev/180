@@ -175,6 +175,9 @@ const MOBILE_PROFILE_IDENTITY_STORAGE_KEY = 'ac_mobile_profile_identity_v1';
 const MOBILE_PROFILE_LANGUAGE_STORAGE_KEY = 'ac_mobile_profile_language_v1';
 
 const MOBILE_WEB_BASE_URL = resolveMobileWebBaseUrl();
+const MOBILE_ACCOUNT_DELETION_URL = MOBILE_WEB_BASE_URL
+  ? `${MOBILE_WEB_BASE_URL}/account-deletion/`
+  : 'https://180absolutecinema.com/account-deletion/';
 
 const DEFAULT_SETTINGS_IDENTITY: MobileSettingsIdentityDraft = {
   fullName: '',
@@ -3376,6 +3379,19 @@ export default function App() {
     }
   }, [settingsIdentityDraft.profileLink]);
 
+  const handleOpenAccountDeletion = useCallback(async () => {
+    try {
+      const canOpen = await Linking.canOpenURL(MOBILE_ACCOUNT_DELETION_URL);
+      if (!canOpen) return;
+      await Linking.openURL(MOBILE_ACCOUNT_DELETION_URL);
+      void trackMobileEvent('page_view', {
+        reason: 'mobile_account_deletion_open',
+      });
+    } catch {
+      // ignore link open failures in account deletion action
+    }
+  }, []);
+
   const handleOpenDailyFromExplore = useCallback(() => {
     setManualIntent({ target: 'daily' });
     if (tabNavigationRef.isReady()) {
@@ -4889,6 +4905,9 @@ export default function App() {
             isInviteActionBusy={isInviteActionBusy}
             canCopyInviteLink={Boolean(inviteProgram.inviteLink)}
             isSignedIn={isSignedIn}
+            onOpenAccountDeletion={() => {
+              void handleOpenAccountDeletion();
+            }}
             onSignOut={() => {
               void handleSignOut();
             }}
