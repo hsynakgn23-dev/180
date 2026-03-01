@@ -14,6 +14,7 @@ const ORDERED_KEYS = [
   'EXPO_PUBLIC_SUPABASE_URL',
   'EXPO_PUBLIC_SUPABASE_ANON_KEY',
   'EXPO_PUBLIC_REFERRAL_API_BASE',
+  'EXPO_PUBLIC_WEB_APP_URL',
   'EXPO_PUBLIC_PUSH_ENABLED',
   'EXPO_PUBLIC_PUSH_API_BASE',
   'EXPO_PUBLIC_EXPO_PROJECT_ID',
@@ -84,6 +85,11 @@ const releaseReferralBase =
   parseAbsoluteUrl(rootEnv.MOBILE_RELEASE_REFERRAL_API_BASE) || releaseBaseUrl;
 const releasePushApiBase =
   parseAbsoluteUrl(rootEnv.MOBILE_RELEASE_PUSH_API_BASE) || releaseReferralBase;
+const releaseWebAppUrl =
+  parseAbsoluteUrl(rootEnv.MOBILE_RELEASE_WEB_APP_URL) ||
+  parseAbsoluteUrl(rootEnv.VITE_PUBLIC_APP_URL) ||
+  parseAbsoluteUrl(mobileEnv.EXPO_PUBLIC_WEB_APP_URL) ||
+  releaseBaseUrl;
 
 const releaseProjectId =
   normalizeText(rootEnv.MOBILE_RELEASE_EXPO_PROJECT_ID) ||
@@ -103,6 +109,7 @@ const nextReleaseEnv = {
     normalizeText(rootEnv.VITE_SUPABASE_ANON_KEY) ||
     normalizeText(mobileEnv.EXPO_PUBLIC_SUPABASE_ANON_KEY),
   EXPO_PUBLIC_REFERRAL_API_BASE: stripTrailingSlash(releaseReferralBase),
+  EXPO_PUBLIC_WEB_APP_URL: stripTrailingSlash(releaseWebAppUrl),
   EXPO_PUBLIC_PUSH_ENABLED: normalizeText(rootEnv.MOBILE_RELEASE_PUSH_ENABLED) || '1',
   EXPO_PUBLIC_PUSH_API_BASE: stripTrailingSlash(releasePushApiBase),
   EXPO_PUBLIC_EXPO_PROJECT_ID: releaseProjectId,

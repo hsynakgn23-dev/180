@@ -24,6 +24,8 @@ const requestedChecklistFile = checklistFileArg
 const effectiveChecklistPath = requestedChecklistFile
   ? path.resolve(ROOT_DIR, requestedChecklistFile)
   : '';
+const platformArg = process.argv.find((arg) => arg.startsWith('--platform='));
+const requestedPlatform = normalizePlatform(platformArg ? platformArg.slice('--platform='.length) : '');
 
 const readFileSafe = (filePath) => {
   try {
@@ -48,6 +50,12 @@ const parseEnv = (text) => {
 };
 
 const normalizeText = (value) => String(value || '').trim();
+
+function normalizePlatform(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'ios' || normalized === 'android') return normalized;
+  return 'all';
+}
 
 const isUuid = (value) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -80,6 +88,8 @@ const parseUrlSafe = (value) => {
 };
 
 const allowNoPushFallback = isEnabled(process.env.MOBILE_RELEASE_ALLOW_NO_PUSH, false);
+const shouldCheckIos = requestedPlatform === 'all' || requestedPlatform === 'ios';
+const shouldCheckAndroid = requestedPlatform === 'all' || requestedPlatform === 'android';
 
 let failed = false;
 let warningCount = 0;
@@ -152,6 +162,26 @@ showItem(
   Boolean(normalizeText(expo?.ios?.bundleIdentifier)),
   normalizeText(expo?.ios?.bundleIdentifier) || 'missing'
 );
+if (shouldCheckIos) {
+  showItem(
+    'app.json ios.buildNumber',
+    /^\d+$/.test(normalizeText(expo?.ios?.buildNumber)),
+    normalizeText(expo?.ios?.buildNumber) || 'missing'
+  );
+  showItem(
+    'app.json ios.usesAppleSignIn',
+    expo?.ios?.usesAppleSignIn === true,
+    String(expo?.ios?.usesAppleSignIn ?? 'missing')
+  );
+}
+if (shouldCheckAndroid) {
+  const androidVersionCode = expo?.android?.versionCode;
+  showItem(
+    'app.json android.versionCode',
+    Number.isInteger(androidVersionCode) && androidVersionCode > 0,
+    String(androidVersionCode ?? 'missing')
+  );
+}
 
 const easProduction = easJson?.build?.production;
 showItem(
@@ -159,6 +189,14 @@ showItem(
   Boolean(easProduction && typeof easProduction === 'object'),
   easProduction ? 'configured' : 'missing'
 );
+if (shouldCheckIos) {
+  const easSubmitIos = easJson?.submit?.production?.ios;
+  showItem(
+    'eas.json submit.production.ios profile',
+    Boolean(easSubmitIos && typeof easSubmitIos === 'object'),
+    easSubmitIos ? 'configured' : 'missing'
+  );
+}
 
 const envProjectId = normalizeText(mobileEnv.EXPO_PUBLIC_EXPO_PROJECT_ID);
 const appProjectId = normalizeText(expo?.extra?.eas?.projectId);
@@ -196,16 +234,36 @@ if (!pushEnabled) {
   }
 } else {
   showItem('release push gate mode', true, 'push enabled');
-  const googleServicesFilePath = normalizeText(expo?.android?.googleServicesFile);
+  const pluginEntries = Array.isArray(expo?.plugins) ? expo.plugins : [];
+  const hasExpoNotificationsPlugin = pluginEntries.some((entry) => {
+    if (typeof entry === 'string') return normalizeText(entry) === 'expo-notifications';
+    if (Array.isArray(entry)) return normalizeText(entry[0]) === 'expo-notifications';
+    return false;
+  });
   showItem(
-    'app.json android.googleServicesFile',
-    googleServicesFilePath === './google-services.json',
-    googleServicesFilePath || 'missing'
+    'app.json expo-notifications plugin',
+    hasExpoNotificationsPlugin,
+    hasExpoNotificationsPlugin ? 'configured' : 'missing'
   );
-  showItem(
-    'apps/mobile/google-services.json exists',
-    fs.existsSync(GOOGLE_SERVICES_PATH)
-  );
+
+  if (shouldCheckAndroid) {
+    const googleServicesFilePath = normalizeText(expo?.android?.googleServicesFile);
+    showItem(
+      'app.json android.googleServicesFile',
+      googleServicesFilePath === './google-services.json',
+      googleServicesFilePath || 'missing'
+    );
+    showItem(
+      'apps/mobile/google-services.json exists',
+      fs.existsSync(GOOGLE_SERVICES_PATH)
+    );
+  }
+}
+
+if (requestedPlatform === 'ios') {
+  const webAppUrl = normalizeText(mobileEnv.EXPO_PUBLIC_WEB_APP_URL);
+  showItem('EXPO_PUBLIC_WEB_APP_URL', Boolean(webAppUrl), webAppUrl || 'missing');
+  evaluateEndpoint('EXPO_PUBLIC_WEB_APP_URL', webAppUrl);
 }
 
 if (!normalizeText(rootEnv.SUPABASE_SERVICE_ROLE_KEY)) {
@@ -278,6 +336,7 @@ const reportPayload = {
   generatedAt: new Date().toISOString(),
   status,
   strict,
+  platform: requestedPlatform,
   envFile: path.relative(ROOT_DIR, effectiveMobileEnvPath),
   warningCount,
   checks,

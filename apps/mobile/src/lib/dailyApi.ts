@@ -41,6 +41,10 @@ type DailyShowcaseRow = {
 const DAILY_CACHE_KEY = '180_mobile_daily_cache_v3';
 const DAILY_CACHE_MAX_AGE_MS = 18 * 60 * 60 * 1000;
 const DAILY_ROLLOVER_TIMEZONE = 'Europe/Istanbul';
+const PUBLIC_SUPABASE_URL = String(process.env.EXPO_PUBLIC_SUPABASE_URL || '')
+  .trim()
+  .replace(/\/+$/, '');
+const PUBLIC_SUPABASE_ANON_KEY = String(process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '').trim();
 
 const normalizeText = (value: unknown, maxLength = 200): string => {
   const text = String(value ?? '').trim();
@@ -90,6 +94,12 @@ const getLocalDateKey = (value = new Date()): string => {
 const getDailyDateKey = (): string =>
   getDateKeyFromParts(new Date(), DAILY_ROLLOVER_TIMEZONE) || getLocalDateKey();
 
+const isBrowserLoopbackOrigin = (): boolean => {
+  const maybeLocation = (globalThis as { location?: { hostname?: string } }).location;
+  const hostname = String(maybeLocation?.hostname || '').trim().toLowerCase();
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+};
+
 const normalizeEndpointForComparison = (value: unknown): string => {
   const text = normalizeText(value, 1200);
   if (!text) return '';
@@ -118,6 +128,47 @@ const buildDailyRequestUrl = (endpoint: string, dateKey: string): string => {
   } catch {
     const separator = normalizedEndpoint.includes('?') ? '&' : '?';
     return `${normalizedEndpoint}${separator}date=${encodeURIComponent(normalizedDateKey)}&_=${Date.now()}`;
+  }
+};
+
+const summarizeUnexpectedBody = (rawBody: string): string => {
+  const compact = String(rawBody || '').replace(/\s+/g, ' ').trim();
+  if (!compact) return 'bos cevap';
+  return compact.slice(0, 72);
+};
+
+const readDailyResponsePayload = async (
+  response: Response
+): Promise<{ payload: DailyResponse | null; error: string | null }> => {
+  const rawBody = await response.text();
+  const trimmedBody = String(rawBody || '').trim();
+  if (!trimmedBody) {
+    return {
+      payload: null,
+      error: 'Daily servisi bos cevap dondurdu.',
+    };
+  }
+
+  try {
+    return {
+      payload: JSON.parse(trimmedBody) as DailyResponse,
+      error: null,
+    };
+  } catch {
+    const contentType = normalizeText(response.headers.get('content-type'), 160).toLowerCase();
+    const looksLikeHtml =
+      trimmedBody.startsWith('<!doctype') || trimmedBody.startsWith('<html') || contentType.includes('text/html');
+    const looksLikeJavascript =
+      trimmedBody.startsWith('import ') ||
+      trimmedBody.startsWith('export ') ||
+      contentType.includes('javascript');
+    const responseKind = looksLikeHtml ? 'HTML' : looksLikeJavascript ? 'JavaScript' : 'JSON disi veri';
+    const preview = summarizeUnexpectedBody(trimmedBody);
+
+    return {
+      payload: null,
+      error: `Daily servisi JSON yerine ${responseKind} dondurdu. Onizleme: ${preview}`,
+    };
   }
 };
 
@@ -250,6 +301,28 @@ const readDailyFromSupabase = async (
   }
 
   const targetDate = normalizeText(preferredDateKey, 40) || getDailyDateKey();
+  const fetchPublicRows = async (query: string): Promise<DailyShowcaseRow[] | null> => {
+    if (!PUBLIC_SUPABASE_URL || !PUBLIC_SUPABASE_ANON_KEY) return null;
+    try {
+      const response = await fetchWithTimeout({
+        url: `${PUBLIC_SUPABASE_URL}/rest/v1/daily_showcase?${query}`,
+        timeoutMs: 8000,
+        timeoutMessage: 'Daily public Supabase timeout',
+        init: {
+          headers: {
+            apikey: PUBLIC_SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${PUBLIC_SUPABASE_ANON_KEY}`,
+            Accept: 'application/json',
+          },
+        },
+      });
+      if (!response.ok) return null;
+      const rows = (await response.json().catch(() => [])) as unknown;
+      return Array.isArray(rows) ? (rows as DailyShowcaseRow[]) : null;
+    } catch {
+      return null;
+    }
+  };
   const parseRow = (
     row: DailyShowcaseRow | null | undefined
   ): { date: string | null; source: string | null; movies: DailyMovie[] } | null => {
@@ -266,6 +339,32 @@ const readDailyFromSupabase = async (
       movies,
     };
   };
+
+  const publicByDateRows = await fetchPublicRows(
+    `select=date,movies&date=eq.${encodeURIComponent(targetDate)}&limit=1`
+  );
+  const publicByDate = parseRow(Array.isArray(publicByDateRows) ? publicByDateRows[0] || null : null);
+  if (publicByDate) {
+    return {
+      ok: true,
+      date: publicByDate.date,
+      source: publicByDate.source,
+      movies: publicByDate.movies,
+      warning: null,
+    };
+  }
+
+  const publicLatestRows = await fetchPublicRows('select=date,movies&order=date.desc&limit=1');
+  const publicLatest = parseRow(Array.isArray(publicLatestRows) ? publicLatestRows[0] || null : null);
+  if (publicLatest) {
+    return {
+      ok: true,
+      date: publicLatest.date,
+      source: publicLatest.source,
+      movies: publicLatest.movies,
+      warning: publicLatest.date && publicLatest.date !== targetDate ? 'Supabase latest daily used.' : null,
+    };
+  }
 
   try {
     const { data: byDateData } = await supabase
@@ -360,7 +459,17 @@ const readDailyFromWebApi = async (
       timeoutMs: 8000,
       timeoutMessage: 'Daily web API timeout',
     });
-    const payload = (await response.json()) as DailyResponse;
+    const parsed = await readDailyResponsePayload(response);
+    if (!parsed.payload) {
+      return {
+        ok: false,
+        endpoint: webEndpoint,
+        date: null,
+        source: null,
+        movies: [],
+      };
+    }
+    const payload = parsed.payload;
     if (!response.ok || !payload.ok) {
       return {
         ok: false,
@@ -442,7 +551,17 @@ const readDailyFromWebApiLatest = async (
       timeoutMs: 8000,
       timeoutMessage: 'Daily web API timeout',
     });
-    const payload = (await response.json()) as DailyResponse;
+    const parsed = await readDailyResponsePayload(response);
+    if (!parsed.payload) {
+      return {
+        ok: false,
+        endpoint: webEndpoint,
+        date: null,
+        source: null,
+        movies: [],
+      };
+    }
+    const payload = parsed.payload;
     if (!response.ok || !payload.ok) {
       return {
         ok: false,
@@ -493,13 +612,50 @@ export const fetchDailyMovies = async (): Promise<{
   source: string | null;
   movies: DailyMovie[];
   error: string | null;
-  dataSource: 'live' | 'cache';
+  dataSource: 'live' | 'cache' | 'fallback';
   cacheAgeSeconds: number | null;
   stale: boolean;
   warning: string | null;
 }> => {
   const endpoint = resolveMobileDailyApiUrl();
   const targetDateKey = getDailyDateKey();
+  const shouldBypassWebDailyApi = isBrowserLoopbackOrigin();
+
+  if (shouldBypassWebDailyApi) {
+    const supabaseDaily = await readDailyFromSupabase(targetDateKey);
+    if (supabaseDaily.ok) {
+      return {
+        ok: true,
+        endpoint: 'supabase://daily_showcase',
+        date: supabaseDaily.date,
+        source: supabaseDaily.source,
+        movies: supabaseDaily.movies,
+        error: null,
+        dataSource: 'live',
+        cacheAgeSeconds: null,
+        stale: false,
+        warning: supabaseDaily.warning,
+      };
+    }
+
+    const cached = await readDailyCache();
+    const matchingCached = resolveMatchingCachedDaily(cached, targetDateKey);
+    if (matchingCached) {
+      return {
+        ok: true,
+        endpoint: matchingCached.endpoint,
+        date: matchingCached.date,
+        source: matchingCached.source,
+        movies: matchingCached.movies,
+        error: null,
+        dataSource: 'cache',
+        cacheAgeSeconds: matchingCached.ageSeconds >= 0 ? matchingCached.ageSeconds : null,
+        stale: matchingCached.stale,
+        warning: 'Canli gunluk veri okunamadi; tarih eslesen onbellek gosteriliyor.',
+      };
+    }
+  }
+
   if (!endpoint) {
     const supabaseDaily = await readDailyFromSupabase();
     if (supabaseDaily.ok) {
@@ -565,28 +721,13 @@ export const fetchDailyMovies = async (): Promise<{
         warning: 'Missing EXPO_PUBLIC_DAILY_API_URL (or derivable analytics endpoint).',
       };
     }
-    if (cached) {
-      return {
-        ok: true,
-        endpoint: cached.endpoint,
-        date: cached.date,
-        source: cached.source,
-        movies: cached.movies,
-        error: null,
-        dataSource: 'cache',
-        cacheAgeSeconds: cached.ageSeconds >= 0 ? cached.ageSeconds : null,
-        stale: true,
-        warning: 'Canli kaynak ulasilamadi; son onbellek secimi gosteriliyor.',
-      };
-    }
-
     return {
       ok: false,
       endpoint: '',
-      date: null,
+      date: targetDateKey,
       source: null,
       movies: [],
-      error: 'Missing EXPO_PUBLIC_DAILY_API_URL (or derivable analytics endpoint).',
+      error: 'Gunluk filmler su an yuklenemedi. Tekrar dene.',
       dataSource: 'live',
       cacheAgeSeconds: null,
       stale: true,
@@ -602,7 +743,87 @@ export const fetchDailyMovies = async (): Promise<{
       timeoutMs: 8000,
       timeoutMessage: 'Daily API timeout',
     });
-    const payload = (await response.json()) as DailyResponse;
+    const parsed = await readDailyResponsePayload(response);
+    if (!parsed.payload) {
+      const liveError = parsed.error || 'Daily servisi gecersiz cevap dondurdu.';
+      const supabaseDaily = await readDailyFromSupabase(targetDateKey);
+      if (supabaseDaily.ok) {
+        return {
+          ok: true,
+          endpoint: requestEndpoint || endpoint,
+          date: supabaseDaily.date,
+          source: supabaseDaily.source,
+          movies: supabaseDaily.movies,
+          error: null,
+          dataSource: 'live',
+          cacheAgeSeconds: null,
+          stale: false,
+          warning: liveError,
+        };
+      }
+
+      const webDaily = await readDailyFromWebApi(undefined, endpoint);
+      if (webDaily.ok) {
+        return {
+          ok: true,
+          endpoint: webDaily.endpoint,
+          date: webDaily.date,
+          source: webDaily.source,
+          movies: webDaily.movies,
+          error: null,
+          dataSource: 'live',
+          cacheAgeSeconds: null,
+          stale: false,
+          warning: liveError,
+        };
+      }
+
+      const webLatestDaily = await readDailyFromWebApiLatest(endpoint);
+      if (webLatestDaily.ok) {
+        return {
+          ok: true,
+          endpoint: webLatestDaily.endpoint,
+          date: webLatestDaily.date,
+          source: webLatestDaily.source,
+          movies: webLatestDaily.movies,
+          error: null,
+          dataSource: 'live',
+          cacheAgeSeconds: null,
+          stale: false,
+          warning: liveError,
+        };
+      }
+
+      const cached = await readDailyCache();
+      const matchingCached = resolveMatchingCachedDaily(cached, targetDateKey);
+      if (matchingCached) {
+        return {
+          ok: true,
+          endpoint: requestEndpoint || endpoint,
+          date: matchingCached.date,
+          source: matchingCached.source,
+          movies: matchingCached.movies,
+          error: null,
+          dataSource: 'cache',
+          cacheAgeSeconds: matchingCached.ageSeconds >= 0 ? matchingCached.ageSeconds : null,
+          stale: matchingCached.stale,
+          warning: liveError,
+        };
+      }
+      return {
+        ok: false,
+        endpoint: requestEndpoint || endpoint,
+        date: targetDateKey,
+        source: null,
+        movies: [],
+        error: liveError,
+        dataSource: 'live',
+        cacheAgeSeconds: null,
+        stale: true,
+        warning: null,
+      };
+    }
+    const payload = parsed.payload;
     const rawMovies = Array.isArray(payload.movies) ? payload.movies : [];
     const movies = rawMovies
       .map((movie, index) => normalizeMovie(movie, index))
@@ -679,7 +900,7 @@ export const fetchDailyMovies = async (): Promise<{
       return {
         ok: false,
         endpoint: requestEndpoint || endpoint,
-        date: expectedDateKey || null,
+        date: expectedDateKey || targetDateKey,
         source: normalizeText(payload.source, 40) || null,
         movies: [],
         error: liveError,
@@ -725,25 +946,10 @@ export const fetchDailyMovies = async (): Promise<{
           warning: liveError,
         };
       }
-      if (cached) {
-        return {
-          ok: true,
-          endpoint: cached.endpoint || requestEndpoint || endpoint,
-          date: cached.date,
-          source: cached.source,
-          movies: cached.movies,
-          error: null,
-          dataSource: 'cache',
-          cacheAgeSeconds: cached.ageSeconds >= 0 ? cached.ageSeconds : null,
-          stale: true,
-          warning: `${liveError} | stale-cache`,
-        };
-      }
-
       return {
         ok: false,
         endpoint: requestEndpoint || endpoint,
-        date: expectedDateKey || null,
+        date: expectedDateKey || targetDateKey,
         source: normalizeText(payload.source, 40) || null,
         movies: [],
         error: liveError,
@@ -840,25 +1046,10 @@ export const fetchDailyMovies = async (): Promise<{
         warning: liveError,
       };
     }
-    if (cached) {
-      return {
-        ok: true,
-        endpoint: cached.endpoint || requestEndpoint || endpoint,
-        date: cached.date,
-        source: cached.source,
-        movies: cached.movies,
-        error: null,
-        dataSource: 'cache',
-        cacheAgeSeconds: cached.ageSeconds >= 0 ? cached.ageSeconds : null,
-        stale: true,
-        warning: `${liveError} | stale-cache`,
-      };
-    }
-
     return {
       ok: false,
       endpoint: requestEndpoint || endpoint,
-      date: null,
+      date: targetDateKey,
       source: null,
       movies: [],
       error: liveError,

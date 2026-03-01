@@ -1,5 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import * as Clipboard from 'expo-clipboard';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import {
   Inter_400Regular,
   Inter_500Medium,
@@ -131,15 +132,16 @@ import {
   InviteClaimScreen,
   LeaguePromotionModal,
   MobileSettingsModal,
+  MovieDetailsModal,
   PlatformRulesCard,
   ProfileGenreDistributionCard,
   ProfileIdentityCard,
+  ProfileXpCard,
   ProfileMovieArchiveModal,
   ProfileMarksCard,
   PushInboxCard,
   PushStatusCard,
   PublicProfileMovieArchiveModal,
-  PublicProfileBridgeCard,
   RitualComposerModal,
   SectionLeadCard,
   ShareHubScreen,
@@ -173,6 +175,9 @@ const MOBILE_AUTH_REDIRECT_TO =
 const MOBILE_UI_PACKAGE_LABEL = 'UI Package 6.46';
 const MOBILE_PROFILE_IDENTITY_STORAGE_KEY = 'ac_mobile_profile_identity_v1';
 const MOBILE_PROFILE_LANGUAGE_STORAGE_KEY = 'ac_mobile_profile_language_v1';
+const MOBILE_AUTH_REMEMBER_ME_STORAGE_KEY = 'ac_mobile_auth_remember_me_v1';
+const MOBILE_AUTH_REMEMBER_ME_ENABLED = '1';
+const MOBILE_AUTH_REMEMBER_ME_DISABLED = '0';
 
 const MOBILE_WEB_BASE_URL = resolveMobileWebBaseUrl();
 const MOBILE_ACCOUNT_DELETION_URL = MOBILE_WEB_BASE_URL
@@ -194,6 +199,43 @@ const normalizeExternalUrl = (value: string): string => {
   if (!normalized) return '';
   if (/^https?:\/\//i.test(normalized)) return normalized;
   return `https://${normalized}`;
+};
+
+const readStoredAuthRememberMe = async (): Promise<boolean> => {
+  try {
+    const raw = await AsyncStorage.getItem(MOBILE_AUTH_REMEMBER_ME_STORAGE_KEY);
+    return raw !== MOBILE_AUTH_REMEMBER_ME_DISABLED;
+  } catch {
+    return true;
+  }
+};
+
+const writeStoredAuthRememberMe = async (rememberMe: boolean): Promise<void> => {
+  try {
+    await AsyncStorage.setItem(
+      MOBILE_AUTH_REMEMBER_ME_STORAGE_KEY,
+      rememberMe ? MOBILE_AUTH_REMEMBER_ME_ENABLED : MOBILE_AUTH_REMEMBER_ME_DISABLED
+    );
+  } catch {
+    // best-effort persistence only
+  }
+};
+
+const normalizeAuthErrorMessage = (value: unknown, fallback: string): string => {
+  if (value instanceof Error) {
+    const normalized = value.message.trim();
+    return normalized || fallback;
+  }
+  if (value && typeof value === 'object') {
+    const normalized = String((value as { message?: unknown }).message || '').trim();
+    if (normalized) return normalized;
+  }
+  return fallback;
+};
+
+const isAppleAuthCanceled = (value: unknown): boolean => {
+  const code = String((value as { code?: unknown } | null)?.code || '').trim();
+  return code === 'ERR_REQUEST_CANCELED';
 };
 
 const normalizeDateLabel = (value: string): string => {
@@ -406,7 +448,7 @@ const inviteMessageByCode: Record<string, string> = {
 
 export default function App() {
   type MainTabKey = 'daily' | 'explore' | 'inbox' | 'marks' | 'profile';
-  type AuthFlowMode = 'login' | 'forgot' | 'recovery';
+  type AuthFlowMode = 'login' | 'register' | 'forgot' | 'recovery';
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -416,10 +458,15 @@ export default function App() {
   const [dailyState, setDailyState] = useState<DailyState>({ status: 'idle' });
   const [inviteClaimState, setInviteClaimState] = useState<InviteClaimState>({ status: 'idle' });
   const [authEmail, setAuthEmail] = useState('');
+  const [authFullName, setAuthFullName] = useState('');
+  const [authUsername, setAuthUsername] = useState('');
+  const [authBirthDate, setAuthBirthDate] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authConfirmPassword, setAuthConfirmPassword] = useState('');
+  const [authRememberMe, setAuthRememberMe] = useState(true);
   const [authFlowMode, setAuthFlowMode] = useState<AuthFlowMode>('login');
   const [authModalVisible, setAuthModalVisible] = useState(false);
+  const [appleAuthAvailable, setAppleAuthAvailable] = useState(false);
   const [authState, setAuthState] = useState<AuthState>({
     status: 'idle',
     message: 'Session kontrol ediliyor...',
@@ -430,6 +477,7 @@ export default function App() {
     message: '',
   });
   const [selectedDailyMovieId, setSelectedDailyMovieId] = useState<number | null>(null);
+  const [dailyMovieDetailsVisible, setDailyMovieDetailsVisible] = useState(false);
   const [ritualComposerVisible, setRitualComposerVisible] = useState(false);
   const [ritualQueueState, setRitualQueueState] = useState<RitualQueueState>({
     status: 'idle',
@@ -532,6 +580,19 @@ export default function App() {
     isAppending: false,
     items: [],
   });
+  const [dailyCommentFeedState, setDailyCommentFeedState] = useState<CommentFeedState>({
+    status: 'idle',
+    message: 'Gunluk yorum akisi hazir degil.',
+    source: 'fallback',
+    scope: 'today',
+    sort: 'latest',
+    query: '',
+    page: 1,
+    pageSize: 24,
+    hasMore: false,
+    isAppending: false,
+    items: [],
+  });
   const [arenaState, setArenaState] = useState<{
     status: 'loading' | 'ready' | 'error';
     source: 'live' | 'fallback';
@@ -543,7 +604,6 @@ export default function App() {
     message: 'Arena leaderboard yukleniyor...',
     entries: [],
   });
-  const [publicProfileInput, setPublicProfileInput] = useState('');
   const [watchedMoviesState, setWatchedMoviesState] = useState<{
     status: 'idle' | 'loading' | 'ready' | 'error';
     message: string;
@@ -614,6 +674,7 @@ export default function App() {
   } = useMobileRouteIntent();
   const { pageEntrance, pageEnterTranslateY } = usePageEntranceAnimation();
   const hasCloudIdentityHydratedRef = useRef(false);
+  const hasHandledInitialAuthPromptRef = useRef(false);
   const lastObservedLeagueIndexRef = useRef<number | null>(null);
   const lastHandledAuthCallbackUrlRef = useRef<string | null>(null);
   const lastHandledPublicProfileIntentRef = useRef<string | null>(null);
@@ -625,30 +686,11 @@ export default function App() {
     dailyState.status === 'success'
       ? dailyState.movies.find((movie) => movie.id === selectedDailyMovieId) || primaryDailyMovie
       : null;
-  const dailyHomeCommentFeedState = useMemo<CommentFeedState>(() => {
-    const todayKey = getLocalDateKey();
-    const todayItems = commentFeedState.items.filter((item) => item.dayKey === todayKey);
-    const message =
-      commentFeedState.status === 'ready'
-        ? todayItems.length > 0
-          ? 'Bugunun yorumlari listelendi.'
-          : 'Bugun henuz yorum yok.'
-        : commentFeedState.message;
-    return {
-      ...commentFeedState,
-      scope: 'today',
-      query: '',
-      page: 1,
-      hasMore: false,
-      isAppending: false,
-      message,
-      items: todayItems,
-    };
-  }, [commentFeedState]);
 
   const isSignedIn = authState.status === 'signed_in';
 
-  const refreshAuthState = useCallback(async () => {
+  const refreshAuthState = useCallback(
+    async ({ applyRememberMePolicy = false }: { applyRememberMePolicy?: boolean } = {}) => {
     if (!isSupabaseConfigured || !supabase) {
       setAuthState({
         status: 'error',
@@ -661,6 +703,18 @@ export default function App() {
       const sessionResult = await readSupabaseSessionSafe();
       const userEmail = String(sessionResult.session?.user?.email || '').trim();
       if (sessionResult.session?.access_token && userEmail) {
+        if (applyRememberMePolicy) {
+          const rememberMe = await readStoredAuthRememberMe();
+          if (!rememberMe) {
+            await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined);
+            setAuthState({
+              status: 'signed_out',
+              message: 'Beni hatirla kapali oldugu icin onceki oturum temizlendi.',
+            });
+            return;
+          }
+        }
+
         setAuthState({
           status: 'signed_in',
           message: 'Mobil oturum hazir.',
@@ -689,6 +743,30 @@ export default function App() {
         message: error instanceof Error ? error.message : 'Session okunamadi.',
       });
     }
+    },
+    []
+  );
+
+  const handleSetAuthRememberMe = useCallback((nextValue: boolean) => {
+    setAuthRememberMe(nextValue);
+    void writeStoredAuthRememberMe(nextValue);
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'ios') return;
+
+    let cancelled = false;
+    AppleAuthentication.isAvailableAsync()
+      .then((available) => {
+        if (!cancelled) setAppleAuthAvailable(available);
+      })
+      .catch(() => {
+        if (!cancelled) setAppleAuthAvailable(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const refreshRitualQueue = useCallback(async () => {
@@ -1296,6 +1374,48 @@ export default function App() {
     []
   );
 
+  const refreshDailyCommentFeed = useCallback(async () => {
+    setDailyCommentFeedState((prev) => ({
+      ...prev,
+      status: 'loading',
+      message: 'Gunluk yorum akisi yukleniyor...',
+      scope: 'today',
+      sort: 'latest',
+      query: '',
+      page: 1,
+      hasMore: false,
+      isAppending: false,
+    }));
+
+    const result = await fetchMobileCommentFeed({
+      scope: 'today',
+      sort: 'latest',
+      query: '',
+      page: 1,
+      pageSize: 24,
+    });
+
+    setDailyCommentFeedState({
+      status: result.ok ? 'ready' : 'error',
+      message: result.message,
+      source: result.source,
+      scope: 'today',
+      sort: 'latest',
+      query: '',
+      page: result.page,
+      pageSize: result.pageSize,
+      hasMore: result.hasMore,
+      isAppending: false,
+      items: result.items,
+    });
+
+    void trackMobileEvent('page_view', {
+      reason: result.ok ? 'mobile_daily_comment_feed_loaded' : 'mobile_daily_comment_feed_failed',
+      source: result.source,
+      items: result.items.length,
+    });
+  }, []);
+
   const describePushNotification = useCallback((snapshot: PushNotificationSnapshot): string => {
     const title = snapshot.title || '(no-title)';
     const deepLinkMark = snapshot.deepLink ? 'with-link' : 'no-link';
@@ -1754,6 +1874,9 @@ export default function App() {
         email: data.user?.email || email,
       });
       setAuthModalVisible(false);
+      setAuthFullName('');
+      setAuthUsername('');
+      setAuthBirthDate('');
       setAuthPassword('');
       setAuthConfirmPassword('');
       setAuthFlowMode('login');
@@ -1772,6 +1895,142 @@ export default function App() {
       });
     }
   }, [authEmail, authPassword]);
+
+  const handleRegister = useCallback(async () => {
+    const email = authEmail.trim().toLowerCase();
+    const fullName = authFullName.trim();
+    const username = authUsername.trim().replace(/\s+/g, '').toLowerCase();
+    const birthDate = authBirthDate.trim();
+    const password = authPassword;
+    const confirmPassword = authConfirmPassword;
+
+    if (!isSupabaseConfigured || !supabase) {
+      setAuthState({
+        status: 'error',
+        message: 'Supabase ayarlari eksik.',
+      });
+      return;
+    }
+
+    if (!fullName || !username || !birthDate || !email || !password || !confirmPassword) {
+      setAuthState({
+        status: 'error',
+        message: 'Ad soyad, kullanici adi, dogum tarihi, email ve sifre alanlari zorunlu.',
+      });
+      return;
+    }
+
+    if (!/^[a-z0-9_]{3,20}$/.test(username)) {
+      setAuthState({
+        status: 'error',
+        message: 'Kullanici adi 3-20 karakter olmali; harf, rakam ve alt cizgi kullan.',
+      });
+      return;
+    }
+
+    if (password.length < 6) {
+      setAuthState({
+        status: 'error',
+        message: 'Sifre en az 6 karakter olmali.',
+      });
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setAuthState({
+        status: 'error',
+        message: 'Sifre alanlari ayni olmali.',
+      });
+      return;
+    }
+
+    setAuthState({
+      status: 'loading',
+      message: 'Hesap olusturuluyor...',
+    });
+
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: fullName,
+            name: fullName,
+            username,
+            birth_date: birthDate,
+          },
+        },
+      });
+
+      if (error) {
+        const message = error.message || 'Kayit basarisiz.';
+        setAuthState({
+          status: 'error',
+          message,
+        });
+        void trackMobileEvent('auth_failure', {
+          method: 'password_register',
+          reason: message,
+        });
+        return;
+      }
+
+      const resolvedEmail = String(data.user?.email || email).trim().toLowerCase() || email;
+      const hasLiveSession = Boolean(data.session?.access_token && resolvedEmail);
+
+      setSettingsIdentityDraft((prev) => ({
+        ...prev,
+        fullName,
+        username,
+        birthDate,
+      }));
+      setAuthFullName('');
+      setAuthUsername('');
+      setAuthBirthDate('');
+      setAuthPassword('');
+      setAuthConfirmPassword('');
+      setAuthFlowMode('login');
+
+      setAuthState(
+        hasLiveSession
+          ? {
+              status: 'signed_in',
+              message: authRememberMe
+                ? 'Kayit tamamlandi. Oturum acildi.'
+                : 'Kayit tamamlandi. Oturum bu acilis icin aktif; sonraki acilista tekrar giris istenebilir.',
+              email: resolvedEmail,
+            }
+          : {
+              status: 'signed_out',
+              message: 'Kayit tamamlandi. E-posta onayi sonrasi giris yap.',
+            }
+      );
+
+      void trackMobileEvent(hasLiveSession ? 'signup_success' : 'signup_pending_confirmation', {
+        method: 'password',
+        rememberMe: authRememberMe ? 'enabled' : 'disabled',
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Kayit basarisiz.';
+      setAuthState({
+        status: 'error',
+        message,
+      });
+      void trackMobileEvent('auth_failure', {
+        method: 'password_register',
+        reason: message,
+      });
+    }
+  }, [
+    authBirthDate,
+    authConfirmPassword,
+    authEmail,
+    authFullName,
+    authPassword,
+    authRememberMe,
+    authUsername,
+  ]);
 
   const handleRequestPasswordReset = useCallback(async () => {
     const email = authEmail.trim().toLowerCase();
@@ -1927,6 +2186,114 @@ export default function App() {
     }
   }, []);
 
+  const handleAppleSignIn = useCallback(async () => {
+    if (Platform.OS !== 'ios') {
+      setAuthState({
+        status: 'error',
+        message: 'Apple girisi yalnizca iOS cihazlarda acilabilir.',
+      });
+      return;
+    }
+
+    if (!appleAuthAvailable) {
+      setAuthState({
+        status: 'error',
+        message: 'Bu cihazda Apple girisi hazir degil.',
+      });
+      return;
+    }
+
+    if (!isSupabaseConfigured || !supabase) {
+      setAuthState({
+        status: 'error',
+        message: 'Apple girisi icin Supabase ayarlari eksik.',
+      });
+      return;
+    }
+
+    setAuthState({
+      status: 'loading',
+      message: 'Apple girisi baslatiliyor...',
+    });
+    void trackMobileEvent('oauth_start', {
+      provider: 'apple',
+      surface: 'mobile_native',
+    });
+
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+
+      const identityToken = String(credential.identityToken || '').trim();
+      if (!identityToken) {
+        setAuthState({
+          status: 'error',
+          message: 'Apple kimlik tokeni alinamadi.',
+        });
+        void trackMobileEvent('oauth_failure', {
+          provider: 'apple',
+          reason: 'missing_identity_token',
+        });
+        return;
+      }
+
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: 'apple',
+        token: identityToken,
+      });
+
+      if (error || !data.session?.access_token) {
+        const message = error?.message || 'Apple girisi tamamlanamadi.';
+        setAuthState({
+          status: 'error',
+          message,
+        });
+        void trackMobileEvent('oauth_failure', {
+          provider: 'apple',
+          reason: message,
+        });
+        return;
+      }
+
+      const resolvedEmail =
+        String(data.user?.email || credential.email || '').trim() || 'Apple hesabi';
+      setAuthState({
+        status: 'signed_in',
+        message: 'Apple girisi basarili.',
+        email: resolvedEmail,
+      });
+      setAuthModalVisible(false);
+      setAuthPassword('');
+      setAuthConfirmPassword('');
+      setAuthFlowMode('login');
+      void trackMobileEvent('login_success', {
+        method: 'apple',
+      });
+    } catch (error) {
+      if (isAppleAuthCanceled(error)) {
+        setAuthState({
+          status: 'signed_out',
+          message: 'Apple girisi iptal edildi.',
+        });
+        return;
+      }
+
+      const message = normalizeAuthErrorMessage(error, 'Apple girisi baslatilamadi.');
+      setAuthState({
+        status: 'error',
+        message,
+      });
+      void trackMobileEvent('oauth_failure', {
+        provider: 'apple',
+        reason: message,
+      });
+    }
+  }, [appleAuthAvailable]);
+
   const handleCompletePasswordReset = useCallback(async () => {
     const password = authPassword.trim();
     const confirmPassword = authConfirmPassword.trim();
@@ -2027,9 +2394,13 @@ export default function App() {
         status: 'signed_out',
         message: 'Cikis yapildi.',
       });
+      setAuthFullName('');
+      setAuthUsername('');
+      setAuthBirthDate('');
       setAuthPassword('');
       setAuthConfirmPassword('');
       setAuthFlowMode('login');
+      setAuthModalVisible(true);
     } catch (error) {
       setAuthState({
         status: 'error',
@@ -2087,6 +2458,17 @@ export default function App() {
       setSettingsLanguage(parseStoredLanguage(rawLanguage));
     })();
 
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void readStoredAuthRememberMe().then((rememberMe) => {
+      if (!active) return;
+      setAuthRememberMe(rememberMe);
+    });
     return () => {
       active = false;
     };
@@ -2173,7 +2555,11 @@ export default function App() {
   ]);
 
   useEffect(() => {
-    void refreshAuthState();
+    void refreshDailyCommentFeed();
+  }, [authState.status, refreshDailyCommentFeed]);
+
+  useEffect(() => {
+    void refreshAuthState({ applyRememberMePolicy: true });
     void refreshRitualQueue();
     if (!supabase) return;
 
@@ -2263,6 +2649,19 @@ export default function App() {
       setAuthModalVisible(true);
     }
   }, [authFlowMode]);
+
+  useEffect(() => {
+    if (authState.status === 'signed_in') {
+      hasHandledInitialAuthPromptRef.current = true;
+      return;
+    }
+    if (authState.status !== 'signed_out') return;
+    if (hasHandledInitialAuthPromptRef.current) return;
+
+    hasHandledInitialAuthPromptRef.current = true;
+    setAuthFlowMode('login');
+    setAuthModalVisible(true);
+  }, [authState.status]);
 
   useEffect(() => {
     if (authState.status === 'signed_in' && authFlowMode !== 'recovery') {
@@ -2558,6 +2957,7 @@ export default function App() {
       setRitualComposerVisible(false);
       void refreshProfileStats();
       void refreshWatchedMovies();
+      void refreshDailyCommentFeed();
       return;
     }
 
@@ -2571,7 +2971,14 @@ export default function App() {
       textLength: text.length,
     });
     setRitualComposerVisible(false);
-  }, [profileState, selectedDailyMovie, refreshProfileStats, refreshWatchedMovies, ritualDraftText]);
+  }, [
+    profileState,
+    refreshDailyCommentFeed,
+    refreshProfileStats,
+    refreshWatchedMovies,
+    ritualDraftText,
+    selectedDailyMovie,
+  ]);
 
   const handleFlushRitualQueue = useCallback(async () => {
     setRitualQueueState((prev) => ({
@@ -2599,17 +3006,17 @@ export default function App() {
     if (result.synced > 0) {
       void refreshProfileStats();
       void refreshWatchedMovies();
+      void refreshDailyCommentFeed();
     }
 
     await refreshRitualQueue();
-  }, [refreshProfileStats, refreshRitualQueue, refreshWatchedMovies]);
+  }, [refreshDailyCommentFeed, refreshProfileStats, refreshRitualQueue, refreshWatchedMovies]);
 
   useEffect(() => {
-    if (screenPlan.screen !== 'daily_home') return;
     if (dailyState.status === 'idle') {
       void loadDailyMovies();
     }
-  }, [screenPlan.screen, dailyState.status]);
+  }, [dailyState.status]);
 
   useEffect(() => {
     if (activeIntent.target !== 'public_profile') {
@@ -2634,6 +3041,7 @@ export default function App() {
   useEffect(() => {
     if (dailyState.status !== 'success') {
       setSelectedDailyMovieId(null);
+      setDailyMovieDetailsVisible(false);
       setRitualComposerVisible(false);
       return;
     }
@@ -2725,7 +3133,6 @@ export default function App() {
   const streakSummary = profileState.status === 'success' ? String(profileState.streak) : '--';
   const ritualsCountSummary =
     profileState.status === 'success' ? String(profileState.ritualsCount) : '--';
-  const canOpenManualProfile = Boolean(String(publicProfileInput || '').trim());
   const commentFeedSummary =
     commentFeedState.status === 'ready'
       ? `${commentFeedState.items.length} yorum`
@@ -2752,27 +3159,11 @@ export default function App() {
   const profileShellTitle = isSignedIn ? profileDisplayName || 'Observer' : 'Profil';
   const profileShellBody = isSignedIn
     ? profileBio || 'Profilini ve arsivini buradan yonet.'
-    : 'Arsiv, mark ve davet akislari icin giris yap.';
-  const profileAccessTitle =
-    screenPlan.screen === 'invite_claim'
-      ? 'Davet kodu icin giris yap'
-      : screenPlan.screen === 'share_hub'
-        ? 'Paylasim merkezi icin giris yap'
-        : screenPlan.screen === 'public_profile'
-          ? 'Profilin icin giris yap'
-        : 'Uye girisi gerekli';
-  const profileAccessBody =
-    screenPlan.screen === 'invite_claim'
-      ? 'Kodu uygulamak ve odulu almak icin hesabini ac.'
-      : screenPlan.screen === 'share_hub'
-        ? 'Paylasim, odul ve link akislarini acmak icin hesabina gir.'
-        : screenPlan.screen === 'public_profile'
-          ? 'Kendi profil detaylarini yonetmek icin hesabina gir.'
-        : 'Profil detaylari ve sosyal ozellikler girisle acilir.';
+    : 'Profil sekmesi okunur modda acik. Bulut verileri yalnizca oturumla gorunur.';
   const fallbackLeague = resolveMobileLeagueInfoFromXp(0);
   const profileStats = profileState.status === 'success'
     ? {
-        league: profileState.leagueKey,
+        league: profileState.leagueName,
         streak: profileState.streak,
         rituals: profileState.ritualsCount,
         marks: profileState.marks.length,
@@ -2781,7 +3172,7 @@ export default function App() {
         days: profileState.daysPresent,
       }
     : {
-        league: fallbackLeague.leagueKey,
+        league: fallbackLeague.leagueInfo.name,
         streak: 0,
         rituals: 0,
         marks: 0,
@@ -2992,10 +3383,36 @@ export default function App() {
           : entry
       ),
     }));
+    setDailyCommentFeedState((prev) => ({
+      ...prev,
+      message: 'Echo senkronize ediliyor...',
+      items: prev.items.map((entry) =>
+        entry.id === item.id
+          ? {
+              ...entry,
+              echoCount: entry.echoCount + 1,
+              isEchoedByMe: true,
+            }
+          : entry
+      ),
+    }));
 
     const result = await echoMobileCommentRitual(item.id);
     if (!result.ok) {
       setCommentFeedState((prev) => ({
+        ...prev,
+        message: result.message,
+        items: prev.items.map((entry) =>
+          entry.id === item.id
+            ? {
+                ...entry,
+                echoCount: Math.max(0, entry.echoCount - 1),
+                isEchoedByMe: false,
+              }
+            : entry
+        ),
+      }));
+      setDailyCommentFeedState((prev) => ({
         ...prev,
         message: result.message,
         items: prev.items.map((entry) =>
@@ -3016,6 +3433,10 @@ export default function App() {
     }
 
     setCommentFeedState((prev) => ({
+      ...prev,
+      message: result.message,
+    }));
+    setDailyCommentFeedState((prev) => ({
       ...prev,
       message: result.message,
     }));
@@ -3060,6 +3481,18 @@ export default function App() {
               : entry
           ),
         }));
+        setDailyCommentFeedState((prev) => ({
+          ...prev,
+          message: result.message,
+          items: prev.items.map((entry) =>
+            entry.id === item.id
+              ? {
+                  ...entry,
+                  replyCount: entry.replyCount + 1,
+                }
+              : entry
+          ),
+        }));
         void trackMobileEvent('page_view', {
           reason: 'mobile_comment_reply_submitted',
           ritualId: item.id,
@@ -3068,6 +3501,10 @@ export default function App() {
       }
 
       setCommentFeedState((prev) => ({
+        ...prev,
+        message: result.message,
+      }));
+      setDailyCommentFeedState((prev) => ({
         ...prev,
         message: result.message,
       }));
@@ -3253,17 +3690,6 @@ export default function App() {
     [openPublicProfileInApp]
   );
 
-  const handleOpenManualPublicProfile = useCallback(async () => {
-    const normalizedUsername = String(publicProfileInput || '').trim();
-    if (!normalizedUsername) return;
-
-    await openPublicProfileInApp({
-      username: normalizedUsername,
-      displayNameHint: normalizedUsername,
-      origin: 'manual',
-    });
-  }, [openPublicProfileInApp, publicProfileInput]);
-
   const handleTogglePublicProfileFollow = useCallback(async () => {
     const targetUserId =
       String(publicProfileTarget?.userId || '').trim() ||
@@ -3396,16 +3822,6 @@ export default function App() {
       // ignore link open failures in account deletion action
     }
   }, []);
-
-  const handleOpenDailyFromExplore = useCallback(() => {
-    setManualIntent({ target: 'daily' });
-    if (tabNavigationRef.isReady()) {
-      tabNavigationRef.navigate(MAIN_TAB_BY_KEY.daily);
-    }
-    void trackMobileEvent('page_view', {
-      reason: 'mobile_explore_jump_to_daily',
-    });
-  }, [setManualIntent]);
 
   const handleRefreshExploreSurface = useCallback(() => {
     void refreshArenaLeaderboard();
@@ -4116,14 +4532,14 @@ export default function App() {
                       selectedMovieId={selectedDailyMovieId}
                       onSelectMovie={(movieId) => {
                         setSelectedDailyMovieId(movieId);
-                        setRitualComposerVisible(true);
+                        setDailyMovieDetailsVisible(true);
                       }}
                       onRetry={() => {
                         void loadDailyMovies();
                       }}
                     />
                     <CommentFeedCard
-                      state={dailyHomeCommentFeedState}
+                      state={dailyCommentFeedState}
                       showFilters={false}
                       showOpsMeta={isDevSurfaceEnabled}
                       onScopeChange={() => undefined}
@@ -4134,42 +4550,10 @@ export default function App() {
                       onSubmitReply={handleSubmitCommentReply}
                       onOpenAuthorProfile={handleOpenCommentAuthorProfile}
                       onRefresh={() => {
-                        void refreshCommentFeed('today', '', 'latest');
+                        void refreshDailyCommentFeed();
                       }}
                     />
 
-                    {isDevSurfaceEnabled ? (
-                      <>
-                        <View style={styles.actionsRow}>
-                          <UiButton
-                            label="Daily"
-                            tone={screenPlan.screen === 'daily_home' ? 'brand' : 'neutral'}
-                            stretch
-                            onPress={() => setManualIntent({ target: 'daily' })}
-                          />
-                          <UiButton
-                            label="Invite"
-                            tone={screenPlan.screen === 'invite_claim' ? 'teal' : 'neutral'}
-                            stretch
-                            onPress={() => setManualIntent({ target: 'invite', invite: 'ABC12345' })}
-                          />
-                          <UiButton
-                            label="Share"
-                            tone={screenPlan.screen === 'share_hub' ? 'teal' : 'neutral'}
-                            stretch
-                            onPress={() =>
-                              setManualIntent({
-                                target: 'share',
-                                invite: 'ABC12345',
-                                platform: 'x',
-                                goal: 'streak',
-                              })
-                            }
-                          />
-                        </View>
-                        <Text style={styles.actionsHint}>Aktif route: {activeRouteLabel}</Text>
-                      </>
-                    ) : null}
                   </ScrollView>
                 )}
               </Tab.Screen>
@@ -4214,30 +4598,11 @@ export default function App() {
                       ]}
                       actions={[
                         {
-                          label: 'Gunluge Don',
-                          tone: 'brand',
-                          onPress: handleOpenDailyFromExplore,
-                        },
-                        {
                           label: 'Arena Yenile',
                           tone: 'neutral',
                           onPress: handleRefreshExploreSurface,
                         },
                       ]}
-                    />
-                    <View style={styles.sectionAnchor}>
-                      <View style={styles.sectionHeaderRow}>
-                        <Text style={styles.sectionHeader}>Public Profil</Text>
-                        <Text style={styles.sectionHeaderMeta}>Kullanici ara</Text>
-                      </View>
-                    </View>
-                    <PublicProfileBridgeCard
-                      profileInput={publicProfileInput}
-                      onProfileInputChange={setPublicProfileInput}
-                      onOpenProfile={() => {
-                        void handleOpenManualPublicProfile();
-                      }}
-                      canOpenProfile={canOpenManualProfile}
                     />
                     <View style={styles.sectionAnchor}>
                       <View style={styles.sectionHeaderRow}>
@@ -4260,7 +4625,6 @@ export default function App() {
                     <ArenaChallengeCard
                       streakLabel={streakSummary}
                       ritualsLabel={ritualsCountSummary}
-                      onOpenDaily={handleOpenDailyFromExplore}
                     />
                     <ArenaLeaderboardCard
                       state={arenaState}
@@ -4309,22 +4673,6 @@ export default function App() {
                     keyboardDismissMode="on-drag"
                     showsVerticalScrollIndicator={false}
                   >
-                    {isDevSurfaceEnabled
-                      ? renderSurfaceIntro({
-                          title: 'Bildirim Kutusu',
-                          body: 'Yeni bildirimleri izle, filtrele ve tek tikla ilgili akisa gec.',
-                          badges: [
-                            { label: `${unreadDeepLinkCount} yeni link` },
-                            { label: `${pushInboxState.items.length} toplam`, muted: true },
-                          ],
-                        })
-                      : null}
-                    <View style={styles.sectionAnchor}>
-                      <View style={styles.sectionHeaderRow}>
-                        <Text style={styles.sectionHeader}>Kutu</Text>
-                        <Text style={styles.sectionHeaderMeta}>{unreadDeepLinkCount} yeni link</Text>
-                      </View>
-                    </View>
                     <PushInboxCard
                       state={pushInboxState}
                       showOpsMeta={isDevSurfaceEnabled}
@@ -4589,6 +4937,19 @@ export default function App() {
                     ) : null}
                     {!publicProfileFullState.visible ? (
                       <>
+                    {isSignedIn ? (
+                      <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+                        <Pressable
+                          style={styles.profileSettingsButton}
+                          onPress={() => setSettingsVisible(true)}
+                          hitSlop={8}
+                          accessibilityRole="button"
+                          accessibilityLabel="Ayarlar"
+                        >
+                          <Ionicons name="settings-sharp" size={18} color="#E5E4E2" />
+                        </Pressable>
+                      </View>
+                    ) : null}
                     <SectionLeadCard
                       accent="sage"
                       eyebrow="Profil Merkezi"
@@ -4606,32 +4967,21 @@ export default function App() {
                         { label: 'Takipci', value: String(profileStats.followers) },
                       ]}
                       actions={[
-                        {
-                          label: isSignedIn ? 'Ayarlar' : 'Giris Yap',
-                          tone: 'brand',
-                          onPress: () => {
-                            if (isSignedIn) {
-                              setSettingsVisible(true);
-                              return;
-                            }
-                            setAuthModalVisible(true);
-                          },
-                        },
-                        {
-                          label: isSignedIn ? (profileLink ? 'Linki Ac' : 'Share Hub') : 'Ayarlar',
-                          tone: isSignedIn ? 'teal' : 'neutral',
-                          onPress: () => {
-                            if (!isSignedIn) {
-                              setSettingsVisible(true);
-                              return;
-                            }
-                            if (profileLink) {
-                              void handleOpenProfileLink();
-                              return;
-                            }
-                            handleOpenShareHubFromProfile();
-                          },
-                        },
+                        ...(isSignedIn
+                          ? [
+                              {
+                                label: profileLink ? 'Linki Ac' : 'Paylasim Alani',
+                                tone: 'teal' as const,
+                                onPress: () => {
+                                  if (profileLink) {
+                                    void handleOpenProfileLink();
+                                    return;
+                                  }
+                                  handleOpenShareHubFromProfile();
+                                },
+                              },
+                            ]
+                          : []),
                         {
                           label: 'Yenile',
                           tone: 'neutral',
@@ -4639,21 +4989,15 @@ export default function App() {
                         },
                       ]}
                     />
-                    {!isSignedIn ? (
-                      <StatePanel
-                        tone="clay"
-                        variant="empty"
-                        eyebrow="Uye Girisi"
-                        title={profileAccessTitle}
-                        body={profileAccessBody}
-                        meta="Profil sekmesinde gereksiz oturum bloklari yerine giris ekrani kullaniliyor."
-                        actionLabel="Giris Ekranini Ac"
-                        onAction={() => setAuthModalVisible(true)}
-                      />
-                    ) : (
+                    {isSignedIn ? (
                       <>
+                        <ProfileXpCard
+                          state={profileState}
+                          onRefresh={handleRefreshProfileSurface}
+                        />
+
                         <ProfileIdentityCard
-                          displayName={profileDisplayName || 'Observer'}
+                          displayName={profileDisplayName || 'Izleyici'}
                           username={profileUsername}
                           bio={profileBio}
                           birthDateLabel={profileBirthDateLabel}
@@ -4713,11 +5057,10 @@ export default function App() {
                             shareStatusTone={shareHubState.status}
                             onSetGoal={setSelectedShareGoal}
                             onShare={handleShareHubShare}
-                            onOpenDaily={() => setManualIntent({ target: 'daily' })}
                           />
                         ) : null}
                       </>
-                    )}
+                    ) : null}
 
                     {isDevSurfaceEnabled ? (
                       <>
@@ -4784,6 +5127,18 @@ export default function App() {
                         ) : null}
                       </>
                     ) : null}
+                    {isSignedIn ? (
+                      <View style={[styles.singleActionRow, { marginTop: 12 }]}>
+                        <UiButton
+                          label="Cikis Yap"
+                          tone="danger"
+                          stretch
+                          onPress={() => {
+                            void handleSignOut();
+                          }}
+                        />
+                      </View>
+                    ) : null}
                       </>
                     ) : null}
                   </ScrollView>
@@ -4800,19 +5155,50 @@ export default function App() {
             }}
             authState={authState}
             email={authEmail}
+            fullName={authFullName}
+            username={authUsername}
+            birthDate={authBirthDate}
             password={authPassword}
             confirmPassword={authConfirmPassword}
             mode={authFlowMode}
             onEmailChange={setAuthEmail}
+            onFullNameChange={setAuthFullName}
+            onUsernameChange={setAuthUsername}
+            onBirthDateChange={setAuthBirthDate}
             onPasswordChange={setAuthPassword}
             onConfirmPasswordChange={setAuthConfirmPassword}
             onModeChange={setAuthFlowMode}
             onSignIn={handleSignIn}
+            onRegister={handleRegister}
+            rememberMe={authRememberMe}
+            onRememberMeChange={handleSetAuthRememberMe}
+            showAppleSignIn={Platform.OS === 'ios' && appleAuthAvailable}
+            onAppleSignIn={handleAppleSignIn}
             onGoogleSignIn={handleGoogleSignIn}
             onRequestPasswordReset={handleRequestPasswordReset}
             onCompletePasswordReset={handleCompletePasswordReset}
-            onSignOut={() => {
-              void handleSignOut();
+          />
+
+          <MovieDetailsModal
+            movie={
+              dailyMovieDetailsVisible && selectedDailyMovie
+                ? {
+                    title: selectedDailyMovie.title,
+                    overview: selectedDailyMovie.overview,
+                    voteAverage: selectedDailyMovie.voteAverage,
+                    genre: selectedDailyMovie.genre,
+                    year: selectedDailyMovie.year,
+                    director: selectedDailyMovie.director,
+                    cast: selectedDailyMovie.cast,
+                    posterPath: selectedDailyMovie.posterPath,
+                    originalLanguage: selectedDailyMovie.originalLanguage,
+                  }
+                : null
+            }
+            onClose={() => setDailyMovieDetailsVisible(false)}
+            onOpenCommentComposer={() => {
+              setDailyMovieDetailsVisible(false);
+              setRitualComposerVisible(true);
             }}
           />
 
@@ -4912,9 +5298,6 @@ export default function App() {
             isSignedIn={isSignedIn}
             onOpenAccountDeletion={() => {
               void handleOpenAccountDeletion();
-            }}
-            onSignOut={() => {
-              void handleSignOut();
             }}
           />
         </Animated.View>

@@ -119,9 +119,6 @@ export const deriveOriginFromEndpoint = (value: unknown, marker: string): string
 const readEnv = (env: MobileEnvRecord, key: string): string => normalizeText(env[key], 1000);
 
 export const resolveMobileWebBaseUrl = (env: MobileEnvRecord = process.env): string => {
-  const browserDevBase = resolveBrowserDevApiBase(env);
-  if (browserDevBase) return browserDevBase;
-
   const explicitWebBaseAlias = adaptBaseUrlForBrowser(readEnv(env, 'EXPO_PUBLIC_WEB_BASE_URL'));
   if (explicitWebBaseAlias) return explicitWebBaseAlias;
 
@@ -136,15 +133,15 @@ export const resolveMobileWebBaseUrl = (env: MobileEnvRecord = process.env): str
   );
   if (analyticsBase) return analyticsBase;
 
+  const browserDevBase = resolveBrowserDevApiBase(env);
+  if (browserDevBase) return browserDevBase;
+
   return adaptBaseUrlForBrowser(
     deriveOriginFromEndpoint(readEnv(env, 'EXPO_PUBLIC_DAILY_API_URL'), '/api/daily')
   );
 };
 
 export const resolveMobileDailyApiUrl = (env: MobileEnvRecord = process.env): string => {
-  const browserDevBase = resolveBrowserDevApiBase(env);
-  if (browserDevBase) return `${browserDevBase}/api/daily`;
-
   const explicitDailyUrl = adaptBaseUrlForBrowser(readEnv(env, 'EXPO_PUBLIC_DAILY_API_URL'));
   if (explicitDailyUrl) return explicitDailyUrl;
 
@@ -152,6 +149,9 @@ export const resolveMobileDailyApiUrl = (env: MobileEnvRecord = process.env): st
     deriveOriginFromEndpoint(readEnv(env, 'EXPO_PUBLIC_ANALYTICS_ENDPOINT'), '/api/analytics')
   );
   if (analyticsBase) return `${analyticsBase}/api/daily`;
+
+  const browserDevBase = resolveBrowserDevApiBase(env);
+  if (browserDevBase) return `${browserDevBase}/api/daily`;
 
   const webBase = resolveMobileWebBaseUrl(env);
   if (webBase) return `${webBase}/api/daily`;

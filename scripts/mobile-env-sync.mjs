@@ -11,6 +11,7 @@ const ORDERED_KEYS = [
   'EXPO_PUBLIC_SUPABASE_URL',
   'EXPO_PUBLIC_SUPABASE_ANON_KEY',
   'EXPO_PUBLIC_REFERRAL_API_BASE',
+  'EXPO_PUBLIC_WEB_APP_URL',
   'EXPO_PUBLIC_PUSH_ENABLED',
   'EXPO_PUBLIC_PUSH_API_BASE',
   'EXPO_PUBLIC_EXPO_PROJECT_ID',
@@ -48,6 +49,8 @@ const deriveBase = (endpoint) => {
   return '';
 };
 
+const stripTrailingSlash = (value) => String(value || '').trim().replace(/\/+$/, '');
+
 const rootEnv = parseEnv(readFileSafe(ROOT_ENV_PATH));
 const mobileEnv = parseEnv(readFileSafe(MOBILE_ENV_PATH));
 
@@ -58,6 +61,10 @@ const referralBase =
   mobileEnv.EXPO_PUBLIC_REFERRAL_API_BASE ||
   rootEnv.VITE_REFERRAL_API_BASE ||
   rootEnv.REFERRAL_API_BASE ||
+  fallbackBase;
+const webAppBase =
+  stripTrailingSlash(mobileEnv.EXPO_PUBLIC_WEB_APP_URL) ||
+  stripTrailingSlash(rootEnv.VITE_PUBLIC_APP_URL) ||
   fallbackBase;
 
 const nextMobileEnv = {
@@ -70,6 +77,7 @@ const nextMobileEnv = {
   EXPO_PUBLIC_SUPABASE_ANON_KEY:
     rootEnv.VITE_SUPABASE_ANON_KEY || mobileEnv.EXPO_PUBLIC_SUPABASE_ANON_KEY || '',
   EXPO_PUBLIC_REFERRAL_API_BASE: referralBase,
+  EXPO_PUBLIC_WEB_APP_URL: webAppBase,
   EXPO_PUBLIC_PUSH_ENABLED: mobileEnv.EXPO_PUBLIC_PUSH_ENABLED || '0',
   EXPO_PUBLIC_PUSH_API_BASE:
     mobileEnv.EXPO_PUBLIC_PUSH_API_BASE || referralBase || fallbackBase,

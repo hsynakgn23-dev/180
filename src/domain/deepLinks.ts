@@ -37,4 +37,28 @@ export const appendMobileDeepLinkParams = (url: URL, input: MobileDeepLinkInput)
     });
 };
 
+export const appendMobileDeepLinkParamsToHref = (
+    href: string,
+    input: MobileDeepLinkInput,
+    options?: { origin?: string | null }
+): string => {
+    const normalizedHref = normalizeValue(href, 500);
+    if (!normalizedHref) return '';
+
+    const origin =
+        normalizeValue(options?.origin || '', 240) ||
+        (typeof window !== 'undefined' ? normalizeValue(window.location.origin, 240) : '');
+    if (!origin) return normalizedHref;
+
+    try {
+        const url = new URL(normalizedHref, origin);
+        appendMobileDeepLinkParams(url, input);
+        return url.origin === origin
+            ? `${url.pathname}${url.search}${url.hash}`
+            : url.toString();
+    } catch {
+        return normalizedHref;
+    }
+};
+
 export { parseMobileDeepLink };

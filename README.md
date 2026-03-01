@@ -33,6 +33,10 @@ npm run dev
 - `npm run mobile:devclient:start` - start Expo dev server for custom dev client on `:8081` (`--dev-client`)
 - `npm run mobile:devclient:android` - build/run Android dev client locally (`expo run:android`)
 - `npm run mobile:eas:android:development` - trigger EAS Android development build (`apps/mobile/eas.json`)
+- `npm run mobile:eas:ios:development` - trigger EAS iOS development build (`apps/mobile/eas.json`)
+- `npm run mobile:eas:ios:preview` - trigger EAS iOS preview/internal build (`apps/mobile/eas.json`)
+- `npm run mobile:eas:ios:production` - trigger EAS iOS store build for TestFlight/App Store Connect
+- `npm run mobile:eas:ios:submit:production` - submit iOS build via EAS Submit (`submit.production.ios`)
 - `npm run mobile:env:sync` - sync public mobile env values from root `.env` into `apps/mobile/.env`
 - `npm run mobile:release:env:sync` - generate release-focused mobile env profile at `apps/mobile/.env.release`
 - `npm run mobile:env:doctor` - validate mobile env and detect forbidden secret keys
@@ -41,6 +45,7 @@ npm run dev
 - `npm run mobile:phase1:qa` - run push-haric phase-1 QA chain (`mobile:ready`, mobile typecheck, mobile contract smoke, push inbox smoke, design parity check, lint, build)
 - `npm run mobile:phase1:smoke:no-push` - run push-haric QA + deep-link runtime smoke + referral e2e smoke (fresh invitee)
 - `npm run mobile:phase1:release:check` - run phase-1 QA + release env sync + release-readiness validation (warn mode)
+- `npm run mobile:phase1:release:check:ios` - run strict iOS release gate (`usesAppleSignIn`, iOS submit profile, prod web origin)
 - `npm run mobile:phase1:release:check:strict` - same as release check, but warnings fail the command
 - `npm run mobile:phase1:release:check:ci` - strict release gate + JSON report + markdown checklist artifact output under `artifacts/mobile-release`
 - `node test-supabase-connection.js` - quick Supabase read/write capability check
@@ -59,6 +64,10 @@ npm run dev
 - Mobile UI design parity policy: web design tokens/colors are the source of truth; mobile palette changes require explicit product direction.
 - Mobile typography parity policy: Inter is used as the primary mobile font to match web.
 - Expo Go on SDK 53+ does not support remote push token flow. Use dev client for remote push tests.
+- iOS auth/review prep:
+  - `apps/mobile/app.json` now enables `ios.usesAppleSignIn`
+  - iOS auth modal surfaces native Apple sign-in on supported devices
+  - Supabase Dashboard > Authentication > Providers > Apple setup must be completed before release
 - Android remote push icin Firebase `google-services.json` zorunlu:
   - `apps/mobile/google-services.json` dosyasini koy
   - Android package adi Firebase'de `com.hsyna.absolutecinema` olmali
@@ -85,6 +94,15 @@ npm run mobile:devclient:android
 npm run mobile:devclient:start
 npm run mobile:eas:projectid:sync
 ```
+- iOS EAS publish flow:
+```bash
+npm run mobile:phase1:release:check:ios
+npm run mobile:eas:ios:production
+npm run mobile:eas:ios:submit:production
+```
+- iOS submit note:
+  - `apps/mobile/eas.json > submit.production.ios` profile is now present.
+  - Adding `ascAppId` later makes App Store Connect submission more deterministic, but is not required to keep the profile wired.
 - Dev client (emulator) icin port koheransi:
 ```bash
 adb reverse --remove-all
@@ -130,6 +148,7 @@ Mobile client (`apps/mobile`):
 
 Mobile release profile overrides (root `.env`, optional):
 - `MOBILE_RELEASE_BASE_URL` (fallback base URL for generated mobile release endpoints)
+- `MOBILE_RELEASE_WEB_APP_URL` (absolute override for `EXPO_PUBLIC_WEB_APP_URL`; if empty release profile falls back to `VITE_PUBLIC_APP_URL` then `MOBILE_RELEASE_BASE_URL`)
 - `MOBILE_RELEASE_ANALYTICS_ENDPOINT` (absolute override for `EXPO_PUBLIC_ANALYTICS_ENDPOINT`)
 - `MOBILE_RELEASE_DAILY_API_URL` (absolute override for `EXPO_PUBLIC_DAILY_API_URL`)
 - `MOBILE_RELEASE_REFERRAL_API_BASE` (absolute override for `EXPO_PUBLIC_REFERRAL_API_BASE`)
@@ -143,6 +162,7 @@ Mobile release profile overrides (root `.env`, optional):
 Server/cron (`api/cron/daily.ts`):
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `CRON_SECRET` (recommended; if set, cron endpoint requires `Authorization: Bearer <secret>` or `?secret=...`)
 - `SUPABASE_STORAGE_BUCKET` (optional, default `posters`)
 - `TMDB_API_KEY`
 - `DAILY_ROLLOVER_TIMEZONE` (optional, default `Europe/Istanbul`)
@@ -243,6 +263,7 @@ Optional edge-friendly cache (`api/daily.ts`, Redis/KV REST):
 - Mobile phase-1 release-readiness gate notes: `docs/MOBILE_PHASE1_PACKAGE_5_39.md`
 - Mobile phase-1 release env profile sync notes: `docs/MOBILE_PHASE1_PACKAGE_5_40.md`
 - Mobile phase-1 release CI strict gate notes: `docs/MOBILE_PHASE1_PACKAGE_5_41.md`
+- Mobile phase-1 iOS release prep notes: `docs/MOBILE_PHASE1_PACKAGE_5_42.md`
 - Mobile productization/UI package 6.1 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_1.md`
 - Mobile productization/UI package 6.2 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_2.md`
 - Mobile productization/UI package 6.3 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_3.md`
@@ -287,6 +308,8 @@ Optional edge-friendly cache (`api/daily.ts`, Redis/KV REST):
 - Mobile productization/UI package 6.42 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_42.md`
 - Mobile productization/UI package 6.43 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_43.md`
 - Mobile productization/UI package 6.44 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_44.md`
+- Mobile productization/UI package 6.45 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_45.md`
+- Mobile productization/UI package 6.46 notes: `docs/MOBILE_PRODUCTIZATION_UI_PACKAGE_6_46.md`
 - UI i18n/mobile consistency audit notes: `docs/UI_I18N_MOBILE_AUDIT_2026Q1_P1.md`
 
 ## Notes

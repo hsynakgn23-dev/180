@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useLanguage } from '../context/LanguageContext';
+import { appendMobileDeepLinkParamsToHref } from '../domain/deepLinks';
 
 type InfoSection = 'manifesto' | 'rules';
 
@@ -27,15 +28,18 @@ const SOCIAL_LINKS = [
 const SEO_LINKS = [
     {
         key: 'mood',
-        href: '/discover/mood-films/'
+        href: '/discover/mood-films/',
+        route: 'mood_films'
     },
     {
         key: 'director',
-        href: '/discover/director-deep-dives/'
+        href: '/discover/director-deep-dives/',
+        route: 'director_deep_dives'
     },
     {
         key: 'daily',
-        href: '/discover/daily-curated-picks/'
+        href: '/discover/daily-curated-picks/',
+        route: 'daily_curated_picks'
     }
 ] as const;
 
@@ -122,6 +126,17 @@ export const InfoFooter: React.FC<InfoFooterProps> = ({
         text.landing.rulesPoints,
         text.landing.rulesTitle
     ]);
+    const seoLinks = useMemo(
+        () =>
+            SEO_LINKS.map((link) => ({
+                ...link,
+                href: appendMobileDeepLinkParamsToHref(link.href, {
+                    type: 'discover',
+                    route: link.route
+                })
+            })),
+        []
+    );
 
     const toggleInfoSection = (nextSection: InfoSection) => {
         setActiveInfoSection((prev) => (prev === nextSection ? null : nextSection));
@@ -194,7 +209,7 @@ export const InfoFooter: React.FC<InfoFooterProps> = ({
                         >
                             {text.landing.footerRules}
                         </button>
-                        {SEO_LINKS.map((link) => (
+                        {seoLinks.map((link) => (
                             <a
                                 key={link.href}
                                 href={link.href}
@@ -208,6 +223,12 @@ export const InfoFooter: React.FC<InfoFooterProps> = ({
                             className="transition-colors hover:text-sage"
                         >
                             Privacy Policy
+                        </a>
+                        <a
+                            href="/account-deletion/"
+                            className="transition-colors hover:text-sage"
+                        >
+                            {text.settings.accountDeletion}
                         </a>
                     </div>
 

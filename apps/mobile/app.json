@@ -16,7 +16,8 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.hsyna.absolutecinema",
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "usesAppleSignIn": true
     },
     "android": {
       "package": "com.hsyna.absolutecinema",

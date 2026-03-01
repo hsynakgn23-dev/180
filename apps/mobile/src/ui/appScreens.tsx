@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ErrorInfo,
   type ReactNode,
@@ -12,6 +13,7 @@ import {
   Animated,
   Easing,
   FlatList,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -22,15 +24,19 @@ import {
   Image,
   type TextProps,
 } from 'react-native';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import { FontAwesome, Ionicons } from '@expo/vector-icons';
 import {
   MOBILE_MARK_CATALOG,
   groupMobileMarksByCategory,
   resolveMobileMarkMeta,
   resolveMobileMarkTitle,
 } from '../lib/mobileMarksCatalog';
+import { resolveMobileLeagueProgress } from '../lib/mobileLeagueSystem';
 import { type PushInboxItem } from '../lib/mobilePushInbox';
 import { isSupabaseConfigured } from '../lib/supabase';
 import type { MobileThemeMode } from '../lib/mobileThemeMode';
+import { getProgressHeadColor, getProgressTailColor } from '../../../../src/lib/progressVisuals';
 import { UiButton } from './primitives';
 import { styles } from './appStyles';
 import {
@@ -55,6 +61,7 @@ import type { MobilePublicProfileActivityItem } from '../lib/mobilePublicProfile
 
 const PRESSABLE_HIT_SLOP = { top: 8, right: 8, bottom: 8, left: 8 } as const;
 const SUPPORTS_NATIVE_DRIVER = Platform.OS !== 'web';
+const DAILY_MOVIE_CARD_STRIDE = 144;
 const TMDB_POSTER_BASE_URL = 'https://image.tmdb.org/t/p/w342';
 const STORAGE_PUBLIC_PATH = '/storage/v1/object/public/';
 const STORAGE_OBJECT_PUBLIC_PATH = 'storage/v1/object/public/';
@@ -543,7 +550,7 @@ class ScreenErrorBoundary extends Component<
   }
 }
 
-const AuthCard = ({
+const LegacyAuthCard = ({
   authState,
   email,
   password,
@@ -554,10 +561,11 @@ const AuthCard = ({
   onConfirmPasswordChange,
   onModeChange,
   onSignIn,
+  showAppleSignIn,
+  onAppleSignIn,
   onGoogleSignIn,
   onRequestPasswordReset,
   onCompletePasswordReset,
-  onSignOut,
 }: {
   authState: AuthState;
   email: string;
@@ -569,10 +577,11 @@ const AuthCard = ({
   onConfirmPasswordChange: (value: string) => void;
   onModeChange: (value: 'login' | 'forgot' | 'recovery') => void;
   onSignIn: () => void;
+  showAppleSignIn: boolean;
+  onAppleSignIn: () => void;
   onGoogleSignIn: () => void;
   onRequestPasswordReset: () => void;
   onCompletePasswordReset: () => void;
-  onSignOut: () => void;
 }) => {
   const isBusy = authState.status === 'loading';
   const isSignedIn = authState.status === 'signed_in';
@@ -601,7 +610,9 @@ const AuthCard = ({
     ? 'Yeni sifreni kaydet.'
     : isForgotMode
       ? 'E-postani gir.'
-      : 'Email veya Google ile devam et.';
+      : showAppleSignIn
+        ? 'Email, Apple veya Google ile devam et.'
+        : 'Email veya Google ile devam et.';
   const modeMeta = isRecoveryMode
     ? 'Iki alan ayni olmali.'
     : isForgotMode
@@ -735,6 +746,25 @@ const AuthCard = ({
               }
               disabled={isBusy || !isConfigured}
             />
+            {mode === 'login' && showAppleSignIn ? (
+              <AppleAuthentication.AppleAuthenticationButton
+                buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+                buttonStyle={
+                  APP_SCREENS_THEME_MODE === 'dawn'
+                    ? AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
+                    : AppleAuthentication.AppleAuthenticationButtonStyle.WHITE_OUTLINE
+                }
+                cornerRadius={14}
+                style={[
+                  styles.authAppleButton,
+                  isBusy || !isConfigured ? styles.authAppleButtonDisabled : null,
+                ]}
+                onPress={() => {
+                  if (isBusy || !isConfigured) return;
+                  onAppleSignIn();
+                }}
+              />
+            ) : null}
             {mode === 'login' ? (
               <UiButton
                 label={isBusy ? 'Yonlendiriliyor...' : 'Google ile Devam Et'}
@@ -757,14 +787,13 @@ const AuthCard = ({
       ) : (
         <View style={styles.authSignedInBox}>
           <Text style={styles.screenMeta}>{authState.email || 'Bagli hesap'}</Text>
-          <UiButton label="Cikis Yap" tone="danger" onPress={onSignOut} disabled={isBusy} />
         </View>
       )}
     </ScreenCard>
   );
 };
 
-const AuthModal = ({
+const LegacyAuthModal = ({
   visible,
   onClose,
   authState,
@@ -777,10 +806,11 @@ const AuthModal = ({
   onConfirmPasswordChange,
   onModeChange,
   onSignIn,
+  showAppleSignIn,
+  onAppleSignIn,
   onGoogleSignIn,
   onRequestPasswordReset,
   onCompletePasswordReset,
-  onSignOut,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -794,10 +824,11 @@ const AuthModal = ({
   onConfirmPasswordChange: (value: string) => void;
   onModeChange: (value: 'login' | 'forgot' | 'recovery') => void;
   onSignIn: () => void;
+  showAppleSignIn: boolean;
+  onAppleSignIn: () => void;
   onGoogleSignIn: () => void;
   onRequestPasswordReset: () => void;
   onCompletePasswordReset: () => void;
-  onSignOut: () => void;
 }) => {
   useWebModalFocusReset(visible);
   if (!visible) return null;
@@ -816,7 +847,7 @@ const AuthModal = ({
 
           <ScrollView contentContainerStyle={styles.modalSheetScroll} showsVerticalScrollIndicator={false}>
             <View style={styles.modalContentSurface}>
-              <AuthCard
+              <LegacyAuthCard
                 authState={authState}
                 email={email}
                 password={password}
@@ -827,14 +858,510 @@ const AuthModal = ({
                 onConfirmPasswordChange={onConfirmPasswordChange}
                 onModeChange={onModeChange}
                 onSignIn={onSignIn}
+                showAppleSignIn={showAppleSignIn}
+                onAppleSignIn={onAppleSignIn}
                 onGoogleSignIn={onGoogleSignIn}
                 onRequestPasswordReset={onRequestPasswordReset}
                 onCompletePasswordReset={onCompletePasswordReset}
-                onSignOut={onSignOut}
               />
             </View>
           </ScrollView>
         </View>
+      </View>
+    </Modal>
+  );
+};
+
+const AuthProviderButton = ({
+  label,
+  onPress,
+  disabled = false,
+  icon,
+}: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  icon: ReactNode;
+}) => (
+  <Pressable
+    style={({ pressed }) => [
+      styles.authProviderButton,
+      pressed && !disabled ? styles.authProviderButtonPressed : null,
+      disabled ? styles.authProviderButtonDisabled : null,
+    ]}
+    onPress={onPress}
+    disabled={disabled}
+    hitSlop={PRESSABLE_HIT_SLOP}
+    accessibilityRole="button"
+    accessibilityLabel={label}
+    accessibilityState={{ disabled }}
+  >
+    <View style={styles.authProviderIconWrap}>{icon}</View>
+    <Text style={styles.authProviderButtonText}>{label}</Text>
+  </Pressable>
+);
+
+const AuthCard = ({
+  authState,
+  email,
+  fullName,
+  username,
+  birthDate,
+  password,
+  confirmPassword,
+  mode,
+  onEmailChange,
+  onFullNameChange,
+  onUsernameChange,
+  onBirthDateChange,
+  onPasswordChange,
+  onConfirmPasswordChange,
+  onModeChange,
+  onSignIn,
+  onRegister,
+  rememberMe,
+  onRememberMeChange,
+  showAppleSignIn,
+  onAppleSignIn,
+  onGoogleSignIn,
+  onRequestPasswordReset,
+  onCompletePasswordReset,
+}: {
+  authState: AuthState;
+  email: string;
+  fullName: string;
+  username: string;
+  birthDate: string;
+  password: string;
+  confirmPassword: string;
+  mode: 'login' | 'register' | 'forgot' | 'recovery';
+  onEmailChange: (value: string) => void;
+  onFullNameChange: (value: string) => void;
+  onUsernameChange: (value: string) => void;
+  onBirthDateChange: (value: string) => void;
+  onPasswordChange: (value: string) => void;
+  onConfirmPasswordChange: (value: string) => void;
+  onModeChange: (value: 'login' | 'register' | 'forgot' | 'recovery') => void;
+  onSignIn: () => void;
+  onRegister: () => void;
+  rememberMe: boolean;
+  onRememberMeChange: (value: boolean) => void;
+  showAppleSignIn: boolean;
+  onAppleSignIn: () => void;
+  onGoogleSignIn: () => void;
+  onRequestPasswordReset: () => void;
+  onCompletePasswordReset: () => void;
+}) => {
+  const isBusy = authState.status === 'loading';
+  const isSignedIn = authState.status === 'signed_in';
+  const isConfigured = isSupabaseConfigured;
+  const isRegisterMode = mode === 'register';
+  const isRecoveryMode = mode === 'recovery';
+  const isForgotMode = mode === 'forgot';
+  const showRememberMe = !isForgotMode && !isRecoveryMode;
+  const showSocialActions = !isForgotMode && !isRecoveryMode;
+  const authStatusTone =
+    !isConfigured || authState.status === 'error'
+      ? 'clay'
+      : isSignedIn && !isRecoveryMode
+        ? 'sage'
+        : 'muted';
+  const submitLabel = isRecoveryMode
+    ? isBusy
+      ? 'Sifre guncelleniyor...'
+      : 'Yeni Sifreyi Kaydet'
+    : isForgotMode
+      ? isBusy
+        ? 'Baglanti gonderiliyor...'
+        : 'Sifirla Linki Gonder'
+      : isRegisterMode
+        ? isBusy
+          ? 'Hesap aciliyor...'
+          : 'Uye Ol'
+        : isBusy
+          ? 'Giris yapiliyor...'
+          : 'Giris Yap';
+  const title = isRecoveryMode
+    ? 'Yeni Sifre'
+    : isForgotMode
+      ? 'Sifre Sifirla'
+      : isRegisterMode
+        ? 'Uye Ol'
+        : 'Uye Girisi';
+  const body = isRecoveryMode
+    ? 'Yeni sifreni kaydet.'
+    : isForgotMode
+      ? 'E-postani gir.'
+      : isRegisterMode
+        ? 'Hesabini olusturmak icin temel bilgilerini gir.'
+        : showAppleSignIn
+          ? 'Email, Apple veya Google ile devam et.'
+          : 'Email veya Google ile devam et.';
+  const modeMeta = isRecoveryMode
+    ? 'Iki alan ayni olmali.'
+    : isForgotMode
+      ? 'Baglanti e-postana gider.'
+    : isRegisterMode
+        ? 'Beni hatirla secimi sonraki acilislarda oturumun korunup korunmayacagini belirler.'
+        : 'Devam etmek icin bilgilerini gir.';
+  const authStatusTitle = !isConfigured
+    ? 'Giris su an kullanilamiyor'
+    : isRecoveryMode
+      ? 'Yeni sifre olustur'
+      : isSignedIn
+        ? 'Hesabin bagli'
+        : 'Hesabina gir';
+  const authStatusBody = !isConfigured
+    ? 'Giris modulu gecici olarak hazir degil.'
+    : authState.message;
+
+  return (
+    <ScreenCard accent="clay">
+      <Text style={styles.sectionLeadTitle}>{title}</Text>
+      <Text style={styles.sectionLeadBody}>{body}</Text>
+
+      <StatusStrip
+        tone={authStatusTone}
+        eyebrow="Durum"
+        title={
+          !isConfigured || isRecoveryMode || isSignedIn || authState.status === 'error'
+            ? authStatusTitle
+            : undefined
+        }
+        body={authStatusBody}
+        meta={isSignedIn && authState.email ? `Bagli hesap: ${authState.email}` : modeMeta}
+      />
+
+      {!isSignedIn || isRecoveryMode ? (
+        <View style={styles.authForm}>
+          <View style={styles.authModeSurface}>
+            {!isRecoveryMode ? (
+              <>
+                <View style={styles.themeModeSegmentContainer}>
+                  <Pressable
+                    style={[
+                      styles.themeModeSegmentOption,
+                      mode === 'login' ? styles.themeModeSegmentActiveMidnight : null,
+                    ]}
+                    onPress={() => onModeChange('login')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Giris modunu sec"
+                  >
+                    <Text
+                      style={[
+                        styles.themeModeSegmentText,
+                        mode === 'login' ? styles.themeModeSegmentTextActiveMidnight : null,
+                      ]}
+                    >
+                      Giris
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[
+                      styles.themeModeSegmentOption,
+                      mode === 'register' ? styles.themeModeSegmentActiveMidnight : null,
+                    ]}
+                    onPress={() => onModeChange('register')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Kayit modunu sec"
+                  >
+                    <Text
+                      style={[
+                        styles.themeModeSegmentText,
+                        mode === 'register' ? styles.themeModeSegmentTextActiveMidnight : null,
+                      ]}
+                    >
+                      Uye Ol
+                    </Text>
+                  </Pressable>
+                </View>
+                <Pressable
+                  onPress={() => onModeChange(isForgotMode ? 'login' : 'forgot')}
+                  hitSlop={PRESSABLE_HIT_SLOP}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    isForgotMode ? 'Giris ekranina don' : 'Sifre sifirlama ekranini ac'
+                  }
+                >
+                  <Text style={styles.authSubtleAction}>
+                    {isForgotMode ? 'Giris ekranina don' : 'Sifremi unuttum'}
+                  </Text>
+                </Pressable>
+              </>
+            ) : (
+              <Text style={styles.authRecoveryLabel}>Yeni sifreni gir ve tekrar et.</Text>
+            )}
+          </View>
+
+          <View style={styles.authFieldStack}>
+            {isRegisterMode ? (
+              <>
+                <TextInput
+                  style={styles.input}
+                  value={fullName}
+                  autoCapitalize="words"
+                  placeholder="Ad Soyad"
+                  placeholderTextColor="#8e8b84"
+                  onChangeText={onFullNameChange}
+                  accessibilityLabel="Ad Soyad"
+                />
+                <TextInput
+                  style={styles.input}
+                  value={username}
+                  autoCapitalize="none"
+                  placeholder="Kullanici adi"
+                  placeholderTextColor="#8e8b84"
+                  onChangeText={(value) =>
+                    onUsernameChange(value.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase())
+                  }
+                  accessibilityLabel="Kullanici adi"
+                />
+                <TextInput
+                  style={styles.input}
+                  value={birthDate}
+                  autoCapitalize="none"
+                  keyboardType="numbers-and-punctuation"
+                  placeholder="Dogum tarihi (YYYY-AA-GG)"
+                  placeholderTextColor="#8e8b84"
+                  onChangeText={onBirthDateChange}
+                  accessibilityLabel="Dogum tarihi"
+                />
+              </>
+            ) : null}
+            {!isRecoveryMode ? (
+              <TextInput
+                style={styles.input}
+                value={email}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                placeholder="Email"
+                placeholderTextColor="#8e8b84"
+                onChangeText={onEmailChange}
+                accessibilityLabel="Email adresi"
+              />
+            ) : null}
+            {!isForgotMode ? (
+              <TextInput
+                style={styles.input}
+                value={password}
+                autoCapitalize="none"
+                secureTextEntry
+                returnKeyType={isRecoveryMode ? 'next' : 'done'}
+                placeholder={isRecoveryMode ? 'Yeni sifre' : 'Sifre'}
+                placeholderTextColor="#8e8b84"
+                onChangeText={onPasswordChange}
+                onSubmitEditing={
+                  isRecoveryMode ? undefined : isRegisterMode ? onRegister : onSignIn
+                }
+                accessibilityLabel={isRecoveryMode ? 'Yeni sifre' : 'Sifre'}
+              />
+            ) : null}
+            {isRegisterMode || isRecoveryMode ? (
+              <TextInput
+                style={styles.input}
+                value={confirmPassword}
+                autoCapitalize="none"
+                secureTextEntry
+                returnKeyType="done"
+                placeholder={isRecoveryMode ? 'Yeni sifre tekrar' : 'Sifre tekrar'}
+                placeholderTextColor="#8e8b84"
+                onChangeText={onConfirmPasswordChange}
+                onSubmitEditing={isRecoveryMode ? onCompletePasswordReset : onRegister}
+                accessibilityLabel={isRecoveryMode ? 'Yeni sifre tekrar' : 'Sifre tekrar'}
+              />
+            ) : null}
+          </View>
+
+          {showRememberMe ? (
+            <Pressable
+              style={({ pressed }) => [
+                styles.authRememberRow,
+                pressed ? styles.authRememberRowPressed : null,
+              ]}
+              onPress={() => onRememberMeChange(!rememberMe)}
+              disabled={isBusy}
+              hitSlop={PRESSABLE_HIT_SLOP}
+              accessibilityRole="checkbox"
+              accessibilityLabel="Beni hatirla"
+              accessibilityState={{ checked: rememberMe, disabled: isBusy }}
+            >
+              <View
+                style={[
+                  styles.authRememberCheckbox,
+                  rememberMe ? styles.authRememberCheckboxActive : null,
+                ]}
+              >
+                {rememberMe ? <Ionicons name="checkmark" size={14} color="#121212" /> : null}
+              </View>
+              <View style={styles.authRememberCopy}>
+                <Text style={styles.authRememberLabel}>Beni hatirla</Text>
+                <Text style={styles.authRememberMeta}>
+                  Bu cihazda sonraki acilislarda oturumu koru.
+                </Text>
+              </View>
+            </Pressable>
+          ) : null}
+
+          <View style={styles.authActionStack}>
+            <UiButton
+              label={submitLabel}
+              tone="brand"
+              stretch
+              onPress={
+                isRecoveryMode
+                  ? onCompletePasswordReset
+                  : isForgotMode
+                    ? onRequestPasswordReset
+                    : isRegisterMode
+                      ? onRegister
+                      : onSignIn
+              }
+              disabled={isBusy || !isConfigured}
+            />
+
+            {showSocialActions ? (
+              <>
+                <View style={styles.authDividerRow}>
+                  <View style={styles.authDividerLine} />
+                  <Text style={styles.authDividerText}>VEYA</Text>
+                  <View style={styles.authDividerLine} />
+                </View>
+                <AuthProviderButton
+                  label={isBusy ? 'Google yonlendiriliyor...' : 'Google ile Giris Yap'}
+                  onPress={onGoogleSignIn}
+                  disabled={isBusy || !isConfigured}
+                  icon={<FontAwesome name="google" size={16} color="#DB4437" />}
+                />
+                {showAppleSignIn ? (
+                  <AuthProviderButton
+                    label={isBusy ? 'Apple baslatiliyor...' : 'Apple ile Giris Yap'}
+                    onPress={onAppleSignIn}
+                    disabled={isBusy || !isConfigured}
+                    icon={<Ionicons name="logo-apple" size={18} color="#E5E4E2" />}
+                  />
+                ) : null}
+              </>
+            ) : null}
+          </View>
+        </View>
+      ) : (
+        <View style={styles.authSignedInBox}>
+          <Text style={styles.screenMeta}>{authState.email || 'Bagli hesap'}</Text>
+        </View>
+      )}
+    </ScreenCard>
+  );
+};
+
+const AuthModal = ({
+  visible,
+  onClose,
+  authState,
+  email,
+  fullName,
+  username,
+  birthDate,
+  password,
+  confirmPassword,
+  mode,
+  onEmailChange,
+  onFullNameChange,
+  onUsernameChange,
+  onBirthDateChange,
+  onPasswordChange,
+  onConfirmPasswordChange,
+  onModeChange,
+  onSignIn,
+  onRegister,
+  rememberMe,
+  onRememberMeChange,
+  showAppleSignIn,
+  onAppleSignIn,
+  onGoogleSignIn,
+  onRequestPasswordReset,
+  onCompletePasswordReset,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  authState: AuthState;
+  email: string;
+  fullName: string;
+  username: string;
+  birthDate: string;
+  password: string;
+  confirmPassword: string;
+  mode: 'login' | 'register' | 'forgot' | 'recovery';
+  onEmailChange: (value: string) => void;
+  onFullNameChange: (value: string) => void;
+  onUsernameChange: (value: string) => void;
+  onBirthDateChange: (value: string) => void;
+  onPasswordChange: (value: string) => void;
+  onConfirmPasswordChange: (value: string) => void;
+  onModeChange: (value: 'login' | 'register' | 'forgot' | 'recovery') => void;
+  onSignIn: () => void;
+  onRegister: () => void;
+  rememberMe: boolean;
+  onRememberMeChange: (value: boolean) => void;
+  showAppleSignIn: boolean;
+  onAppleSignIn: () => void;
+  onGoogleSignIn: () => void;
+  onRequestPasswordReset: () => void;
+  onCompletePasswordReset: () => void;
+}) => {
+  useWebModalFocusReset(visible);
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} animationType="fade" onRequestClose={onClose}>
+      <View style={styles.authLaunchScreen}>
+        <ScrollView
+          contentContainerStyle={styles.authLaunchScroll}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.authLaunchTopRow}>
+            <Pressable onPress={onClose} hitSlop={PRESSABLE_HIT_SLOP}>
+              <Text style={styles.modalCloseTextBtn}>Kapat</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.authLaunchHero}>
+            <Text style={styles.authLaunchBrand}>180</Text>
+            <Text style={styles.authLaunchEyebrow}>Absolute Cinema</Text>
+            <Text style={styles.authLaunchTitle}>
+              Giris ve uye ol bolumleri burada.
+            </Text>
+            <Text style={styles.authLaunchBody}>
+              Email ile devam et, hesabini olustur ya da Google ve Apple ile giris yap.
+            </Text>
+          </View>
+
+          <AuthCard
+            authState={authState}
+            email={email}
+            fullName={fullName}
+            username={username}
+            birthDate={birthDate}
+            password={password}
+            confirmPassword={confirmPassword}
+            mode={mode}
+            onEmailChange={onEmailChange}
+            onFullNameChange={onFullNameChange}
+            onUsernameChange={onUsernameChange}
+            onBirthDateChange={onBirthDateChange}
+            onPasswordChange={onPasswordChange}
+            onConfirmPasswordChange={onConfirmPasswordChange}
+            onModeChange={onModeChange}
+            onSignIn={onSignIn}
+            onRegister={onRegister}
+            rememberMe={rememberMe}
+            onRememberMeChange={onRememberMeChange}
+            showAppleSignIn={showAppleSignIn}
+            onAppleSignIn={onAppleSignIn}
+            onGoogleSignIn={onGoogleSignIn}
+            onRequestPasswordReset={onRequestPasswordReset}
+            onCompletePasswordReset={onCompletePasswordReset}
+          />
+        </ScrollView>
       </View>
     </Modal>
   );
@@ -923,6 +1450,146 @@ const ProfileSnapshotCard = ({
       >
         <Text style={styles.retryText}>{isRefreshing ? 'Yukleniyor...' : 'Profili Yenile'}</Text>
       </Pressable>
+    </ScreenCard>
+  );
+};
+
+const ProfileXpCard = ({
+  state,
+  onRefresh,
+}: {
+  state: ProfileState;
+  onRefresh: () => void;
+}) => {
+  if (state.status === 'idle' || state.status === 'loading') {
+    return (
+      <StatePanel
+        tone="sage"
+        variant="loading"
+        eyebrow="XP Hatti"
+        title="XP akisi hazirlaniyor"
+        body="Web ile ayni lig ilerlemesi hesaplanirken profil verileri okunuyor."
+        meta="Her 500 XP seni bir sonraki lige tasir."
+      />
+    );
+  }
+
+  if (state.status === 'error') {
+    return (
+      <StatePanel
+        tone="clay"
+        variant="error"
+        eyebrow="XP Hatti"
+        title="XP ilerlemesi simdi acilamadi"
+        body="Profil seviyen okunamadi. Tekrar deneyince bar ve lig esikleri yeniden hesaplanacak."
+        meta={state.message}
+        actionLabel="Tekrar Dene"
+        onAction={onRefresh}
+        actionTone="neutral"
+      />
+    );
+  }
+
+  if (state.status !== 'success') {
+    return null;
+  }
+
+  const successState = state;
+  const totalXp = Math.max(0, Math.floor(Number(successState.totalXp || 0)));
+  const progress = resolveMobileLeagueProgress(totalXp);
+  const currentLevelXp = Math.max(0, totalXp - progress.currentLevelStart);
+  const xpToNext = Math.max(0, Math.floor(progress.nextLevelXp - totalXp));
+  const nextLeagueLabel = String(successState.nextLeagueName || '').trim() || 'Son Lig';
+  const progressPercentLabel = Math.round(progress.progressPercentage);
+  const fillHeadColor = getProgressHeadColor(progress.progressPercentage);
+  const fillTailColor = getProgressTailColor(progress.progressPercentage);
+  const effectiveProgressWidth =
+    progress.progressPercentage > 0 ? Math.max(progress.progressPercentage, 3) : 0;
+  const isMaxLeague = !successState.nextLeagueName;
+
+  return (
+    <ScreenCard accent="sage">
+      <Text style={styles.sectionLeadEyebrow}>XP Hatti</Text>
+      <Text style={styles.sectionLeadTitle}>{successState.leagueName}</Text>
+      <Text style={styles.sectionLeadBody}>
+        {isMaxLeague
+          ? 'Web ile ayni lig sistemi burada da aktif. Su an erisilebilir en ust ligdesin.'
+          : `Web ile ayni kural: her 500 XP seni bir sonraki lige tasir. ${nextLeagueLabel} icin ${xpToNext} XP kaldi.`}
+      </Text>
+
+      <View style={styles.sectionLeadBadgeRow}>
+        <View style={[styles.sectionLeadBadge, styles.sectionLeadBadgeSage]}>
+          <Text style={styles.sectionLeadBadgeText}>{`${totalXp} XP`}</Text>
+        </View>
+        <View style={[styles.sectionLeadBadge, styles.sectionLeadBadgeMuted]}>
+          <Text style={styles.sectionLeadBadgeText}>
+            {isMaxLeague ? 'son lig' : `siradaki ${nextLeagueLabel}`}
+          </Text>
+        </View>
+        <View
+          style={[
+            styles.sectionLeadBadge,
+            progressPercentLabel >= 66 ? styles.sectionLeadBadgeSage : styles.sectionLeadBadgeClay,
+          ]}
+        >
+          <Text style={styles.sectionLeadBadgeText}>{`%${progressPercentLabel} dolu`}</Text>
+        </View>
+      </View>
+
+      <View style={styles.profileXpSummaryRow}>
+        <View style={styles.profileXpSummaryBlock}>
+          <Text style={styles.profileXpSummaryLabel}>Bulundugun Lig</Text>
+          <Text style={styles.profileXpSummaryValue}>{successState.leagueName}</Text>
+        </View>
+        <View style={[styles.profileXpSummaryBlock, styles.profileXpSummaryBlockRight]}>
+          <Text style={styles.profileXpSummaryLabel}>Siradaki Lig</Text>
+          <Text style={styles.profileXpSummaryValue}>{nextLeagueLabel}</Text>
+        </View>
+      </View>
+
+      <View style={styles.profileXpTrack}>
+        {effectiveProgressWidth > 0 ? (
+          <View
+            style={[
+              styles.profileXpFill,
+              {
+                width: `${effectiveProgressWidth}%`,
+                backgroundColor: fillTailColor,
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.profileXpFillHeadTint,
+                {
+                  backgroundColor: fillHeadColor,
+                },
+              ]}
+            />
+            <View style={styles.profileXpFillSpark} />
+          </View>
+        ) : null}
+      </View>
+
+      <View style={styles.profileXpScaleRow}>
+        <Text style={styles.profileXpScaleText}>{`${progress.currentLevelStart} XP`}</Text>
+        <Text style={styles.profileXpScaleText}>{`${progress.nextLevelXp} XP`}</Text>
+      </View>
+
+      <View style={styles.detailInfoGrid}>
+        <View style={styles.detailInfoCard}>
+          <Text style={styles.detailInfoLabel}>Bu Ligde</Text>
+          <Text style={styles.detailInfoValue}>{`${currentLevelXp} XP`}</Text>
+        </View>
+        <View style={styles.detailInfoCard}>
+          <Text style={styles.detailInfoLabel}>Kalan</Text>
+          <Text style={styles.detailInfoValue}>{isMaxLeague ? '0 XP' : `${xpToNext} XP`}</Text>
+        </View>
+        <View style={styles.detailInfoCard}>
+          <Text style={styles.detailInfoLabel}>Esik</Text>
+          <Text style={styles.detailInfoValue}>{`Her 500 XP`}</Text>
+        </View>
+      </View>
     </ScreenCard>
   );
 };
@@ -1922,17 +2589,9 @@ const PushInboxCard = ({
   onOpenDeepLink: (item: PushInboxItem) => void;
 }) => {
   const isBusy = state.status === 'loading';
-  const unreadCount = state.items.filter((item) => !item.opened && Boolean(item.deepLink)).length;
-  const actionableCount = state.items.filter((item) => Boolean(item.deepLink)).length;
-  const openedCount = state.items.filter((item) => item.opened).length;
-  const statusTone =
-    state.status === 'error' ? 'clay' : state.status === 'ready' ? 'sage' : 'muted';
-
   const sortedItems = useMemo(() => {
     return [...state.items].sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt));
   }, [state.items]);
-  const visibleItems = sortedItems.slice(0, 10);
-  const latestInboxTimestamp = visibleItems[0]?.receivedAt || '';
 
   const renderInboxRow = useCallback(
     ({ item }: { item: PushInboxItem }) => (
@@ -1946,120 +2605,56 @@ const PushInboxCard = ({
     [onOpenDeepLink, onPressItem, showOpsMeta]
   );
 
-  return (
-    <>
-      <SectionLeadCard
-        accent="sage"
-        eyebrow="Inbox Relay"
-        title="Bildirim Kutusu"
-        body="Push ve deep-link olaylari burada toplanir. Satira dokununca ilgili akis tetiklenir ve bildirim okunduya alinir."
-        badges={[
-          { label: `${unreadCount} yeni link`, tone: unreadCount > 0 ? 'sage' : 'muted' },
-          { label: `${state.items.length} toplam`, tone: 'muted' },
-          { label: showOpsMeta ? 'ops meta acik' : 'urun gorunumu', tone: showOpsMeta ? 'clay' : 'muted' },
-        ]}
-        metrics={[
-          { label: 'Toplam', value: String(state.items.length) },
-          { label: 'Acilmis', value: String(openedCount) },
-          { label: 'Linkli', value: String(actionableCount) },
-        ]}
-        actions={[
-          {
-            label: isBusy ? 'Kutu Isleniyor...' : 'Kutuyu Temizle',
-            tone: 'neutral',
-            onPress: onClear,
-            disabled: isBusy || state.items.length === 0,
-          },
-        ]}
-      />
-
-      <StatusStrip
-        tone={statusTone}
-        eyebrow="Inbox State"
+  if (sortedItems.length === 0) {
+    return (
+      <StatePanel
+        tone="sage"
+        variant={state.status === 'loading' ? 'loading' : state.status === 'error' ? 'error' : 'empty'}
+        eyebrow="Bildirimler"
         title={
-          state.status === 'error'
-            ? 'Bildirim kutusu sorun yasiyor'
-            : state.status === 'ready'
-              ? 'Inbox akis halinde'
-              : 'Inbox hazirlaniyor'
+          state.status === 'loading'
+            ? 'Bildirimler yukleniyor'
+            : state.status === 'error'
+              ? 'Bildirimler okunamadi'
+              : 'Henuz bildirim yok'
         }
-        body={state.message}
-        meta={
-          latestInboxTimestamp
-            ? `Son olay: ${latestInboxTimestamp}`
-            : 'Yenilemek icin sayfayi yukaridan asagi cekebilirsin.'
+        body={
+          state.status === 'loading'
+            ? 'Bildirim listesi hazirlaniyor.'
+            : state.status === 'error'
+              ? 'Bildirim listesi gecici olarak acilamadi.'
+              : 'Yeni bir bildirim geldiginde burada gorunecek.'
         }
+        meta={state.status === 'error' ? state.message : undefined}
       />
+    );
+  }
 
-      {sortedItems.length === 0 ? (
-        <StatePanel
-          tone="sage"
-          variant={state.status === 'loading' ? 'loading' : state.status === 'error' ? 'error' : 'empty'}
-          eyebrow="Inbox"
-          title={
-            state.status === 'loading'
-              ? 'Bildirim kutusu hazirlaniyor'
-              : state.status === 'error'
-                ? 'Bildirimler okunamadi'
-                : 'Kutu su an bos'
-          }
-          body={
-            state.status === 'loading'
-              ? 'Yeni deep link ve push olaylari icin kutu senkronize ediliyor.'
-              : state.status === 'error'
-                ? 'Bildirim akisi gecici olarak okunamadi. Bir sonraki push ile tekrar deneyebilirsin.'
-                : 'Yeni bir bildirim geldiginde burada daha okunur kartlar halinde gorunecek.'
-          }
-          meta={state.message}
+  return (
+    <ScreenCard accent="sage">
+      <View style={styles.sectionHeaderRow}>
+        <Text style={styles.subSectionLabel}>Bildirimler</Text>
+        <UiButton
+          label={isBusy ? 'Isleniyor...' : 'Temizle'}
+          tone="neutral"
+          onPress={onClear}
+          disabled={isBusy || sortedItems.length === 0}
         />
-      ) : (
-        <>
-          <StatusStrip
-            tone="muted"
-            eyebrow="Interaction"
-            title="Satira dokun, akisa gec"
-            body="Linkli bildirimler ilgili ekran planini acarken, digerleri bildirim kaydini okundu olarak gunceller."
-            meta={
-              showOpsMeta
-                ? 'Ops modu acik: kaynak, tip ve deep-link meta bilgileri satirda gosterilir.'
-                : 'Ops modu kapali: yalnizca urun akis bilgisi gosterilir.'
-            }
-          />
+      </View>
 
-          <ScreenCard accent="sage">
-            <Text style={styles.subSectionLabel}>Son 10 Bildirim</Text>
-            <View style={styles.detailInfoGrid}>
-              <View style={styles.detailInfoCard}>
-                <Text style={styles.detailInfoLabel}>Yeni Link</Text>
-                <Text style={styles.detailInfoValue}>{unreadCount}</Text>
-              </View>
-              <View style={styles.detailInfoCard}>
-                <Text style={styles.detailInfoLabel}>Acilmis</Text>
-                <Text style={styles.detailInfoValue}>{openedCount}</Text>
-              </View>
-              <View style={styles.detailInfoCard}>
-                <Text style={styles.detailInfoLabel}>Linkli</Text>
-                <Text style={styles.detailInfoValue}>{actionableCount}</Text>
-              </View>
-            </View>
-
-            <FlatList
-              data={visibleItems}
-              keyExtractor={(item) => item.id}
-              renderItem={renderInboxRow}
-              scrollEnabled={false}
-              initialNumToRender={8}
-              maxToRenderPerBatch={12}
-              windowSize={5}
-              removeClippedSubviews={Platform.OS === 'android'}
-              ItemSeparatorComponent={() => <View style={styles.inboxItemSeparator} />}
-              contentContainerStyle={styles.inboxList}
-            />
-          </ScreenCard>
-        </>
-      )}
-
-    </>
+      <FlatList
+        data={sortedItems}
+        keyExtractor={(item) => item.id}
+        renderItem={renderInboxRow}
+        scrollEnabled={false}
+        initialNumToRender={8}
+        maxToRenderPerBatch={12}
+        windowSize={5}
+        removeClippedSubviews={Platform.OS === 'android'}
+        ItemSeparatorComponent={() => <View style={styles.inboxItemSeparator} />}
+        contentContainerStyle={styles.inboxList}
+      />
+    </ScreenCard>
   );
 };
 
@@ -2639,22 +3234,97 @@ const DailyHomeScreen = ({
   onSelectMovie?: (movieId: number) => void;
   onRetry: () => void;
 }) => {
+  const railRef = useRef<FlatList<any> | null>(null);
+  const railScrollOffsetRef = useRef(0);
+  const railDragStartOffsetRef = useRef(0);
+  const railMovies = state.status === 'success' ? state.movies.slice(0, 5) : [];
+  const selectedRailIndex = railMovies.findIndex((movie) => movie.id === selectedMovieId);
+  const [activeRailIndex, setActiveRailIndex] = useState(0);
+
+  useEffect(() => {
+    if (railMovies.length === 0) {
+      setActiveRailIndex(0);
+      return;
+    }
+    if (selectedRailIndex >= 0) {
+      setActiveRailIndex(selectedRailIndex);
+    }
+  }, [railMovies.length, selectedRailIndex]);
+
   const formatAge = (ageSeconds: number | null): string => {
-    if (ageSeconds === null || ageSeconds < 0) return 'unknown';
+    if (ageSeconds === null || ageSeconds < 0) return 'bilinmiyor';
     if (ageSeconds < 60) return `${ageSeconds}s`;
-    if (ageSeconds < 3600) return `${Math.floor(ageSeconds / 60)}m`;
-    return `${Math.floor(ageSeconds / 3600)}h`;
+    if (ageSeconds < 3600) return `${Math.floor(ageSeconds / 60)} dk`;
+    return `${Math.floor(ageSeconds / 3600)} sa`;
   };
+
+  const scrollToRailIndex = useCallback(
+    (requestedIndex: number) => {
+      if (railMovies.length === 0) return;
+      const nextIndex = Math.max(0, Math.min(requestedIndex, railMovies.length - 1));
+      const nextOffset = nextIndex * DAILY_MOVIE_CARD_STRIDE;
+      railRef.current?.scrollToOffset({
+        offset: nextOffset,
+        animated: true,
+      });
+      railScrollOffsetRef.current = nextOffset;
+      setActiveRailIndex(nextIndex);
+    },
+    [railMovies.length]
+  );
+
+  const handleRailScrollEnd = useCallback(
+    (offsetX: number) => {
+      if (railMovies.length === 0) return;
+      const nextIndex = Math.max(
+        0,
+        Math.min(Math.round(offsetX / DAILY_MOVIE_CARD_STRIDE), railMovies.length - 1)
+      );
+      setActiveRailIndex(nextIndex);
+    },
+    [railMovies.length]
+  );
+
+  const railPanResponder = useMemo(() => {
+    if (Platform.OS !== 'web') return null;
+
+    return PanResponder.create({
+      onMoveShouldSetPanResponder: (_event, gestureState) =>
+        Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && Math.abs(gestureState.dx) > 6,
+      onMoveShouldSetPanResponderCapture: (_event, gestureState) =>
+        Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && Math.abs(gestureState.dx) > 6,
+      onPanResponderGrant: () => {
+        railDragStartOffsetRef.current = railScrollOffsetRef.current;
+      },
+      onPanResponderMove: (_event, gestureState) => {
+        const maxOffset = Math.max(0, (railMovies.length - 1) * DAILY_MOVIE_CARD_STRIDE);
+        const nextOffset = Math.max(
+          0,
+          Math.min(railDragStartOffsetRef.current - gestureState.dx, maxOffset)
+        );
+        railScrollOffsetRef.current = nextOffset;
+        railRef.current?.scrollToOffset({ offset: nextOffset, animated: false });
+      },
+      onPanResponderRelease: () => {
+        handleRailScrollEnd(railScrollOffsetRef.current);
+        scrollToRailIndex(Math.round(railScrollOffsetRef.current / DAILY_MOVIE_CARD_STRIDE));
+      },
+      onPanResponderTerminate: () => {
+        handleRailScrollEnd(railScrollOffsetRef.current);
+      },
+      onPanResponderTerminationRequest: () => false,
+    });
+  }, [handleRailScrollEnd, railMovies.length, scrollToRailIndex]);
 
   if (state.status === 'loading' || state.status === 'idle') {
     return (
       <StatePanel
         tone="sage"
         variant="loading"
-        eyebrow="Daily Selection"
-        title="Bugunun secimi kuruluyor"
-        body="Poster, editorial not ve secili film aksiyonlari hazirlaniyor."
-        meta="Canli veri, cache ya da fallback kaynagi kontrol ediliyor."
+        eyebrow="Gunluk Filmler"
+        title="Bugunun filmleri hazirlaniyor"
+        body="Secki ve film kartlari yukleniyor."
+        meta="Birazdan bugunun onerileri burada acilacak."
       />
     );
   }
@@ -2664,11 +3334,11 @@ const DailyHomeScreen = ({
       <StatePanel
         tone="clay"
         variant="error"
-        eyebrow="Daily Selection"
-        title="Bugunun secimi su an acilamadi"
-        body="Kaynak akisinda gecici bir sorun var. Tekrar denediginde canli secim, cache ya da fallback geri gelebilir."
+        eyebrow="Gunluk Filmler"
+        title="Bugunun filmleri simdi acilamadi"
+        body="Baglanti veya servis kaynakli gecici bir sorun var. Tekrar denediginde secki yeniden cekilecek."
         meta={
-          showOpsMeta ? `Trace: ${state.message} | Endpoint: ${state.endpoint || 'unset'}` : state.message
+          showOpsMeta ? `Detay: ${state.message} | Uc nokta: ${state.endpoint || 'yok'}` : state.message
         }
         actionLabel="Tekrar Dene"
         onAction={onRetry}
@@ -2687,10 +3357,10 @@ const DailyHomeScreen = ({
       <StatePanel
         tone="sage"
         variant="empty"
-        eyebrow="Daily Selection"
+        eyebrow="Gunluk Filmler"
         title="Bugun icin film bulunmadi"
-        body="Secim listesi bos dondu. Servis yenilendiginde yeni gunluk secim burada gorunecek."
-        meta={successState.message}
+        body="Gunluk liste henuz gelmedi. Yenileyince secki tekrar denenecek."
+        meta={successState.warning || undefined}
         actionLabel="Yenile"
         onAction={onRetry}
       />
@@ -2709,13 +3379,13 @@ const DailyHomeScreen = ({
       <ScreenCard accent="sage">
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <View style={{ flex: 1, paddingRight: 16 }}>
-            <Text style={styles.screenTitle}>Gunun Secimi</Text>
+            <Text style={styles.screenTitle}>Gunluk Filmler</Text>
             <Text style={[styles.screenBody, { marginTop: 4 }]}>
               {successState.dataSource === 'cache'
-                ? 'Baglanti sinirli, son basarili secim gosteriliyor.'
+                ? 'Baglanti zayif oldugu icin son kaydedilen secki gosteriliyor.'
                 : successState.dataSource === 'fallback'
-                  ? 'Servis erisimi olmadigi icin local fallback secim gosteriliyor.'
-                  : 'Bugunun secimi listelendi.'}
+                  ? 'Servise ulasilamadi, yedek film listesi gosteriliyor.'
+                  : 'Bugunun secilen filmleri hazir.'}
             </Text>
           </View>
         </View>
@@ -2725,69 +3395,98 @@ const DailyHomeScreen = ({
         </View>
 
         <View style={styles.dailyDataSourceRow}>
-          <View style={successState.dataSource === 'live' ? styles.dataSourceBadgeLive : styles.dataSourceBadgeFallback}>
-            <Text style={successState.dataSource === 'live' ? styles.dataSourceTextLive : styles.dataSourceTextFallback}>
-              VERI YOLU: {dataSourceLabel}
-            </Text>
-          </View>
-          <Text style={styles.screenMeta}>Tarih: {successState.date || 'unknown'}</Text>
+          <Text style={styles.screenMeta}>Tarih: {successState.date || 'bugun'}</Text>
+          {showOpsMeta ? (
+            <View
+              style={
+                successState.dataSource === 'live' ? styles.dataSourceBadgeLive : styles.dataSourceBadgeFallback
+              }
+            >
+              <Text
+                style={
+                  successState.dataSource === 'live' ? styles.dataSourceTextLive : styles.dataSourceTextFallback
+                }
+              >
+                VERI: {dataSourceLabel}
+              </Text>
+            </View>
+          ) : null}
         </View>
 
-        {showOpsMeta ? <Text style={styles.screenMeta}>Source: {successState.source || 'unknown'}</Text> : null}
-        {showOpsMeta ? <Text style={styles.screenMeta}>Endpoint: {successState.endpoint}</Text> : null}
+        {showOpsMeta ? <Text style={styles.screenMeta}>Kaynak: {successState.source || 'bilinmiyor'}</Text> : null}
+        {showOpsMeta ? <Text style={styles.screenMeta}>Uc nokta: {successState.endpoint}</Text> : null}
         {showOpsMeta ? (
           <View style={styles.badgeRow}>
-            <Text style={styles.screenMeta}>Data: {successState.dataSource}</Text>
-            <Text style={styles.screenMeta}>Stale: {successState.stale ? 'yes' : 'no'}</Text>
+            <Text style={styles.screenMeta}>Veri: {successState.dataSource}</Text>
+            <Text style={styles.screenMeta}>Bayat: {successState.stale ? 'evet' : 'hayir'}</Text>
             {successState.dataSource === 'cache' ? (
-              <Text style={styles.screenMeta}>Age: {formatAge(successState.cacheAgeSeconds)}</Text>
+              <Text style={styles.screenMeta}>Yas: {formatAge(successState.cacheAgeSeconds)}</Text>
             ) : null}
           </View>
         ) : null}
-        {successState.warning ? (
+        {showOpsMeta && successState.warning ? (
           <View style={styles.warningBox}>
             <Text style={styles.warningText}>
-              {showOpsMeta ? 'Live fetch warning' : 'Canli veri uyarisi'}: {successState.warning}
+              Veri uyarisi: {successState.warning}
             </Text>
           </View>
         ) : null}
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.movieListHorizontal}
-        >
-          {successState.movies.slice(0, 5).map((movie, index) => {
-            const isSelected = selectedMovieId === movie.id;
-            const posterUri = resolvePosterUrl(movie.posterPath);
-            return (
-              <Pressable
-                key={`${movie.id}-${index}`}
-                style={[styles.movieCardWrapper, isSelected ? styles.movieCardWrapperSelected : null]}
-                onPress={() => onSelectMovie?.(movie.id)}
-                accessibilityRole="button"
-                accessibilityLabel={`${movie.title} filmini detayli goruntule`}
-              >
-                <View style={styles.movieCardPoster}>
-                  {posterUri ? (
-                    <Image source={{ uri: posterUri }} style={styles.movieCardPosterImage} resizeMode="cover" />
-                  ) : (
-                    <Text style={styles.movieCardPosterFallbackLabel}>{index + 1}</Text>
-                  )}
-                </View>
-                <View style={styles.movieCardContentWrapper}>
-                  <Text style={styles.movieCardTitleLabel} numberOfLines={2}>
-                    {movie.title}
-                  </Text>
-                  <Text style={styles.movieCardMetaLabel}>
-                    {movie.voteAverage ? `${movie.voteAverage.toFixed(1)}` : 'N/A'}
-                    {movie.year ? ` | ${movie.year}` : ''}
-                  </Text>
-                </View>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+        <View {...(railPanResponder ? railPanResponder.panHandlers : {})}>
+          <FlatList
+            ref={railRef}
+            horizontal
+            data={railMovies}
+            keyExtractor={(movie, index) => `${movie.id}-${index}`}
+            renderItem={({ item: movie, index }) => {
+              const isSelected = selectedMovieId === movie.id;
+              const posterUri = resolvePosterUrl(movie.posterPath);
+              return (
+                <Pressable
+                  style={[styles.movieCardWrapper, isSelected ? styles.movieCardWrapperSelected : null]}
+                  onPress={() => {
+                    setActiveRailIndex(index);
+                    onSelectMovie?.(movie.id);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${movie.title} filmini detayli goruntule`}
+                >
+                  <View style={styles.movieCardPoster}>
+                    {posterUri ? (
+                      <Image source={{ uri: posterUri }} style={styles.movieCardPosterImage} resizeMode="cover" />
+                    ) : (
+                      <Text style={styles.movieCardPosterFallbackLabel}>{index + 1}</Text>
+                    )}
+                  </View>
+                  <View style={styles.movieCardContentWrapper}>
+                    <Text style={styles.movieCardTitleLabel} numberOfLines={2}>
+                      {movie.title}
+                    </Text>
+                    <Text style={styles.movieCardMetaLabel}>
+                      {movie.voteAverage ? `${movie.voteAverage.toFixed(1)}` : 'N/A'}
+                      {movie.year ? ` | ${movie.year}` : ''}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            }}
+            ItemSeparatorComponent={() => <View style={styles.movieListHorizontalSpacer} />}
+            showsHorizontalScrollIndicator={false}
+            nestedScrollEnabled
+            directionalLockEnabled
+            scrollEnabled={railMovies.length > 1}
+            snapToInterval={DAILY_MOVIE_CARD_STRIDE}
+            decelerationRate="fast"
+            keyboardShouldPersistTaps="handled"
+            scrollEventThrottle={16}
+            onScroll={(event) => {
+              railScrollOffsetRef.current = event.nativeEvent.contentOffset.x;
+            }}
+            onMomentumScrollEnd={(event) => handleRailScrollEnd(event.nativeEvent.contentOffset.x)}
+            onScrollEndDrag={(event) => handleRailScrollEnd(event.nativeEvent.contentOffset.x)}
+            contentContainerStyle={styles.movieListHorizontal}
+          />
+        </View>
       </ScreenCard>
     </View>
   );
@@ -3288,16 +3987,16 @@ const RitualDraftCard = ({
         {submitState.message ? (
           <StatusStrip
             tone={submitTone}
-            eyebrow="Submit State"
+            eyebrow="Gonderim"
             title={
               submitState.status === 'synced'
-                ? 'Ritual clouda gitti'
+                ? 'Notun kaydedildi'
                 : submitState.status === 'queued'
-                  ? 'Taslak kuyruga alindi'
+                  ? 'Taslak beklemeye alindi'
                   : submitState.status === 'error'
-                    ? 'Ritual gonderimi durdu'
+                    ? 'Not gonderilemedi'
                     : submitState.status === 'submitting'
-                      ? 'Ritual gonderiliyor'
+                      ? 'Not gonderiliyor'
                       : 'Taslak beklemede'
             }
             body={submitState.message}
@@ -3314,7 +4013,7 @@ const RitualDraftCard = ({
         {queueState.message ? (
           <StatusStrip
             tone={queueTone}
-            eyebrow="Queue State"
+            eyebrow="Bekleyenler"
             title={
               queueState.status === 'syncing'
                 ? 'Kuyruk tekrar deneniyor'
@@ -3698,7 +4397,6 @@ const MobileSettingsModal = ({
   canCopyInviteLink,
   isSignedIn,
   onOpenAccountDeletion,
-  onSignOut,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -3729,16 +4427,13 @@ const MobileSettingsModal = ({
   canCopyInviteLink: boolean;
   isSignedIn: boolean;
   onOpenAccountDeletion: () => void;
-  onSignOut: () => void;
 }) => {
-  const [activeTab, setActiveTab] = useState<'identity' | 'appearance' | 'session'>('identity');
-  const [confirmLogout, setConfirmLogout] = useState(false);
+  const [activeTab, setActiveTab] = useState<'identity' | 'session'>('identity');
   useWebModalFocusReset(visible);
 
   useEffect(() => {
     if (!visible) return;
     setActiveTab('identity');
-    setConfirmLogout(false);
   }, [visible]);
 
   if (!visible) return null;
@@ -3755,15 +4450,6 @@ const MobileSettingsModal = ({
           normalizedInviteStatus.includes('kopyalandi')
         ? 'sage'
         : 'muted';
-  const handleSignOutPress = () => {
-    if (!isSignedIn || isInviteActionBusy) return;
-    if (!confirmLogout) {
-      setConfirmLogout(true);
-      return;
-    }
-    setConfirmLogout(false);
-    onSignOut();
-  };
   const identityDisplayName = String(identityDraft.fullName || '').trim();
   const identityUsername = String(identityDraft.username || '')
     .trim()
@@ -3773,11 +4459,7 @@ const MobileSettingsModal = ({
   const identityProfileLink = String(identityDraft.profileLink || '').trim();
   const activeGenderLabel =
     SETTINGS_GENDER_OPTIONS.find((option) => option.key === identityDraft.gender)?.label || 'Seç';
-  const settingsCopy = MOBILE_SETTINGS_COPY[language] || MOBILE_SETTINGS_COPY.en;
-  const themeLabel =
-    themeMode === 'dawn' ? settingsCopy.appearance.themeDawn : settingsCopy.appearance.themeMidnight;
-  const languageLabel =
-    MOBILE_SETTINGS_LANGUAGE_OPTIONS.find((option) => option.code === language)?.label || 'English';
+  const settingsCopy = MOBILE_SETTINGS_COPY.tr;
   const accountDeletionTitle = settingsCopy.accountDeletion.title;
   const accountDeletionBody = settingsCopy.accountDeletion.body;
   const accountDeletionMeta = settingsCopy.accountDeletion.meta;
@@ -3797,7 +4479,6 @@ const MobileSettingsModal = ({
           <View style={styles.settingsTabRow}>
             {([
               { id: 'identity', label: settingsCopy.tabs.identity },
-              { id: 'appearance', label: settingsCopy.tabs.appearance },
               { id: 'session', label: settingsCopy.tabs.session },
             ] as const).map((tab) => (
               <Pressable
@@ -3821,13 +4502,13 @@ const MobileSettingsModal = ({
           {saveState.message ? (
             <StatusStrip
               tone={saveTone}
-              eyebrow="Save State"
+              eyebrow="Durum"
               title={saveTone === 'clay' ? 'Kayit basarisiz' : saveTone === 'sage' ? 'Kayit tamamlandi' : 'Taslak guncellendi'}
               body={saveState.message}
               meta={
                 isSignedIn
-                  ? 'Kimlik degisiklikleri cloud ile senkron tutulur.'
-                  : 'Cloud kaydi icin once mobil oturum ac.'
+                  ? 'Degisikliklerin hesabinla saklanir.'
+                  : 'Kaydetmek icin once giris yap.'
               }
             />
           ) : null}
@@ -3837,12 +4518,12 @@ const MobileSettingsModal = ({
               <>
                 <SectionLeadCard
                   accent="clay"
-                  eyebrow="Identity Layer"
+                  eyebrow="Profil"
                   title={identityDisplayName || 'Profil Kimligi'}
-                  body={identityBio || 'Avatar, kullanici adi ve profil notunu burada sekillendir.'}
+                  body={identityBio || 'Avatar, kullanici adi ve profil notunu buradan duzenle.'}
                   badges={[
                     {
-                      label: identityUsername ? `@${identityUsername}` : 'handle bekleniyor',
+                      label: identityUsername ? `@${identityUsername}` : 'kullanici adi bekleniyor',
                       tone: identityUsername ? 'sage' : 'muted',
                     },
                     {
@@ -3852,8 +4533,8 @@ const MobileSettingsModal = ({
                     { label: activeGenderLabel, tone: 'muted' },
                   ]}
                   metrics={[
-                    { label: 'Bio', value: String(identityBio.length) },
-                    { label: 'Link', value: identityProfileLink ? 'hazir' : '--' },
+                    { label: 'Yazi', value: String(identityBio.length) },
+                    { label: 'Profil', value: identityProfileLink ? 'hazir' : '--' },
                     { label: 'Dogum', value: identityBirthDate ? 'var' : '--' },
                   ]}
                 />
@@ -3861,10 +4542,9 @@ const MobileSettingsModal = ({
                 {!isSignedIn ? (
                   <StatusStrip
                     tone="muted"
-                    eyebrow="Cloud Save"
-                    title="Yerel taslak acik"
-                    body="Bu alanlari doldurabilirsin ama cloud kayit icin once mobil oturum acman gerekir."
-                    meta="Giris yaptiginda Kaydet aksiyonu aktif hale gelir."
+                    eyebrow="Kayit"
+                    title="Bilgilerini hazirlayabilirsin"
+                    body="Alanlari doldurabilirsin. Kaydetmek icin once giris yapman gerekir."
                   />
                 ) : null}
 
@@ -3948,7 +4628,7 @@ const MobileSettingsModal = ({
 
                   <View style={styles.detailInfoGrid}>
                     <View style={styles.detailInfoCard}>
-                      <Text style={styles.detailInfoLabel}>Handle</Text>
+                      <Text style={styles.detailInfoLabel}>Kullanici</Text>
                       <Text style={styles.detailInfoValue}>
                         {identityUsername ? `@${identityUsername}` : 'Kullanici adi bekleniyor'}
                       </Text>
@@ -3992,7 +4672,7 @@ const MobileSettingsModal = ({
 
                 <CollapsibleSectionCard
                   accent="sage"
-                  title="Bio ve Profil Linki"
+                  title="Hakkimda ve Profil Linki"
                   meta={`${identityBio.length}/180 karakter`}
                   defaultExpanded
                 >
@@ -4002,9 +4682,9 @@ const MobileSettingsModal = ({
                     textAlignVertical="top"
                     value={identityDraft.bio}
                     onChangeText={(value) => onChangeIdentity({ bio: value.slice(0, 180) })}
-                    placeholder="Bio (maks 180)"
+                    placeholder="Hakkimda (maks 180)"
                     placeholderTextColor="#8e8b84"
-                    accessibilityLabel="Bio"
+                    accessibilityLabel="Hakkimda"
                   />
                   <TextInput
                     style={styles.input}
@@ -4019,13 +4699,12 @@ const MobileSettingsModal = ({
                   <StatusStrip
                     tone={identityProfileLink ? 'sage' : 'muted'}
                     eyebrow="Profil Linki"
-                    title={identityProfileLink ? 'Harici profil hazir' : 'Link opsiyonel'}
+                    title={identityProfileLink ? 'Profil linkin hazir' : 'Profil linki ekleyebilirsin'}
                     body={
                       identityProfileLink
                         ? identityProfileLink
                         : 'Web sitesi veya sosyal profil URL bilgisini burada saklayabilirsin.'
                     }
-                    meta="Letterboxd import mobilde sonraki surumde acilacak."
                   />
 
                   <UiButton
@@ -4038,162 +4717,34 @@ const MobileSettingsModal = ({
               </>
             ) : null}
 
-            {activeTab === 'appearance' ? (
-              <>
-                <SectionLeadCard
-                  accent={themeMode === 'dawn' ? 'clay' : 'sage'}
-                  eyebrow={settingsCopy.appearance.eyebrow}
-                  title={getMobileThemeSectionTitle(language, themeLabel)}
-                  body={settingsCopy.appearance.body}
-                  badges={[
-                    { label: themeLabel, tone: themeMode === 'dawn' ? 'clay' : 'sage' },
-                    { label: languageLabel, tone: 'muted' },
-                  ]}
-                  metrics={[
-                    { label: settingsCopy.appearance.themeMetric, value: themeLabel },
-                    { label: settingsCopy.appearance.languageMetric, value: languageLabel },
-                  ]}
-                />
-
-                <StatusStrip
-                  tone="sage"
-                  eyebrow={settingsCopy.appearance.livePreviewEyebrow}
-                  title={settingsCopy.appearance.livePreviewTitle}
-                  body={settingsCopy.appearance.livePreviewBody}
-                />
-
-                <CollapsibleSectionCard
-                  accent={themeMode === 'dawn' ? 'clay' : 'sage'}
-                  title={settingsCopy.appearance.themeTitle}
-                  meta={themeLabel}
-                  defaultExpanded
-                >
-                  <Text style={styles.screenBody}>
-                    {settingsCopy.appearance.themeDescription}
-                  </Text>
-                  <View style={styles.themeModeSegmentContainer}>
-                    <Pressable
-                      style={[
-                        styles.themeModeSegmentOption,
-                        themeMode === 'midnight' ? styles.themeModeSegmentActiveMidnight : null,
-                      ]}
-                      onPress={() => onSetThemeMode('midnight')}
-                    >
-                      <Text
-                        style={[
-                          styles.themeModeSegmentText,
-                          themeMode === 'midnight' ? styles.themeModeSegmentTextActiveMidnight : null,
-                        ]}
-                      >
-                        {settingsCopy.appearance.themeMidnight}
-                      </Text>
-                    </Pressable>
-                    <Pressable
-                      style={[
-                        styles.themeModeSegmentOption,
-                        themeMode === 'dawn' ? styles.themeModeSegmentActiveDawn : null,
-                      ]}
-                      onPress={() => onSetThemeMode('dawn')}
-                    >
-                      <Text
-                        style={[
-                          styles.themeModeSegmentText,
-                          themeMode === 'dawn' ? styles.themeModeSegmentTextActiveDawn : null,
-                        ]}
-                      >
-                        {settingsCopy.appearance.themeDawn}
-                      </Text>
-                    </Pressable>
-                  </View>
-                  <StatusStrip
-                    tone={themeMode === 'dawn' ? 'clay' : 'sage'}
-                    eyebrow={settingsCopy.appearance.themeStatusEyebrow}
-                    title={getMobileThemeStatusTitle(language, themeLabel)}
-                    body={
-                      themeMode === 'dawn'
-                        ? settingsCopy.appearance.themeStatusBodyDawn
-                        : settingsCopy.appearance.themeStatusBodyMidnight
-                    }
-                  />
-                </CollapsibleSectionCard>
-
-                <CollapsibleSectionCard
-                  accent="sage"
-                  title={settingsCopy.appearance.languageTitle}
-                  meta={languageLabel}
-                  defaultExpanded
-                >
-                  <Text style={styles.screenBody}>
-                    {settingsCopy.appearance.languageDescription}
-                  </Text>
-                  <View style={styles.settingsGenderRow}>
-                    {MOBILE_SETTINGS_LANGUAGE_OPTIONS.map((option) => (
-                      <Pressable
-                        key={option.code}
-                        style={[
-                          styles.settingsGenderChip,
-                          language === option.code ? styles.settingsGenderChipActive : null,
-                        ]}
-                        onPress={() => onSetLanguage(option.code)}
-                      >
-                        <Text
-                          style={[
-                            styles.settingsGenderChipText,
-                            language === option.code ? styles.settingsGenderChipTextActive : null,
-                          ]}
-                        >
-                          {option.label}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                  <StatusStrip
-                    tone="muted"
-                    eyebrow={settingsCopy.appearance.languageStatusEyebrow}
-                    title={getMobileLanguageStatusTitle(language, languageLabel)}
-                    body={settingsCopy.appearance.languageStatusBody}
-                    meta={settingsCopy.appearance.languageCoverageMeta}
-                  />
-                </CollapsibleSectionCard>
-              </>
-            ) : null}
-
             {activeTab === 'session' ? (
               <>
                 <SectionLeadCard
                   accent="clay"
-                  eyebrow="Account Center"
-                  title={isSignedIn ? activeAccountLabel : 'Cloud oturumu bagli degil'}
+                  eyebrow="Hesap"
+                  title={isSignedIn ? activeAccountLabel : 'Hesabin bagli degil'}
                   body={
                     isSignedIn
-                      ? 'Davet programi, cikis ve platform kurallarini ayni sekmeden yonet.'
-                      : 'Cloud baglamak icin once profil sekmesindeki oturum kartindan giris yap.'
+                      ? 'Davet programi ve platform kurallarini bu sekmeden yonet.'
+                      : 'Giris yaptiginda davet ve hesap islemleri burada acilir.'
                   }
                   badges={[
-                    { label: isSignedIn ? 'Cloud hazir' : 'Giris gerekli', tone: isSignedIn ? 'sage' : 'clay' },
-                    { label: activeEmailLabel || 'email yok', tone: 'muted' },
+                    { label: isSignedIn ? 'Hesap acik' : 'Giris gerekli', tone: isSignedIn ? 'sage' : 'clay' },
+                    { label: activeEmailLabel || 'E-posta yok', tone: 'muted' },
                     { label: inviteCode ? `Kod ${inviteCode}` : 'Kod bekleniyor', tone: inviteCode ? 'muted' : 'clay' },
                   ]}
                   metrics={[
-                    { label: 'Invite', value: inviteCode ? 'hazir' : '--' },
-                    { label: 'Status', value: isInviteActionBusy ? 'busy' : isSignedIn ? 'ready' : 'guest' },
-                    { label: 'Referral', value: invitedByCode ? 'bagli' : 'acik' },
-                  ]}
-                  actions={[
-                    {
-                      label: confirmLogout ? 'Tekrar Tikla ve Cik' : 'Cikis Yap',
-                      tone: confirmLogout ? 'danger' : 'neutral',
-                      onPress: handleSignOutPress,
-                      disabled: !isSignedIn || isInviteActionBusy,
-                    },
+                    { label: 'Davet', value: inviteCode ? 'hazir' : '--' },
+                    { label: 'Durum', value: isInviteActionBusy ? 'isleniyor' : isSignedIn ? 'hazir' : 'misafir' },
+                    { label: 'Baglanti', value: invitedByCode ? 'var' : 'acik' },
                   ]}
                 />
 
                 {inviteStatus ? (
                   <StatusStrip
                     tone={inviteStatusTone}
-                    eyebrow="Invite Status"
-                    title={inviteStatusTone === 'clay' ? 'Davet akisi hata verdi' : 'Davet akisi guncellendi'}
+                    eyebrow="Davet Durumu"
+                    title={inviteStatusTone === 'clay' ? 'Davet islemi tamamlanamadi' : 'Davet bilgisi guncellendi'}
                     body={inviteStatus}
                     meta={inviteStatsLabel}
                   />
@@ -4209,10 +4760,10 @@ const MobileSettingsModal = ({
                     <StatePanel
                       tone="clay"
                       variant="empty"
-                      eyebrow="Referral"
+                      eyebrow="Davet"
                       title="Davet programi icin once giris yap"
-                      body="Link kopyalama ve kod uygulama akislari cloud oturumu gerektirir."
-                      meta="Oturum acildiginda bu bolum otomatik olarak aktiflesir."
+                      body="Link kopyalamak ve kod kullanmak icin hesabina giris yapman gerekir."
+                      meta="Giris yaptiginda bu bolum acilir."
                     />
                   ) : (
                     <>
@@ -4238,7 +4789,7 @@ const MobileSettingsModal = ({
 
                       <StatusStrip
                         tone="sage"
-                        eyebrow="Referral Notu"
+                        eyebrow="Davet Notu"
                         body={inviteRewardLabel}
                         meta={inviteStatsLabel}
                       />
@@ -4499,11 +5050,6 @@ const ShareHubScreen = ({
           { label: 'Hazir', value: canShareSelectedGoal ? 'evet' : 'hayir' },
           { label: 'Platform', value: normalizedPlatform || '--' },
         ]}
-        actions={
-          onOpenDaily
-            ? [{ label: 'Gunluk Akisa Don', tone: 'brand', onPress: () => onOpenDaily() }]
-            : undefined
-        }
       />
 
       <ScreenCard accent={normalizedGoal === 'streak' ? 'clay' : 'sage'}>
@@ -4713,7 +5259,7 @@ const ArenaChallengeCard = ({
 }: {
   streakLabel: string;
   ritualsLabel: string;
-  onOpenDaily: () => void;
+  onOpenDaily?: () => void;
 }) => (
   <>
     <SectionLeadCard
@@ -4731,13 +5277,7 @@ const ArenaChallengeCard = ({
         { label: 'Ritual', value: ritualsLabel },
         { label: 'Mod', value: 'Haftalik' },
       ]}
-      actions={[
-        {
-          label: 'Gunluk Akisa Gec',
-          tone: 'brand',
-          onPress: onOpenDaily,
-        },
-      ]}
+      actions={onOpenDaily ? [{ label: 'Gunluk Akisa Gec', tone: 'brand', onPress: onOpenDaily }] : undefined}
     />
     <StatusStrip
       tone="clay"
@@ -5143,6 +5683,7 @@ export {
   ThemeModeCard,
   ScreenErrorBoundary,
   MobileSettingsModal,
+  ProfileXpCard,
   ProfileIdentityCard,
   ProfileGenreDistributionCard,
   ProfileSnapshotCard,

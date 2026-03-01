@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState, type ComponentType } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useState, type ComponentType } from 'react'
 import './App.css'
 import { XPProvider, useXP } from './context/XPContext'
 import { NotificationProvider } from './context/NotificationContext'
@@ -11,6 +11,7 @@ import { SectionErrorBoundary } from './components/SectionErrorBoundary'
 import type { Movie } from './data/mockMovies'
 import { LanguageProvider, useLanguage } from './context/LanguageContext'
 import type { PublicProfileTarget } from './features/profile/PublicProfileView'
+import { appendMobileDeepLinkParamsToHref } from './domain/deepLinks'
 
 const DailyShowcase = lazy(() =>
   import('./features/daily-showcase/DailyShowcase').then((mod) => ({ default: mod.DailyShowcase }))
@@ -102,6 +103,32 @@ const AppContent = () => {
 
   const [showLanding, setShowLanding] = useState(true);
   const showDebugPanel = import.meta.env.DEV && import.meta.env.VITE_ENABLE_DEBUG_PANEL !== '0';
+  const discoverLinks = useMemo(
+    () => [
+      {
+        href: appendMobileDeepLinkParamsToHref('/discover/mood-films/', {
+          type: 'discover',
+          route: 'mood_films',
+        }),
+        label: text.app.discoverMoodLink,
+      },
+      {
+        href: appendMobileDeepLinkParamsToHref('/discover/director-deep-dives/', {
+          type: 'discover',
+          route: 'director_deep_dives',
+        }),
+        label: text.app.discoverDirectorLink,
+      },
+      {
+        href: appendMobileDeepLinkParamsToHref('/discover/daily-curated-picks/', {
+          type: 'discover',
+          route: 'daily_curated_picks',
+        }),
+        label: text.app.discoverDailyLink,
+      },
+    ],
+    [text.app.discoverDailyLink, text.app.discoverDirectorLink, text.app.discoverMoodLink]
+  );
 
   useEffect(() => {
     const syncFromHash = () => {
@@ -316,24 +343,15 @@ const AppContent = () => {
               {text.app.discoverSectionTitle}
             </p>
             <div className="flex flex-wrap gap-2 sm:gap-3">
-              <a
-                href="/discover/mood-films/"
-                className="inline-flex items-center rounded-lg border border-white/10 px-4 py-2.5 text-[10px] uppercase tracking-[0.18em] text-white/70 hover:text-sage hover:border-sage/40 hover:bg-sage/5 hover:scale-[1.02] hover:-translate-y-0.5 transition-all duration-300 shadow-sm"
-              >
-                {text.app.discoverMoodLink}
-              </a>
-              <a
-                href="/discover/director-deep-dives/"
-                className="inline-flex items-center rounded-lg border border-white/10 px-4 py-2.5 text-[10px] uppercase tracking-[0.18em] text-white/70 hover:text-sage hover:border-sage/40 hover:bg-sage/5 hover:scale-[1.02] hover:-translate-y-0.5 transition-all duration-300 shadow-sm"
-              >
-                {text.app.discoverDirectorLink}
-              </a>
-              <a
-                href="/discover/daily-curated-picks/"
-                className="inline-flex items-center rounded-lg border border-white/10 px-4 py-2.5 text-[10px] uppercase tracking-[0.18em] text-white/70 hover:text-sage hover:border-sage/40 hover:bg-sage/5 hover:scale-[1.02] hover:-translate-y-0.5 transition-all duration-300 shadow-sm"
-              >
-                {text.app.discoverDailyLink}
-              </a>
+              {discoverLinks.map((link) => (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  className="inline-flex items-center rounded-lg border border-white/10 px-4 py-2.5 text-[10px] uppercase tracking-[0.18em] text-white/70 hover:text-sage hover:border-sage/40 hover:bg-sage/5 hover:scale-[1.02] hover:-translate-y-0.5 transition-all duration-300 shadow-sm"
+                >
+                  {link.label}
+                </a>
+              ))}
             </div>
           </section>
 

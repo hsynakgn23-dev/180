@@ -27,6 +27,7 @@
   },
   "submit": {
     "production": {
+      "ios": {},
       "android": {
         "track": "internal",
         "releaseStatus": "draft"
