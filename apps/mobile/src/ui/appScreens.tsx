@@ -595,7 +595,7 @@ const AuthCard = ({
         : 'Sifirla Linki Gonder'
       : isBusy
         ? 'Giris yapiliyor...'
-        : 'Giris Yap';
+        : 'Giriş Yap';
   const title = isRecoveryMode ? 'Yeni Sifre' : isForgotMode ? 'Sifre Sifirla' : 'Uye Girisi';
   const body = isRecoveryMode
     ? 'Yeni sifreni kaydet.'
@@ -937,7 +937,7 @@ const ThemeModeCard = ({
   <ScreenCard accent={mode === 'dawn' ? 'clay' : 'sage'}>
     <Text style={styles.screenTitle}>Tema Modu</Text>
     <Text style={styles.screenBody}>
-      Gece/Gunduz altyapisi mobile eklendi. Tasarim katmani bu secimi referans alacak.
+      Gece/Gündüz altyapısı mobile eklendi. Tasarım katmanı bu seçimi referans alacak.
     </Text>
     <View style={styles.themeModeSegmentContainer}>
       <Pressable
@@ -963,7 +963,7 @@ const ThemeModeCard = ({
           mode === 'dawn' && styles.themeModeSegmentActiveDawn,
         ]}
         onPress={() => onSetMode('dawn')}
-        accessibilityLabel="Gunduz modunu sec"
+        accessibilityLabel="Gündüz modunu seç"
       >
         <Text
           style={[
@@ -971,7 +971,7 @@ const ThemeModeCard = ({
             mode === 'dawn' && styles.themeModeSegmentTextActiveDawn,
           ]}
         >
-          Gunduz Modu
+          Gündüz Modu
         </Text>
       </Pressable>
     </View>
@@ -1511,36 +1511,58 @@ const ProfileMarksCard = ({
     () => groupMobileMarksByCategory(MOBILE_MARK_CATALOG.map((mark) => mark.id)),
     []
   );
+  const topFeaturedTitle = featuredMarks[0] ? resolveMobileMarkTitle(featuredMarks[0]) : '';
+  const visibleGroups = mode === 'unlocked' ? groupedUnlockedMarks : groupedCatalogMarks;
 
   return (
-    <ScreenCard accent="sage">
-      <Text style={styles.screenTitle}>Mark Arsivi</Text>
-      <Text style={styles.screenBody}>
-        Toplanan tum 180AC DNA parcalari ve onur nisani marklar burada listelenir.
-      </Text>
-      {!isSignedIn ? (
-        <Text style={[styles.screenMeta, styles.ritualStateWarn]}>
-          Koleksiyonunu gormek icin oturum acmalisin.
-        </Text>
-      ) : null}
-      {state.status === 'success' ? (
-        <>
-          <View style={styles.profileGrid}>
-            <View style={styles.profileMetricCard}>
-              <Text style={styles.profileMetricValue}>{unlockedMarks.length}</Text>
-              <Text style={styles.profileMetricLabel}>Koleksiyon</Text>
-            </View>
-            <View style={styles.profileMetricCard}>
-              <Text style={styles.profileMetricValue}>{featuredMarks.length}</Text>
-              <Text style={styles.profileMetricLabel}>Vitrin</Text>
-            </View>
-          </View>
+    <>
+      <SectionLeadCard
+        accent="sage"
+        eyebrow="Marks"
+        title={mode === 'unlocked' ? 'Acik Marklar' : 'Mark Arsivi'}
+        body={mode === 'unlocked' ? 'Kazandigin marklar burada.' : 'Tum marklar tek yerde.'}
+        badges={[
+          { label: `${unlockedMarks.length} acik`, tone: 'sage' },
+          { label: `${featuredMarks.length} vitrin`, tone: featuredMarks.length > 0 ? 'muted' : 'clay' },
+          ...(mode === 'all' ? [{ label: `${MOBILE_MARK_CATALOG.length} toplam`, tone: 'muted' as const }] : []),
+        ]}
+        metrics={[
+          { label: 'Acik', value: String(unlockedMarks.length) },
+          { label: 'Vitrin', value: String(featuredMarks.length) },
+          { label: 'Grup', value: String(visibleGroups.length) },
+        ]}
+      />
 
-          <View style={styles.markCategoryBlock}>
-            <Text style={styles.markCategoryTitle}>Ozellesmis Vitrin</Text>
-            {featuredMarks.length === 0 ? (
-              <Text style={styles.screenMeta}>Vitrine hic mark secilmemis.</Text>
-            ) : (
+      {!isSignedIn ? (
+        <StatePanel
+          tone="clay"
+          variant="empty"
+          eyebrow="Marks"
+          title="Marklar icin giris yap"
+          body="Koleksiyon ve vitrin oturumla acilir."
+        />
+      ) : state.status !== 'success' ? (
+        <StatePanel
+          tone="sage"
+          variant={state.status === 'loading' ? 'loading' : 'empty'}
+          eyebrow="Marks"
+          title={state.status === 'loading' ? 'Marklar yukleniyor' : 'Mark verisi hazir degil'}
+          body={state.status === 'loading' ? 'Biraz bekle.' : 'Yeni marklar geldikce burada gorunur.'}
+        />
+      ) : (
+        <>
+          {featuredMarks.length > 0 ? (
+            <StatusStrip
+              tone="sage"
+              eyebrow="Vitrin"
+              title={`${featuredMarks.length} mark secili`}
+              body={topFeaturedTitle || 'Secili marklar hazir.'}
+            />
+          ) : null}
+
+          {featuredMarks.length > 0 ? (
+            <ScreenCard accent="sage">
+              <Text style={styles.subSectionLabel}>Vitrin</Text>
               <View style={styles.markPillRow}>
                 {featuredMarks.map((markId) => {
                   const markMeta = resolveMobileMarkMeta(markId);
@@ -1555,18 +1577,24 @@ const ProfileMarksCard = ({
                   );
                 })}
               </View>
-            )}
-          </View>
+            </ScreenCard>
+          ) : null}
 
-          <View style={styles.markCategoryBlock}>
-            <Text style={styles.markCategoryTitle}>
-              {mode === 'unlocked' ? 'Kazanilan Marklar' : 'Tum Marklar'}
-            </Text>
-            {mode === 'unlocked' && unlockedMarks.length === 0 ? (
-              <Text style={styles.screenMeta}>Henuz kazanilan mark yok.</Text>
-            ) : (
+          {mode === 'unlocked' && unlockedMarks.length === 0 ? (
+            <StatePanel
+              tone="sage"
+              variant="empty"
+              eyebrow="Marks"
+              title="Henuz acik mark yok"
+              body="Yeni ritual ve streak ile koleksiyon dolacak."
+            />
+          ) : (
+            <ScreenCard accent="sage">
+              <Text style={styles.subSectionLabel}>
+                {mode === 'unlocked' ? 'Kazanilan Marklar' : 'Tum Marklar'}
+              </Text>
               <View style={styles.markCategoryList}>
-                {(mode === 'unlocked' ? groupedUnlockedMarks : groupedCatalogMarks).map((group) => (
+                {visibleGroups.map((group) => (
                   <View key={`mark-category-${group.category}`} style={styles.markCategoryBlock}>
                     <Text style={styles.markCategoryTitle}>{group.category}</Text>
                     <View style={styles.markPillRow}>
@@ -1587,15 +1615,11 @@ const ProfileMarksCard = ({
                   </View>
                 ))}
               </View>
-            )}
-          </View>
+            </ScreenCard>
+          )}
         </>
-      ) : (
-        <Text style={styles.screenMeta}>
-          {state.status === 'loading' ? 'Mark arsivi kalibre ediliyor...' : 'Mark verisi hazir degil.'}
-        </Text>
       )}
-    </ScreenCard>
+    </>
   );
 };
 
@@ -2916,7 +2940,7 @@ const ProfileMovieArchiveModal = ({
                 variant="loading"
                 eyebrow="Film Arsivi"
                 title="Arsiv ritmi tazeleniyor"
-                body="Secilen filme ait yorumlar ve yanitlar yeniden yukleniyor."
+                body="Seçilen filme ait yorumlar ve yanıtlar yeniden yükleniyor."
                 meta="Yanitlar tekrar sayisi ile birlikte gruplanir."
               />
             ) : null}
@@ -3075,7 +3099,7 @@ const PublicProfileMovieArchiveModal = ({
                 variant="loading"
                 eyebrow="Public Arsiv"
                 title="Public akis tazeleniyor"
-                body="Secilen kullanicinin bu filme ait yorumlari yeniden yukleniyor."
+                body="Seçilen kullanıcının bu filme ait yorumları yeniden yükleniyor."
                 meta={`${profileLabel} profilinden gelen ritual izi taraniyor.`}
               />
             ) : null}
@@ -3331,7 +3355,7 @@ const RitualDraftCard = ({
 };
 
 type MobileSettingsGender = '' | 'female' | 'male' | 'non_binary' | 'prefer_not_to_say';
-type MobileSettingsLanguage = 'tr' | 'en';
+type MobileSettingsLanguage = 'en' | 'tr' | 'es' | 'fr';
 type MobileSettingsIdentityDraft = {
   fullName: string;
   username: string;
@@ -3345,10 +3369,48 @@ type MobileSettingsSaveState = {
   status: 'idle' | 'saving' | 'success' | 'error';
   message: string;
 };
+type MobileSettingsLocaleCopy = {
+  settingsTitle: string;
+  close: string;
+  tabs: {
+    identity: string;
+    appearance: string;
+    session: string;
+  };
+  appearance: {
+    eyebrow: string;
+    body: string;
+    themeMetric: string;
+    languageMetric: string;
+    livePreviewEyebrow: string;
+    livePreviewTitle: string;
+    livePreviewBody: string;
+    themeTitle: string;
+    themeMidnight: string;
+    themeDawn: string;
+    themeDescription: string;
+    themeStatusEyebrow: string;
+    themeStatusBodyMidnight: string;
+    themeStatusBodyDawn: string;
+    languageTitle: string;
+    languageDescription: string;
+    languageStatusEyebrow: string;
+    languageStatusBody: string;
+    languageCoverageMeta: string;
+  };
+  accountDeletion: {
+    title: string;
+    body: string;
+    meta: string;
+    button: string;
+    sectionMeta: string;
+    eyebrow: string;
+  };
+};
 
 const SETTINGS_GENDER_OPTIONS: Array<{ key: MobileSettingsGender; label: string }> = [
-  { key: '', label: 'Sec' },
-  { key: 'female', label: 'Kadin' },
+  { key: '', label: 'Seç' },
+  { key: 'female', label: 'Kadın' },
   { key: 'male', label: 'Erkek' },
   { key: 'non_binary', label: 'Non-binary' },
   { key: 'prefer_not_to_say', label: 'Belirtmek istemiyorum' },
@@ -3359,6 +3421,196 @@ const SETTINGS_PLATFORM_RULES = [
   'Ayni davet kodunu kotuye kullanma davranisi engellenir.',
   'Tekrarlayan ihlallerde hesap aksiyonu uygulanabilir.',
 ];
+const MOBILE_SETTINGS_LANGUAGE_OPTIONS: Array<{ code: MobileSettingsLanguage; label: string }> = [
+  { code: 'en', label: 'English' },
+  { code: 'tr', label: 'Türkçe' },
+  { code: 'es', label: 'Español' },
+  { code: 'fr', label: 'Français' },
+];
+const MOBILE_SETTINGS_COPY: Record<MobileSettingsLanguage, MobileSettingsLocaleCopy> = {
+  en: {
+    settingsTitle: 'Settings',
+    close: 'Close',
+    tabs: {
+      identity: 'Identity',
+      appearance: 'Appearance',
+      session: 'Session',
+    },
+    appearance: {
+      eyebrow: 'Appearance',
+      body: 'Theme and language changes apply to the settings surface right away.',
+      themeMetric: 'Theme',
+      languageMetric: 'Language',
+      livePreviewEyebrow: 'Live Preview',
+      livePreviewTitle: 'Changes appear instantly',
+      livePreviewBody: 'Theme and language changes apply without waiting for an extra save action.',
+      themeTitle: 'Theme',
+      themeMidnight: 'Midnight',
+      themeDawn: 'Dawn',
+      themeDescription: 'Choose the midnight or dawn surface that fits the device feel you want.',
+      themeStatusEyebrow: 'Theme Status',
+      themeStatusBodyMidnight: 'Midnight theme keeps the darker cinema atmosphere active.',
+      themeStatusBodyDawn: 'Dawn theme switches the settings surface to a brighter and warmer tone.',
+      languageTitle: 'Language',
+      languageDescription: 'Pick the interface language you prefer. Supported settings surfaces update immediately.',
+      languageStatusEyebrow: 'Language',
+      languageStatusBody: 'Selected language is shown across supported settings surfaces.',
+      languageCoverageMeta: 'Language coverage on mobile is being expanded screen by screen.',
+    },
+    accountDeletion: {
+      title: 'Account Deletion',
+      body: 'Open the published deletion page to review the request path, deleted data, and retained records.',
+      meta: 'Submit the request from the email tied to the account through the App Store support channel.',
+      button: 'Open Deletion Page',
+      sectionMeta: 'Web request path',
+      eyebrow: 'Request Flow',
+    },
+  },
+  tr: {
+    settingsTitle: 'Ayarlar',
+    close: 'Kapat',
+    tabs: {
+      identity: 'Kimlik',
+      appearance: 'Görünüm',
+      session: 'Oturum',
+    },
+    appearance: {
+      eyebrow: 'Görünüm',
+      body: 'Tema ve dil seçimleri ayar yüzeyine anında uygulanır.',
+      themeMetric: 'Tema',
+      languageMetric: 'Dil',
+      livePreviewEyebrow: 'Canlı Önizleme',
+      livePreviewTitle: 'Değişiklikler anında görünür',
+      livePreviewBody: 'Tema ve dil seçimleri ek kayıt adımı beklemeden uygulanır.',
+      themeTitle: 'Tema',
+      themeMidnight: 'Gece',
+      themeDawn: 'Gündüz',
+      themeDescription: 'Cihaz hissine en uygun gece ya da gündüz yüzeyini seç.',
+      themeStatusEyebrow: 'Tema Durumu',
+      themeStatusBodyMidnight: 'Koyu sinema hissini koruyan gece teması aktif.',
+      themeStatusBodyDawn: 'Daha aydınlık ve sıcak tonlu yüzeyler açık.',
+      languageTitle: 'Dil',
+      languageDescription: 'Arayüz kopyasını tercih ettiğin dile çek. Desteklenen ayar yüzeyleri anında güncellenir.',
+      languageStatusEyebrow: 'Dil',
+      languageStatusBody: 'Seçili dil desteklenen ayar yüzeylerinde gösteriliyor.',
+      languageCoverageMeta: 'Mobil yerelleşme kapsamı ekran bazlı olarak genişlemeye devam eder.',
+    },
+    accountDeletion: {
+      title: 'Hesap Silme',
+      body: 'Talep yolu, silinen veriler ve saklanan kayıt notları için yayındaki hesap silme sayfasını aç.',
+      meta: 'Talebi, hesaba bağlı e-posta ile App Store destek kanalı üzerinden gönder.',
+      button: 'Silme Sayfasını Aç',
+      sectionMeta: 'Web talep yolu',
+      eyebrow: 'Talep Akışı',
+    },
+  },
+  es: {
+    settingsTitle: 'Ajustes',
+    close: 'Cerrar',
+    tabs: {
+      identity: 'Identidad',
+      appearance: 'Apariencia',
+      session: 'Sesión',
+    },
+    appearance: {
+      eyebrow: 'Apariencia',
+      body: 'Los cambios de tema e idioma se aplican al panel de ajustes al instante.',
+      themeMetric: 'Tema',
+      languageMetric: 'Idioma',
+      livePreviewEyebrow: 'Vista Previa',
+      livePreviewTitle: 'Los cambios se ven al instante',
+      livePreviewBody: 'Tema e idioma se aplican sin esperar un guardado adicional.',
+      themeTitle: 'Tema',
+      themeMidnight: 'Noche',
+      themeDawn: 'Día',
+      themeDescription: 'Elige la superficie nocturna o diurna que mejor encaje con la sensación del dispositivo.',
+      themeStatusEyebrow: 'Estado del Tema',
+      themeStatusBodyMidnight: 'El tema nocturno mantiene activa la atmósfera más cinematográfica y oscura.',
+      themeStatusBodyDawn: 'El tema diurno mueve la superficie de ajustes a un tono más claro y cálido.',
+      languageTitle: 'Idioma',
+      languageDescription: 'Elige el idioma de interfaz que prefieras. Las superficies de ajustes compatibles se actualizan al instante.',
+      languageStatusEyebrow: 'Idioma',
+      languageStatusBody: 'El idioma seleccionado se muestra en las superficies de ajustes compatibles.',
+      languageCoverageMeta: 'La cobertura de idioma en mobile sigue ampliándose pantalla por pantalla.',
+    },
+    accountDeletion: {
+      title: 'Eliminación de Cuenta',
+      body: 'Abre la página publicada de eliminación para revisar el flujo de solicitud, los datos eliminados y los registros conservados.',
+      meta: 'Envía la solicitud desde el correo asociado a la cuenta mediante el canal de soporte de la App Store.',
+      button: 'Abrir Página de Eliminación',
+      sectionMeta: 'Ruta web de solicitud',
+      eyebrow: 'Flujo de Solicitud',
+    },
+  },
+  fr: {
+    settingsTitle: 'Réglages',
+    close: 'Fermer',
+    tabs: {
+      identity: 'Identité',
+      appearance: 'Apparence',
+      session: 'Session',
+    },
+    appearance: {
+      eyebrow: 'Apparence',
+      body: 'Les changements de thème et de langue sont appliqués tout de suite à la surface des réglages.',
+      themeMetric: 'Thème',
+      languageMetric: 'Langue',
+      livePreviewEyebrow: 'Aperçu',
+      livePreviewTitle: 'Les changements apparaissent tout de suite',
+      livePreviewBody: 'Le thème et la langue sont appliqués sans attendre une sauvegarde supplémentaire.',
+      themeTitle: 'Thème',
+      themeMidnight: 'Nuit',
+      themeDawn: 'Jour',
+      themeDescription: 'Choisis la surface nuit ou jour qui correspond le mieux au ressenti voulu sur l’appareil.',
+      themeStatusEyebrow: 'État du Thème',
+      themeStatusBodyMidnight: 'Le thème nuit garde une atmosphère cinéma plus sombre.',
+      themeStatusBodyDawn: 'Le thème jour rend la surface des réglages plus claire et plus chaude.',
+      languageTitle: 'Langue',
+      languageDescription: 'Choisis la langue d’interface que tu préfères. Les surfaces de réglages prises en charge se mettent à jour immédiatement.',
+      languageStatusEyebrow: 'Langue',
+      languageStatusBody: 'La langue choisie est affichée sur les surfaces de réglages prises en charge.',
+      languageCoverageMeta: 'La couverture de langue sur mobile continue de progresser écran par écran.',
+    },
+    accountDeletion: {
+      title: 'Suppression du Compte',
+      body: 'Ouvre la page publiée de suppression pour revoir le parcours de demande, les données supprimées et les données conservées.',
+      meta: 'Envoie la demande depuis l’e-mail lié au compte via le canal support de l’App Store.',
+      button: 'Ouvrir la Page de Suppression',
+      sectionMeta: 'Parcours web de demande',
+      eyebrow: 'Parcours de Demande',
+    },
+  },
+};
+
+const getMobileThemeStatusTitle = (
+  language: MobileSettingsLanguage,
+  themeLabel: string
+): string => {
+  if (language === 'tr') return `${themeLabel} teması aktif`;
+  if (language === 'es') return `Tema ${themeLabel} activo`;
+  if (language === 'fr') return `Thème ${themeLabel} actif`;
+  return `${themeLabel} theme active`;
+};
+
+const getMobileThemeSectionTitle = (
+  language: MobileSettingsLanguage,
+  themeLabel: string
+): string => {
+  if (language === 'tr') return `${themeLabel} Modu`;
+  if (language === 'es') return `Modo ${themeLabel}`;
+  if (language === 'fr') return `Mode ${themeLabel}`;
+  return `${themeLabel} Mode`;
+};
+
+const getMobileLanguageStatusTitle = (
+  language: MobileSettingsLanguage,
+  languageLabel: string
+): string => {
+  if (language === 'tr') return `${languageLabel} arayüzü aktif`;
+  if (language === 'es') return `Interfaz ${languageLabel} activa`;
+  if (language === 'fr') return `Interface ${languageLabel} active`;
+  return `${languageLabel} interface active`;
+};
 
 const RitualComposerModal = ({
   visible,
@@ -3493,11 +3745,14 @@ const MobileSettingsModal = ({
   const isSaving = saveState.status === 'saving';
   const saveTone =
     saveState.status === 'error' ? 'clay' : saveState.status === 'success' ? 'sage' : 'muted';
+  const normalizedInviteStatus = inviteStatus.toLocaleLowerCase('tr-TR');
   const inviteStatusTone =
-    inviteStatus.toLowerCase().includes('hata')
+    normalizedInviteStatus.includes('hata')
       ? 'clay'
-      : inviteStatus.toLowerCase().includes('uygulandi') ||
-          inviteStatus.toLowerCase().includes('kopyalandi')
+      : normalizedInviteStatus.includes('uygulandı') ||
+          normalizedInviteStatus.includes('uygulandi') ||
+          normalizedInviteStatus.includes('kopyalandı') ||
+          normalizedInviteStatus.includes('kopyalandi')
         ? 'sage'
         : 'muted';
   const handleSignOutPress = () => {
@@ -3517,36 +3772,33 @@ const MobileSettingsModal = ({
   const identityBio = String(identityDraft.bio || '').trim();
   const identityProfileLink = String(identityDraft.profileLink || '').trim();
   const activeGenderLabel =
-    SETTINGS_GENDER_OPTIONS.find((option) => option.key === identityDraft.gender)?.label || 'Sec';
-  const themeLabel = themeMode === 'dawn' ? 'Gunduz' : 'Gece';
-  const languageLabel = language === 'tr' ? 'Turkce' : 'English';
-  const accountDeletionTitle = language === 'en' ? 'Account Deletion' : 'Hesap Silme';
-  const accountDeletionBody =
-    language === 'en'
-      ? 'Open the published deletion page to review the request path, deleted data, and retained records.'
-      : 'Talep yolu, silinen veriler ve saklanan kayit notlari icin yayindaki hesap silme sayfasini ac.';
-  const accountDeletionMeta =
-    language === 'en'
-      ? 'Submit the request from the email tied to the account through the app store support channel.'
-      : 'Talebi, hesaba bagli e-posta ile app store support kanali uzerinden gonder.';
-  const accountDeletionButton = language === 'en' ? 'Open Deletion Page' : 'Silme Sayfasini Ac';
+    SETTINGS_GENDER_OPTIONS.find((option) => option.key === identityDraft.gender)?.label || 'Seç';
+  const settingsCopy = MOBILE_SETTINGS_COPY[language] || MOBILE_SETTINGS_COPY.en;
+  const themeLabel =
+    themeMode === 'dawn' ? settingsCopy.appearance.themeDawn : settingsCopy.appearance.themeMidnight;
+  const languageLabel =
+    MOBILE_SETTINGS_LANGUAGE_OPTIONS.find((option) => option.code === language)?.label || 'English';
+  const accountDeletionTitle = settingsCopy.accountDeletion.title;
+  const accountDeletionBody = settingsCopy.accountDeletion.body;
+  const accountDeletionMeta = settingsCopy.accountDeletion.meta;
+  const accountDeletionButton = settingsCopy.accountDeletion.button;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalOverlaySurface}>
         <View style={styles.modalSheetSurface}>
           <View style={styles.modalNavRow}>
-            <Text style={styles.screenTitle}>Ayarlar</Text>
+            <Text style={styles.screenTitle}>{settingsCopy.settingsTitle}</Text>
             <Pressable onPress={onClose} hitSlop={PRESSABLE_HIT_SLOP}>
-              <Text style={styles.modalCloseTextBtn}>Kapat</Text>
+              <Text style={styles.modalCloseTextBtn}>{settingsCopy.close}</Text>
             </Pressable>
           </View>
 
           <View style={styles.settingsTabRow}>
             {([
-              { id: 'identity', label: 'Kimlik' },
-              { id: 'appearance', label: 'Gorunum' },
-              { id: 'session', label: 'Oturum' },
+              { id: 'identity', label: settingsCopy.tabs.identity },
+              { id: 'appearance', label: settingsCopy.tabs.appearance },
+              { id: 'session', label: settingsCopy.tabs.session },
             ] as const).map((tab) => (
               <Pressable
                 key={tab.id}
@@ -3639,7 +3891,7 @@ const MobileSettingsModal = ({
                     </View>
                     <View style={styles.settingsAvatarActionRow}>
                       <UiButton
-                        label={isPickingAvatar ? 'Seciliyor...' : 'Cihazdan Sec'}
+                        label={isPickingAvatar ? 'Seçiliyor...' : 'Cihazdan Seç'}
                         tone="neutral"
                         onPress={onPickAvatar}
                         disabled={isPickingAvatar || !isSignedIn}
@@ -3658,10 +3910,10 @@ const MobileSettingsModal = ({
                   <StatusStrip
                     tone={identityDraft.avatarUrl ? 'sage' : 'muted'}
                     eyebrow="Avatar"
-                    title={identityDraft.avatarUrl ? 'Profil gorseli secildi' : 'Avatar opsiyonel'}
+                    title={identityDraft.avatarUrl ? 'Profil görseli seçildi' : 'Avatar opsiyonel'}
                     body={
                       identityDraft.avatarUrl
-                        ? 'Secilen avatar kimlik katmaninda kullanilacak.'
+                        ? 'Seçilen avatar kimlik katmanında kullanılacak.'
                         : 'Avatar URL yerine cihazdan manuel secim kullaniliyor.'
                     }
                   />
@@ -3688,10 +3940,10 @@ const MobileSettingsModal = ({
                     style={styles.input}
                     value={identityDraft.birthDate}
                     onChangeText={(value) => onChangeIdentity({ birthDate: value })}
-                    placeholder="Dogum tarihi (GG/AA/YYYY)"
+                    placeholder="Doğum tarihi (GG/AA/YYYY)"
                     placeholderTextColor="#8e8b84"
                     autoCapitalize="none"
-                    accessibilityLabel="Dogum tarihi"
+                    accessibilityLabel="Doğum tarihi"
                   />
 
                   <View style={styles.detailInfoGrid}>
@@ -3702,7 +3954,7 @@ const MobileSettingsModal = ({
                       </Text>
                     </View>
                     <View style={styles.detailInfoCard}>
-                      <Text style={styles.detailInfoLabel}>Dogum</Text>
+                      <Text style={styles.detailInfoLabel}>Doğum</Text>
                       <Text style={styles.detailInfoValue}>
                         {identityBirthDate || 'Henuz dogum tarihi girilmedi'}
                       </Text>
@@ -3790,34 +4042,34 @@ const MobileSettingsModal = ({
               <>
                 <SectionLeadCard
                   accent={themeMode === 'dawn' ? 'clay' : 'sage'}
-                  eyebrow="Appearance"
-                  title={`${themeLabel} Modu`}
-                  body="Tema ve dil secimleri arayuz yuzeyine aninda uygulanir."
+                  eyebrow={settingsCopy.appearance.eyebrow}
+                  title={getMobileThemeSectionTitle(language, themeLabel)}
+                  body={settingsCopy.appearance.body}
                   badges={[
                     { label: themeLabel, tone: themeMode === 'dawn' ? 'clay' : 'sage' },
                     { label: languageLabel, tone: 'muted' },
                   ]}
                   metrics={[
-                    { label: 'Theme', value: themeLabel },
-                    { label: 'Dil', value: languageLabel },
+                    { label: settingsCopy.appearance.themeMetric, value: themeLabel },
+                    { label: settingsCopy.appearance.languageMetric, value: languageLabel },
                   ]}
                 />
 
                 <StatusStrip
                   tone="sage"
-                  eyebrow="Live Preview"
-                  title="Degisiklikler aninda gorunur"
-                  body="Tema ve dil secimleri kayit beklemeden uygulama yuzeyine islenir."
+                  eyebrow={settingsCopy.appearance.livePreviewEyebrow}
+                  title={settingsCopy.appearance.livePreviewTitle}
+                  body={settingsCopy.appearance.livePreviewBody}
                 />
 
                 <CollapsibleSectionCard
                   accent={themeMode === 'dawn' ? 'clay' : 'sage'}
-                  title="Tema"
+                  title={settingsCopy.appearance.themeTitle}
                   meta={themeLabel}
                   defaultExpanded
                 >
                   <Text style={styles.screenBody}>
-                    Gece ve gunduz gorunumleri arasinda cihaz hissine uygun akisi sec.
+                    {settingsCopy.appearance.themeDescription}
                   </Text>
                   <View style={styles.themeModeSegmentContainer}>
                     <Pressable
@@ -3833,7 +4085,7 @@ const MobileSettingsModal = ({
                           themeMode === 'midnight' ? styles.themeModeSegmentTextActiveMidnight : null,
                         ]}
                       >
-                        Gece
+                        {settingsCopy.appearance.themeMidnight}
                       </Text>
                     </Pressable>
                     <Pressable
@@ -3849,69 +4101,58 @@ const MobileSettingsModal = ({
                           themeMode === 'dawn' ? styles.themeModeSegmentTextActiveDawn : null,
                         ]}
                       >
-                        Gunduz
+                        {settingsCopy.appearance.themeDawn}
                       </Text>
                     </Pressable>
                   </View>
                   <StatusStrip
                     tone={themeMode === 'dawn' ? 'clay' : 'sage'}
-                    eyebrow="Tema Durumu"
-                    title={`${themeLabel} temasi aktif`}
+                    eyebrow={settingsCopy.appearance.themeStatusEyebrow}
+                    title={getMobileThemeStatusTitle(language, themeLabel)}
                     body={
                       themeMode === 'dawn'
-                        ? 'Daha aydinlik ve sicak tonlu yuzeyler acik.'
-                        : 'Koyu sinema hissini koruyan gece temasi aktif.'
+                        ? settingsCopy.appearance.themeStatusBodyDawn
+                        : settingsCopy.appearance.themeStatusBodyMidnight
                     }
                   />
                 </CollapsibleSectionCard>
 
                 <CollapsibleSectionCard
                   accent="sage"
-                  title="Dil"
+                  title={settingsCopy.appearance.languageTitle}
                   meta={languageLabel}
                   defaultExpanded
                 >
                   <Text style={styles.screenBody}>
-                    Arayuz kopyasini tercih ettigin dile cek. Diger yuzeyler ayni davranir.
+                    {settingsCopy.appearance.languageDescription}
                   </Text>
                   <View style={styles.settingsGenderRow}>
-                    <Pressable
-                      style={[styles.settingsGenderChip, language === 'tr' ? styles.settingsGenderChipActive : null]}
-                      onPress={() => onSetLanguage('tr')}
-                    >
-                      <Text
+                    {MOBILE_SETTINGS_LANGUAGE_OPTIONS.map((option) => (
+                      <Pressable
+                        key={option.code}
                         style={[
-                          styles.settingsGenderChipText,
-                          language === 'tr' ? styles.settingsGenderChipTextActive : null,
+                          styles.settingsGenderChip,
+                          language === option.code ? styles.settingsGenderChipActive : null,
                         ]}
+                        onPress={() => onSetLanguage(option.code)}
                       >
-                        Turkce
-                      </Text>
-                    </Pressable>
-                    <Pressable
-                      style={[styles.settingsGenderChip, language === 'en' ? styles.settingsGenderChipActive : null]}
-                      onPress={() => onSetLanguage('en')}
-                    >
-                      <Text
-                        style={[
-                          styles.settingsGenderChipText,
-                          language === 'en' ? styles.settingsGenderChipTextActive : null,
-                        ]}
-                      >
-                        English
-                      </Text>
-                    </Pressable>
+                        <Text
+                          style={[
+                            styles.settingsGenderChipText,
+                            language === option.code ? styles.settingsGenderChipTextActive : null,
+                          ]}
+                        >
+                          {option.label}
+                        </Text>
+                      </Pressable>
+                    ))}
                   </View>
                   <StatusStrip
                     tone="muted"
-                    eyebrow="Language"
-                    title={language === 'tr' ? 'Turkce arayuz aktif' : 'English interface active'}
-                    body={
-                      language === 'tr'
-                        ? 'Metinler Turkce gosteriliyor.'
-                        : 'Labels and interface copy are shown in English.'
-                    }
-                    meta="Yerellesme kapsami ekran bazli olarak genislemeye devam eder."
+                    eyebrow={settingsCopy.appearance.languageStatusEyebrow}
+                    title={getMobileLanguageStatusTitle(language, languageLabel)}
+                    body={settingsCopy.appearance.languageStatusBody}
+                    meta={settingsCopy.appearance.languageCoverageMeta}
                   />
                 </CollapsibleSectionCard>
               </>
@@ -4039,12 +4280,12 @@ const MobileSettingsModal = ({
                 <CollapsibleSectionCard
                   accent="clay"
                   title={accountDeletionTitle}
-                  meta={language === 'en' ? 'Web request path' : 'Web talep yolu'}
+                  meta={settingsCopy.accountDeletion.sectionMeta}
                   defaultExpanded
                 >
                   <StatusStrip
                     tone="muted"
-                    eyebrow={language === 'en' ? 'Request Flow' : 'Talep Akisi'}
+                    eyebrow={settingsCopy.accountDeletion.eyebrow}
                     title={accountDeletionTitle}
                     body={accountDeletionBody}
                     meta={accountDeletionMeta}
@@ -4102,7 +4343,7 @@ const InviteClaimScreen = ({
         accent="clay"
         eyebrow="Invite Gateway"
         title="Davet Onayi"
-        body="Davet kodunu backend uzerinden dogrula ve odul akisina bagla."
+        body="Kodu onayla."
         badges={[
           { label: hasInviteCode ? `Kod ${inviteCode}` : 'Kod yok', tone: hasInviteCode ? 'sage' : 'clay' },
           { label: claimState.status, tone: claimState.status === 'error' ? 'clay' : 'muted' },
@@ -4126,9 +4367,8 @@ const InviteClaimScreen = ({
           tone="clay"
           variant="empty"
           eyebrow="Invite Link"
-          title="Deep link icinde davet kodu yok"
-          body="Bu ekran bir davet kodu yakaladiginda odul akisini burada calistirir."
-          meta="Yeni bir davet baglantisiyla uygulamaya geri dondugunde tekrar dene."
+          title="Kod bulunamadi"
+          body="Yeni bir davet linkiyle tekrar dene."
         />
       ) : null}
 
@@ -4138,28 +4378,27 @@ const InviteClaimScreen = ({
           variant="loading"
           eyebrow="Invite Claim"
           title="Kod dogrulaniyor"
-          body="Kod gecerliligi ve odul haklari backend tarafinda kontrol ediliyor."
+          body="Biraz bekle."
           meta={`Kod: ${inviteCode}`}
         />
       ) : null}
 
       {claimState.status === 'success' ? (
         <ScreenCard accent="sage">
-          <Text style={styles.sectionLeadEyebrow}>Claim Success</Text>
-          <Text style={styles.sectionLeadTitle}>Odul uygulandi</Text>
+          <Text style={styles.sectionLeadTitle}>Ödül uygulandı</Text>
           <Text style={styles.sectionLeadBody}>{claimState.message}</Text>
           <View style={styles.sectionLeadMetricRow}>
             <View style={styles.sectionLeadMetricCard}>
               <Text style={styles.sectionLeadMetricValue}>+{claimState.inviteeRewardXp}</Text>
-              <Text style={styles.sectionLeadMetricLabel}>Invitee XP</Text>
+              <Text style={styles.sectionLeadMetricLabel}>Sen</Text>
             </View>
             <View style={styles.sectionLeadMetricCard}>
               <Text style={styles.sectionLeadMetricValue}>+{claimState.inviterRewardXp}</Text>
-              <Text style={styles.sectionLeadMetricLabel}>Inviter XP</Text>
+              <Text style={styles.sectionLeadMetricLabel}>Davet Eden</Text>
             </View>
             <View style={styles.sectionLeadMetricCard}>
               <Text style={styles.sectionLeadMetricValue}>{claimState.claimCount}</Text>
-              <Text style={styles.sectionLeadMetricLabel}>Claim Count</Text>
+              <Text style={styles.sectionLeadMetricLabel}>Toplam</Text>
             </View>
           </View>
         </ScreenCard>
@@ -4172,7 +4411,7 @@ const InviteClaimScreen = ({
           eyebrow="Invite Claim"
           title="Kod uygulanamadi"
           body={claimState.message}
-          meta={claimState.errorCode ? `Error code: ${claimState.errorCode}` : undefined}
+          meta={claimState.errorCode ? `Kod: ${claimState.errorCode}` : undefined}
           actionLabel="Tekrar Dene"
           onAction={() => {
             if (inviteCode) onClaim(inviteCode);
@@ -4216,6 +4455,7 @@ const ShareHubScreen = ({
   const normalizedGoal = goal === 'streak' ? 'streak' : 'comment';
   const normalizedPlatform =
     platform === 'instagram' || platform === 'tiktok' || platform === 'x' ? platform : undefined;
+  const hasInviteLink = Boolean(String(inviteLink || '').trim());
   const safeStreak = Math.max(0, Number(streakValue || 0));
 
   const title =
@@ -4227,10 +4467,10 @@ const ShareHubScreen = ({
 
   const body =
     normalizedGoal === 'streak'
-      ? 'Seri tamamlandi. Paylasim niyeti deep link ile alindi; mobilde route bilgisi hazir.'
+      ? 'Streak paylas.'
       : normalizedGoal === 'comment'
-        ? 'Yorum paylasimi niyeti deep link ile alindi; mobilde route bilgisi hazir.'
-        : 'Paylasim hedefi bilgisi bulunamadi. Varsayilan route acildi.';
+        ? 'Yorumunu paylas.'
+        : 'Paylasim hazir.';
   const statusStyle =
     shareStatusTone === 'error'
       ? styles.ritualStateError
@@ -4252,10 +4492,11 @@ const ShareHubScreen = ({
           { label: normalizedGoal === 'streak' ? 'Streak modu' : 'Yorum modu', tone: normalizedGoal === 'streak' ? 'clay' : 'sage' },
           { label: normalizedPlatform || 'platform sec', tone: 'muted' },
           { label: inviteCode ? `Kod ${inviteCode}` : 'Kod yok', tone: inviteCode ? 'muted' : 'clay' },
+          { label: hasInviteLink ? 'link hazir' : 'link yok', tone: hasInviteLink ? 'muted' : 'clay' },
         ]}
         metrics={[
           { label: 'Streak', value: String(safeStreak) },
-          { label: 'Ready', value: canShareSelectedGoal ? 'yes' : 'no' },
+          { label: 'Hazir', value: canShareSelectedGoal ? 'evet' : 'hayir' },
           { label: 'Platform', value: normalizedPlatform || '--' },
         ]}
         actions={
@@ -4266,7 +4507,7 @@ const ShareHubScreen = ({
       />
 
       <ScreenCard accent={normalizedGoal === 'streak' ? 'clay' : 'sage'}>
-        <Text style={styles.subSectionLabel}>Paylasim Hedefi</Text>
+        <Text style={styles.subSectionLabel}>Hedef</Text>
         <View style={styles.themeModeSegmentContainer}>
           <Pressable
             style={[
@@ -4306,19 +4547,6 @@ const ShareHubScreen = ({
           </Pressable>
         </View>
 
-        <View style={styles.detailInfoGrid}>
-          <View style={styles.detailInfoCard}>
-            <Text style={styles.detailInfoLabel}>Invite</Text>
-            <Text style={styles.detailInfoValue}>{inviteCode || 'none'}</Text>
-          </View>
-          <View style={styles.detailInfoCard}>
-            <Text style={styles.detailInfoLabel}>Link</Text>
-            <Text style={styles.detailInfoValue} numberOfLines={3}>
-              {inviteLink || 'hazirlaniyor'}
-            </Text>
-          </View>
-        </View>
-
         {canShareSelectedGoal ? (
           <StatusStrip
             tone="sage"
@@ -4329,7 +4557,7 @@ const ShareHubScreen = ({
                 ? `Bugunku streak tamamlandi: ${safeStreak} gun`
                 : `"${commentPreview}"`
             }
-            meta="Platform sectiginde native share paneli ve odul akisi devreye girer."
+            meta={inviteCode ? `Davet kodu: ${inviteCode}` : undefined}
           />
         ) : (
           <StatePanel
@@ -4342,13 +4570,12 @@ const ShareHubScreen = ({
                 ? 'Paylasim icin bugun bir yorumun olmali.'
                 : 'Streak paylasimi icin bugunku yorum ve aktif streak gerekiyor.'
             }
-            meta="Gunluk akisa donup yeni ritual biraktiginda bu alan otomatik olarak acilir."
           />
         )}
       </ScreenCard>
 
       <ScreenCard accent={normalizedGoal === 'streak' ? 'clay' : 'sage'}>
-        <Text style={styles.subSectionLabel}>Platform Sec</Text>
+        <Text style={styles.subSectionLabel}>Platform</Text>
         <View style={styles.sectionLeadActionRow}>
           <UiButton
             label="Instagram"
@@ -4376,7 +4603,7 @@ const ShareHubScreen = ({
           tone={shareStatusTone === 'error' ? 'clay' : shareStatusTone === 'ready' ? 'sage' : 'muted'}
           eyebrow="Share Status"
           body={shareStatus}
-          meta={canShareSelectedGoal ? 'Platform secimi hazir.' : 'Paylasim oncesi hedef gereksinimleri eksik.'}
+          meta={canShareSelectedGoal ? undefined : 'Hedef hazir degil.'}
         />
         <Text style={[styles.screenMeta, statusStyle]}>
           {normalizedPlatform ? `Secili platform: ${normalizedPlatform}` : 'Henuz platform secilmedi.'}
@@ -4667,26 +4894,8 @@ const PublicProfileBridgeCard = ({
 
   return (
     <ScreenCard accent="clay">
-      <Text style={styles.sectionLeadEyebrow}>Public Bridge</Text>
-      <Text style={styles.sectionLeadTitle}>Public Profile Gecisi</Text>
-      <Text style={styles.sectionLeadBody}>
-        Kullanici adini gir, profili mobil icinde ac ve yorum/film arsivine dogrudan gec.
-      </Text>
-      <View style={styles.sectionLeadBadgeRow}>
-        <View
-          style={[
-            styles.sectionLeadBadge,
-            canOpenProfile ? styles.sectionLeadBadgeSage : styles.sectionLeadBadgeMuted,
-          ]}
-        >
-          <Text style={styles.sectionLeadBadgeText}>
-            {canOpenProfile ? 'profil hazir' : 'handle bekleniyor'}
-          </Text>
-        </View>
-        <View style={[styles.sectionLeadBadge, styles.sectionLeadBadgeMuted]}>
-          <Text style={styles.sectionLeadBadgeText}>@kullanici-adi</Text>
-        </View>
-      </View>
+      <Text style={styles.sectionLeadTitle}>Public Profil</Text>
+      <Text style={styles.sectionLeadBody}>@kullanici ile ac.</Text>
 
       <TextInput
         style={styles.publicProfileInput}
@@ -4701,24 +4910,22 @@ const PublicProfileBridgeCard = ({
       {canOpenProfile ? (
         <StatusStrip
           tone="sage"
-          eyebrow="Hazir Profil"
+          eyebrow="Hazir"
           title={`@${normalizedInput}`}
-          body="Bu handle ile native public profile ekranini acabilirsin."
-          meta="Giris yapmadan da profil, film ve yorum akislarini inceleyebilirsin."
+          body="Profili acabilirsin."
         />
       ) : (
         <StatePanel
           tone="clay"
           variant="empty"
           eyebrow="Profil Arama"
-          title="Once bir kullanici adi yaz"
-          body="Public profile acilisi handle bazli calisir. Bosluk olmadan kullanici adini gir."
-          meta="Ornek: @cinephile ya da cinephile"
+          title="Kullanici adi yaz"
+          body="Ornek: cinephile"
         />
       )}
 
       <UiButton
-        label={canOpenProfile ? 'Profili Ac' : 'Kullanici Adi Bekleniyor'}
+        label={canOpenProfile ? 'Profili Ac' : 'Bekleniyor'}
         tone={canOpenProfile ? 'brand' : 'neutral'}
         onPress={onOpenProfile}
         disabled={!canOpenProfile}
@@ -4773,7 +4980,7 @@ const PublicProfileDetailCard = ({
         accent="clay"
         eyebrow="Public Detail"
         title={profileDisplayName || '@bilinmeyen'}
-        body={status === 'loading' ? 'Profil yukleniyor...' : message}
+        body={status === 'loading' ? 'Profil yukleniyor...' : 'Public profil ozeti.'}
         badges={[
           { label: status, tone: status === 'error' ? 'clay' : status === 'ready' ? 'sage' : 'muted' },
           ...(isSelfProfile ? [{ label: 'kendi profilin', tone: 'muted' as const }] : []),
@@ -4808,9 +5015,8 @@ const PublicProfileDetailCard = ({
           tone="sage"
           variant="loading"
           eyebrow="Public Profil"
-          title="Profil verisi toparlaniyor"
-          body="Temel metrikler ve follow durumu okunuyor."
-          meta="Profil acildiginda film ve yorum arsivine asagidan gecersin."
+          title="Profil yukleniyor"
+          body="Biraz bekle."
         />
       ) : null}
 
@@ -4819,9 +5025,8 @@ const PublicProfileDetailCard = ({
           tone="clay"
           variant="error"
           eyebrow="Public Profil"
-          title="Profil su an acilamadi"
+          title="Profil acilamadi"
           body={message}
-          meta="Kullanici adi dogruysa yenileyip tekrar deneyebilirsin."
           actionLabel="Yenile"
           onAction={onRefresh}
           actionTone="danger"
@@ -4830,7 +5035,7 @@ const PublicProfileDetailCard = ({
 
       {profile ? (
         <ScreenCard accent="sage">
-          <Text style={styles.subSectionLabel}>Toplu Ozet</Text>
+          <Text style={styles.subSectionLabel}>Ozet</Text>
           <View style={styles.detailInfoGrid}>
             <View style={styles.detailInfoCard}>
               <Text style={styles.detailInfoLabel}>Ritual</Text>
@@ -4848,7 +5053,7 @@ const PublicProfileDetailCard = ({
 
           <StatusStrip
             tone={followTone}
-            eyebrow="Follow State"
+            eyebrow="Takip"
             title={
               isSelfProfile
                 ? 'Bu profil sana ait'
@@ -4859,12 +5064,12 @@ const PublicProfileDetailCard = ({
             body={
               followMessage ||
               (isSelfProfile
-                ? 'Kendi profilinde follow aksiyonu gosterilmez.'
+                ? 'Takip islemi gosterilmez.'
                 : isSignedIn
-                  ? 'Istersen bu profili takip edip sosyal akisina ekleyebilirsin.'
-                  : 'Takip etmek icin once mobil session acman gerekir.')
+                  ? 'Istersen takip edebilirsin.'
+                  : 'Takip icin giris yap.')
             }
-            meta={!isSelfProfile && followsYou ? 'Bu kisi seni takip ediyor.' : 'Detayli profil icin ustteki aksiyonu kullan.'}
+            meta={!isSelfProfile && followsYou ? 'Bu kisi seni takip ediyor.' : undefined}
           />
 
           {!isSelfProfile && isSignedIn ? (

@@ -234,8 +234,13 @@ const parseStoredIdentityDraft = (raw: string | null): MobileSettingsIdentityDra
   }
 };
 
-const parseStoredLanguage = (raw: string | null): MobileSettingsLanguage =>
-  String(raw || '').trim().toLowerCase() === 'en' ? 'en' : 'tr';
+const parseStoredLanguage = (raw: string | null): MobileSettingsLanguage => {
+  const normalized = String(raw || '').trim().toLowerCase();
+  if (normalized === 'tr') return 'tr';
+  if (normalized === 'es') return 'es';
+  if (normalized === 'fr') return 'fr';
+  return 'en';
+};
 
 const DISCOVER_ROUTE_CONFIG = [
   {
@@ -391,8 +396,8 @@ const inviteMessageByCode: Record<string, string> = {
   UNAUTHORIZED: 'Oturum bulunamadi. Once mobilde giris yapman gerekiyor.',
   INVALID_CODE: 'Davet kodu gecersiz.',
   INVITE_NOT_FOUND: 'Davet kodu bulunamadi.',
-  SELF_INVITE: 'Kendi davet kodunu kullanamazsin.',
-  ALREADY_CLAIMED: 'Bu hesap zaten bir davet kodu kullandi.',
+  SELF_INVITE: 'Kendi davet kodunu kullanamazsın.',
+  ALREADY_CLAIMED: 'Bu hesap zaten bir davet kodu kullandı.',
   DEVICE_DAILY_LIMIT: 'Gunluk cihaz limiti doldu. Daha sonra tekrar dene.',
   DEVICE_CODE_REUSE: 'Bu cihazda bu kod daha once kullanilmis.',
   SERVER_ERROR: 'Sunucuya ulasilamadi. Birazdan tekrar dene.',
@@ -478,7 +483,7 @@ export default function App() {
   });
   const [themeMode, setThemeMode] = useState<MobileThemeMode>('midnight');
   const [settingsVisible, setSettingsVisible] = useState(false);
-  const [settingsLanguage, setSettingsLanguage] = useState<MobileSettingsLanguage>('tr');
+  const [settingsLanguage, setSettingsLanguage] = useState<MobileSettingsLanguage>('en');
   const [settingsIdentityDraft, setSettingsIdentityDraft] = useState<MobileSettingsIdentityDraft>(
     DEFAULT_SETTINGS_IDENTITY
   );
@@ -2731,7 +2736,7 @@ export default function App() {
           : 'hazir degil';
   const inboxTabBadge =
     unreadDeepLinkCount > 0 ? (unreadDeepLinkCount > 9 ? '9+' : unreadDeepLinkCount) : undefined;
-  const themeModeLabel = isDawnTheme ? 'Gunduz' : 'Gece';
+  const themeModeLabel = isDawnTheme ? 'Gündüz' : 'Gece';
   const profileDisplayName = String(
     settingsIdentityDraft.fullName ||
       (profileState.status === 'success' ? profileState.displayName : '') ||
@@ -3225,14 +3230,14 @@ export default function App() {
   const handleCopyInviteLink = useCallback(async () => {
     const inviteLink = String(inviteProgram.inviteLink || '').trim();
     if (!inviteLink) {
-      setInviteStatus('Kopyalanacak davet linki bulunamadi.');
+      setInviteStatus('Kopyalanacak davet linki bulunamadı.');
       return;
     }
     try {
       await Clipboard.setStringAsync(inviteLink);
-      setInviteStatus('Davet linki panoya kopyalandi.');
+      setInviteStatus('Davet linki panoya kopyalandı.');
     } catch {
-      setInviteStatus('Davet linki kopyalanamadi.');
+      setInviteStatus('Davet linki kopyalanamadı.');
     }
   }, [inviteProgram.inviteLink]);
 
@@ -3440,7 +3445,7 @@ export default function App() {
         setInviteClaimState({
           status: 'success',
           inviteCode: inviteCodeText,
-          message: `Davet kodu uygulandi. +${inviteeRewardXp} XP kazandin.`,
+          message: `Davet kodu uygulandı. +${inviteeRewardXp} XP kazandın.`,
           inviteeRewardXp,
           inviterRewardXp,
           claimCount,
@@ -3525,12 +3530,12 @@ export default function App() {
         setInviteClaimState({
           status: 'success',
           inviteCode: inviteCodeText,
-          message: `Davet kodu uygulandi. +${inviteeRewardXp} XP kazandin.`,
+          message: `Davet kodu uygulandı. +${inviteeRewardXp} XP kazandın.`,
           inviteeRewardXp,
           inviterRewardXp,
           claimCount,
         });
-        setInviteStatus(`Kod uygulandi. +${inviteeRewardXp} XP`);
+        setInviteStatus(`Kod uygulandı. +${inviteeRewardXp} XP`);
         setInviteCodeDraft('');
         void refreshProfileStats();
       } else {

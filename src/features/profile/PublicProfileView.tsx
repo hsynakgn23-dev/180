@@ -196,7 +196,19 @@ const RITUAL_SELECT_VARIANTS = [
 ] as const;
 
 export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, onClose, onHome }) => {
-    const { text, format } = useLanguage();
+    const { text, format, language } = useLanguage();
+    const progressLabels = React.useMemo(() => {
+        if (language === 'tr') {
+            return { xp: 'XP', next: 'Sonraki' };
+        }
+        if (language === 'es') {
+            return { xp: 'XP', next: 'Siguiente' };
+        }
+        if (language === 'fr') {
+            return { xp: 'XP', next: 'Suivant' };
+        }
+        return { xp: 'XP', next: 'Next' };
+    }, [language]);
     const { user, isFollowingUser, toggleFollowUser } = useXP();
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -648,8 +660,8 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                                 </div>
                                 <div className="mt-4 pt-4 border-t border-white/10">
                                     <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-gray-400">
-                                        <span>XP: {Math.floor(profile.xp)}</span>
-                                        <span>Next: {Math.max(nextLevelXP, profile.xp)}</span>
+                                        <span>{progressLabels.xp}: {Math.floor(profile.xp)}</span>
+                                        <span>{progressLabels.next}: {Math.max(nextLevelXP, profile.xp)}</span>
                                     </div>
                                     <div className="mt-2 h-1.5 bg-white/10 rounded-full overflow-hidden">
                                         <div className="h-full bg-sage transition-all duration-700" style={{ width: `${progressPercentage}%` }} />

@@ -127,50 +127,50 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         if (language === 'es') {
             return {
                 title: 'Importar Letterboxd',
-                subtitle: 'Sube tu CSV de Letterboxd para transferir historial al motor de personalizacion.',
+                subtitle: 'Sube tu CSV de Letterboxd para transferir historial al motor de personalización.',
                 cta: 'Subir CSV',
                 inProgress: 'Importando...',
-                noIdentity: 'No hay una cuenta activa. Vuelve a iniciar sesion.',
+                noIdentity: 'No hay una cuenta activa. Vuelve a iniciar sesión.',
                 parseFailed: 'No se pudo leer el CSV. Intenta de nuevo con el export de Letterboxd.',
-                emptyFile: 'No se encontraron filas validas. Revisa los encabezados del CSV.',
+                emptyFile: 'No se encontraron filas válidas. Revisa los encabezados del CSV.',
                 importSuccess: 'Datos de Letterboxd agregados.',
                 statsPrefix: 'Importado total',
-                previewReady: 'Vista previa lista. Puedes confirmar la importacion.',
+                previewReady: 'Vista previa lista. Puedes confirmar la importación.',
                 previewTitle: 'Vista Previa CSV',
                 mappingTitle: 'Asignaciones Detectadas',
                 sampleTitle: 'Filas de Muestra',
-                confirmImport: 'Confirmar Importacion',
+                confirmImport: 'Confirmar Importación',
                 clearPreview: 'Limpiar',
-                colTitle: 'Pelicula',
-                colYear: 'Ano',
+                colTitle: 'Película',
+                colYear: 'Año',
                 colTmdb: 'TMDB',
                 colImdb: 'IMDb',
                 colWatched: 'Visto',
-                colRating: 'Puntuacion',
+                colRating: 'Puntuación',
                 rowsLabel: 'filas',
                 idsLabel: 'ids',
-                titleKeysLabel: 'claves de titulo'
+                titleKeysLabel: 'claves de título'
             };
         }
         if (language === 'fr') {
             return {
                 title: 'Import Letterboxd',
-                subtitle: 'Ajoute ton CSV Letterboxd pour transferer l historique vers la personnalisation.',
+                subtitle: 'Ajoute ton CSV Letterboxd pour transférer l’historique vers la personnalisation.',
                 cta: 'Importer CSV',
                 inProgress: 'Import en cours...',
                 noIdentity: 'Aucun compte actif. Reconnecte-toi.',
-                parseFailed: 'CSV illisible. Reessaie avec l export Letterboxd.',
-                emptyFile: 'Aucune ligne valide detectee. Verifie les en-tetes CSV.',
+                parseFailed: 'CSV illisible. Réessaie avec l’export Letterboxd.',
+                emptyFile: 'Aucune ligne valide détectée. Vérifie les en-têtes CSV.',
                 importSuccess: 'Donnees Letterboxd ajoutees.',
-                statsPrefix: 'Total importe',
-                previewReady: 'Apercu pret. Tu peux confirmer l import.',
-                previewTitle: 'Apercu CSV',
-                mappingTitle: 'Correspondances Detectees',
+                statsPrefix: 'Total importé',
+                previewReady: 'Aperçu prêt. Tu peux confirmer l’import.',
+                previewTitle: 'Aperçu CSV',
+                mappingTitle: 'Correspondances Détectées',
                 sampleTitle: 'Lignes Exemple',
                 confirmImport: 'Confirmer Import',
                 clearPreview: 'Effacer',
                 colTitle: 'Film',
-                colYear: 'Annee',
+                colYear: 'Année',
                 colTmdb: 'TMDB',
                 colImdb: 'IMDb',
                 colWatched: 'Vu le',
@@ -217,38 +217,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 copyLink: 'Linki Kopyala',
                 pasteCode: 'Davet Kodu Gir',
                 applyCode: 'Kodu Uygula',
-                alreadyClaimed: 'Bu hesap zaten bir davet kodu kullandi.',
-                claimSuccess: `Kod uygulandi. +${inviteRewardConfig.inviteeXp} XP`,
-                copied: 'Davet linki kopyalandi.',
-                stats: `Kazandirilan: ${inviteClaimsCount} davet / ${inviteRewardsEarned} XP`
+                alreadyClaimed: 'Bu hesap zaten bir davet kodu kullandı.',
+                claimSuccess: `Kod uygulandı. +${inviteRewardConfig.inviteeXp} XP`,
+                copied: 'Davet linki kopyalandı.',
+                stats: `Kazandırılan: ${inviteClaimsCount} davet / ${inviteRewardsEarned} XP`,
+                rewardSummary: `Davet Eden: +${inviteRewardConfig.inviterXp} XP | Davet Alan: +${inviteRewardConfig.inviteeXp} XP`
             };
         }
         if (language === 'es') {
             return {
-                title: 'Programa de Invitacion',
+                title: 'Programa de Invitación',
                 subtitle: 'Comparte tu enlace y, cuando llegue un nuevo usuario, ambos ganan XP.',
-                yourCode: 'Tu Codigo',
+                yourCode: 'Tu Código',
                 copyLink: 'Copiar Enlace',
-                pasteCode: 'Ingresar Codigo',
-                applyCode: 'Aplicar Codigo',
-                alreadyClaimed: 'Esta cuenta ya uso un codigo de invitacion.',
-                claimSuccess: `Codigo aplicado. +${inviteRewardConfig.inviteeXp} XP`,
-                copied: 'Enlace de invitacion copiado.',
-                stats: `Ganado: ${inviteClaimsCount} invitaciones / ${inviteRewardsEarned} XP`
+                pasteCode: 'Ingresar Código',
+                applyCode: 'Aplicar Código',
+                alreadyClaimed: 'Esta cuenta ya usó un código de invitación.',
+                claimSuccess: `Código aplicado. +${inviteRewardConfig.inviteeXp} XP`,
+                copied: 'Enlace de invitación copiado.',
+                stats: `Ganado: ${inviteClaimsCount} invitaciones / ${inviteRewardsEarned} XP`,
+                rewardSummary: `Invitador: +${inviteRewardConfig.inviterXp} XP | Invitado: +${inviteRewardConfig.inviteeXp} XP`
             };
         }
         if (language === 'fr') {
             return {
-                title: 'Programme Invitation',
-                subtitle: 'Partage ton lien. Si un nouveau compte rejoint, vous gagnez tous les deux du XP.',
+                title: 'Programme d’Invitation',
+                subtitle: 'Partage ton lien. Si un nouveau compte rejoint, vous gagnez tous les deux de l’XP.',
                 yourCode: 'Ton Code',
                 copyLink: 'Copier le Lien',
                 pasteCode: 'Entrer un Code',
                 applyCode: 'Appliquer le Code',
-                alreadyClaimed: 'Ce compte a deja utilise un code invitation.',
-                claimSuccess: `Code applique. +${inviteRewardConfig.inviteeXp} XP`,
-                copied: 'Lien invitation copie.',
-                stats: `Gagne: ${inviteClaimsCount} invitations / ${inviteRewardsEarned} XP`
+                alreadyClaimed: 'Ce compte a déjà utilisé un code d’invitation.',
+                claimSuccess: `Code appliqué. +${inviteRewardConfig.inviteeXp} XP`,
+                copied: 'Lien d’invitation copié.',
+                stats: `Gagné: ${inviteClaimsCount} invitations / ${inviteRewardsEarned} XP`,
+                rewardSummary: `Inviteur: +${inviteRewardConfig.inviterXp} XP | Invité: +${inviteRewardConfig.inviteeXp} XP`
             };
         }
         return {
@@ -261,9 +264,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             alreadyClaimed: 'This account already used an invite code.',
             claimSuccess: `Code applied. +${inviteRewardConfig.inviteeXp} XP`,
             copied: 'Invite link copied.',
-            stats: `Earned: ${inviteClaimsCount} invites / ${inviteRewardsEarned} XP`
+            stats: `Earned: ${inviteClaimsCount} invites / ${inviteRewardsEarned} XP`,
+            rewardSummary: `Inviter: +${inviteRewardConfig.inviterXp} XP | Invitee: +${inviteRewardConfig.inviteeXp} XP`
         };
-    }, [inviteClaimsCount, inviteRewardConfig.inviteeXp, inviteRewardsEarned, language]);
+    }, [inviteClaimsCount, inviteRewardConfig.inviteeXp, inviteRewardConfig.inviterXp, inviteRewardsEarned, language]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -788,7 +792,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                     {inviteCopy.stats}
                                 </p>
                                 <p className="mt-1 text-[10px] uppercase tracking-[0.12em] text-gray-500">
-                                    Inviter: +{inviteRewardConfig.inviterXp} XP | Invitee: +{inviteRewardConfig.inviteeXp} XP
+                                    {inviteCopy.rewardSummary}
                                 </p>
 
                                 {invitedByCode ? (

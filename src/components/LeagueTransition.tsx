@@ -1,4 +1,6 @@
 import { useState, type CSSProperties } from 'react';
+import { useLanguage } from '../context/LanguageContext';
+import type { LanguageCode } from '../i18n/localization';
 
 interface LeagueTransitionProps {
     color: string;
@@ -6,7 +8,35 @@ interface LeagueTransitionProps {
     onComplete: () => void;
 }
 
+const LEAGUE_TRANSITION_COPY: Record<LanguageCode, { badge: string; body: string; meta: string; action: string }> = {
+    en: {
+        badge: 'League Advanced',
+        body: 'Congratulations. Your total XP has moved up into this league.',
+        meta: 'League promoted',
+        action: 'Done'
+    },
+    tr: {
+        badge: 'Lig Atladı',
+        body: 'Tebrikler. Toplam XP seviyen bu lige yükseldi.',
+        meta: 'Lig atlandı',
+        action: 'Tamam'
+    },
+    es: {
+        badge: 'Liga Ascendida',
+        body: 'Felicidades. Tu XP total subió a esta liga.',
+        meta: 'Liga mejorada',
+        action: 'Listo'
+    },
+    fr: {
+        badge: 'Ligue Débloquée',
+        body: 'Félicitations. Ton XP total est monté jusqu’à cette ligue.',
+        meta: 'Ligue promue',
+        action: 'Terminer'
+    }
+};
+
 export const LeagueTransition: React.FC<LeagueTransitionProps> = ({ color, leagueName, onComplete }) => {
+    const { language } = useLanguage();
     const [dismissed, setDismissed] = useState(false);
     if (dismissed) return null;
 
@@ -43,6 +73,7 @@ export const LeagueTransition: React.FC<LeagueTransitionProps> = ({ color, leagu
     const accentTextStyle: CSSProperties = {
         color: accent
     };
+    const copy = LEAGUE_TRANSITION_COPY[language];
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-auto overflow-hidden">
@@ -55,7 +86,7 @@ export const LeagueTransition: React.FC<LeagueTransitionProps> = ({ color, leagu
                 <div className="mx-auto mb-5 h-[1px] w-24" style={accentLineStyle} />
 
                 <p className="mb-3 text-[10px] font-medium tracking-[0.34em] uppercase text-[#E5E4E2]/55">
-                    League Advanced
+                    {copy.badge}
                 </p>
 
                 <h2 className="text-3xl md:text-5xl font-bold tracking-[0.2em] uppercase" style={accentTextStyle}>
@@ -63,11 +94,11 @@ export const LeagueTransition: React.FC<LeagueTransitionProps> = ({ color, leagu
                 </h2>
 
                 <p className="mt-4 text-xs md:text-sm text-[#E5E4E2]/75">
-                    Tebrikler. Toplam XP seviyen bu lige yukseldigi icin bu ekrani goruyorsun.
+                    {copy.body}
                 </p>
 
                 <p className="mt-2 text-[10px] tracking-[0.28em] uppercase text-[#E5E4E2]/40">
-                    Lig atlandi
+                    {copy.meta}
                 </p>
 
                 <button
@@ -75,7 +106,7 @@ export const LeagueTransition: React.FC<LeagueTransitionProps> = ({ color, leagu
                     onClick={handleClose}
                     className="relative z-20 mt-7 inline-flex items-center justify-center rounded-full border border-white/20 bg-white/10 px-6 py-2 text-[11px] font-semibold tracking-[0.2em] uppercase text-white hover:bg-white/15 transition-colors"
                 >
-                    Tamam
+                    {copy.action}
                 </button>
             </div>
         </div>
