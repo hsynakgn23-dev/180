@@ -2642,7 +2642,7 @@ export default function App() {
       hasHandledInitialAuthPromptRef.current = true;
       return;
     }
-    if (authState.status !== 'signed_out') return;
+    if (authState.status !== 'signed_out' && authState.status !== 'error') return;
     if (hasHandledInitialAuthPromptRef.current) return;
 
     hasHandledInitialAuthPromptRef.current = true;
