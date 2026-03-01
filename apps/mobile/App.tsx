@@ -156,7 +156,6 @@ import {
 import { resolveMobileWebBaseUrl } from './src/lib/mobileEnv';
 import {
   readStoredMobileThemeMode,
-  writeStoredMobileThemeMode,
   type MobileThemeMode,
 } from './src/lib/mobileThemeMode';
 
@@ -2412,18 +2411,6 @@ export default function App() {
   const isDawnTheme = themeMode === 'dawn';
   const tabTheme = useMemo(() => createTabTheme(themeMode), [themeMode]);
 
-  const handleSetThemeMode = useCallback(
-    (nextMode: MobileThemeMode) => {
-      setThemeMode(nextMode);
-      void writeStoredMobileThemeMode(nextMode);
-      void trackMobileEvent('page_view', {
-        reason: 'mobile_theme_mode_changed',
-        mode: nextMode,
-      });
-    },
-    []
-  );
-
   useEffect(() => {
     void trackMobileEvent('session_start', {
       platform: Platform.OS,
@@ -3080,19 +3067,7 @@ export default function App() {
   const canSubmitRitualDraft = Boolean(
     isSignedIn && selectedDailyMovie && ritualDraftText.trim().length > 0
   );
-  const isInviteRouteActive = screenPlan.screen === 'invite_claim';
   const isShareRouteActive = screenPlan.screen === 'share_hub';
-  const isPublicProfileRouteActive = screenPlan.screen === 'public_profile';
-  const isDiscoverRouteActive = screenPlan.screen === 'discover_home';
-  const activeRouteLabel = isInviteRouteActive
-    ? 'Davet'
-    : isShareRouteActive
-      ? 'Paylas'
-      : isPublicProfileRouteActive
-        ? 'Public Profil'
-        : isDiscoverRouteActive
-          ? 'Kesif'
-          : 'Gunluk';
   const isDevSurfaceEnabled = INTERNAL_OPS_VISIBLE;
   const handleTabNavigationStateChange = useCallback(() => {
     const currentRouteName = tabNavigationRef.getCurrentRoute()?.name;
@@ -5270,10 +5245,6 @@ export default function App() {
             onChangeIdentity={handleChangeSettingsIdentity}
             onSaveIdentity={handleSaveSettingsIdentity}
             saveState={settingsSaveState}
-            themeMode={themeMode}
-            onSetThemeMode={handleSetThemeMode}
-            language={settingsLanguage}
-            onSetLanguage={setSettingsLanguage}
             onPickAvatar={handlePickAvatar}
             onClearAvatar={handleClearAvatar}
             isPickingAvatar={isPickingAvatar}

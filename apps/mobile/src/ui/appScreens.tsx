@@ -13,7 +13,6 @@ import {
   Animated,
   Easing,
   FlatList,
-  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -121,6 +120,8 @@ const Text = ({ style, ...props }: TextProps) => (
 const setAppScreensThemeMode = (mode: MobileThemeMode) => {
   APP_SCREENS_THEME_MODE = mode === 'dawn' ? 'dawn' : 'midnight';
 };
+
+type DailyMovieRailItem = Extract<DailyState, { status: 'success' }>['movies'][number];
 
 export type MobileLeaguePromotionEvent = {
   leagueKey: string;
@@ -793,6 +794,7 @@ const LegacyAuthCard = ({
   );
 };
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const LegacyAuthModal = ({
   visible,
   onClose,
@@ -1230,7 +1232,7 @@ const AuthCard = ({
                   label={isBusy ? 'Google yonlendiriliyor...' : 'Google ile Giris Yap'}
                   onPress={onGoogleSignIn}
                   disabled={isBusy || !isConfigured}
-                  icon={<FontAwesome name="google" size={16} color="#DB4437" />}
+                  icon={<FontAwesome name="google" size={16} color="#A57164" />}
                 />
                 {showAppleSignIn ? (
                   <AuthProviderButton
@@ -3234,22 +3236,11 @@ const DailyHomeScreen = ({
   onSelectMovie?: (movieId: number) => void;
   onRetry: () => void;
 }) => {
-  const railRef = useRef<FlatList<any> | null>(null);
+  const railRef = useRef<FlatList<DailyMovieRailItem> | null>(null);
   const railScrollOffsetRef = useRef(0);
   const railDragStartOffsetRef = useRef(0);
+  const railDragStartXRef = useRef(0);
   const railMovies = state.status === 'success' ? state.movies.slice(0, 5) : [];
-  const selectedRailIndex = railMovies.findIndex((movie) => movie.id === selectedMovieId);
-  const [activeRailIndex, setActiveRailIndex] = useState(0);
-
-  useEffect(() => {
-    if (railMovies.length === 0) {
-      setActiveRailIndex(0);
-      return;
-    }
-    if (selectedRailIndex >= 0) {
-      setActiveRailIndex(selectedRailIndex);
-    }
-  }, [railMovies.length, selectedRailIndex]);
 
   const formatAge = (ageSeconds: number | null): string => {
     if (ageSeconds === null || ageSeconds < 0) return 'bilinmiyor';
@@ -3268,7 +3259,6 @@ const DailyHomeScreen = ({
         animated: true,
       });
       railScrollOffsetRef.current = nextOffset;
-      setActiveRailIndex(nextIndex);
     },
     [railMovies.length]
   );
@@ -3280,40 +3270,45 @@ const DailyHomeScreen = ({
         0,
         Math.min(Math.round(offsetX / DAILY_MOVIE_CARD_STRIDE), railMovies.length - 1)
       );
-      setActiveRailIndex(nextIndex);
+      const targetMovie = railMovies[nextIndex];
+      if (targetMovie && targetMovie.id !== selectedMovieId) {
+        onSelectMovie?.(targetMovie.id);
+      }
     },
-    [railMovies.length]
+    [onSelectMovie, railMovies, selectedMovieId]
   );
 
-  const railPanResponder = useMemo(() => {
+  const railResponderHandlers = useMemo(() => {
     if (Platform.OS !== 'web') return null;
 
-    return PanResponder.create({
-      onMoveShouldSetPanResponder: (_event, gestureState) =>
-        Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && Math.abs(gestureState.dx) > 6,
-      onMoveShouldSetPanResponderCapture: (_event, gestureState) =>
-        Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && Math.abs(gestureState.dx) > 6,
-      onPanResponderGrant: () => {
+    return {
+      onMoveShouldSetResponder: (event: { nativeEvent: { pageX: number } }) =>
+        Math.abs(event.nativeEvent.pageX - railDragStartXRef.current) > 6,
+      onMoveShouldSetResponderCapture: (event: { nativeEvent: { pageX: number } }) =>
+        Math.abs(event.nativeEvent.pageX - railDragStartXRef.current) > 6,
+      onResponderGrant: (event: { nativeEvent: { pageX: number } }) => {
+        railDragStartXRef.current = event.nativeEvent.pageX;
         railDragStartOffsetRef.current = railScrollOffsetRef.current;
       },
-      onPanResponderMove: (_event, gestureState) => {
+      onResponderMove: (event: { nativeEvent: { pageX: number } }) => {
+        const deltaX = event.nativeEvent.pageX - railDragStartXRef.current;
         const maxOffset = Math.max(0, (railMovies.length - 1) * DAILY_MOVIE_CARD_STRIDE);
         const nextOffset = Math.max(
           0,
-          Math.min(railDragStartOffsetRef.current - gestureState.dx, maxOffset)
+          Math.min(railDragStartOffsetRef.current - deltaX, maxOffset)
         );
         railScrollOffsetRef.current = nextOffset;
         railRef.current?.scrollToOffset({ offset: nextOffset, animated: false });
       },
-      onPanResponderRelease: () => {
+      onResponderRelease: () => {
         handleRailScrollEnd(railScrollOffsetRef.current);
         scrollToRailIndex(Math.round(railScrollOffsetRef.current / DAILY_MOVIE_CARD_STRIDE));
       },
-      onPanResponderTerminate: () => {
+      onResponderTerminate: () => {
         handleRailScrollEnd(railScrollOffsetRef.current);
       },
-      onPanResponderTerminationRequest: () => false,
-    });
+      onResponderTerminationRequest: () => false,
+    };
   }, [handleRailScrollEnd, railMovies.length, scrollToRailIndex]);
 
   if (state.status === 'loading' || state.status === 'idle') {
@@ -3373,6 +3368,8 @@ const DailyHomeScreen = ({
       : successState.dataSource === 'cache'
         ? 'onbellek'
         : 'fallback';
+  // eslint-disable-next-line react-hooks/refs
+  const railGestureProps = railResponderHandlers || {};
 
   return (
     <View style={{ marginBottom: 12 }}>
@@ -3432,7 +3429,7 @@ const DailyHomeScreen = ({
           </View>
         ) : null}
 
-        <View {...(railPanResponder ? railPanResponder.panHandlers : {})}>
+        <View {...railGestureProps}>
           <FlatList
             ref={railRef}
             horizontal
@@ -3444,10 +3441,7 @@ const DailyHomeScreen = ({
               return (
                 <Pressable
                   style={[styles.movieCardWrapper, isSelected ? styles.movieCardWrapperSelected : null]}
-                  onPress={() => {
-                    setActiveRailIndex(index);
-                    onSelectMovie?.(movie.id);
-                  }}
+                  onPress={() => onSelectMovie?.(movie.id)}
                   accessibilityRole="button"
                   accessibilityLabel={`${movie.title} filmini detayli goruntule`}
                 >
@@ -4120,12 +4114,6 @@ const SETTINGS_PLATFORM_RULES = [
   'Ayni davet kodunu kotuye kullanma davranisi engellenir.',
   'Tekrarlayan ihlallerde hesap aksiyonu uygulanabilir.',
 ];
-const MOBILE_SETTINGS_LANGUAGE_OPTIONS: Array<{ code: MobileSettingsLanguage; label: string }> = [
-  { code: 'en', label: 'English' },
-  { code: 'tr', label: 'Türkçe' },
-  { code: 'es', label: 'Español' },
-  { code: 'fr', label: 'Français' },
-];
 const MOBILE_SETTINGS_COPY: Record<MobileSettingsLanguage, MobileSettingsLocaleCopy> = {
   en: {
     settingsTitle: 'Settings',
@@ -4281,36 +4269,6 @@ const MOBILE_SETTINGS_COPY: Record<MobileSettingsLanguage, MobileSettingsLocaleC
   },
 };
 
-const getMobileThemeStatusTitle = (
-  language: MobileSettingsLanguage,
-  themeLabel: string
-): string => {
-  if (language === 'tr') return `${themeLabel} teması aktif`;
-  if (language === 'es') return `Tema ${themeLabel} activo`;
-  if (language === 'fr') return `Thème ${themeLabel} actif`;
-  return `${themeLabel} theme active`;
-};
-
-const getMobileThemeSectionTitle = (
-  language: MobileSettingsLanguage,
-  themeLabel: string
-): string => {
-  if (language === 'tr') return `${themeLabel} Modu`;
-  if (language === 'es') return `Modo ${themeLabel}`;
-  if (language === 'fr') return `Mode ${themeLabel}`;
-  return `${themeLabel} Mode`;
-};
-
-const getMobileLanguageStatusTitle = (
-  language: MobileSettingsLanguage,
-  languageLabel: string
-): string => {
-  if (language === 'tr') return `${languageLabel} arayüzü aktif`;
-  if (language === 'es') return `Interfaz ${languageLabel} activa`;
-  if (language === 'fr') return `Interface ${languageLabel} active`;
-  return `${languageLabel} interface active`;
-};
-
 const RitualComposerModal = ({
   visible,
   targetMovie,
@@ -4374,10 +4332,6 @@ const MobileSettingsModal = ({
   onChangeIdentity,
   onSaveIdentity,
   saveState,
-  themeMode,
-  onSetThemeMode,
-  language,
-  onSetLanguage,
   onPickAvatar,
   onClearAvatar,
   isPickingAvatar,
@@ -4404,10 +4358,6 @@ const MobileSettingsModal = ({
   onChangeIdentity: (patch: Partial<MobileSettingsIdentityDraft>) => void;
   onSaveIdentity: () => void;
   saveState: MobileSettingsSaveState;
-  themeMode: MobileThemeMode;
-  onSetThemeMode: (mode: MobileThemeMode) => void;
-  language: MobileSettingsLanguage;
-  onSetLanguage: (language: MobileSettingsLanguage) => void;
   onPickAvatar: () => void;
   onClearAvatar: () => void;
   isPickingAvatar: boolean;
@@ -4987,7 +4937,6 @@ const ShareHubScreen = ({
   shareStatusTone,
   onSetGoal,
   onShare,
-  onOpenDaily,
 }: {
   inviteCode?: string;
   inviteLink?: string;
@@ -5001,7 +4950,6 @@ const ShareHubScreen = ({
   shareStatusTone: 'idle' | 'loading' | 'ready' | 'error';
   onSetGoal: (goal: 'comment' | 'streak') => void;
   onShare: (platform: 'instagram' | 'tiktok' | 'x') => void;
-  onOpenDaily?: () => void;
 }) => {
   const normalizedGoal = goal === 'streak' ? 'streak' : 'comment';
   const normalizedPlatform =
