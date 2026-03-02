@@ -22,6 +22,20 @@ export type PushTestPayload = {
   deepLink?: string;
 };
 
+export type EngagementPushKind = 'comment' | 'like' | 'follow';
+
+export type EngagementPushPayload =
+  | {
+      kind: 'comment' | 'like';
+      ritualId: string;
+      actorLabel?: string;
+    }
+  | {
+      kind: 'follow';
+      targetUserId: string;
+      actorLabel?: string;
+    };
+
 export type PushReceiptErrorSample = {
   id: string;
   message: string;
@@ -149,4 +163,34 @@ export const sendPushTestNotification = async (
   if (deepLink) body.deepLink = deepLink;
 
   return postPushApi<PushTestResult>('/api/push/test', body);
+};
+
+export const sendEngagementPushNotification = async (
+  payload: EngagementPushPayload
+): Promise<
+  PushApiResponse<{
+    sentCount: number;
+    ticketCount: number;
+    errorCount: number;
+    skipped: boolean;
+    targetUserId: string | null;
+    message: string;
+  }>
+> => {
+  const body: Record<string, unknown> = {
+    kind: payload.kind,
+  };
+
+  const actorLabel = normalizeText(payload.actorLabel, 80);
+  if (actorLabel) body.actorLabel = actorLabel;
+
+  if (payload.kind === 'follow') {
+    const targetUserId = normalizeText(payload.targetUserId, 120);
+    if (targetUserId) body.targetUserId = targetUserId;
+  } else {
+    const ritualId = normalizeText(payload.ritualId, 120);
+    if (ritualId) body.ritualId = ritualId;
+  }
+
+  return postPushApi('/api/push/engagement', body);
 };

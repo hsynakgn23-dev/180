@@ -8,6 +8,12 @@
     "scheme": "absolutecinema",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/0b479a86-b942-482a-a616-297317401220"
+    },
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -31,8 +37,15 @@
       "predictiveBackGestureEnabled": false
     },
     "plugins": [
-      "expo-notifications",
-      "expo-dev-client"
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#121212"
+        }
+      ],
+      "expo-dev-client",
+      "expo-web-browser"
     ],
     "web": {
       "favicon": "./assets/favicon.png"

@@ -341,7 +341,12 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                     birthDate = typeof xpState.birthDate === 'string' ? xpState.birthDate : '';
                     bio = typeof xpState.bio === 'string' && xpState.bio.trim() ? xpState.bio : bio;
                     avatarId = typeof xpState.avatarId === 'string' ? xpState.avatarId : avatarId;
-                    avatarUrl = typeof xpState.avatarUrl === 'string' ? xpState.avatarUrl : undefined;
+                    avatarUrl =
+                        typeof xpState.avatarUrl === 'string' && xpState.avatarUrl.trim()
+                            ? xpState.avatarUrl
+                            : typeof xpState.avatar_url === 'string' && xpState.avatar_url.trim()
+                                ? xpState.avatar_url
+                                : undefined;
                     xp = typeof xpState.totalXP === 'number' ? xpState.totalXP : 0;
                     streak = typeof xpState.streak === 'number' ? xpState.streak : 0;
                     daysPresent = Array.isArray(xpState.activeDays) ? xpState.activeDays.length : daysPresent;

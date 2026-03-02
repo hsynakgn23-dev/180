@@ -1,6 +1,9 @@
 import { StatusBar } from 'expo-status-bar';
 import * as Clipboard from 'expo-clipboard';
 import * as AppleAuthentication from 'expo-apple-authentication';
+import * as DocumentPicker from 'expo-document-picker';
+import * as LegacyFileSystem from 'expo-file-system/legacy';
+import * as WebBrowser from 'expo-web-browser';
 import {
   Inter_400Regular,
   Inter_500Medium,
@@ -19,6 +22,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import {
   Animated,
+  KeyboardAvoidingView,
+  Image,
   Linking,
   Platform,
   Pressable,
@@ -42,6 +47,8 @@ import {
   submitRitualDraftWithQueue,
 } from './src/lib/mobileRitualQueue';
 import {
+  LEVEL_THRESHOLD,
+  MOBILE_LEAGUES_DATA,
   MOBILE_LEAGUE_NAMES,
   getLeagueIndexFromXp,
   resolveMobileLeagueInfoFromXp,
@@ -53,6 +60,7 @@ import {
   fetchMobilePublicProfileSnapshot,
   type MobilePublicProfileSnapshot,
 } from './src/lib/mobilePublicProfileSnapshot';
+import { MAX_MOBILE_AVATAR_BYTES } from './src/lib/mobileAvatar';
 import {
   fetchMobilePublicProfileActivity,
   type MobilePublicProfileActivityItem,
@@ -61,6 +69,13 @@ import {
   fetchMobileProfileWatchedMovies,
   type MobileWatchedMovie,
 } from './src/lib/mobileProfileWatchedMovies';
+import {
+  formatMobileLetterboxdSummary,
+  importMobileLetterboxdCsv,
+  mergeLetterboxdImportIntoWatchedMovies,
+  readStoredMobileLetterboxdImport,
+  type StoredMobileLetterboxdImport,
+} from './src/lib/mobileLetterboxdImport';
 import {
   fetchMobileProfileMovieArchive,
   type MobileProfileMovieArchiveEntry,
@@ -71,6 +86,13 @@ import {
   readMobileProfileIdentityFromCloud,
   syncMobileProfileIdentityToCloud,
 } from './src/lib/mobileProfileIdentitySync';
+import {
+  getDefaultMobileProfileVisibility,
+  normalizeMobileProfileVisibility,
+  readMobileProfilePrivacyFromCloud,
+  syncMobileProfilePrivacyToCloud,
+  type MobileProfileVisibility,
+} from './src/lib/mobileProfilePrivacySync';
 import { applyMobileAuthCallbackFromUrl } from './src/lib/mobileAuthCallback';
 import {
   fetchMobileCommentFeed,
@@ -98,7 +120,10 @@ import {
   readPushInbox,
   type PushInboxItem,
 } from './src/lib/mobilePushInbox';
-import { sendPushTestNotification } from './src/lib/mobilePushApi';
+import {
+  sendEngagementPushNotification,
+  sendPushTestNotification,
+} from './src/lib/mobilePushApi';
 import { syncPushTokenToProfileState } from './src/lib/mobilePushProfileSync';
 import { claimInviteCodeViaApi, ensureInviteCodeViaApi } from './src/lib/mobileReferralApi';
 import {
@@ -124,7 +149,7 @@ import {
 import {
   ArenaChallengeCard,
   ArenaLeaderboardCard,
-  AuthModal,
+  AuthGateScreen,
   CollapsibleSectionCard,
   CommentFeedCard,
   DailyHomeScreen,
@@ -134,11 +159,9 @@ import {
   MobileSettingsModal,
   MovieDetailsModal,
   PlatformRulesCard,
-  ProfileGenreDistributionCard,
-  ProfileIdentityCard,
-  ProfileXpCard,
   ProfileMovieArchiveModal,
   ProfileMarksCard,
+  ProfileUnifiedCard,
   PushInboxCard,
   PushStatusCard,
   PublicProfileMovieArchiveModal,
@@ -146,10 +169,11 @@ import {
   SectionLeadCard,
   ShareHubScreen,
   StatePanel,
-  WatchedMoviesCard,
   setAppScreensThemeMode,
+  type MobileAuthEntryStage,
   type MobileSettingsIdentityDraft,
   type MobileSettingsLanguage,
+  type MobileSettingsPrivacyDraft,
   type MobileLeaguePromotionEvent,
   type MobileSettingsSaveState,
 } from './src/ui/appScreens';
@@ -174,6 +198,7 @@ const MOBILE_AUTH_REDIRECT_TO =
 const MOBILE_UI_PACKAGE_LABEL = 'UI Package 6.46';
 const MOBILE_PROFILE_IDENTITY_STORAGE_KEY = 'ac_mobile_profile_identity_v1';
 const MOBILE_PROFILE_LANGUAGE_STORAGE_KEY = 'ac_mobile_profile_language_v1';
+const MOBILE_PROFILE_PRIVACY_STORAGE_KEY = 'ac_mobile_profile_privacy_v1';
 const MOBILE_AUTH_REMEMBER_ME_STORAGE_KEY = 'ac_mobile_auth_remember_me_v1';
 const MOBILE_AUTH_REMEMBER_ME_ENABLED = '1';
 const MOBILE_AUTH_REMEMBER_ME_DISABLED = '0';
@@ -182,6 +207,8 @@ const MOBILE_WEB_BASE_URL = resolveMobileWebBaseUrl();
 const MOBILE_ACCOUNT_DELETION_URL = MOBILE_WEB_BASE_URL
   ? `${MOBILE_WEB_BASE_URL}/account-deletion/`
   : 'https://180absolutecinema.com/account-deletion/';
+
+WebBrowser.maybeCompleteAuthSession();
 
 const DEFAULT_SETTINGS_IDENTITY: MobileSettingsIdentityDraft = {
   fullName: '',
@@ -192,12 +219,131 @@ const DEFAULT_SETTINGS_IDENTITY: MobileSettingsIdentityDraft = {
   avatarUrl: '',
   profileLink: '',
 };
+const DEFAULT_SETTINGS_PRIVACY: MobileProfileVisibility = getDefaultMobileProfileVisibility();
 
 const normalizeExternalUrl = (value: string): string => {
   const normalized = String(value || '').trim();
   if (!normalized) return '';
   if (/^https?:\/\//i.test(normalized)) return normalized;
   return `https://${normalized}`;
+};
+
+const resolveAvatarMimeType = (input: {
+  mimeType?: string | null;
+  name?: string | null;
+  uri?: string | null;
+}): string => {
+  const explicitMimeType = String(input.mimeType || '')
+    .trim()
+    .toLowerCase();
+  if (explicitMimeType.startsWith('image/')) return explicitMimeType;
+
+  const lookup = `${input.name || ''} ${input.uri || ''}`.toLowerCase();
+  if (lookup.includes('.png')) return 'image/png';
+  if (lookup.includes('.webp')) return 'image/webp';
+  if (lookup.includes('.gif')) return 'image/gif';
+  if (lookup.includes('.heic')) return 'image/heic';
+  return 'image/jpeg';
+};
+
+const blobToDataUrl = async (blob: Blob): Promise<string> =>
+  await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Secilen dosya okunamadi.'));
+    reader.onload = () => {
+      const result = String(reader.result || '').trim();
+      if (!result) {
+        reject(new Error('Secilen dosya okunamadi.'));
+        return;
+      }
+      resolve(result);
+    };
+    reader.readAsDataURL(blob);
+  });
+
+const decodeBase64Utf8 = (base64: string): string => {
+  const normalized = String(base64 || '').trim();
+  if (!normalized || typeof globalThis.atob !== 'function') return '';
+  try {
+    const binary = globalThis.atob(normalized);
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    if (typeof TextDecoder !== 'undefined') {
+      return new TextDecoder('utf-8').decode(bytes);
+    }
+    return binary;
+  } catch {
+    return '';
+  }
+};
+
+const readPickedAssetAsText = async (
+  asset: DocumentPicker.DocumentPickerAsset
+): Promise<string> => {
+  if (Platform.OS === 'web') {
+    if (asset.file && typeof asset.file.text === 'function') {
+      return await asset.file.text();
+    }
+
+    const base64 = String(asset.base64 || '').trim();
+    if (base64) {
+      const decoded = decodeBase64Utf8(base64);
+      if (decoded) return decoded;
+    }
+
+    const uri = String(asset.uri || '').trim();
+    if (uri.startsWith('data:')) {
+      const commaIndex = uri.indexOf(',');
+      if (commaIndex >= 0) {
+        const header = uri.slice(0, commaIndex);
+        const payload = uri.slice(commaIndex + 1);
+        if (header.includes(';base64')) {
+          const decoded = decodeBase64Utf8(payload);
+          if (decoded) return decoded;
+        }
+        return decodeURIComponent(payload);
+      }
+    }
+
+    if (uri.startsWith('blob:') || uri.startsWith('http://') || uri.startsWith('https://')) {
+      const response = await fetch(uri);
+      return await response.text();
+    }
+
+    throw new Error('Secilen dosya web uzerinde okunamadi.');
+  }
+
+  return await LegacyFileSystem.readAsStringAsync(asset.uri);
+};
+
+const readPickedAssetAsDataUrl = async (
+  asset: DocumentPicker.DocumentPickerAsset,
+  mimeType: string
+): Promise<string> => {
+  if (Platform.OS === 'web') {
+    if (asset.file) {
+      return await blobToDataUrl(asset.file);
+    }
+
+    const base64 = String(asset.base64 || '').trim();
+    if (base64) {
+      return `data:${mimeType};base64,${base64}`;
+    }
+
+    const uri = String(asset.uri || '').trim();
+    if (uri.startsWith('data:')) return uri;
+    if (uri.startsWith('blob:') || uri.startsWith('http://') || uri.startsWith('https://')) {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      return await blobToDataUrl(blob);
+    }
+
+    throw new Error('Secilen gorsel web uzerinde okunamadi.');
+  }
+
+  const base64 = await LegacyFileSystem.readAsStringAsync(asset.uri, {
+    encoding: 'base64',
+  });
+  return `data:${mimeType};base64,${String(base64 || '').trim()}`;
 };
 
 const readStoredAuthRememberMe = async (): Promise<boolean> => {
@@ -272,6 +418,17 @@ const parseStoredIdentityDraft = (raw: string | null): MobileSettingsIdentityDra
     return normalizeMobileProfileIdentityDraft(parsed);
   } catch {
     return DEFAULT_SETTINGS_IDENTITY;
+  }
+};
+
+const parseStoredPrivacyDraft = (raw: string | null): MobileProfileVisibility => {
+  if (!raw) return DEFAULT_SETTINGS_PRIVACY;
+  try {
+    const parsed = JSON.parse(raw) as Partial<MobileProfileVisibility> | null;
+    if (!parsed || typeof parsed !== 'object') return DEFAULT_SETTINGS_PRIVACY;
+    return normalizeMobileProfileVisibility(parsed);
+  } catch {
+    return DEFAULT_SETTINGS_PRIVACY;
   }
 };
 
@@ -464,7 +621,7 @@ export default function App() {
   const [authConfirmPassword, setAuthConfirmPassword] = useState('');
   const [authRememberMe, setAuthRememberMe] = useState(true);
   const [authFlowMode, setAuthFlowMode] = useState<AuthFlowMode>('login');
-  const [authModalVisible, setAuthModalVisible] = useState(false);
+  const [authEntryStage, setAuthEntryStage] = useState<MobileAuthEntryStage>('intro');
   const [appleAuthAvailable, setAppleAuthAvailable] = useState(false);
   const [authState, setAuthState] = useState<AuthState>({
     status: 'idle',
@@ -533,6 +690,9 @@ export default function App() {
   const [settingsLanguage, setSettingsLanguage] = useState<MobileSettingsLanguage>('en');
   const [settingsIdentityDraft, setSettingsIdentityDraft] = useState<MobileSettingsIdentityDraft>(
     DEFAULT_SETTINGS_IDENTITY
+  );
+  const [settingsPrivacyDraft, setSettingsPrivacyDraft] = useState<MobileSettingsPrivacyDraft>(
+    DEFAULT_SETTINGS_PRIVACY
   );
   const [settingsSaveState, setSettingsSaveState] = useState<MobileSettingsSaveState>({
     status: 'idle',
@@ -612,6 +772,15 @@ export default function App() {
     message: 'Izlenen filmler yuklenmedi.',
     items: [],
   });
+  const [letterboxdImportState, setLetterboxdImportState] = useState<{
+    status: 'idle' | 'loading' | 'ready' | 'error';
+    message: string;
+    snapshot: StoredMobileLetterboxdImport | null;
+  }>({
+    status: 'idle',
+    message: '',
+    snapshot: null,
+  });
   const [profileMovieArchiveModalState, setProfileMovieArchiveModalState] =
     useState<ProfileMovieArchiveModalState>({
       visible: false,
@@ -673,6 +842,7 @@ export default function App() {
   } = useMobileRouteIntent();
   const { pageEntrance, pageEnterTranslateY } = usePageEntranceAnimation();
   const hasCloudIdentityHydratedRef = useRef(false);
+  const hasCloudPrivacyHydratedRef = useRef(false);
   const hasHandledInitialAuthPromptRef = useRef(false);
   const lastObservedLeagueIndexRef = useRef<number | null>(null);
   const lastHandledAuthCallbackUrlRef = useRef<string | null>(null);
@@ -687,6 +857,20 @@ export default function App() {
       : null;
 
   const isSignedIn = authState.status === 'signed_in';
+  const resolveNotificationActorLabel = useCallback(() => {
+    const profileName =
+      profileState.status === 'success' ? String(profileState.displayName || '').trim() : '';
+    const fullName = String(settingsIdentityDraft.fullName || '').trim();
+    const username = String(settingsIdentityDraft.username || '')
+      .trim()
+      .replace(/^@+/, '');
+    const emailPrefix = String(authState.status === 'signed_in' ? authState.email : '')
+      .trim()
+      .toLowerCase()
+      .split('@')[0];
+
+    return fullName || profileName || username || emailPrefix || 'Bir izleyici';
+  }, [authState, profileState, settingsIdentityDraft.fullName, settingsIdentityDraft.username]);
 
   const refreshAuthState = useCallback(
     async ({ applyRememberMePolicy = false }: { applyRememberMePolicy?: boolean } = {}) => {
@@ -838,6 +1022,32 @@ export default function App() {
     });
   }, []);
 
+  const refreshSettingsPrivacyFromCloud = useCallback(async () => {
+    const result = await readMobileProfilePrivacyFromCloud();
+    if (!result.ok) {
+      void trackMobileEvent('page_view', {
+        reason: 'mobile_profile_privacy_cloud_read_failed',
+        message: result.message,
+      });
+      return;
+    }
+
+    setSettingsPrivacyDraft((prev) => {
+      const merged = normalizeMobileProfileVisibility({
+        ...prev,
+        ...result.visibility,
+      });
+      void AsyncStorage.setItem(MOBILE_PROFILE_PRIVACY_STORAGE_KEY, JSON.stringify(merged)).catch(
+        () => undefined
+      );
+      return merged;
+    });
+
+    void trackMobileEvent('page_view', {
+      reason: 'mobile_profile_privacy_cloud_loaded',
+    });
+  }, []);
+
   const refreshProfileGenreDistribution = useCallback(async () => {
     if (!isSupabaseConfigured || !supabase || authState.status !== 'signed_in') {
       setProfileGenreDistribution([]);
@@ -898,6 +1108,39 @@ export default function App() {
     }
   }, [authState.status]);
 
+  const readLetterboxdImportIdentity = useCallback(async (): Promise<string> => {
+    if (authState.status !== 'signed_in') return '';
+    const sessionResult = await readSupabaseSessionSafe();
+    const userId = String(sessionResult.session?.user?.id || '').trim();
+    const userEmail = String(sessionResult.session?.user?.email || '').trim().toLowerCase();
+    return userId || userEmail;
+  }, [authState.status]);
+
+  const readLetterboxdSnapshot = useCallback(async (): Promise<StoredMobileLetterboxdImport | null> => {
+    const identity = await readLetterboxdImportIdentity();
+    if (!identity) return null;
+    return readStoredMobileLetterboxdImport(identity);
+  }, [readLetterboxdImportIdentity]);
+
+  const syncLetterboxdImportState = useCallback(async () => {
+    if (authState.status !== 'signed_in') {
+      setLetterboxdImportState({
+        status: 'idle',
+        message: '',
+        snapshot: null,
+      });
+      return null;
+    }
+
+    const snapshot = await readLetterboxdSnapshot();
+    setLetterboxdImportState({
+      status: snapshot ? 'ready' : 'idle',
+      message: snapshot ? 'Letterboxd import hazir.' : '',
+      snapshot,
+    });
+    return snapshot;
+  }, [authState.status, readLetterboxdSnapshot]);
+
   const refreshWatchedMovies = useCallback(async () => {
     if (authState.status !== 'signed_in') {
       setWatchedMoviesState({
@@ -914,8 +1157,23 @@ export default function App() {
       items: [],
     });
 
-    const result = await fetchMobileProfileWatchedMovies({ limit: 24 });
-    if (!result.ok) {
+    const [result, letterboxdSnapshot] = await Promise.all([
+      fetchMobileProfileWatchedMovies({ limit: 24 }),
+      readLetterboxdSnapshot(),
+    ]);
+    const mergedItems = mergeLetterboxdImportIntoWatchedMovies(
+      result.items,
+      letterboxdSnapshot,
+      24
+    );
+
+    setLetterboxdImportState({
+      status: letterboxdSnapshot ? 'ready' : 'idle',
+      message: letterboxdSnapshot ? 'Letterboxd import hazir.' : '',
+      snapshot: letterboxdSnapshot,
+    });
+
+    if (!result.ok && mergedItems.length === 0) {
       setWatchedMoviesState({
         status: 'error',
         message: result.message,
@@ -924,12 +1182,18 @@ export default function App() {
       return;
     }
 
+    const message = !result.ok
+      ? `Letterboxd filmleri gosteriliyor. ${result.message}`
+      : letterboxdSnapshot?.items.length
+        ? 'Ritual ve Letterboxd filmleri guncellendi.'
+        : result.message;
+
     setWatchedMoviesState({
       status: 'ready',
-      message: result.message,
-      items: result.items,
+      message,
+      items: mergedItems,
     });
-  }, [authState.status]);
+  }, [authState.status, readLetterboxdSnapshot]);
 
   const handleCloseProfileMovieArchive = useCallback(() => {
     setProfileMovieArchiveModalState((prev) => ({
@@ -949,7 +1213,8 @@ export default function App() {
       movie,
       entries: [],
     });
-    void trackMobileEvent('movie_archive_opened', {
+    void trackMobileEvent('page_view', {
+      reason: 'mobile_movie_archive_opened',
       movieTitle,
       movieYear: movie.year ?? null,
       watchCount: movie.watchCount,
@@ -969,10 +1234,11 @@ export default function App() {
     });
 
     if (!result.ok) {
-      void trackMobileEvent('movie_archive_failed', {
+      void trackMobileEvent('page_view', {
+        reason: 'mobile_movie_archive_failed',
         movieTitle,
         movieYear: movie.year ?? null,
-        reason: result.message,
+        failureReason: result.message,
       });
     }
   }, []);
@@ -1022,7 +1288,8 @@ export default function App() {
         movie,
         items,
       });
-      void trackMobileEvent(hasEntries ? 'public_movie_archive_opened' : 'public_movie_archive_failed', {
+      void trackMobileEvent('page_view', {
+        reason: hasEntries ? 'mobile_public_movie_archive_opened' : 'mobile_public_movie_archive_failed',
         profileUserId: publicProfileTarget?.userId || publicProfileModalState.profile?.userId || null,
         movieTitle: movie.movieTitle,
         movieYear: movie.year ?? null,
@@ -1872,7 +2139,7 @@ export default function App() {
         message: 'Giris basarili.',
         email: data.user?.email || email,
       });
-      setAuthModalVisible(false);
+      setAuthEntryStage('form');
       setAuthFullName('');
       setAuthUsername('');
       setAuthBirthDate('');
@@ -2005,6 +2272,7 @@ export default function App() {
               message: 'Kayit tamamlandi. E-posta onayi sonrasi giris yap.',
             }
       );
+      setAuthEntryStage('form');
 
       void trackMobileEvent(hasLiveSession ? 'signup_success' : 'signup_pending_confirmation', {
         method: 'password',
@@ -2074,6 +2342,7 @@ export default function App() {
       setAuthPassword('');
       setAuthConfirmPassword('');
       setAuthFlowMode('forgot');
+      setAuthEntryStage('form');
       setAuthState({
         status: 'signed_out',
         message: 'Sifre yenileme baglantisi e-posta adresine gonderildi.',
@@ -2109,6 +2378,7 @@ export default function App() {
       status: 'loading',
       message: 'Google girisi icin yonlendiriliyor...',
     });
+    setAuthEntryStage('form');
     void trackMobileEvent('oauth_start', {
       provider: 'google',
       surface: 'mobile_native',
@@ -2148,29 +2418,48 @@ export default function App() {
         return;
       }
 
-      const canOpen = await Linking.canOpenURL(redirectUrl);
-      if (!canOpen) {
-        setAuthState({
-          status: 'error',
-          message: 'Google girisi icin tarayici acilamadi.',
-        });
-        void trackMobileEvent('oauth_failure', {
-          provider: 'google',
-          reason: 'oauth_url_not_openable',
-        });
-        return;
-      }
-
       void trackMobileEvent('oauth_redirect_started', {
         provider: 'google',
         redirectTo: MOBILE_AUTH_REDIRECT_TO,
       });
-      setAuthModalVisible(false);
-      await Linking.openURL(redirectUrl);
-      setAuthFlowMode('login');
+
+      const authSessionResult =
+        Platform.OS === 'web'
+          ? await WebBrowser.openBrowserAsync(redirectUrl).then(() => ({
+              type: 'opened' as const,
+              url: null as string | null,
+            }))
+          : await WebBrowser.openAuthSessionAsync(redirectUrl, MOBILE_AUTH_REDIRECT_TO);
+
+      if (Platform.OS === 'web') {
+        setAuthFlowMode('login');
+        setAuthState({
+          status: 'signed_out',
+          message: 'Google girisini tarayicida tamamla; uygulama callback ile geri donecek.',
+        });
+        return;
+      }
+
+      if (authSessionResult.type === 'success' && authSessionResult.url) {
+        handleIncomingUrl(authSessionResult.url);
+        return;
+      }
+
+      if (authSessionResult.type === 'cancel' || authSessionResult.type === 'dismiss') {
+        setAuthState({
+          status: 'signed_out',
+          message: 'Google girisi iptal edildi.',
+        });
+        return;
+      }
+
       setAuthState({
-        status: 'signed_out',
-        message: 'Google girisini tarayicida tamamla; uygulama callback ile geri donecek.',
+        status: 'error',
+        message: 'Google callback uygulamaya donmedi.',
+      });
+      void trackMobileEvent('oauth_failure', {
+        provider: 'google',
+        reason: `oauth_session_${authSessionResult.type}`,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Google girisi baslatilamadi.';
@@ -2183,6 +2472,15 @@ export default function App() {
         reason: message,
       });
     }
+  }, [handleIncomingUrl]);
+
+  const handlePreviewAppleSignIn = useCallback(() => {
+    setAuthEntryStage('form');
+    setAuthFlowMode('register');
+    setAuthState({
+      status: 'signed_out',
+      message: 'Apple ile uye ol yakinda aktif olacak.',
+    });
   }, []);
 
   const handleAppleSignIn = useCallback(async () => {
@@ -2265,7 +2563,6 @@ export default function App() {
         message: 'Apple girisi basarili.',
         email: resolvedEmail,
       });
-      setAuthModalVisible(false);
       setAuthPassword('');
       setAuthConfirmPassword('');
       setAuthFlowMode('login');
@@ -2345,6 +2642,7 @@ export default function App() {
       setAuthPassword('');
       setAuthConfirmPassword('');
       setAuthFlowMode('login');
+      setAuthEntryStage('form');
       setAuthState(
         email
           ? {
@@ -2399,7 +2697,7 @@ export default function App() {
       setAuthPassword('');
       setAuthConfirmPassword('');
       setAuthFlowMode('login');
-      setAuthModalVisible(true);
+      setAuthEntryStage('intro');
     } catch (error) {
       setAuthState({
         status: 'error',
@@ -2436,13 +2734,15 @@ export default function App() {
   useEffect(() => {
     let active = true;
     void (async () => {
-      const [rawIdentity, rawLanguage] = await Promise.all([
+      const [rawIdentity, rawLanguage, rawPrivacy] = await Promise.all([
         AsyncStorage.getItem(MOBILE_PROFILE_IDENTITY_STORAGE_KEY),
         AsyncStorage.getItem(MOBILE_PROFILE_LANGUAGE_STORAGE_KEY),
+        AsyncStorage.getItem(MOBILE_PROFILE_PRIVACY_STORAGE_KEY),
       ]);
       if (!active) return;
       setSettingsIdentityDraft(parseStoredIdentityDraft(rawIdentity));
       setSettingsLanguage(parseStoredLanguage(rawLanguage));
+      setSettingsPrivacyDraft(parseStoredPrivacyDraft(rawPrivacy));
     })();
 
     return () => {
@@ -2570,7 +2870,6 @@ export default function App() {
       if (!active || !callbackResult.matched) return;
 
       if (!callbackResult.ok) {
-        setAuthModalVisible(true);
         setAuthFlowMode(callbackResult.recoveryMode ? 'recovery' : 'login');
         setAuthPassword('');
         setAuthConfirmPassword('');
@@ -2598,12 +2897,12 @@ export default function App() {
         : '';
 
       if (callbackResult.recoveryMode) {
-        setAuthModalVisible(true);
+        setAuthEntryStage('form');
         setAuthFlowMode('recovery');
         setAuthPassword('');
         setAuthConfirmPassword('');
       } else {
-        setAuthModalVisible(false);
+        setAuthEntryStage('form');
         setAuthFlowMode('login');
         if (email) {
           void trackMobileEvent('login_success', {
@@ -2633,7 +2932,7 @@ export default function App() {
 
   useEffect(() => {
     if (authFlowMode === 'recovery') {
-      setAuthModalVisible(true);
+      setAuthEntryStage('form');
     }
   }, [authFlowMode]);
 
@@ -2647,14 +2946,8 @@ export default function App() {
 
     hasHandledInitialAuthPromptRef.current = true;
     setAuthFlowMode('login');
-    setAuthModalVisible(true);
+    setAuthEntryStage('intro');
   }, [authState.status]);
-
-  useEffect(() => {
-    if (authState.status === 'signed_in' && authFlowMode !== 'recovery') {
-      setAuthModalVisible(false);
-    }
-  }, [authFlowMode, authState.status]);
 
   useEffect(() => {
     const requiresAuth = activeIntent.target === 'invite' || activeIntent.target === 'share';
@@ -2672,7 +2965,7 @@ export default function App() {
 
     lastAutoOpenedAuthRouteRef.current = routeKey;
     setAuthFlowMode('login');
-    setAuthModalVisible(true);
+    setAuthEntryStage('form');
   }, [activeIntent, authState.status]);
 
   useEffect(() => {
@@ -2693,12 +2986,27 @@ export default function App() {
   useEffect(() => {
     if (authState.status !== 'signed_in') {
       hasCloudIdentityHydratedRef.current = false;
+      hasCloudPrivacyHydratedRef.current = false;
       return;
     }
     if (hasCloudIdentityHydratedRef.current) return;
     hasCloudIdentityHydratedRef.current = true;
     void refreshSettingsIdentityFromCloud();
   }, [authState.status, refreshSettingsIdentityFromCloud]);
+
+  useEffect(() => {
+    if (authState.status !== 'signed_in') {
+      hasCloudPrivacyHydratedRef.current = false;
+      return;
+    }
+    if (hasCloudPrivacyHydratedRef.current) return;
+    hasCloudPrivacyHydratedRef.current = true;
+    void refreshSettingsPrivacyFromCloud();
+  }, [authState.status, refreshSettingsPrivacyFromCloud]);
+
+  useEffect(() => {
+    void syncLetterboxdImportState();
+  }, [syncLetterboxdImportState]);
 
   useEffect(() => {
     void refreshArenaLeaderboard();
@@ -3129,6 +3437,7 @@ export default function App() {
     .replace(/\s+/g, '')
     .toLowerCase();
   const profileBio = String(settingsIdentityDraft.bio || '').trim();
+  const profileAvatarUrl = String(settingsIdentityDraft.avatarUrl || '').trim();
   const profileLink = String(settingsIdentityDraft.profileLink || '').trim();
   const profileBirthDateLabel = normalizeDateLabel(settingsIdentityDraft.birthDate);
   const profileShellTitle = isSignedIn ? profileDisplayName || 'Observer' : 'Profil';
@@ -3156,6 +3465,11 @@ export default function App() {
         days: 0,
       };
   const publicSnapshot = publicProfileModalState.profile;
+  const publicProfileDisplayName = String(
+    publicSnapshot?.displayName || publicProfileFullState.displayName || '@bilinmeyen'
+  ).trim();
+  const publicProfileAvatarUrl = String(publicSnapshot?.avatarUrl || '').trim();
+  const publicProfileVisibility = publicSnapshot?.visibility || DEFAULT_SETTINGS_PRIVACY;
   const publicProfileStats = publicSnapshot
     ? {
         streak: publicSnapshot.streak,
@@ -3176,6 +3490,20 @@ export default function App() {
   const publicProfileLeague = publicSnapshot
     ? resolveMobileLeagueInfoFromXp(publicSnapshot.totalXp)
     : null;
+  const publicProfileLeadMetrics = [
+    ...(publicProfileVisibility.showStats
+      ? [
+          { label: 'Ritual', value: String(publicProfileStats.rituals) },
+          { label: 'Streak', value: String(publicProfileStats.streak) },
+        ]
+      : [{ label: 'Istatistik', value: 'Gizli' }]),
+    ...(publicProfileVisibility.showFollowCounts
+      ? [
+          { label: 'Takipci', value: String(publicProfileStats.followers) },
+          { label: 'Takip', value: String(publicProfileStats.following) },
+        ]
+      : [{ label: 'Takip', value: 'Gizli' }]),
+  ];
   const publicProfileMarksState: ProfileState = publicSnapshot
     ? {
         status: 'success',
@@ -3267,6 +3595,7 @@ export default function App() {
     ? `Kod kullanim: ${inviteProgram.claimCount}`
     : 'Davet kodu olusturulunca burada gorunur.';
   const inviteRewardLabel = 'Invitee +180 XP | Inviter +120 XP';
+  const letterboxdSummary = formatMobileLetterboxdSummary(letterboxdImportState.snapshot);
   const activeAccountLabel = profileDisplayName || 'Observer';
   const activeEmailLabel = authState.status === 'signed_in' ? authState.email : '-';
   const shareHandle = String(
@@ -3419,8 +3748,23 @@ export default function App() {
       reason: 'mobile_comment_echoed',
       ritualId: item.id,
     });
+    if (item.userId && !item.isMine) {
+      void sendEngagementPushNotification({
+        kind: 'like',
+        ritualId: item.id,
+        actorLabel: resolveNotificationActorLabel(),
+      }).then((pushResult) => {
+        void trackMobileEvent('page_view', {
+          reason: pushResult.ok
+            ? 'mobile_comment_echo_push_sent'
+            : 'mobile_comment_echo_push_failed',
+          ritualId: item.id,
+          targetUserId: item.userId,
+        });
+      });
+    }
     return result;
-  }, []);
+  }, [resolveNotificationActorLabel]);
 
   const handleLoadCommentReplies = useCallback(
     async (item: CommentFeedState['items'][number]) => {
@@ -3472,6 +3816,21 @@ export default function App() {
           reason: 'mobile_comment_reply_submitted',
           ritualId: item.id,
         });
+        if (item.userId && !item.isMine) {
+          void sendEngagementPushNotification({
+            kind: 'comment',
+            ritualId: item.id,
+            actorLabel: resolveNotificationActorLabel(),
+          }).then((pushResult) => {
+            void trackMobileEvent('page_view', {
+              reason: pushResult.ok
+                ? 'mobile_comment_reply_push_sent'
+                : 'mobile_comment_reply_push_failed',
+              ritualId: item.id,
+              targetUserId: item.userId,
+            });
+          });
+        }
         return result as { ok: true; reply: MobileCommentReply; message: string };
       }
 
@@ -3489,7 +3848,7 @@ export default function App() {
       });
       return result;
     },
-    [profileDisplayName]
+    [profileDisplayName, resolveNotificationActorLabel]
   );
 
   useEffect(() => {
@@ -3556,6 +3915,110 @@ export default function App() {
     []
   );
 
+  const handleChangeSettingsPrivacy = useCallback(
+    (patch: Partial<MobileSettingsPrivacyDraft>) => {
+      setSettingsPrivacyDraft((prev) =>
+        normalizeMobileProfileVisibility({
+          ...prev,
+          ...patch,
+        })
+      );
+      setSettingsSaveState((prev) =>
+        prev.status === 'idle' && !prev.message ? prev : { status: 'idle', message: '' }
+      );
+    },
+    []
+  );
+
+  const handleImportLetterboxd = useCallback(async () => {
+    if (authState.status !== 'signed_in') {
+      setLetterboxdImportState((prev) => ({
+        ...prev,
+        status: 'error',
+        message: 'Letterboxd importu icin once giris yap.',
+      }));
+      return;
+    }
+
+    setLetterboxdImportState((prev) => ({
+      ...prev,
+      status: 'loading',
+      message: 'CSV seciliyor...',
+    }));
+
+    try {
+      const identity = await readLetterboxdImportIdentity();
+      if (!identity) {
+        setLetterboxdImportState((prev) => ({
+          ...prev,
+          status: 'error',
+          message: 'Letterboxd importu icin oturum bulunamadi.',
+        }));
+        return;
+      }
+
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['text/csv', 'text/plain', 'application/vnd.ms-excel'],
+        copyToCacheDirectory: true,
+        multiple: false,
+        base64: Platform.OS === 'web',
+      });
+      if (result.canceled) {
+        setLetterboxdImportState((prev) => ({
+          ...prev,
+          status: prev.snapshot ? 'ready' : 'idle',
+          message: prev.snapshot ? 'Letterboxd import hazir.' : '',
+        }));
+        return;
+      }
+
+      const asset = result.assets?.[0];
+      if (!asset?.uri) {
+        setLetterboxdImportState((prev) => ({
+          ...prev,
+          status: 'error',
+          message: 'CSV dosyasi okunamadi.',
+        }));
+        return;
+      }
+
+      const csvText = await readPickedAssetAsText(asset);
+      const importResult = await importMobileLetterboxdCsv(identity, csvText, asset.name);
+      if (!importResult.ok) {
+        setLetterboxdImportState((prev) => ({
+          ...prev,
+          status: 'error',
+          message: importResult.message,
+        }));
+        return;
+      }
+
+      setLetterboxdImportState({
+        status: 'ready',
+        message: importResult.message,
+        snapshot: importResult.snapshot,
+      });
+      void refreshWatchedMovies();
+      void trackMobileEvent('page_view', {
+        reason: 'mobile_letterboxd_imported',
+        importedRows: importResult.analysis.parse.importedRows,
+        movieCount: importResult.snapshot.items.length,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Letterboxd importu tamamlanamadi.';
+      setLetterboxdImportState((prev) => ({
+        ...prev,
+        status: 'error',
+        message,
+      }));
+      void trackMobileEvent('page_view', {
+        reason: 'mobile_letterboxd_import_failed',
+        message,
+      });
+    }
+  }, [authState.status, readLetterboxdImportIdentity, refreshWatchedMovies]);
+
   const handleSaveSettingsIdentity = useCallback(async () => {
     if (authState.status !== 'signed_in') {
       setSettingsSaveState({
@@ -3618,16 +4081,143 @@ export default function App() {
     }
   }, [authState.status, refreshProfileStats, settingsIdentityDraft]);
 
-  const handlePickAvatar = useCallback(() => {
-    setIsPickingAvatar(true);
-    setTimeout(() => {
-      setIsPickingAvatar(false);
+  const handleSaveSettingsPrivacy = useCallback(async () => {
+    if (authState.status !== 'signed_in') {
       setSettingsSaveState({
         status: 'error',
-        message: 'Avatar secici bu buildde aktif degil. Sonraki surumde cihaz secimi eklenecek.',
+        message: 'Gizlilik ayarlari icin once giris yap.',
       });
-    }, 260);
-  }, []);
+      return;
+    }
+
+    const normalizedDraft = normalizeMobileProfileVisibility(settingsPrivacyDraft);
+
+    setSettingsSaveState({
+      status: 'saving',
+      message: 'Gizlilik ayarlari kaydediliyor...',
+    });
+
+    try {
+      await AsyncStorage.setItem(
+        MOBILE_PROFILE_PRIVACY_STORAGE_KEY,
+        JSON.stringify(normalizedDraft)
+      );
+      const syncResult = await syncMobileProfilePrivacyToCloud(normalizedDraft);
+      if (syncResult.ok) {
+        setSettingsPrivacyDraft(syncResult.visibility);
+        setSettingsSaveState({
+          status: 'success',
+          message: 'Gizlilik ayarlari kaydedildi. Cloud senkronu tamamlandi.',
+        });
+        void trackMobileEvent('page_view', {
+          reason: 'mobile_profile_privacy_saved',
+          cloudStatus: 'synced',
+        });
+      } else {
+        setSettingsPrivacyDraft(normalizedDraft);
+        setSettingsSaveState({
+          status: 'success',
+          message: `Gizlilik ayarlari yerelde kaydedildi. Cloud sync beklemede: ${syncResult.message}`,
+        });
+        void trackMobileEvent('page_view', {
+          reason: 'mobile_profile_privacy_saved',
+          cloudStatus: 'pending',
+          message: syncResult.message,
+        });
+      }
+      void refreshProfileStats();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Gizlilik ayarlari kaydedilemedi.';
+      setSettingsSaveState({
+        status: 'error',
+        message,
+      });
+      void trackMobileEvent('page_view', {
+        reason: 'mobile_profile_privacy_save_failed',
+        message,
+      });
+    }
+  }, [authState.status, refreshProfileStats, settingsPrivacyDraft]);
+
+  const handlePickAvatar = useCallback(async () => {
+    if (authState.status !== 'signed_in') {
+      setSettingsSaveState({
+        status: 'error',
+        message: 'Avatar icin once giris yap.',
+      });
+      return;
+    }
+
+    setIsPickingAvatar(true);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['image/*'],
+        copyToCacheDirectory: true,
+        multiple: false,
+        base64: Platform.OS === 'web',
+      });
+
+      if (result.canceled) {
+        setSettingsSaveState((prev) =>
+          prev.status === 'idle' && !prev.message ? prev : { status: 'idle', message: '' }
+        );
+        return;
+      }
+
+      const asset = result.assets?.[0];
+      if (!asset?.uri) {
+        setSettingsSaveState({
+          status: 'error',
+          message: 'Gorsel okunamadi.',
+        });
+        return;
+      }
+
+      const assetSize = Number(asset.size || 0);
+      if (Number.isFinite(assetSize) && assetSize > MAX_MOBILE_AVATAR_BYTES) {
+        setSettingsSaveState({
+          status: 'error',
+          message: 'Avatar 768 KB altinda olmali.',
+        });
+        return;
+      }
+
+      const mimeType = resolveAvatarMimeType(asset);
+      if (!mimeType.startsWith('image/')) {
+        setSettingsSaveState({
+          status: 'error',
+          message: 'Sadece gorsel sec.',
+        });
+        return;
+      }
+
+      const dataUrl = await readPickedAssetAsDataUrl(asset, mimeType);
+      const normalizedDataUrl = String(dataUrl || '').trim();
+      if (!normalizedDataUrl) {
+        setSettingsSaveState({
+          status: 'error',
+          message: 'Avatar okunamadi.',
+        });
+        return;
+      }
+
+      setSettingsIdentityDraft((prev) => ({
+        ...prev,
+        avatarUrl: normalizedDataUrl,
+      }));
+      setSettingsSaveState((prev) =>
+        prev.status === 'idle' && !prev.message ? prev : { status: 'idle', message: '' }
+      );
+    } catch (error) {
+      setSettingsSaveState({
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Avatar secilemedi.',
+      });
+    } finally {
+      setIsPickingAvatar(false);
+    }
+  }, [authState.status]);
 
   const handleClearAvatar = useCallback(() => {
     setSettingsIdentityDraft((prev) => ({
@@ -3705,10 +4295,29 @@ export default function App() {
               followersCount: nextFollowersCount,
             }
           : prev.profile,
-      };
+        };
     });
     void refreshProfileStats();
-  }, [publicProfileModalState.profile?.userId, publicProfileTarget, refreshProfileStats]);
+    if (result.isFollowing) {
+      void sendEngagementPushNotification({
+        kind: 'follow',
+        targetUserId,
+        actorLabel: resolveNotificationActorLabel(),
+      }).then((pushResult) => {
+        void trackMobileEvent('page_view', {
+          reason: pushResult.ok
+            ? 'mobile_follow_push_sent'
+            : 'mobile_follow_push_failed',
+          targetUserId,
+        });
+      });
+    }
+  }, [
+    publicProfileModalState.profile?.userId,
+    publicProfileTarget,
+    refreshProfileStats,
+    resolveNotificationActorLabel,
+  ]);
 
   const handleRefreshPublicProfileFull = useCallback(async () => {
     const targetUserId =
@@ -4453,6 +5062,41 @@ export default function App() {
             },
           ]}
         >
+          {authState.status !== 'signed_in' ? (
+            <AuthGateScreen
+              authState={authState}
+              email={authEmail}
+              fullName={authFullName}
+              username={authUsername}
+              birthDate={authBirthDate}
+              password={authPassword}
+              confirmPassword={authConfirmPassword}
+              mode={authFlowMode}
+              onEmailChange={setAuthEmail}
+              onFullNameChange={setAuthFullName}
+              onUsernameChange={setAuthUsername}
+              onBirthDateChange={setAuthBirthDate}
+              onPasswordChange={setAuthPassword}
+              onConfirmPasswordChange={setAuthConfirmPassword}
+              onModeChange={(nextMode) => {
+                setAuthEntryStage('form');
+                setAuthFlowMode(nextMode);
+              }}
+              onSignIn={handleSignIn}
+              onRegister={handleRegister}
+              rememberMe={authRememberMe}
+              onRememberMeChange={handleSetAuthRememberMe}
+              onGoogleSignIn={handleGoogleSignIn}
+              onAppleSignIn={handlePreviewAppleSignIn}
+              onRequestPasswordReset={handleRequestPasswordReset}
+              onCompletePasswordReset={handleCompletePasswordReset}
+              entryStage={authEntryStage}
+              onContinue={() => {
+                setAuthEntryStage('form');
+                setAuthFlowMode((prev) => (prev === 'recovery' ? prev : 'login'));
+              }}
+            />
+          ) : (
           <NavigationContainer
             ref={tabNavigationRef}
             theme={tabTheme}
@@ -4487,156 +5131,173 @@ export default function App() {
             >
               <Tab.Screen name={MAIN_TAB_BY_KEY.daily}>
                 {() => (
-                  <ScrollView
-                    contentContainerStyle={[styles.container, styles.containerWithTabs]}
-                    keyboardShouldPersistTaps="handled"
-                    keyboardDismissMode="on-drag"
-                    showsVerticalScrollIndicator={false}
+                  <KeyboardAvoidingView
+                    style={{ flex: 1 }}
+                    enabled={Platform.OS !== 'web'}
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
                   >
-                    {renderHeroCard('Daily')}
-                    <View style={styles.sectionAnchor}>
-                      <View style={styles.sectionHeaderRow}>
-                        <Text style={styles.sectionHeader}>Gunluk Akis</Text>
-                        <Text style={styles.sectionHeaderMeta}>Gunluk</Text>
+                    <ScrollView
+                      contentContainerStyle={[styles.container, styles.containerWithTabs]}
+                      keyboardShouldPersistTaps="handled"
+                      keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                      automaticallyAdjustKeyboardInsets
+                      showsVerticalScrollIndicator={false}
+                    >
+                      {renderHeroCard('Daily')}
+                      <View style={styles.sectionAnchor}>
+                        <View style={styles.sectionHeaderRow}>
+                          <Text style={styles.sectionHeader}>Gunluk Akis</Text>
+                          <Text style={styles.sectionHeaderMeta}>Gunluk</Text>
+                        </View>
                       </View>
-                    </View>
 
-                    <DailyHomeScreen
-                      state={dailyState}
-                      showOpsMeta={isDevSurfaceEnabled}
-                      selectedMovieId={selectedDailyMovieId}
-                      onSelectMovie={(movieId) => {
-                        setSelectedDailyMovieId(movieId);
-                        setDailyMovieDetailsVisible(true);
-                      }}
-                      onRetry={() => {
-                        void loadDailyMovies();
-                      }}
-                    />
-                    <CommentFeedCard
-                      state={dailyCommentFeedState}
-                      showFilters={false}
-                      showOpsMeta={isDevSurfaceEnabled}
-                      onScopeChange={() => undefined}
-                      onSortChange={() => undefined}
-                      onQueryChange={() => undefined}
-                      onEcho={handleEchoComment}
-                      onLoadReplies={handleLoadCommentReplies}
-                      onSubmitReply={handleSubmitCommentReply}
-                      onOpenAuthorProfile={handleOpenCommentAuthorProfile}
-                      onRefresh={() => {
-                        void refreshDailyCommentFeed();
-                      }}
-                    />
-
-                  </ScrollView>
+                      <DailyHomeScreen
+                        state={dailyState}
+                        showOpsMeta={isDevSurfaceEnabled}
+                        selectedMovieId={selectedDailyMovieId}
+                        onSelectMovie={(movieId) => {
+                          setSelectedDailyMovieId(movieId);
+                          setDailyMovieDetailsVisible(true);
+                        }}
+                        onRetry={() => {
+                          void loadDailyMovies();
+                        }}
+                      />
+                      <CommentFeedCard
+                        state={dailyCommentFeedState}
+                        currentUserAvatarUrl={profileAvatarUrl}
+                        showFilters={false}
+                        showOpsMeta={isDevSurfaceEnabled}
+                        onScopeChange={() => undefined}
+                        onSortChange={() => undefined}
+                        onQueryChange={() => undefined}
+                        onEcho={handleEchoComment}
+                        onLoadReplies={handleLoadCommentReplies}
+                        onSubmitReply={handleSubmitCommentReply}
+                        onOpenAuthorProfile={handleOpenCommentAuthorProfile}
+                        onRefresh={() => {
+                          void refreshDailyCommentFeed();
+                        }}
+                      />
+                    </ScrollView>
+                  </KeyboardAvoidingView>
                 )}
               </Tab.Screen>
 
               <Tab.Screen name={MAIN_TAB_BY_KEY.explore}>
                 {() => (
-                  <ScrollView
-                    contentContainerStyle={[styles.container, styles.containerWithTabs]}
-                    keyboardShouldPersistTaps="handled"
-                    keyboardDismissMode="on-drag"
-                    showsVerticalScrollIndicator={false}
+                  <KeyboardAvoidingView
+                    style={{ flex: 1 }}
+                    enabled={Platform.OS !== 'web'}
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
                   >
-                    <SectionLeadCard
-                      accent="sage"
-                      eyebrow="Kesif Merkezi"
-                      title="Nereye bakacagini once buradan sec"
-                      body="Rota ac, arena siralamasina bak ve yorum akisindan kullanici profillerine gec."
-                      badges={[
-                        { label: `${DISCOVER_ROUTES.length} rota`, tone: 'sage' },
-                        {
-                          label: commentFeedScope === 'today' ? 'Bugun filtresi' : 'Tum akis',
-                          tone: 'muted',
-                        },
-                        {
-                          label: arenaState.source === 'live' ? 'Arena canli' : 'Arena fallback',
-                          tone: arenaState.source === 'live' ? 'sage' : 'clay',
-                        },
-                      ]}
-                      metrics={[
-                        { label: 'Seri', value: streakSummary },
-                        { label: 'Ritual', value: ritualsCountSummary },
-                        { label: 'Arena', value: String(arenaState.entries.length || 0) },
-                        {
-                          label: 'Yorum',
-                          value:
-                            commentFeedState.status === 'ready'
-                              ? String(commentFeedState.items.length)
-                              : commentFeedState.status === 'loading'
-                                ? '...'
-                                : '--',
-                        },
-                      ]}
-                      actions={[
-                        {
-                          label: 'Arena Yenile',
-                          tone: 'neutral',
-                          onPress: handleRefreshExploreSurface,
-                        },
-                      ]}
-                    />
-                    <View style={styles.sectionAnchor}>
-                      <View style={styles.sectionHeaderRow}>
-                        <Text style={styles.sectionHeader}>Kesif</Text>
-                        <Text style={styles.sectionHeaderMeta}>Rotalar</Text>
+                    <ScrollView
+                      contentContainerStyle={[styles.container, styles.containerWithTabs]}
+                      keyboardShouldPersistTaps="handled"
+                      keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                      automaticallyAdjustKeyboardInsets
+                      showsVerticalScrollIndicator={false}
+                    >
+                      <SectionLeadCard
+                        accent="sage"
+                        eyebrow="Kesif Merkezi"
+                        title="Nereye bakacagini once buradan sec"
+                        body="Rota ac, arena siralamasina bak ve yorum akisindan kullanici profillerine gec."
+                        badges={[
+                          { label: `${DISCOVER_ROUTES.length} rota`, tone: 'sage' },
+                          {
+                            label: commentFeedScope === 'today' ? 'Bugun filtresi' : 'Tum akis',
+                            tone: 'muted',
+                          },
+                          {
+                            label: arenaState.source === 'live' ? 'Arena canli' : 'Arena fallback',
+                            tone: arenaState.source === 'live' ? 'sage' : 'clay',
+                          },
+                        ]}
+                        metrics={[
+                          { label: 'Seri', value: streakSummary },
+                          { label: 'Ritual', value: ritualsCountSummary },
+                          { label: 'Arena', value: String(arenaState.entries.length || 0) },
+                          {
+                            label: 'Yorum',
+                            value:
+                              commentFeedState.status === 'ready'
+                                ? String(commentFeedState.items.length)
+                                : commentFeedState.status === 'loading'
+                                  ? '...'
+                                  : '--',
+                          },
+                        ]}
+                        actions={[
+                          {
+                            label: 'Arena Yenile',
+                            tone: 'neutral',
+                            onPress: handleRefreshExploreSurface,
+                          },
+                        ]}
+                      />
+                      <View style={styles.sectionAnchor}>
+                        <View style={styles.sectionHeaderRow}>
+                          <Text style={styles.sectionHeader}>Kesif</Text>
+                          <Text style={styles.sectionHeaderMeta}>Rotalar</Text>
+                        </View>
                       </View>
-                    </View>
-                    <DiscoverRoutesCard
-                      routes={DISCOVER_ROUTES}
-                      onOpenRoute={(route) => {
-                        void handleOpenDiscoverRoute(route);
-                      }}
-                    />
-                    <View style={styles.sectionAnchor}>
-                      <View style={styles.sectionHeaderRow}>
-                        <Text style={styles.sectionHeader}>Arena</Text>
-                        <Text style={styles.sectionHeaderMeta}>Haftalik siralama</Text>
+                      <DiscoverRoutesCard
+                        routes={DISCOVER_ROUTES}
+                        onOpenRoute={(route) => {
+                          void handleOpenDiscoverRoute(route);
+                        }}
+                      />
+                      <View style={styles.sectionAnchor}>
+                        <View style={styles.sectionHeaderRow}>
+                          <Text style={styles.sectionHeader}>Arena</Text>
+                          <Text style={styles.sectionHeaderMeta}>Haftalik siralama</Text>
+                        </View>
                       </View>
-                    </View>
-                    <ArenaChallengeCard
-                      streakLabel={streakSummary}
-                      ritualsLabel={ritualsCountSummary}
-                    />
-                    <ArenaLeaderboardCard
-                      state={arenaState}
-                      onRefresh={() => {
-                        void refreshArenaLeaderboard();
-                      }}
-                      onOpenProfile={(item) => {
-                        void handleOpenArenaProfile(item);
-                      }}
-                    />
-                    <View style={styles.sectionAnchor}>
-                      <View style={styles.sectionHeaderRow}>
-                        <Text style={styles.sectionHeader}>Sosyal Akis</Text>
-                        <Text style={styles.sectionHeaderMeta}>{commentFeedSummary}</Text>
+                      <ArenaChallengeCard
+                        streakLabel={streakSummary}
+                        ritualsLabel={ritualsCountSummary}
+                      />
+                      <ArenaLeaderboardCard
+                        state={arenaState}
+                        onRefresh={() => {
+                          void refreshArenaLeaderboard();
+                        }}
+                        onOpenProfile={(item) => {
+                          void handleOpenArenaProfile(item);
+                        }}
+                      />
+                      <View style={styles.sectionAnchor}>
+                        <View style={styles.sectionHeaderRow}>
+                          <Text style={styles.sectionHeader}>Sosyal Akis</Text>
+                          <Text style={styles.sectionHeaderMeta}>{commentFeedSummary}</Text>
+                        </View>
                       </View>
-                    </View>
-                    <CommentFeedCard
-                      state={commentFeedState}
-                      showFilters
-                      showOpsMeta={isDevSurfaceEnabled}
-                      onScopeChange={handleCommentFeedScopeChange}
-                      onSortChange={handleCommentFeedSortChange}
-                      onQueryChange={handleCommentFeedQueryChange}
-                      onEcho={handleEchoComment}
-                      onLoadReplies={handleLoadCommentReplies}
-                      onSubmitReply={handleSubmitCommentReply}
-                      onOpenAuthorProfile={handleOpenCommentAuthorProfile}
-                      onRefresh={() => {
-                        void refreshCommentFeed(
-                          commentFeedScope,
-                          debouncedCommentFeedQuery,
-                          commentFeedSort
-                        );
-                      }}
-                    />
-                    {isDevSurfaceEnabled ? <PlatformRulesCard /> : null}
-                  </ScrollView>
+                      <CommentFeedCard
+                        state={commentFeedState}
+                        currentUserAvatarUrl={profileAvatarUrl}
+                        showFilters
+                        showOpsMeta={isDevSurfaceEnabled}
+                        onScopeChange={handleCommentFeedScopeChange}
+                        onSortChange={handleCommentFeedSortChange}
+                        onQueryChange={handleCommentFeedQueryChange}
+                        onEcho={handleEchoComment}
+                        onLoadReplies={handleLoadCommentReplies}
+                        onSubmitReply={handleSubmitCommentReply}
+                        onOpenAuthorProfile={handleOpenCommentAuthorProfile}
+                        onRefresh={() => {
+                          void refreshCommentFeed(
+                            commentFeedScope,
+                            debouncedCommentFeedQuery,
+                            commentFeedSort
+                          );
+                        }}
+                      />
+                      {isDevSurfaceEnabled ? <PlatformRulesCard /> : null}
+                    </ScrollView>
+                  </KeyboardAvoidingView>
                 )}
               </Tab.Screen>
 
@@ -4690,6 +5351,25 @@ export default function App() {
                       </View>
                     </View>
                     <ProfileMarksCard state={profileState} isSignedIn={isSignedIn} mode="all" />
+                    <CollapsibleSectionCard
+                      accent="clay"
+                      title="Ligler"
+                      meta={`Her ${LEVEL_THRESHOLD} XP`}
+                      defaultExpanded={false}
+                    >
+                      <View style={styles.detailInfoGrid}>
+                        {MOBILE_LEAGUE_NAMES.map((leagueKey, index) => {
+                          const leagueInfo = MOBILE_LEAGUES_DATA[leagueKey];
+                          return (
+                            <View key={leagueKey} style={styles.detailInfoCard}>
+                              <Text style={styles.detailInfoLabel}>{leagueKey}</Text>
+                              <Text style={styles.detailInfoValue}>{leagueInfo.name}</Text>
+                              <Text style={styles.screenMeta}>{index * LEVEL_THRESHOLD} XP</Text>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    </CollapsibleSectionCard>
                   </ScrollView>
                 )}
               </Tab.Screen>
@@ -4721,32 +5401,31 @@ export default function App() {
                         <SectionLeadCard
                           accent="clay"
                           eyebrow="Public Profil"
-                          title={
-                            publicSnapshot?.displayName || publicProfileFullState.displayName || '@bilinmeyen'
-                          }
+                          title={publicProfileDisplayName}
                           body={
                             publicProfileModalState.followMessage ||
                             publicProfileFullState.message ||
-                            'Bu kullanicinin film izi ve yorum akisina bak.'
+                            'Film izi ve lig bilgisi.'
                           }
                           badges={[
                             {
                               label: publicProfileModalState.isSelfProfile ? 'Kendi Profilin' : 'Public Yuzey',
                               tone: 'muted',
                             },
-                            ...(publicSnapshot?.lastRitualDate
-                              ? [{ label: `Son ritual ${publicSnapshot.lastRitualDate}`, tone: 'sage' as const }]
+                            ...(!publicProfileVisibility.showStats
+                              ? [{ label: 'Istatistik gizli', tone: 'clay' as const }]
+                              : []),
+                            ...(!publicProfileVisibility.showFollowCounts
+                              ? [{ label: 'Takip sayilari gizli', tone: 'muted' as const }]
+                              : []),
+                            ...(!publicProfileVisibility.showMarks
+                              ? [{ label: 'Marklar gizli', tone: 'muted' as const }]
                               : []),
                             ...(publicProfileModalState.followsYou
                               ? [{ label: 'Seni takip ediyor', tone: 'clay' as const }]
                               : []),
                           ]}
-                          metrics={[
-                            { label: 'Ritual', value: String(publicProfileStats.rituals) },
-                            { label: 'Streak', value: String(publicProfileStats.streak) },
-                            { label: 'Takipci', value: String(publicProfileStats.followers) },
-                            { label: 'Takip', value: String(publicProfileStats.following) },
-                          ]}
+                          metrics={publicProfileLeadMetrics}
                           actions={[
                             ...(!publicProfileModalState.isSelfProfile && isSignedIn
                               ? [
@@ -4776,6 +5455,38 @@ export default function App() {
                         />
 
                         <CollapsibleSectionCard
+                          accent="clay"
+                          title="Profil Fotografi"
+                          meta={publicProfileAvatarUrl ? 'Aktif' : 'Eklenmedi'}
+                          defaultExpanded
+                        >
+                          <View style={styles.profileIdentityHeroRow}>
+                            <View style={styles.profileIdentityAvatarWrap}>
+                              {publicProfileAvatarUrl ? (
+                                <Image
+                                  source={{ uri: publicProfileAvatarUrl }}
+                                  style={styles.profileIdentityAvatarImage}
+                                  resizeMode="cover"
+                                />
+                              ) : (
+                                <Text style={styles.profileIdentityAvatarFallback}>
+                                  {(publicProfileDisplayName.slice(0, 1) || 'O').toUpperCase()}
+                                </Text>
+                              )}
+                            </View>
+                            <View style={styles.profileIdentityHeroCopy}>
+                              <Text style={styles.detailInfoLabel}>Avatar Durumu</Text>
+                              <Text style={styles.detailInfoValue}>
+                                {publicProfileAvatarUrl ? 'Profil fotografi aktif' : 'Avatar eklenmedi'}
+                              </Text>
+                              <Text style={styles.screenMeta}>
+                                Fotograf yoksa isim bas harfi fallback olarak kullanilir.
+                              </Text>
+                            </View>
+                          </View>
+                        </CollapsibleSectionCard>
+
+                        <CollapsibleSectionCard
                           accent="sage"
                           title="Film Arsivi"
                           meta={`${publicWatchedMovies.length} film`}
@@ -4784,27 +5495,15 @@ export default function App() {
                           {publicWatchedMovies.length > 0 ? (
                             <View style={styles.movieList}>
                               {publicWatchedMovies.map((movie) => (
-                                <Pressable
-                                  key={movie.id}
-                                  style={({ pressed }) => [
-                                    styles.movieRow,
-                                    pressed ? styles.movieRowPressed : null,
-                                  ]}
-                                  onPress={() => {
-                                    handleOpenPublicProfileMovieArchive(movie);
-                                  }}
-                                  hitSlop={8}
-                                  accessibilityRole="button"
-                                  accessibilityLabel={`${movie.movieTitle} public film arsivini ac`}
-                                >
+                                <View key={movie.id} style={styles.movieRow}>
                                   <Text style={styles.movieTitle}>{movie.movieTitle}</Text>
                                   <Text style={styles.movieMeta}>
                                     {movie.year ? `${movie.year} | ` : ''}
                                     Son izleme: {movie.watchedDayKey || '-'}
                                     {movie.watchCount > 1 ? ` | Tekrar: ${movie.watchCount}` : ''}
                                   </Text>
-                                  <Text style={styles.movieRowActionHint}>Public Arsivi Ac</Text>
-                                </Pressable>
+                                  <Text style={styles.movieRowActionHint}>Film Izi</Text>
+                                </View>
                               ))}
                             </View>
                           ) : (
@@ -4829,9 +5528,9 @@ export default function App() {
                                 publicProfileFullState.status === 'error'
                                   ? publicProfileFullState.message ||
                                     'Public film arsivi okunurken gecici bir sorun olustu.'
-                                  : 'Izlenen filmler ve tekrar sayilari burada gruplanir.'
+                                  : 'Izlenen filmler burada listelenir.'
                               }
-                              meta="Film satirina dokununca o filme ait public yorum arsivi acilir."
+                              meta="Yorumlar bu profilde gosterilmez."
                               actionLabel={
                                 publicProfileFullState.status === 'loading'
                                   ? undefined
@@ -4847,195 +5546,83 @@ export default function App() {
                         <View style={styles.sectionAnchor}>
                           <View style={styles.sectionHeaderRow}>
                             <Text style={styles.sectionHeader}>Marklar</Text>
-                            <Text style={styles.sectionHeaderMeta}>{publicProfileStats.marks} acik mark</Text>
+                            <Text style={styles.sectionHeaderMeta}>
+                              {publicProfileVisibility.showMarks
+                                ? `${publicProfileStats.marks} acik mark`
+                                : 'Gizli'}
+                            </Text>
                           </View>
                         </View>
-                        <ProfileMarksCard
-                          state={publicProfileMarksState}
-                          isSignedIn={isSignedIn || Boolean(publicSnapshot)}
-                          mode="unlocked"
-                        />
+                        {publicProfileVisibility.showMarks ? (
+                          <ProfileMarksCard
+                            state={publicProfileMarksState}
+                            isSignedIn={isSignedIn || Boolean(publicSnapshot)}
+                            mode="unlocked"
+                          />
+                        ) : (
+                          <StatePanel
+                            tone="sage"
+                            variant="empty"
+                            eyebrow="Public Marklar"
+                            title="Bu kullanici mark koleksiyonunu gizledi"
+                            body="Rozetler ve acik marklar public profil detayinda gosterilmiyor."
+                            meta="Takip iliskisi devam eder; sadece mark alani kapali."
+                          />
+                        )}
 
-                        <CollapsibleSectionCard
-                          accent="clay"
-                          title="Yorum Akisi"
-                          meta={`${publicProfileFullState.items.length} kayit`}
-                          defaultExpanded={false}
-                        >
-                          {publicProfileFullState.status === 'loading' ? (
-                            <StatePanel
-                              tone="clay"
-                              variant="loading"
-                              eyebrow="Public Yorum Akisi"
-                              title="Aktivite akisi yukleniyor"
-                              body="Bu kullanicinin acik ritual yorumlari ve film izleri cekiliyor."
-                              meta="Yorum akisi tarih sirasiyla siralanir."
-                            />
-                          ) : publicProfileFullState.items.length > 0 ? (
-                            <View style={styles.commentFeedList}>
-                              {publicProfileFullState.items.map((item) => (
-                                <View key={item.id} style={styles.commentFeedRow}>
-                                  <Text style={styles.commentFeedMovieTitle}>
-                                    {item.movieTitle}
-                                    {item.year ? ` (${item.year})` : ''}
-                                  </Text>
-                                  <Text style={styles.commentFeedMeta}>{item.timestampLabel}</Text>
-                                  <Text style={styles.commentFeedBody}>{item.text}</Text>
-                                </View>
-                              ))}
-                            </View>
-                          ) : (
-                            <StatePanel
-                              tone="clay"
-                              variant={publicProfileFullState.status === 'error' ? 'error' : 'empty'}
-                              eyebrow="Public Yorum Akisi"
-                              title={
-                                publicProfileFullState.status === 'error'
-                                  ? 'Yorum akisi okunamadi'
-                                  : 'Bu profilde henuz yorum yok'
-                              }
-                              body={
-                                publicProfileFullState.status === 'error'
-                                  ? publicProfileFullState.message ||
-                                    'Public yorum akisi okunurken gecici bir sorun olustu.'
-                                  : 'Kullanici yeni ritual yazdikca yorum akisi burada gorunur.'
-                              }
-                              meta="Yorumlara dokunmadan once ustteki film arsivinden baglam alabilirsin."
-                              actionLabel="Public Profili Yenile"
-                              onAction={() => {
-                                void handleRefreshPublicProfileFull();
-                              }}
-                            />
-                          )}
-                        </CollapsibleSectionCard>
                       </>
                     ) : null}
                     {!publicProfileFullState.visible ? (
                       <>
-                    {isSignedIn ? (
-                      <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-                        <Pressable
-                          style={styles.profileSettingsButton}
-                          onPress={() => setSettingsVisible(true)}
-                          hitSlop={8}
-                          accessibilityRole="button"
-                          accessibilityLabel="Ayarlar"
-                        >
-                          <Ionicons name="settings-sharp" size={18} color="#E5E4E2" />
-                        </Pressable>
-                      </View>
-                    ) : null}
-                    <SectionLeadCard
-                      accent="sage"
-                      eyebrow="Profil Merkezi"
-                      title={profileShellTitle}
-                      body={profileShellBody}
-                      badges={[
-                        { label: profileStats.league, tone: 'sage' },
-                        { label: themeModeLabel, tone: 'muted' },
-                        ...(profileUsername ? [{ label: `@${profileUsername}`, tone: 'muted' as const }] : []),
-                      ]}
-                      metrics={[
-                        { label: 'Ritual', value: String(profileStats.rituals) },
-                        { label: 'Streak', value: String(profileStats.streak) },
-                        { label: 'Mark', value: String(profileStats.marks) },
-                        { label: 'Takipci', value: String(profileStats.followers) },
-                      ]}
-                      actions={[
-                        ...(isSignedIn
-                          ? [
-                              {
-                                label: profileLink ? 'Linki Ac' : 'Paylasim Alani',
-                                tone: 'teal' as const,
-                                onPress: () => {
-                                  if (profileLink) {
-                                    void handleOpenProfileLink();
-                                    return;
-                                  }
-                                  handleOpenShareHubFromProfile();
-                                },
-                              },
-                            ]
-                          : []),
-                        {
-                          label: 'Yenile',
-                          tone: 'neutral',
-                          onPress: handleRefreshProfileSurface,
-                        },
-                      ]}
-                    />
-                    {isSignedIn ? (
-                      <>
-                        <ProfileXpCard
+                        <ProfileUnifiedCard
                           state={profileState}
-                          onRefresh={handleRefreshProfileSurface}
-                        />
-
-                        <ProfileIdentityCard
-                          displayName={profileDisplayName || 'Izleyici'}
+                          isSignedIn={isSignedIn}
+                          themeModeLabel={themeModeLabel}
+                          displayName={profileShellTitle}
+                          avatarUrl={profileAvatarUrl}
                           username={profileUsername}
-                          bio={profileBio}
+                          bio={profileShellBody}
                           birthDateLabel={profileBirthDateLabel}
-                          followingCount={profileStats.following}
-                          followersCount={profileStats.followers}
                           profileLink={profileLink}
+                          genreItems={profileGenreDistribution}
+                          watchedMoviesState={watchedMoviesState}
+                          onOpenSettings={isSignedIn ? () => setSettingsVisible(true) : undefined}
                           onOpenProfileLink={() => {
                             void handleOpenProfileLink();
                           }}
-                        />
-
-                        <ProfileGenreDistributionCard
-                          items={profileGenreDistribution}
-                          isSignedIn={isSignedIn}
-                          onRefresh={() => {
-                            void refreshProfileGenreDistribution();
-                          }}
-                        />
-
-                        <WatchedMoviesCard
-                          state={watchedMoviesState}
-                          isSignedIn={isSignedIn}
-                          onRefresh={() => {
-                            void refreshWatchedMovies();
-                          }}
+                          onOpenShareHub={handleOpenShareHubFromProfile}
                           onOpenMovieArchive={(movie) => {
                             void handleOpenProfileMovieArchive(movie);
                           }}
+                          onRefresh={handleRefreshProfileSurface}
                         />
-
-                        <View style={styles.sectionAnchor}>
-                          <View style={styles.sectionHeaderRow}>
-                            <Text style={styles.sectionHeader}>Marklar</Text>
-                            <Text style={styles.sectionHeaderMeta}>{profileStats.marks} acik mark</Text>
-                          </View>
-                        </View>
-                        <ProfileMarksCard state={profileState} isSignedIn={isSignedIn} mode="unlocked" />
-
-                        {screenPlan.screen === 'invite_claim' ? (
-                          <InviteClaimScreen
-                            inviteCode={inviteCode}
-                            claimState={inviteClaimState}
-                            onClaim={handleClaimInvite}
-                          />
+                        {isSignedIn ? (
+                          <>
+                            {screenPlan.screen === 'invite_claim' ? (
+                              <InviteClaimScreen
+                                inviteCode={inviteCode}
+                                claimState={inviteClaimState}
+                                onClaim={handleClaimInvite}
+                              />
+                            ) : null}
+                            {screenPlan.screen === 'share_hub' ? (
+                              <ShareHubScreen
+                                inviteCode={inviteCode}
+                                inviteLink={effectiveShareInviteLink}
+                                platform={sharePlatform}
+                                goal={selectedShareGoal}
+                                streakValue={profileState.status === 'success' ? profileState.streak : 0}
+                                commentPreview={shareCommentPreview}
+                                canShareComment={canShareComment}
+                                canShareStreak={canShareStreak}
+                                shareStatus={shareHubState.message}
+                                shareStatusTone={shareHubState.status}
+                                onSetGoal={setSelectedShareGoal}
+                                onShare={handleShareHubShare}
+                              />
+                            ) : null}
+                          </>
                         ) : null}
-                        {screenPlan.screen === 'share_hub' ? (
-                          <ShareHubScreen
-                            inviteCode={inviteCode}
-                            inviteLink={effectiveShareInviteLink}
-                            platform={sharePlatform}
-                            goal={selectedShareGoal}
-                            streakValue={profileState.status === 'success' ? profileState.streak : 0}
-                            commentPreview={shareCommentPreview}
-                            canShareComment={canShareComment}
-                            canShareStreak={canShareStreak}
-                            shareStatus={shareHubState.message}
-                            shareStatusTone={shareHubState.status}
-                            onSetGoal={setSelectedShareGoal}
-                            onShare={handleShareHubShare}
-                          />
-                        ) : null}
-                      </>
-                    ) : null}
 
                     {isDevSurfaceEnabled ? (
                       <>
@@ -5121,38 +5708,7 @@ export default function App() {
               </Tab.Screen>
             </Tab.Navigator>
           </NavigationContainer>
-
-          <AuthModal
-            visible={authModalVisible}
-            onClose={() => {
-              if (authState.status === 'loading') return;
-              setAuthModalVisible(false);
-            }}
-            authState={authState}
-            email={authEmail}
-            fullName={authFullName}
-            username={authUsername}
-            birthDate={authBirthDate}
-            password={authPassword}
-            confirmPassword={authConfirmPassword}
-            mode={authFlowMode}
-            onEmailChange={setAuthEmail}
-            onFullNameChange={setAuthFullName}
-            onUsernameChange={setAuthUsername}
-            onBirthDateChange={setAuthBirthDate}
-            onPasswordChange={setAuthPassword}
-            onConfirmPasswordChange={setAuthConfirmPassword}
-            onModeChange={setAuthFlowMode}
-            onSignIn={handleSignIn}
-            onRegister={handleRegister}
-            rememberMe={authRememberMe}
-            onRememberMeChange={handleSetAuthRememberMe}
-            showAppleSignIn={Platform.OS === 'ios' && appleAuthAvailable}
-            onAppleSignIn={handleAppleSignIn}
-            onGoogleSignIn={handleGoogleSignIn}
-            onRequestPasswordReset={handleRequestPasswordReset}
-            onCompletePasswordReset={handleCompletePasswordReset}
-          />
+          )}
 
           <MovieDetailsModal
             movie={
@@ -5244,6 +5800,9 @@ export default function App() {
             identityDraft={settingsIdentityDraft}
             onChangeIdentity={handleChangeSettingsIdentity}
             onSaveIdentity={handleSaveSettingsIdentity}
+            privacyDraft={settingsPrivacyDraft}
+            onChangePrivacy={handleChangeSettingsPrivacy}
+            onSavePrivacy={handleSaveSettingsPrivacy}
             saveState={settingsSaveState}
             onPickAvatar={handlePickAvatar}
             onClearAvatar={handleClearAvatar}
@@ -5269,6 +5828,16 @@ export default function App() {
             isSignedIn={isSignedIn}
             onOpenAccountDeletion={() => {
               void handleOpenAccountDeletion();
+            }}
+            letterboxdSummary={letterboxdSummary}
+            letterboxdStatus={letterboxdImportState.message}
+            isImportingLetterboxd={letterboxdImportState.status === 'loading'}
+            onImportLetterboxd={() => {
+              void handleImportLetterboxd();
+            }}
+            onOpenShareHub={() => {
+              setSettingsVisible(false);
+              handleOpenShareHubFromProfile();
             }}
           />
         </Animated.View>

@@ -1,5 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { setCachedDailyMovies } from '../lib/dailyCache.js';
+import {
+    getSupabasePushConfig,
+    readAllPushAudiences,
+    sendExpoPushMessages
+} from '../lib/push.js';
 
 export const config = {
     runtime: 'nodejs'
@@ -1238,6 +1243,96 @@ export default async function handler(req: any, res: any) {
             console.warn('[daily-cron] cache refresh failed', cacheError);
         }
 
+        let dailyPushSummary: {
+            status: 'sent' | 'skipped' | 'error';
+            message: string;
+            targetedUserCount: number;
+            sentCount: number;
+            ticketCount: number;
+            errorCount: number;
+        } = {
+            status: 'skipped',
+            message: 'Gunluk push gonderilmedi.',
+            targetedUserCount: 0,
+            sentCount: 0,
+            ticketCount: 0,
+            errorCount: 0
+        };
+
+        try {
+            const pushConfig = getSupabasePushConfig();
+            if (!pushConfig) {
+                dailyPushSummary = {
+                    ...dailyPushSummary,
+                    status: 'error',
+                    message: 'Push env config eksik.'
+                };
+            } else {
+                const audienceResult = await readAllPushAudiences(pushConfig);
+                if (!audienceResult.ok) {
+                    dailyPushSummary = {
+                        ...dailyPushSummary,
+                        status: 'error',
+                        message: audienceResult.error
+                    };
+                } else if (audienceResult.audiences.length === 0) {
+                    dailyPushSummary = {
+                        ...dailyPushSummary,
+                        message: 'Kayitli mobil push kitlesi bulunamadi.'
+                    };
+                } else {
+                    const pushPreview = movies
+                        .slice(0, 2)
+                        .map((movie) => movie.title)
+                        .filter(Boolean)
+                        .join(' / ');
+                    const pushBody = pushPreview
+                        ? `Gunun 5 yeni filmi aciklandi. ${pushPreview} ile baslayabilirsin.`
+                        : 'Gunun 5 yeni filmi aciklandi.';
+                    const messages = audienceResult.audiences.flatMap((audience) =>
+                        audience.tokens.map((token) => ({
+                            to: token,
+                            title: 'Gunun 5 yeni filmi yayinda',
+                            body: pushBody,
+                            sound: 'default' as const,
+                            data: {
+                                source: 'daily_cron',
+                                kind: 'daily_drop',
+                                deepLink: 'absolutecinema://open?target=daily',
+                                sentAt: new Date().toISOString()
+                            }
+                        }))
+                    );
+                    const pushResult = await sendExpoPushMessages(messages);
+                    if (!pushResult.ok) {
+                        dailyPushSummary = {
+                            status: 'error',
+                            message: pushResult.error,
+                            targetedUserCount: audienceResult.audiences.length,
+                            sentCount: messages.length,
+                            ticketCount: pushResult.ticketCount,
+                            errorCount: pushResult.errorCount
+                        };
+                    } else {
+                        dailyPushSummary = {
+                            status: 'sent',
+                            message: 'Gunluk push gonderildi.',
+                            targetedUserCount: audienceResult.audiences.length,
+                            sentCount: messages.length,
+                            ticketCount: pushResult.ticketCount,
+                            errorCount: pushResult.errorCount
+                        };
+                    }
+                }
+            }
+        } catch (pushError: any) {
+            dailyPushSummary = {
+                ...dailyPushSummary,
+                status: 'error',
+                message: pushError?.message || 'Gunluk push gonderimi beklenmedik sekilde basarisiz oldu.'
+            };
+        }
+
         return sendJson(res, 200, {
             ok: true,
             updated: true,
@@ -1246,6 +1341,7 @@ export default async function handler(req: any, res: any) {
             count: movies.length,
             storageBackedCount,
             allStorageBacked: storageBackedCount === movies.length,
+            push: dailyPushSummary,
             ...(debug
                 ? {
                       diagnosticsCount: diagnostics.length,

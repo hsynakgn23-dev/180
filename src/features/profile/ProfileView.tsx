@@ -13,6 +13,7 @@ import { getRegistrationGenderLabel } from '../../i18n/localization';
 import { InfoFooter } from '../../components/InfoFooter';
 import { buildFilmOgImageUrl, buildProfileOgImageUrl } from '../../lib/ogCards';
 import { appendMobileDeepLinkParams } from '../../domain/deepLinks';
+import { readAvatarFileAsDataUrl } from '../../lib/avatarUpload';
 
 interface ProfileViewProps {
     onClose: () => void;
@@ -226,16 +227,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
         deleteRitual(String(ritualId));
     };
 
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                if (typeof reader.result === 'string') {
-                    updateAvatar(reader.result);
-                }
-            };
-            reader.readAsDataURL(file);
+        if (!file) return;
+        try {
+            const dataUrl = await readAvatarFileAsDataUrl(file);
+            updateAvatar(dataUrl);
+        } catch (error) {
+            console.error('[ProfileView] avatar upload failed', error);
+        } finally {
+            e.target.value = '';
         }
     };
 

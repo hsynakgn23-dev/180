@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
-import * as Notifications from 'expo-notifications';
+import type * as ExpoNotifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
 export type PushRegistrationResult =
@@ -31,7 +31,7 @@ export type PushNotificationSnapshot = {
   title: string;
   body: string;
   deepLink: string | null;
-  kind: 'reply' | 'follow' | 'streak' | 'generic';
+  kind: 'comment' | 'like' | 'follow' | 'daily_drop' | 'streak' | 'generic';
   receivedAt: string;
 };
 
@@ -55,7 +55,11 @@ type NotificationHandlerInput = {
   onNotificationResponse?: (snapshot: PushNotificationSnapshot) => void;
 };
 
+type NotificationsModule = typeof ExpoNotifications;
+
 const PUSH_TOKEN_STORAGE_KEY = '180_mobile_push_token_v1';
+
+let notificationsModulePromise: Promise<NotificationsModule> | null = null;
 
 const normalizeText = (value: unknown, maxLength = 300): string => {
   const text = String(value ?? '').trim();
@@ -115,7 +119,24 @@ const isExpoGoClient = (): boolean => {
   return executionEnvironment === 'storeclient' || appOwnership === 'expo';
 };
 
+const loadNotificationsModule = async (): Promise<NotificationsModule | null> => {
+  if (Platform.OS === 'web') return null;
+  if (!notificationsModulePromise) {
+    notificationsModulePromise = import('expo-notifications');
+  }
+
+  try {
+    return await notificationsModulePromise;
+  } catch {
+    notificationsModulePromise = null;
+    return null;
+  }
+};
+
 const readPermissionStatus = async (): Promise<string> => {
+  const Notifications = await loadNotificationsModule();
+  if (!Notifications) return 'unsupported';
+
   try {
     const existing = await Notifications.getPermissionsAsync();
     const status = normalizeText((existing as { status?: unknown } | null)?.status, 60);
@@ -127,6 +148,9 @@ const readPermissionStatus = async (): Promise<string> => {
 
 const requestPermissionStatus = async (currentStatus: string): Promise<string> => {
   if (currentStatus === 'granted') return currentStatus;
+  const Notifications = await loadNotificationsModule();
+  if (!Notifications) return currentStatus || 'unsupported';
+
   try {
     const requested = await Notifications.requestPermissionsAsync();
     const next = normalizeText((requested as { status?: unknown } | null)?.status, 60);
@@ -181,14 +205,18 @@ const extractNotificationKindFromData = (
     .find(Boolean);
 
   if (!raw) return 'generic';
-  if (raw.includes('reply')) return 'reply';
+  if (raw.includes('reply') || raw.includes('comment')) return 'comment';
+  if (raw.includes('echo') || raw.includes('like')) return 'like';
   if (raw.includes('follow')) return 'follow';
+  if (raw.includes('daily') || raw.includes('movie_drop') || raw.includes('new_movies')) {
+    return 'daily_drop';
+  }
   if (raw.includes('streak')) return 'streak';
   return 'generic';
 };
 
 const snapshotFromNotification = (
-  notification: Notifications.Notification
+  notification: ExpoNotifications.Notification
 ): PushNotificationSnapshot => {
   const content = notification.request.content;
   const data = (content.data || {}) as NotificationData;
@@ -226,6 +254,9 @@ const writeStoredPushToken = async (token: string): Promise<void> => {
 
 const ensureAndroidChannel = async (): Promise<void> => {
   if (Platform.OS !== 'android') return;
+  const Notifications = await loadNotificationsModule();
+  if (!Notifications) return;
+
   try {
     await Notifications.setNotificationChannelAsync('default', {
       name: 'default',
@@ -240,6 +271,16 @@ const ensureAndroidChannel = async (): Promise<void> => {
 
 export const registerForPushNotifications = async (): Promise<PushRegistrationResult> => {
   const projectId = resolveProjectId();
+
+  if (Platform.OS === 'web') {
+    return {
+      ok: false,
+      reason: 'unknown',
+      message: 'Web build Expo push token kaydi yapmiyor.',
+      permissionStatus: 'unsupported',
+      projectId,
+    };
+  }
 
   if (isExpoGoClient()) {
     return {
@@ -278,6 +319,17 @@ export const registerForPushNotifications = async (): Promise<PushRegistrationRe
   }
 
   try {
+    const Notifications = await loadNotificationsModule();
+    if (!Notifications) {
+      return {
+        ok: false,
+        reason: 'unknown',
+        message: 'Push modulu bu platformda hazir degil.',
+        permissionStatus,
+        projectId,
+      };
+    }
+
     const tokenResponse = projectId
       ? await Notifications.getExpoPushTokenAsync({ projectId })
       : await Notifications.getExpoPushTokenAsync();
@@ -319,38 +371,54 @@ export const subscribeToPushNotifications = (
     return () => undefined;
   }
 
-  try {
-    const receivedSub = Notifications.addNotificationReceivedListener((notification) => {
-      input.onNotificationReceived?.(snapshotFromNotification(notification));
-    });
-    const responseSub = Notifications.addNotificationResponseReceivedListener((response) => {
-      input.onNotificationResponse?.(snapshotFromNotification(response.notification));
-    });
+  let cancelled = false;
+  let receivedSub: { remove: () => void } | null = null;
+  let responseSub: { remove: () => void } | null = null;
 
-    return () => {
-      receivedSub.remove();
-      responseSub.remove();
-    };
-  } catch {
-    return () => undefined;
-  }
+  void loadNotificationsModule()
+    .then((Notifications) => {
+      if (!Notifications || cancelled) return;
+      try {
+        receivedSub = Notifications.addNotificationReceivedListener((notification) => {
+          input.onNotificationReceived?.(snapshotFromNotification(notification));
+        });
+        responseSub = Notifications.addNotificationResponseReceivedListener((response) => {
+          input.onNotificationResponse?.(snapshotFromNotification(response.notification));
+        });
+      } catch {
+        receivedSub = null;
+        responseSub = null;
+      }
+    })
+    .catch(() => undefined);
+
+  return () => {
+    cancelled = true;
+    receivedSub?.remove();
+    responseSub?.remove();
+  };
 };
 
 export const configureDefaultNotificationHandler = (): void => {
   if (Platform.OS === 'web') return;
 
-  try {
-    Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowBanner: true,
-        shouldShowList: true,
-        shouldPlaySound: false,
-        shouldSetBadge: false,
-      }),
-    });
-  } catch {
-    // no-op
-  }
+  void loadNotificationsModule()
+    .then((Notifications) => {
+      if (!Notifications) return;
+      try {
+        Notifications.setNotificationHandler({
+          handleNotification: async () => ({
+            shouldShowBanner: true,
+            shouldShowList: true,
+            shouldPlaySound: false,
+            shouldSetBadge: false,
+          }),
+        });
+      } catch {
+        // no-op
+      }
+    })
+    .catch(() => undefined);
 };
 
 export const sendLocalPushSimulation = async (input?: {
@@ -363,9 +431,22 @@ export const sendLocalPushSimulation = async (input?: {
   const body = normalizeText(input?.body, 300) || 'Emulator local push test bildirimi.';
   const deepLink = normalizeText(input?.deepLink, 500) || 'absolutecinema://open?target=daily';
   const kind =
-    input?.kind === 'reply' || input?.kind === 'follow' || input?.kind === 'streak'
+    input?.kind === 'comment' ||
+    input?.kind === 'like' ||
+    input?.kind === 'follow' ||
+    input?.kind === 'daily_drop' ||
+    input?.kind === 'streak'
       ? input.kind
       : 'generic';
+
+  if (Platform.OS === 'web') {
+    return {
+      ok: false,
+      message: 'Web build local Expo bildirimi planlamiyor.',
+      deepLink,
+      permissionStatus: 'unsupported',
+    };
+  }
 
   await ensureAndroidChannel();
 
@@ -382,6 +463,16 @@ export const sendLocalPushSimulation = async (input?: {
   }
 
   try {
+    const Notifications = await loadNotificationsModule();
+    if (!Notifications) {
+      return {
+        ok: false,
+        message: 'Push modulu bu platformda hazir degil.',
+        deepLink,
+        permissionStatus,
+      };
+    }
+
     await Notifications.scheduleNotificationAsync({
       content: {
         title,

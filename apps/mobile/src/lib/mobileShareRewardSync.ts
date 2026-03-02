@@ -1,4 +1,5 @@
 import { isSupabaseLive, readSupabaseSessionSafe, supabase } from './supabase';
+import { normalizeMobileAvatarUrl } from './mobileAvatar';
 
 type SupabaseErrorLike = {
   code?: string | null;
@@ -102,14 +103,6 @@ const normalizeUsername = (value: unknown): string =>
   normalizeText(value, 80)
     .replace(/\s+/g, '')
     .toLowerCase();
-
-const normalizeAvatarUrl = (value: unknown): string => {
-  const normalized = normalizeText(value, 1200);
-  if (!normalized) return '';
-  if (/^https?:\/\//i.test(normalized)) return normalized;
-  if (/^data:image\//i.test(normalized)) return normalized;
-  return '';
-};
 
 const normalizeGender = (value: unknown): string => {
   const normalized = normalizeText(value, 40);
@@ -278,25 +271,25 @@ const readRecentRitualRows = async (userId: string): Promise<RitualRow[]> => {
   return [];
 };
 
-const buildRitualLogsFromRows = (rows: RitualRow[]): RitualLog[] =>
-  rows
-    .map((row) => {
-      const rawTimestamp = normalizeText(row.timestamp || row.created_at, 80);
-      const date = toDateKey(rawTimestamp);
-      const text = normalizeText(row.text, 280);
-      if (!date || !text) return null;
-      return {
-        id: normalizeText(row.id, 120) || `${date}-${text.slice(0, 16)}`,
-        date,
-        movieId: toSafeInt(row.movie_id),
-        movieTitle: normalizeText(row.movie_title, 160),
-        text,
-        genre: normalizeText(row.genre, 80) || undefined,
-        posterPath: normalizeText(row.poster_path, 280) || undefined,
-      } satisfies RitualLog;
-    })
-    .filter((entry): entry is RitualLog => Boolean(entry))
-    .slice(0, 420);
+const buildRitualLogsFromRows = (rows: RitualRow[]): RitualLog[] => {
+  const mapped: Array<RitualLog | null> = rows.map((row) => {
+    const rawTimestamp = normalizeText(row.timestamp || row.created_at, 80);
+    const date = toDateKey(rawTimestamp);
+    const text = normalizeText(row.text, 280);
+    if (!date || !text) return null;
+    return {
+      id: normalizeText(row.id, 120) || `${date}-${text.slice(0, 16)}`,
+      date,
+      movieId: toSafeInt(row.movie_id),
+      movieTitle: normalizeText(row.movie_title, 160),
+      text,
+      genre: normalizeText(row.genre, 80) || undefined,
+      posterPath: normalizeText(row.poster_path, 280) || undefined,
+    };
+  });
+
+  return mapped.filter((entry): entry is RitualLog => entry !== null).slice(0, 420);
+};
 
 const mergeFallbackComment = (
   ritualLogs: RitualLog[],
@@ -472,11 +465,11 @@ export const claimMobileShareReward = async (
     birth_date: normalizeBirthDate(currentState.birth_date || currentState.birthDate || identity.birthDate),
     bio: normalizeText(currentState.bio || identity.bio, 180),
     avatarUrl:
-      normalizeAvatarUrl(currentState.avatarUrl || currentState.avatar_url) ||
-      normalizeAvatarUrl(identity.avatarUrl),
+      normalizeMobileAvatarUrl(currentState.avatarUrl || currentState.avatar_url) ||
+      normalizeMobileAvatarUrl(identity.avatarUrl),
     avatar_url:
-      normalizeAvatarUrl(currentState.avatar_url || currentState.avatarUrl) ||
-      normalizeAvatarUrl(identity.avatarUrl),
+      normalizeMobileAvatarUrl(currentState.avatar_url || currentState.avatarUrl) ||
+      normalizeMobileAvatarUrl(identity.avatarUrl),
     profileLink:
       normalizeText(currentState.profileLink || currentState.profile_link || identity.profileLink, 280),
     profile_link:

@@ -13,6 +13,7 @@ import {
   Animated,
   Easing,
   FlatList,
+  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -31,7 +32,7 @@ import {
   resolveMobileMarkMeta,
   resolveMobileMarkTitle,
 } from '../lib/mobileMarksCatalog';
-import { resolveMobileLeagueProgress } from '../lib/mobileLeagueSystem';
+import { resolveMobileLeagueInfo, resolveMobileLeagueProgress } from '../lib/mobileLeagueSystem';
 import { type PushInboxItem } from '../lib/mobilePushInbox';
 import { isSupabaseConfigured } from '../lib/supabase';
 import type { MobileThemeMode } from '../lib/mobileThemeMode';
@@ -57,9 +58,12 @@ import type { MobileCommentReply } from '../lib/mobileCommentInteractions';
 import type { MobileWatchedMovie } from '../lib/mobileProfileWatchedMovies';
 import type { MobileProfileMovieArchiveEntry } from '../lib/mobileProfileMovieArchive';
 import type { MobilePublicProfileActivityItem } from '../lib/mobilePublicProfileActivity';
+import type { MobileProfileVisibility } from '../lib/mobileProfileVisibility';
 
 const PRESSABLE_HIT_SLOP = { top: 8, right: 8, bottom: 8, left: 8 } as const;
 const SUPPORTS_NATIVE_DRIVER = Platform.OS !== 'web';
+const KEYBOARD_AVOIDING_BEHAVIOR = Platform.OS === 'ios' ? 'padding' : 'height';
+const KEYBOARD_AVOIDING_OFFSET = Platform.OS === 'ios' ? 12 : 0;
 const DAILY_MOVIE_CARD_STRIDE = 144;
 const TMDB_POSTER_BASE_URL = 'https://image.tmdb.org/t/p/w342';
 const STORAGE_PUBLIC_PATH = '/storage/v1/object/public/';
@@ -631,7 +635,12 @@ const LegacyAuthCard = ({
     : authState.message;
 
   return (
-    <ScreenCard accent="clay">
+    <KeyboardAvoidingView
+      enabled={Platform.OS !== 'web'}
+      behavior={KEYBOARD_AVOIDING_BEHAVIOR}
+      keyboardVerticalOffset={KEYBOARD_AVOIDING_OFFSET}
+    >
+      <ScreenCard accent="clay">
       <Text style={styles.sectionLeadTitle}>{title}</Text>
       <Text style={styles.sectionLeadBody}>{body}</Text>
 
@@ -790,7 +799,8 @@ const LegacyAuthCard = ({
           <Text style={styles.screenMeta}>{authState.email || 'Bagli hesap'}</Text>
         </View>
       )}
-    </ScreenCard>
+      </ScreenCard>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -903,6 +913,37 @@ const AuthProviderButton = ({
   </Pressable>
 );
 
+const AuthProviderLogoButton = ({
+  label,
+  onPress,
+  disabled = false,
+  icon,
+  tone = 'light',
+}: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  icon: ReactNode;
+  tone?: 'light' | 'dark';
+}) => (
+  <Pressable
+    style={({ pressed }) => [
+      styles.authProviderLogoButton,
+      tone === 'light' ? styles.authProviderLogoButtonLight : styles.authProviderLogoButtonDark,
+      pressed && !disabled ? styles.authProviderLogoButtonPressed : null,
+      disabled ? styles.authProviderLogoButtonDisabled : null,
+    ]}
+    onPress={onPress}
+    disabled={disabled}
+    hitSlop={PRESSABLE_HIT_SLOP}
+    accessibilityRole="button"
+    accessibilityLabel={label}
+    accessibilityState={{ disabled }}
+  >
+    <View style={styles.authProviderLogoIconWrap}>{icon}</View>
+  </Pressable>
+);
+
 const AuthCard = ({
   authState,
   email,
@@ -995,17 +1036,15 @@ const AuthCard = ({
     : isForgotMode
       ? 'E-postani gir.'
       : isRegisterMode
-        ? 'Hesabini olusturmak icin temel bilgilerini gir.'
-        : showAppleSignIn
-          ? 'Email, Apple veya Google ile devam et.'
-          : 'Email veya Google ile devam et.';
+        ? 'Bilgilerini tamamla.'
+        : 'Devam etmek icin giris yap.';
   const modeMeta = isRecoveryMode
     ? 'Iki alan ayni olmali.'
     : isForgotMode
       ? 'Baglanti e-postana gider.'
     : isRegisterMode
-        ? 'Beni hatirla secimi sonraki acilislarda oturumun korunup korunmayacagini belirler.'
-        : 'Devam etmek icin bilgilerini gir.';
+        ? 'Kayit kisa surer.'
+        : 'Bilgilerini gir.';
   const authStatusTitle = !isConfigured
     ? 'Giris su an kullanilamiyor'
     : isRecoveryMode
@@ -1018,7 +1057,12 @@ const AuthCard = ({
     : authState.message;
 
   return (
-    <ScreenCard accent="clay">
+    <KeyboardAvoidingView
+      enabled={Platform.OS !== 'web'}
+      behavior={KEYBOARD_AVOIDING_BEHAVIOR}
+      keyboardVerticalOffset={KEYBOARD_AVOIDING_OFFSET}
+    >
+      <ScreenCard accent="clay">
       <Text style={styles.sectionLeadTitle}>{title}</Text>
       <Text style={styles.sectionLeadBody}>{body}</Text>
 
@@ -1197,9 +1241,7 @@ const AuthCard = ({
               </View>
               <View style={styles.authRememberCopy}>
                 <Text style={styles.authRememberLabel}>Beni hatirla</Text>
-                <Text style={styles.authRememberMeta}>
-                  Bu cihazda sonraki acilislarda oturumu koru.
-                </Text>
+                <Text style={styles.authRememberMeta}>Bu cihazda oturumu koru.</Text>
               </View>
             </Pressable>
           ) : null}
@@ -1228,20 +1270,25 @@ const AuthCard = ({
                   <Text style={styles.authDividerText}>VEYA</Text>
                   <View style={styles.authDividerLine} />
                 </View>
-                <AuthProviderButton
-                  label={isBusy ? 'Google yonlendiriliyor...' : 'Google ile Giris Yap'}
+                <AuthProviderLogoButton
+                  label={isBusy ? 'Google yonlendiriliyor' : 'Google ile uye ol'}
                   onPress={onGoogleSignIn}
                   disabled={isBusy || !isConfigured}
-                  icon={<FontAwesome name="google" size={16} color="#A57164" />}
+                  tone="light"
+                  icon={<FontAwesome name="google" size={28} color="#EA4335" />}
+                />
+                <AuthProviderLogoButton
+                  label="Apple ile uye ol"
+                  onPress={onAppleSignIn}
+                  disabled={isBusy}
+                  tone="dark"
+                  icon={<Ionicons name="logo-apple" size={28} color="#F5F5F5" />}
                 />
                 {showAppleSignIn ? (
-                  <AuthProviderButton
-                    label={isBusy ? 'Apple baslatiliyor...' : 'Apple ile Giris Yap'}
-                    onPress={onAppleSignIn}
-                    disabled={isBusy || !isConfigured}
-                    icon={<Ionicons name="logo-apple" size={18} color="#E5E4E2" />}
-                  />
-                ) : null}
+                  <Text style={styles.authProviderHintText}>Apple yakinda.</Text>
+                ) : (
+                  <Text style={styles.authProviderHintText}>Apple yakinda.</Text>
+                )}
               </>
             ) : null}
           </View>
@@ -1251,7 +1298,8 @@ const AuthCard = ({
           <Text style={styles.screenMeta}>{authState.email || 'Bagli hesap'}</Text>
         </View>
       )}
-    </ScreenCard>
+      </ScreenCard>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -1366,6 +1414,155 @@ const AuthModal = ({
         </ScrollView>
       </View>
     </Modal>
+  );
+};
+
+type MobileAuthEntryStage = 'intro' | 'form';
+
+const AuthGateScreen = ({
+  authState,
+  email,
+  fullName,
+  username,
+  birthDate,
+  password,
+  confirmPassword,
+  mode,
+  onEmailChange,
+  onFullNameChange,
+  onUsernameChange,
+  onBirthDateChange,
+  onPasswordChange,
+  onConfirmPasswordChange,
+  onModeChange,
+  onSignIn,
+  onRegister,
+  rememberMe,
+  onRememberMeChange,
+  onGoogleSignIn,
+  onAppleSignIn,
+  onRequestPasswordReset,
+  onCompletePasswordReset,
+  entryStage,
+  onContinue,
+}: {
+  authState: AuthState;
+  email: string;
+  fullName: string;
+  username: string;
+  birthDate: string;
+  password: string;
+  confirmPassword: string;
+  mode: 'login' | 'register' | 'forgot' | 'recovery';
+  onEmailChange: (value: string) => void;
+  onFullNameChange: (value: string) => void;
+  onUsernameChange: (value: string) => void;
+  onBirthDateChange: (value: string) => void;
+  onPasswordChange: (value: string) => void;
+  onConfirmPasswordChange: (value: string) => void;
+  onModeChange: (value: 'login' | 'register' | 'forgot' | 'recovery') => void;
+  onSignIn: () => void;
+  onRegister: () => void;
+  rememberMe: boolean;
+  onRememberMeChange: (value: boolean) => void;
+  onGoogleSignIn: () => void;
+  onAppleSignIn: () => void;
+  onRequestPasswordReset: () => void;
+  onCompletePasswordReset: () => void;
+  entryStage: MobileAuthEntryStage;
+  onContinue: () => void;
+}) => {
+  const stage = mode === 'recovery' ? 'form' : entryStage;
+  const statusTone =
+    authState.status === 'error'
+      ? 'clay'
+      : authState.status === 'loading'
+        ? 'muted'
+        : 'sage';
+
+  return (
+    <View style={styles.authGateScreen}>
+      <ScrollView
+        contentContainerStyle={styles.authGateScroll}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.authGateHero}>
+          <Text style={styles.authGateBrand}>180</Text>
+          <Text style={styles.authGateEyebrow}>Absolute Cinema</Text>
+          <Text style={styles.authGateTitle}>Gunun 5 filmi, yorum ve sosyal akis.</Text>
+          <Text style={styles.authGateBody}>Secimini yap. Yorumunu birak. Takipte kal.</Text>
+
+          <View style={styles.authGateFeatureList}>
+            <View style={styles.authGateFeatureRow}>
+              <View style={styles.authGateFeatureDot} />
+              <Text style={styles.authGateFeatureText}>Her gun 5 film.</Text>
+            </View>
+            <View style={styles.authGateFeatureRow}>
+              <View style={styles.authGateFeatureDot} />
+              <Text style={styles.authGateFeatureText}>Kisa yorumlar.</Text>
+            </View>
+            <View style={styles.authGateFeatureRow}>
+              <View style={styles.authGateFeatureDot} />
+              <Text style={styles.authGateFeatureText}>Takip, begeni, bildirim.</Text>
+            </View>
+          </View>
+
+          <StatusStrip
+            tone={statusTone}
+            eyebrow="Giris"
+            title={
+              authState.status === 'error'
+                ? 'Bir sorun var'
+                : authState.status === 'loading'
+                  ? 'Kontrol ediliyor'
+                  : 'Hesap gerekli'
+            }
+            body={authState.message}
+            meta="Misafir girisi kapali."
+          />
+
+          {stage === 'intro' ? (
+            <UiButton
+              label="Basla"
+              tone="brand"
+              stretch
+              onPress={onContinue}
+              style={styles.authGateStartButton}
+            />
+          ) : null}
+        </View>
+
+        {stage === 'form' ? (
+          <AuthCard
+            authState={authState}
+            email={email}
+            fullName={fullName}
+            username={username}
+            birthDate={birthDate}
+            password={password}
+            confirmPassword={confirmPassword}
+            mode={mode}
+            onEmailChange={onEmailChange}
+            onFullNameChange={onFullNameChange}
+            onUsernameChange={onUsernameChange}
+            onBirthDateChange={onBirthDateChange}
+            onPasswordChange={onPasswordChange}
+            onConfirmPasswordChange={onConfirmPasswordChange}
+            onModeChange={onModeChange}
+            onSignIn={onSignIn}
+            onRegister={onRegister}
+            rememberMe={rememberMe}
+            onRememberMeChange={onRememberMeChange}
+            showAppleSignIn
+            onAppleSignIn={onAppleSignIn}
+            onGoogleSignIn={onGoogleSignIn}
+            onRequestPasswordReset={onRequestPasswordReset}
+            onCompletePasswordReset={onCompletePasswordReset}
+          />
+        ) : null}
+      </ScrollView>
+    </View>
   );
 };
 
@@ -1649,6 +1846,7 @@ const ThemeModeCard = ({
 
 const ProfileIdentityCard = ({
   displayName,
+  avatarUrl,
   username,
   bio,
   birthDateLabel,
@@ -1658,6 +1856,7 @@ const ProfileIdentityCard = ({
   onOpenProfileLink,
 }: {
   displayName: string;
+  avatarUrl?: string;
   username?: string;
   bio?: string;
   birthDateLabel?: string;
@@ -1667,6 +1866,7 @@ const ProfileIdentityCard = ({
   onOpenProfileLink?: () => void;
 }) => {
   const normalizedDisplayName = String(displayName || '').trim() || 'Observer';
+  const normalizedAvatarUrl = String(avatarUrl || '').trim();
   const normalizedUsername = String(username || '').trim().replace(/^@+/, '');
   const normalizedBio =
     String(bio || '').trim() || 'Profil notunu ayarlardan duzenleyerek kendini daha net anlatabilirsin.';
@@ -1721,6 +1921,28 @@ const ProfileIdentityCard = ({
       />
 
       <ScreenCard accent="clay">
+        <View style={styles.profileIdentityHeroRow}>
+          <View style={styles.profileIdentityAvatarWrap}>
+            {normalizedAvatarUrl ? (
+              <Image
+                source={{ uri: normalizedAvatarUrl }}
+                style={styles.profileIdentityAvatarImage}
+                resizeMode="cover"
+              />
+            ) : (
+              <Text style={styles.profileIdentityAvatarFallback}>
+                {(normalizedDisplayName.slice(0, 1) || 'O').toUpperCase()}
+              </Text>
+            )}
+          </View>
+          <View style={styles.profileIdentityHeroCopy}>
+            <Text style={styles.detailInfoLabel}>Profil Fotografi</Text>
+            <Text style={styles.detailInfoValue}>
+              {normalizedAvatarUrl ? 'Aktif' : 'Eklenmedi'}
+            </Text>
+          </View>
+        </View>
+
         <Text style={styles.subSectionLabel}>Kimlik Notu</Text>
         <View style={styles.detailInfoGrid}>
           <View style={styles.detailInfoCard}>
@@ -1871,7 +2093,7 @@ const WatchedMoviesCard = ({
         accent="sage"
         eyebrow="Watch Archive"
         title="Izlenen Filmler"
-        body="Yazdigin ritual notlari film bazli bir arsive donusur. Satira dokunarak ilgili yorum arsivini ac."
+        body="Ritual ve Letterboxd filmlerin burada."
         badges={[
           { label: isSignedIn ? 'cloud bagli' : 'oturum gerekli', tone: isSignedIn ? 'sage' : 'clay' },
           { label: `${state.items.length} film`, tone: state.items.length > 0 ? 'sage' : 'muted' },
@@ -1908,7 +2130,7 @@ const WatchedMoviesCard = ({
         meta={
           latestMovie
             ? `Son iz: ${latestMovie.movieTitle}${latestMovie.year ? ` (${latestMovie.year})` : ''}`
-            : 'Film satirina dokununca ilgili yorum arsivi acilir.'
+            : 'Filmler burada listelenir.'
         }
       />
 
@@ -1934,12 +2156,12 @@ const WatchedMoviesCard = ({
           }
           body={
             !isSignedIn
-              ? 'Film bazli arsiv, mobil session ve ritual kayitlari ile olusur.'
+              ? 'Filmleri gormek icin giris yap.'
               : state.status === 'error'
                 ? state.message || 'Film arsivi okunurken gecici bir sorun olustu.'
-                : state.message || 'Yazdigin yorumlar geldikce burada film bazli bir arsiv olusur.'
+                : state.message || 'Filmler geldikce burada gorunur.'
           }
-          meta="Film satirina dokununca o filme ait yorum ve yanit arsivi acilir."
+          meta="Letterboxd kayitlari profil listesine eklenir."
           actionLabel={!isSignedIn || state.status === 'loading' ? undefined : 'Izlenen Filmleri Yenile'}
           onAction={!isSignedIn || state.status === 'loading' ? undefined : onRefresh}
         />
@@ -1947,24 +2169,44 @@ const WatchedMoviesCard = ({
         <ScreenCard accent="sage">
           <Text style={styles.subSectionLabel}>Son Izler</Text>
           <View style={styles.movieList}>
-            {state.items.slice(0, 20).map((movie) => (
-              <Pressable
-                key={movie.id}
-                style={({ pressed }) => [styles.movieRow, pressed ? styles.movieRowPressed : null]}
-                onPress={() => onOpenMovieArchive(movie)}
-                hitSlop={PRESSABLE_HIT_SLOP}
-                accessibilityRole="button"
-                accessibilityLabel={`${movie.movieTitle} film arsivini ac`}
-              >
-                <Text style={styles.movieTitle}>{movie.movieTitle}</Text>
-                <Text style={styles.movieMeta}>
-                  {movie.year ? `${movie.year} | ` : ''}
-                  Son izleme: {movie.watchedDayKey || '-'}
-                  {movie.watchCount > 1 ? ` | Tekrar: ${movie.watchCount}` : ''}
-                </Text>
-                <Text style={styles.movieRowActionHint}>Yorum Arsivini Ac</Text>
-              </Pressable>
-            ))}
+            {state.items.slice(0, 20).map((movie) => {
+              const isLetterboxdItem = movie.source === 'letterboxd';
+              const content = (
+                <>
+                  <Text style={styles.movieTitle}>{movie.movieTitle}</Text>
+                  <Text style={styles.movieMeta}>
+                    {movie.year ? `${movie.year} | ` : ''}
+                    Son izleme: {movie.watchedDayKey || '-'}
+                    {movie.watchCount > 1 ? ` | Tekrar: ${movie.watchCount}` : ''}
+                    {isLetterboxdItem ? ' | Letterboxd' : ''}
+                  </Text>
+                  <Text style={styles.movieRowActionHint}>
+                    {isLetterboxdItem ? 'Letterboxd' : 'Yorum Arsivini Ac'}
+                  </Text>
+                </>
+              );
+
+              if (isLetterboxdItem) {
+                return (
+                  <View key={movie.id} style={styles.movieRow}>
+                    {content}
+                  </View>
+                );
+              }
+
+              return (
+                <Pressable
+                  key={movie.id}
+                  style={({ pressed }) => [styles.movieRow, pressed ? styles.movieRowPressed : null]}
+                  onPress={() => onOpenMovieArchive(movie)}
+                  hitSlop={PRESSABLE_HIT_SLOP}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${movie.movieTitle} film arsivini ac`}
+                >
+                  {content}
+                </Pressable>
+              );
+            })}
           </View>
         </ScreenCard>
       )}
@@ -2157,6 +2399,409 @@ const MobileMarkPill = ({
         </Text>
       </View>
     </Animated.View>
+  );
+};
+
+const ProfileUnifiedCard = ({
+  state,
+  isSignedIn,
+  themeModeLabel,
+  displayName,
+  avatarUrl,
+  username,
+  bio,
+  birthDateLabel,
+  profileLink,
+  genreItems,
+  watchedMoviesState,
+  onOpenSettings,
+  onOpenProfileLink,
+  onOpenShareHub,
+  onOpenMovieArchive,
+  onRefresh,
+}: {
+  state: ProfileState;
+  isSignedIn: boolean;
+  themeModeLabel: string;
+  displayName: string;
+  avatarUrl?: string;
+  username?: string;
+  bio?: string;
+  birthDateLabel?: string;
+  profileLink?: string;
+  genreItems: Array<{ genre: string; count: number }>;
+  watchedMoviesState: {
+    status: 'idle' | 'loading' | 'ready' | 'error';
+    message: string;
+    items: MobileWatchedMovie[];
+  };
+  onOpenSettings?: () => void;
+  onOpenProfileLink?: () => void;
+  onOpenShareHub: () => void;
+  onOpenMovieArchive: (movie: MobileWatchedMovie) => void;
+  onRefresh: () => void;
+}) => {
+  const normalizedDisplayName = String(displayName || '').trim() || 'Observer';
+  const normalizedAvatarUrl = String(avatarUrl || '').trim();
+  const normalizedUsername = String(username || '').trim().replace(/^@+/, '');
+  const normalizedBio =
+    String(bio || '').trim() || 'Profil notunu ayarlardan duzenleyerek sahneni netlestirebilirsin.';
+  const normalizedBirthDate = String(birthDateLabel || '').trim();
+  const normalizedLink = String(profileLink || '').trim();
+  const hasLink = Boolean(normalizedLink);
+  const isProfileReady = state.status === 'success';
+  const totalXp = isProfileReady ? Math.max(0, Math.floor(Number(state.totalXp || 0))) : 0;
+  const progress = resolveMobileLeagueProgress(totalXp);
+  const currentLevelXp = Math.max(0, totalXp - progress.currentLevelStart);
+  const xpToNext = Math.max(0, Math.floor(progress.nextLevelXp - totalXp));
+  const nextLeagueLabel = isProfileReady
+    ? String(state.nextLeagueName || '').trim() || 'Son Lig'
+    : 'Beklemede';
+  const progressPercentLabel = Math.round(progress.progressPercentage);
+  const fillHeadColor = getProgressHeadColor(progress.progressPercentage);
+  const fillTailColor = getProgressTailColor(progress.progressPercentage);
+  const effectiveProgressWidth =
+    progress.progressPercentage > 0 ? Math.max(progress.progressPercentage, 3) : 0;
+  const topGenres = genreItems.slice(0, 4);
+  const archivePreview = watchedMoviesState.items.slice(0, 6);
+  const unlockedMarks = isProfileReady ? state.marks : [];
+  const featuredMarks = isProfileReady ? state.featuredMarks : [];
+  const markPreviewIds = (featuredMarks.length > 0 ? featuredMarks : unlockedMarks).slice(0, 8);
+  const topFeaturedTitle = featuredMarks[0] ? resolveMobileMarkTitle(featuredMarks[0]) : '';
+
+  return (
+    <ScreenCard accent="sage">
+      <View style={styles.profileUnifiedHeaderRow}>
+        <View style={styles.profileUnifiedHeaderCopy}>
+          <Text style={styles.sectionLeadEyebrow}>Profil Merkezi</Text>
+          <Text style={styles.sectionLeadTitle}>{normalizedDisplayName}</Text>
+          <Text style={styles.sectionLeadBody}>
+            {isSignedIn
+              ? normalizedBio
+              : 'Profil, arsiv ve marklarin tek merkezden gorunmesi icin oturum ac.'}
+          </Text>
+        </View>
+        {onOpenSettings ? (
+          <Pressable
+            style={styles.profileSettingsButton}
+            onPress={onOpenSettings}
+            hitSlop={PRESSABLE_HIT_SLOP}
+            accessibilityRole="button"
+            accessibilityLabel="Profil ayarlarini ac"
+          >
+            <Ionicons name="settings-sharp" size={18} color="#E5E4E2" />
+          </Pressable>
+        ) : null}
+      </View>
+
+      <View style={styles.profileIdentityHeroRow}>
+        <View style={styles.profileIdentityAvatarWrap}>
+          {normalizedAvatarUrl ? (
+            <Image
+              source={{ uri: normalizedAvatarUrl }}
+              style={styles.profileIdentityAvatarImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <Text style={styles.profileIdentityAvatarFallback}>
+              {(normalizedDisplayName.slice(0, 1) || 'O').toUpperCase()}
+            </Text>
+          )}
+        </View>
+        <View style={styles.profileIdentityHeroCopy}>
+          <Text style={styles.detailInfoLabel}>Kimlik Katmani</Text>
+          <Text style={styles.detailInfoValue}>
+            {normalizedUsername ? `@${normalizedUsername}` : 'Handle eklenmedi'}
+          </Text>
+          <Text style={styles.screenMeta}>
+            {normalizedBirthDate ? `Dogum: ${normalizedBirthDate}` : 'Dogum bilgisi opsiyonel.'}
+          </Text>
+          {hasLink ? (
+            <Pressable
+              onPress={() => onOpenProfileLink?.()}
+              hitSlop={PRESSABLE_HIT_SLOP}
+              accessibilityRole="button"
+              accessibilityLabel="Profil linkini ac"
+            >
+              <Text style={styles.profileLinkText}>{normalizedLink}</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      </View>
+
+      <View style={styles.sectionLeadBadgeRow}>
+        <View style={[styles.sectionLeadBadge, styles.sectionLeadBadgeSage]}>
+          <Text style={styles.sectionLeadBadgeText}>
+            {isProfileReady ? state.leagueName : 'Profil sync'}
+          </Text>
+        </View>
+        <View style={[styles.sectionLeadBadge, styles.sectionLeadBadgeMuted]}>
+          <Text style={styles.sectionLeadBadgeText}>{themeModeLabel}</Text>
+        </View>
+        <View
+          style={[
+            styles.sectionLeadBadge,
+            normalizedUsername ? styles.sectionLeadBadgeMuted : styles.sectionLeadBadgeClay,
+          ]}
+        >
+          <Text style={styles.sectionLeadBadgeText}>
+            {normalizedUsername ? `@${normalizedUsername}` : 'handle bekliyor'}
+          </Text>
+        </View>
+        <View
+          style={[
+            styles.sectionLeadBadge,
+            hasLink ? styles.sectionLeadBadgeSage : styles.sectionLeadBadgeMuted,
+          ]}
+        >
+          <Text style={styles.sectionLeadBadgeText}>{hasLink ? 'link hazir' : 'link yok'}</Text>
+        </View>
+      </View>
+
+      <View style={styles.detailInfoGrid}>
+        <View style={styles.detailInfoCard}>
+          <Text style={styles.detailInfoLabel}>Ritual</Text>
+          <Text style={styles.detailInfoValue}>
+            {isProfileReady ? String(state.ritualsCount) : '--'}
+          </Text>
+        </View>
+        <View style={styles.detailInfoCard}>
+          <Text style={styles.detailInfoLabel}>Streak</Text>
+          <Text style={styles.detailInfoValue}>
+            {isProfileReady ? String(state.streak) : '--'}
+          </Text>
+        </View>
+        <View style={styles.detailInfoCard}>
+          <Text style={styles.detailInfoLabel}>Takip</Text>
+          <Text style={styles.detailInfoValue}>
+            {isProfileReady ? String(state.followingCount) : '--'}
+          </Text>
+        </View>
+        <View style={styles.detailInfoCard}>
+          <Text style={styles.detailInfoLabel}>Takipci</Text>
+          <Text style={styles.detailInfoValue}>
+            {isProfileReady ? String(state.followersCount) : '--'}
+          </Text>
+        </View>
+        <View style={styles.detailInfoCard}>
+          <Text style={styles.detailInfoLabel}>Mark</Text>
+          <Text style={styles.detailInfoValue}>{isProfileReady ? String(state.marks.length) : '--'}</Text>
+        </View>
+        <View style={styles.detailInfoCard}>
+          <Text style={styles.detailInfoLabel}>Aktif Gun</Text>
+          <Text style={styles.detailInfoValue}>
+            {isProfileReady ? String(state.daysPresent) : '--'}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.sectionLeadActionRow}>
+        <UiButton
+          label="Profili Yenile"
+          tone="neutral"
+          onPress={onRefresh}
+          disabled={!isSignedIn || state.status === 'loading'}
+        />
+        <UiButton
+          label={hasLink ? 'Linki Ac' : 'Paylasim Alani'}
+          tone={hasLink ? 'teal' : 'brand'}
+          onPress={() => {
+            if (hasLink) {
+              onOpenProfileLink?.();
+              return;
+            }
+            onOpenShareHub();
+          }}
+          disabled={!isSignedIn}
+        />
+      </View>
+
+      <View style={styles.profileUnifiedDivider} />
+
+      <View style={styles.profileUnifiedSection}>
+        <Text style={styles.subSectionLabel}>XP ve Lig Rotasi</Text>
+        <Text style={styles.screenMeta}>
+          {isProfileReady
+            ? state.nextLeagueName
+              ? `${nextLeagueLabel} icin ${xpToNext} XP kaldi.`
+              : 'Su an erisilebilir en ust ligdesin.'
+            : state.message}
+        </Text>
+
+        <View style={styles.profileXpSummaryRow}>
+          <View style={styles.profileXpSummaryBlock}>
+            <Text style={styles.profileXpSummaryLabel}>Bulundugun Lig</Text>
+            <Text style={styles.profileXpSummaryValue}>
+              {isProfileReady ? state.leagueName : 'Beklemede'}
+            </Text>
+          </View>
+          <View style={[styles.profileXpSummaryBlock, styles.profileXpSummaryBlockRight]}>
+            <Text style={styles.profileXpSummaryLabel}>Siradaki Lig</Text>
+            <Text style={styles.profileXpSummaryValue}>{nextLeagueLabel}</Text>
+          </View>
+        </View>
+
+        <View style={styles.profileXpTrack}>
+          {effectiveProgressWidth > 0 ? (
+            <View
+              style={[
+                styles.profileXpFill,
+                {
+                  width: `${effectiveProgressWidth}%`,
+                  backgroundColor: fillTailColor,
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.profileXpFillHeadTint,
+                  {
+                    backgroundColor: fillHeadColor,
+                  },
+                ]}
+              />
+              <View style={styles.profileXpFillSpark} />
+            </View>
+          ) : null}
+        </View>
+
+        <View style={styles.profileXpScaleRow}>
+          <Text style={styles.profileXpScaleText}>{`${progress.currentLevelStart} XP`}</Text>
+          <Text style={styles.profileXpScaleText}>{`${progress.nextLevelXp} XP`}</Text>
+        </View>
+
+        <View style={styles.detailInfoGrid}>
+          <View style={styles.detailInfoCard}>
+            <Text style={styles.detailInfoLabel}>Toplam XP</Text>
+            <Text style={styles.detailInfoValue}>{isProfileReady ? `${totalXp} XP` : '--'}</Text>
+          </View>
+          <View style={styles.detailInfoCard}>
+            <Text style={styles.detailInfoLabel}>Bu Ligde</Text>
+            <Text style={styles.detailInfoValue}>{isProfileReady ? `${currentLevelXp} XP` : '--'}</Text>
+          </View>
+          <View style={styles.detailInfoCard}>
+            <Text style={styles.detailInfoLabel}>Doluluk</Text>
+            <Text style={styles.detailInfoValue}>{isProfileReady ? `%${progressPercentLabel}` : '--'}</Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.profileUnifiedDivider} />
+
+      <View style={styles.profileUnifiedSection}>
+        <Text style={styles.subSectionLabel}>Tat Haritasi</Text>
+        {topGenres.length > 0 ? (
+          <View style={styles.profileGenreList}>
+            {topGenres.map((item) => (
+              <View key={`profile-hub-genre-${item.genre}`} style={styles.profileGenreRow}>
+                <Text style={styles.profileGenreLabel}>{item.genre}</Text>
+                <Text style={styles.profileGenreValue}>x{item.count}</Text>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.profileUnifiedEmptyText}>
+            {isSignedIn
+              ? 'Tur dagilimi henuz olusmadi. Yeni ritual geldikce burada yogunluk gorunecek.'
+              : 'Oturum acinca tur dagilimi burada toplanir.'}
+          </Text>
+        )}
+      </View>
+
+      <View style={styles.profileUnifiedDivider} />
+
+      <View style={styles.profileUnifiedSection}>
+        <Text style={styles.subSectionLabel}>Son Izlenenler</Text>
+        {archivePreview.length > 0 ? (
+          <View style={styles.movieList}>
+            {archivePreview.map((movie) => {
+              const isLetterboxdItem = movie.source === 'letterboxd';
+              const content = (
+                <>
+                  <Text style={styles.movieTitle}>{movie.movieTitle}</Text>
+                  <Text style={styles.movieMeta}>
+                    {movie.year ? `${movie.year} | ` : ''}
+                    Son izleme: {movie.watchedDayKey || '-'}
+                    {movie.watchCount > 1 ? ` | Tekrar: ${movie.watchCount}` : ''}
+                    {isLetterboxdItem ? ' | Letterboxd' : ''}
+                  </Text>
+                  <Text style={styles.movieRowActionHint}>
+                    {isLetterboxdItem ? 'Letterboxd importu' : 'Yorum arsivini ac'}
+                  </Text>
+                </>
+              );
+
+              if (isLetterboxdItem) {
+                return (
+                  <View key={`profile-hub-movie-${movie.id}`} style={styles.movieRow}>
+                    {content}
+                  </View>
+                );
+              }
+
+              return (
+                <Pressable
+                  key={`profile-hub-movie-${movie.id}`}
+                  style={({ pressed }) => [styles.movieRow, pressed ? styles.movieRowPressed : null]}
+                  onPress={() => onOpenMovieArchive(movie)}
+                  hitSlop={PRESSABLE_HIT_SLOP}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${movie.movieTitle} film arsivini ac`}
+                >
+                  {content}
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : (
+          <Text style={styles.profileUnifiedEmptyText}>
+            {watchedMoviesState.status === 'loading'
+              ? 'Film arsivi yukleniyor.'
+              : watchedMoviesState.message || 'Izlenen filmler burada toplanir.'}
+          </Text>
+        )}
+      </View>
+
+      <View style={styles.profileUnifiedDivider} />
+
+      <View style={styles.profileUnifiedSection}>
+        <Text style={styles.subSectionLabel}>Mark Vitrini</Text>
+        <Text style={styles.screenMeta}>
+          {isProfileReady
+            ? featuredMarks.length > 0
+              ? `${featuredMarks.length} vitrin marki secili. Ilk mark: ${topFeaturedTitle || 'hazir'}.`
+              : `${unlockedMarks.length} acik mark var.`
+            : 'Mark koleksiyonu profil verisiyle birlikte acilir.'}
+        </Text>
+        {markPreviewIds.length > 0 ? (
+          <View style={styles.markPillRow}>
+            {markPreviewIds.map((markId) => {
+              const markMeta = resolveMobileMarkMeta(markId);
+              const isFeatured = featuredMarks.includes(markId);
+              return (
+                <MobileMarkPill
+                  key={`profile-hub-mark-${markId}`}
+                  title={resolveMobileMarkTitle(markId)}
+                  motion={markMeta.motion}
+                  isUnlocked
+                  isFeatured={isFeatured}
+                />
+              );
+            })}
+          </View>
+        ) : (
+          <Text style={styles.profileUnifiedEmptyText}>
+            {isSignedIn
+              ? 'Henuz acik mark yok. Yeni ritual ve streak ile vitrin dolacak.'
+              : 'Oturum acinca mark vitrinleri burada gorunur.'}
+          </Text>
+        )}
+      </View>
+
+      <Text style={styles.screenMeta}>
+        {`Profil: ${state.message}${watchedMoviesState.message ? ` | Arsiv: ${watchedMoviesState.message}` : ''}`}
+      </Text>
+    </ScreenCard>
   );
 };
 
@@ -2662,6 +3307,7 @@ const PushInboxCard = ({
 
 const CommentFeedCard = ({
   state,
+  currentUserAvatarUrl,
   showFilters = true,
   showOpsMeta = false,
   onScopeChange,
@@ -2677,6 +3323,7 @@ const CommentFeedCard = ({
   movieFilterMode = 'all',
 }: {
   state: CommentFeedState;
+  currentUserAvatarUrl?: string;
   showFilters?: boolean;
   showOpsMeta?: boolean;
   onScopeChange: (scope: CommentFeedScope) => void;
@@ -2707,6 +3354,7 @@ const CommentFeedCard = ({
   const [echoSubmitting, setEchoSubmitting] = useState<Record<string, boolean>>({});
   const [repliesByItemId, setRepliesByItemId] = useState<Record<string, MobileCommentReply[]>>({});
   const normalizedSelectedMovieTitle = String(selectedMovieTitle || '').trim();
+  const normalizedCurrentUserAvatarUrl = String(currentUserAvatarUrl || '').trim();
   const isMovieFiltering = movieFilterMode === 'selected_movie';
   const waitingMovieSelection = isMovieFiltering && !normalizedSelectedMovieTitle;
   const visibleItems =
@@ -2819,7 +3467,12 @@ const CommentFeedCard = ({
   );
 
   return (
-    <ScreenCard accent="clay">
+    <KeyboardAvoidingView
+      enabled={Platform.OS !== 'web'}
+      behavior={KEYBOARD_AVOIDING_BEHAVIOR}
+      keyboardVerticalOffset={KEYBOARD_AVOIDING_OFFSET}
+    >
+      <ScreenCard accent="clay">
       <Text style={styles.screenTitle}>
         {isMovieFiltering ? 'Secili Film Yorumlari' : showFilters ? 'Tum Yorumlar' : 'Bugunun Yorumlari'}
       </Text>
@@ -2956,173 +3609,178 @@ const CommentFeedCard = ({
         />
       ) : (
         <View style={styles.commentFeedList}>
-          {visibleItems.map((item) => (
-            <View key={item.id} style={styles.commentFeedRow}>
-              <View style={styles.commentFeedRowHeader}>
-                <Text style={styles.commentFeedMovieTitle}>{item.movieTitle}</Text>
-                {item.isMine ? <Text style={styles.commentFeedMineBadge}>SENIN</Text> : null}
-              </View>
-              <View style={styles.commentFeedAuthorMetaRow}>
-                <View style={styles.commentFeedAvatarWrap}>
-                  {item.authorAvatarUrl ? (
-                    <Image
-                      source={{ uri: item.authorAvatarUrl }}
-                      style={styles.commentFeedAvatarImage}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    <Text style={styles.commentFeedAvatarFallback}>
-                      {(String(item.author || '').trim().slice(0, 1) || 'U').toUpperCase()}
-                    </Text>
-                  )}
+          {visibleItems.map((item) => {
+            const resolvedAvatarUrl =
+              String(item.authorAvatarUrl || '').trim() ||
+              (item.isMine ? normalizedCurrentUserAvatarUrl : '');
+            return (
+              <View key={item.id} style={styles.commentFeedRow}>
+                <View style={styles.commentFeedRowHeader}>
+                  <Text style={styles.commentFeedMovieTitle}>{item.movieTitle}</Text>
+                  {item.isMine ? <Text style={styles.commentFeedMineBadge}>SENIN</Text> : null}
                 </View>
-                <Pressable
-                  hitSlop={PRESSABLE_HIT_SLOP}
-                  onPress={() => onOpenAuthorProfile(item)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${item.author} profilini ac`}
-                >
-                  <Text style={styles.commentFeedAuthorLink}>{item.author}</Text>
-                </Pressable>
-                <View
-                  style={[
-                    styles.commentFeedLeagueBadge,
-                    {
-                      borderColor: `${item.leagueColor || '#8A9A5B'}80`,
-                      backgroundColor: `${item.leagueColor || '#8A9A5B'}22`,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.commentFeedLeagueBadgeText, { color: item.leagueColor || '#8A9A5B' }]}>
-                    {item.leagueKey || 'Bronze'}
+                <View style={styles.commentFeedAuthorMetaRow}>
+                  <View style={styles.commentFeedAvatarWrap}>
+                    {resolvedAvatarUrl ? (
+                      <Image
+                        source={{ uri: resolvedAvatarUrl }}
+                        style={styles.commentFeedAvatarImage}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <Text style={styles.commentFeedAvatarFallback}>
+                        {(String(item.author || '').trim().slice(0, 1) || 'U').toUpperCase()}
+                      </Text>
+                    )}
+                  </View>
+                  <Pressable
+                    hitSlop={PRESSABLE_HIT_SLOP}
+                    onPress={() => onOpenAuthorProfile(item)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${item.author} profilini ac`}
+                  >
+                    <Text style={styles.commentFeedAuthorLink}>{item.author}</Text>
+                  </Pressable>
+                  <View
+                    style={[
+                      styles.commentFeedLeagueBadge,
+                      {
+                        borderColor: `${item.leagueColor || '#8A9A5B'}80`,
+                        backgroundColor: `${item.leagueColor || '#8A9A5B'}22`,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.commentFeedLeagueBadgeText, { color: item.leagueColor || '#8A9A5B' }]}>
+                      {resolveMobileLeagueInfo(item.leagueKey || 'Bronze').name}
+                    </Text>
+                  </View>
+                  <Text style={styles.commentFeedMeta}>{item.timestampLabel}</Text>
+                </View>
+                <Text style={styles.commentFeedBody}>{item.text}</Text>
+                <View style={styles.commentFeedActionRow}>
+                  <Text style={styles.commentFeedMeta}>
+                    Echo: {item.echoCount} | Reply: {item.replyCount}
+                    {showOpsMeta ? `  |  ops::day:${item.dayKey || '?'}` : ''}
                   </Text>
-                </View>
-                <Text style={styles.commentFeedMeta}>{item.timestampLabel}</Text>
-              </View>
-              <Text style={styles.commentFeedBody}>{item.text}</Text>
-              <View style={styles.commentFeedActionRow}>
-                <Text style={styles.commentFeedMeta}>
-                  Echo: {item.echoCount} | Reply: {item.replyCount}
-                  {showOpsMeta ? `  |  ops::day:${item.dayKey || '?'}` : ''}
-                </Text>
-                <View style={styles.commentFeedInlineActions}>
-                  <Pressable
-                    style={[
-                      styles.commentFeedActionButton,
-                      item.isEchoedByMe ? styles.commentFeedActionButtonActive : null,
-                      echoSubmitting[item.id] ? styles.claimButtonDisabled : null,
-                    ]}
-                    onPress={() => {
-                      void handleEchoPress(item);
-                    }}
-                    disabled={item.isEchoedByMe || echoSubmitting[item.id]}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${item.author} yorumuna echo ver`}
-                  >
-                    <Text
-                      style={[
-                        styles.commentFeedActionButtonText,
-                        item.isEchoedByMe ? styles.commentFeedActionButtonTextActive : null,
-                      ]}
-                    >
-                      {item.isEchoedByMe ? 'Echoed' : 'Echo'}
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    style={[
-                      styles.commentFeedActionButton,
-                      expandedReplies[item.id] ? styles.commentFeedActionButtonActive : null,
-                    ]}
-                    onPress={() => {
-                      void handleToggleReplies(item);
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${item.author} yorumunun yanitlarini ac`}
-                  >
-                    <Text
-                      style={[
-                        styles.commentFeedActionButtonText,
-                        expandedReplies[item.id] ? styles.commentFeedActionButtonTextActive : null,
-                      ]}
-                    >
-                      Reply
-                    </Text>
-                  </Pressable>
-                </View>
-              </View>
-              {replyMessages[item.id] ? (
-                <Text
-                  style={[
-                    styles.commentFeedRowStatus,
-                    replyMessages[item.id].toLowerCase().includes('edilemedi') ||
-                    replyMessages[item.id].toLowerCase().includes('gerekli') ||
-                    replyMessages[item.id].toLowerCase().includes('bulunamadi')
-                      ? styles.ritualStateError
-                      : styles.ritualStateOk,
-                  ]}
-                >
-                  {replyMessages[item.id]}
-                </Text>
-              ) : null}
-              {expandedReplies[item.id] ? (
-                <View style={styles.commentFeedReplyPanel}>
-                  {replyLoading[item.id] ? (
-                    <Text style={styles.commentFeedMeta}>Yanitlar yukleniyor...</Text>
-                  ) : (repliesByItemId[item.id] || []).length > 0 ? (
-                    <View style={styles.commentFeedReplyList}>
-                      {(repliesByItemId[item.id] || []).map((reply) => (
-                        <View key={reply.id} style={styles.commentFeedReplyRow}>
-                          <View style={styles.commentFeedReplyHeader}>
-                            <Text style={styles.commentFeedReplyAuthor}>{reply.author}</Text>
-                            <Text style={styles.commentFeedMeta}>{reply.timestampLabel}</Text>
-                          </View>
-                          <Text style={styles.commentFeedReplyText}>{reply.text}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  ) : (
-                    <Text style={styles.commentFeedMeta}>Bu yorum icin henuz yanit yok.</Text>
-                  )}
-                  <View style={styles.commentFeedReplyComposer}>
-                    <TextInput
-                      style={styles.commentFeedReplyInput}
-                      value={replyDrafts[item.id] || ''}
-                      onChangeText={(value) =>
-                        setReplyDrafts((prev) => ({
-                          ...prev,
-                          [item.id]: value,
-                        }))
-                      }
-                      autoCapitalize="sentences"
-                      multiline
-                      placeholder="Yanit yaz..."
-                      placeholderTextColor="#8e8b84"
-                      maxLength={180}
-                      accessibilityLabel={`${item.author} yorumuna yanit yaz`}
-                    />
+                  <View style={styles.commentFeedInlineActions}>
                     <Pressable
                       style={[
-                        styles.commentFeedReplySendButton,
-                        !String(replyDrafts[item.id] || '').trim() || replySubmitting[item.id]
-                          ? styles.claimButtonDisabled
-                          : null,
+                        styles.commentFeedActionButton,
+                        item.isEchoedByMe ? styles.commentFeedActionButtonActive : null,
+                        echoSubmitting[item.id] ? styles.claimButtonDisabled : null,
                       ]}
                       onPress={() => {
-                        void handleSubmitReply(item);
+                        void handleEchoPress(item);
                       }}
-                      disabled={!String(replyDrafts[item.id] || '').trim() || replySubmitting[item.id]}
+                      disabled={item.isEchoedByMe || echoSubmitting[item.id]}
                       accessibilityRole="button"
-                      accessibilityLabel={`${item.author} yorumuna yanit gonder`}
+                      accessibilityLabel={`${item.author} yorumuna echo ver`}
                     >
-                      <Text style={styles.commentFeedReplySendButtonText}>
-                        {replySubmitting[item.id] ? 'Gonderiliyor...' : 'Yanitla'}
+                      <Text
+                        style={[
+                          styles.commentFeedActionButtonText,
+                          item.isEchoedByMe ? styles.commentFeedActionButtonTextActive : null,
+                        ]}
+                      >
+                        {item.isEchoedByMe ? 'Echoed' : 'Echo'}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[
+                        styles.commentFeedActionButton,
+                        expandedReplies[item.id] ? styles.commentFeedActionButtonActive : null,
+                      ]}
+                      onPress={() => {
+                        void handleToggleReplies(item);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${item.author} yorumunun yanitlarini ac`}
+                    >
+                      <Text
+                        style={[
+                          styles.commentFeedActionButtonText,
+                          expandedReplies[item.id] ? styles.commentFeedActionButtonTextActive : null,
+                        ]}
+                      >
+                        Reply
                       </Text>
                     </Pressable>
                   </View>
                 </View>
-              ) : null}
-            </View>
-          ))}
+                {replyMessages[item.id] ? (
+                  <Text
+                    style={[
+                      styles.commentFeedRowStatus,
+                      replyMessages[item.id].toLowerCase().includes('edilemedi') ||
+                      replyMessages[item.id].toLowerCase().includes('gerekli') ||
+                      replyMessages[item.id].toLowerCase().includes('bulunamadi')
+                        ? styles.ritualStateError
+                        : styles.ritualStateOk,
+                    ]}
+                  >
+                    {replyMessages[item.id]}
+                  </Text>
+                ) : null}
+                {expandedReplies[item.id] ? (
+                  <View style={styles.commentFeedReplyPanel}>
+                    {replyLoading[item.id] ? (
+                      <Text style={styles.commentFeedMeta}>Yanitlar yukleniyor...</Text>
+                    ) : (repliesByItemId[item.id] || []).length > 0 ? (
+                      <View style={styles.commentFeedReplyList}>
+                        {(repliesByItemId[item.id] || []).map((reply) => (
+                          <View key={reply.id} style={styles.commentFeedReplyRow}>
+                            <View style={styles.commentFeedReplyHeader}>
+                              <Text style={styles.commentFeedReplyAuthor}>{reply.author}</Text>
+                              <Text style={styles.commentFeedMeta}>{reply.timestampLabel}</Text>
+                            </View>
+                            <Text style={styles.commentFeedReplyText}>{reply.text}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    ) : (
+                      <Text style={styles.commentFeedMeta}>Bu yorum icin henuz yanit yok.</Text>
+                    )}
+                    <View style={styles.commentFeedReplyComposer}>
+                      <TextInput
+                        style={styles.commentFeedReplyInput}
+                        value={replyDrafts[item.id] || ''}
+                        onChangeText={(value) =>
+                          setReplyDrafts((prev) => ({
+                            ...prev,
+                            [item.id]: value,
+                          }))
+                        }
+                        autoCapitalize="sentences"
+                        multiline
+                        placeholder="Yanit yaz..."
+                        placeholderTextColor="#8e8b84"
+                        maxLength={180}
+                        accessibilityLabel={`${item.author} yorumuna yanit yaz`}
+                      />
+                      <Pressable
+                        style={[
+                          styles.commentFeedReplySendButton,
+                          !String(replyDrafts[item.id] || '').trim() || replySubmitting[item.id]
+                            ? styles.claimButtonDisabled
+                            : null,
+                        ]}
+                        onPress={() => {
+                          void handleSubmitReply(item);
+                        }}
+                        disabled={!String(replyDrafts[item.id] || '').trim() || replySubmitting[item.id]}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${item.author} yorumuna yanit gonder`}
+                      >
+                        <Text style={styles.commentFeedReplySendButtonText}>
+                          {replySubmitting[item.id] ? 'Gonderiliyor...' : 'Yanitla'}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : null}
+              </View>
+            );
+          })}
         </View>
       )}
 
@@ -3149,23 +3807,28 @@ const CommentFeedCard = ({
           </Pressable>
         ) : null}
 
-        <Pressable
-          style={[
-            styles.retryButton,
-            styles.commentFeedBottomActionButton,
-            isBusy ? styles.claimButtonDisabled : null,
-          ]}
-          disabled={isBusy}
-          onPress={onRefresh}
-          hitSlop={PRESSABLE_HIT_SLOP}
-          accessibilityRole="button"
-          accessibilityLabel={isBusy ? 'Yorum akisi yenileniyor' : 'Yorum akisina yenile'}
-          accessibilityState={{ disabled: isBusy }}
-        >
-          <Text style={styles.retryText}>{isBusy ? 'Yukleniyor...' : 'Yorum Akisini Yenile'}</Text>
-        </Pressable>
+        {showFilters ? (
+          <Pressable
+            style={[
+              styles.retryButton,
+              styles.commentFeedBottomActionButton,
+              isBusy ? styles.claimButtonDisabled : null,
+            ]}
+            disabled={isBusy}
+            onPress={onRefresh}
+            hitSlop={PRESSABLE_HIT_SLOP}
+            accessibilityRole="button"
+            accessibilityLabel={isBusy ? 'Yorum akisi yenileniyor' : 'Yorum akisina yenile'}
+            accessibilityState={{ disabled: isBusy }}
+          >
+            <Text style={styles.retryText}>
+              {isBusy ? 'Yukleniyor...' : 'Yorum Akisini Yenile'}
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
-    </ScreenCard>
+      </ScreenCard>
+    </KeyboardAvoidingView>
   );
 };
 const DailyCycleTime = () => {
@@ -4058,6 +4721,7 @@ type MobileSettingsIdentityDraft = {
   avatarUrl: string;
   profileLink: string;
 };
+type MobileSettingsPrivacyDraft = MobileProfileVisibility;
 type MobileSettingsSaveState = {
   status: 'idle' | 'saving' | 'success' | 'error';
   message: string;
@@ -4298,29 +4962,42 @@ const RitualComposerModal = ({
   if (!visible || !targetMovie) return null;
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalOverlaySurface}>
-        <View style={styles.modalSheetSurface}>
-          <View style={styles.modalNavRow}>
-            <Text style={styles.screenTitle}>Yorum Yaz</Text>
-            <Pressable onPress={onClose} hitSlop={PRESSABLE_HIT_SLOP}>
-              <Text style={styles.modalCloseTextBtn}>Kapat</Text>
-            </Pressable>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        enabled={Platform.OS !== 'web'}
+        behavior={KEYBOARD_AVOIDING_BEHAVIOR}
+        keyboardVerticalOffset={KEYBOARD_AVOIDING_OFFSET}
+      >
+        <View style={styles.modalOverlaySurface}>
+          <View style={styles.modalSheetSurface}>
+            <View style={styles.modalNavRow}>
+              <Text style={styles.screenTitle}>Yorum Yaz</Text>
+              <Pressable onPress={onClose} hitSlop={PRESSABLE_HIT_SLOP}>
+                <Text style={styles.modalCloseTextBtn}>Kapat</Text>
+              </Pressable>
+            </View>
+            <ScrollView
+              contentContainerStyle={styles.modalSheetScroll}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+              automaticallyAdjustKeyboardInsets
+              showsVerticalScrollIndicator={false}
+            >
+              <RitualDraftCard
+                targetMovie={targetMovie}
+                draftText={draftText}
+                onDraftTextChange={onDraftTextChange}
+                submitState={submitState}
+                queueState={queueState}
+                canSubmit={canSubmit}
+                isSignedIn={isSignedIn}
+                onSubmit={onSubmit}
+                onFlushQueue={onFlushQueue}
+              />
+            </ScrollView>
           </View>
-          <ScrollView contentContainerStyle={styles.modalSheetScroll}>
-            <RitualDraftCard
-              targetMovie={targetMovie}
-              draftText={draftText}
-              onDraftTextChange={onDraftTextChange}
-              submitState={submitState}
-              queueState={queueState}
-              canSubmit={canSubmit}
-              isSignedIn={isSignedIn}
-              onSubmit={onSubmit}
-              onFlushQueue={onFlushQueue}
-            />
-          </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -4351,6 +5028,14 @@ const MobileSettingsModal = ({
   canCopyInviteLink,
   isSignedIn,
   onOpenAccountDeletion,
+  privacyDraft,
+  onChangePrivacy,
+  onSavePrivacy,
+  letterboxdSummary,
+  letterboxdStatus,
+  isImportingLetterboxd,
+  onImportLetterboxd,
+  onOpenShareHub,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -4377,8 +5062,16 @@ const MobileSettingsModal = ({
   canCopyInviteLink: boolean;
   isSignedIn: boolean;
   onOpenAccountDeletion: () => void;
+  privacyDraft: MobileSettingsPrivacyDraft;
+  onChangePrivacy: (patch: Partial<MobileSettingsPrivacyDraft>) => void;
+  onSavePrivacy: () => void;
+  letterboxdSummary: string;
+  letterboxdStatus: string;
+  isImportingLetterboxd: boolean;
+  onImportLetterboxd: () => void;
+  onOpenShareHub: () => void;
 }) => {
-  const [activeTab, setActiveTab] = useState<'identity' | 'session'>('identity');
+  const [activeTab, setActiveTab] = useState<'identity' | 'privacy' | 'session'>('identity');
   useWebModalFocusReset(visible);
 
   useEffect(() => {
@@ -4429,6 +5122,7 @@ const MobileSettingsModal = ({
           <View style={styles.settingsTabRow}>
             {([
               { id: 'identity', label: settingsCopy.tabs.identity },
+              { id: 'privacy', label: 'Gizlilik' },
               { id: 'session', label: settingsCopy.tabs.session },
             ] as const).map((tab) => (
               <Pressable
@@ -4470,7 +5164,7 @@ const MobileSettingsModal = ({
                   accent="clay"
                   eyebrow="Profil"
                   title={identityDisplayName || 'Profil Kimligi'}
-                  body={identityBio || 'Avatar, kullanici adi ve profil notunu buradan duzenle.'}
+                  body={identityBio || 'Profilini duzenle.'}
                   badges={[
                     {
                       label: identityUsername ? `@${identityUsername}` : 'kullanici adi bekleniyor',
@@ -4493,8 +5187,8 @@ const MobileSettingsModal = ({
                   <StatusStrip
                     tone="muted"
                     eyebrow="Kayit"
-                    title="Bilgilerini hazirlayabilirsin"
-                    body="Alanlari doldurabilirsin. Kaydetmek icin once giris yapman gerekir."
+                    title="Taslak hazir"
+                    body="Kaydetmek icin giris yap."
                   />
                 ) : null}
 
@@ -4540,11 +5234,11 @@ const MobileSettingsModal = ({
                   <StatusStrip
                     tone={identityDraft.avatarUrl ? 'sage' : 'muted'}
                     eyebrow="Avatar"
-                    title={identityDraft.avatarUrl ? 'Profil görseli seçildi' : 'Avatar opsiyonel'}
+                    title={identityDraft.avatarUrl ? 'Avatar secildi' : 'Avatar opsiyonel'}
                     body={
                       identityDraft.avatarUrl
-                        ? 'Seçilen avatar kimlik katmanında kullanılacak.'
-                        : 'Avatar URL yerine cihazdan manuel secim kullaniliyor.'
+                        ? 'Profilinde kullanilacak.'
+                        : 'Istersen bos birak.'
                     }
                   />
 
@@ -4649,11 +5343,11 @@ const MobileSettingsModal = ({
                   <StatusStrip
                     tone={identityProfileLink ? 'sage' : 'muted'}
                     eyebrow="Profil Linki"
-                    title={identityProfileLink ? 'Profil linkin hazir' : 'Profil linki ekleyebilirsin'}
+                    title={identityProfileLink ? 'Link hazir' : 'Link opsiyonel'}
                     body={
                       identityProfileLink
                         ? identityProfileLink
-                        : 'Web sitesi veya sosyal profil URL bilgisini burada saklayabilirsin.'
+                        : 'Istersen profiline link ekle.'
                     }
                   />
 
@@ -4664,6 +5358,122 @@ const MobileSettingsModal = ({
                     disabled={isSaving || !isSignedIn}
                   />
                 </CollapsibleSectionCard>
+
+                <CollapsibleSectionCard
+                  accent="sage"
+                  title="Letterboxd"
+                  meta={letterboxdSummary || 'Import et'}
+                  defaultExpanded={false}
+                >
+                  {!isSignedIn ? (
+                    <StatePanel
+                      tone="clay"
+                      variant="empty"
+                      eyebrow="Letterboxd"
+                      title="Import icin giris yap"
+                      body="CSV dosyani hesabinla ekle."
+                    />
+                  ) : (
+                    <>
+                      <StatusStrip
+                        tone={letterboxdSummary ? 'sage' : 'muted'}
+                        eyebrow="Import"
+                        title={letterboxdSummary || 'Henuz import yok'}
+                        body={letterboxdStatus || 'CSV sec ve ekle.'}
+                      />
+                      <UiButton
+                        label={isImportingLetterboxd ? 'Import ediliyor...' : 'Letterboxd CSV Sec'}
+                        tone="brand"
+                        onPress={onImportLetterboxd}
+                        disabled={isImportingLetterboxd}
+                      />
+                    </>
+                  )}
+                </CollapsibleSectionCard>
+              </>
+            ) : null}
+
+            {activeTab === 'privacy' ? (
+              <>
+                <SectionLeadCard
+                  accent="sage"
+                  eyebrow="Gizlilik"
+                  title="Public profil gorunurlugu"
+                  body="Gorunen alanlari sec."
+                  badges={[
+                    {
+                      label: privacyDraft.showStats ? 'Istatistik acik' : 'Istatistik gizli',
+                      tone: privacyDraft.showStats ? 'sage' : 'clay',
+                    },
+                    {
+                      label: privacyDraft.showFollowCounts ? 'Takip acik' : 'Takip gizli',
+                      tone: privacyDraft.showFollowCounts ? 'sage' : 'clay',
+                    },
+                  ]}
+                  metrics={[
+                    { label: 'Mark', value: privacyDraft.showMarks ? 'acik' : 'gizli' },
+                    { label: 'Takip', value: privacyDraft.showFollowCounts ? 'acik' : 'gizli' },
+                  ]}
+                />
+
+                {([
+                  {
+                    key: 'showStats',
+                    title: 'Istatistikleri goster',
+                    body: 'Ritual, streak ve gun ozetini goster.',
+                  },
+                  {
+                    key: 'showFollowCounts',
+                    title: 'Takip sayilarini goster',
+                    body: 'Takip ve takipci sayilari gorunsun.',
+                  },
+                  {
+                    key: 'showMarks',
+                    title: 'Marklari goster',
+                    body: 'Acik marklar profilde gorunsun.',
+                  },
+                ] as const).map((item) => {
+                  const isEnabled = privacyDraft[item.key];
+                  return (
+                    <Pressable
+                      key={item.key}
+                      style={({ pressed }) => [
+                        styles.settingsPrivacyRow,
+                        pressed ? styles.settingsPrivacyRowPressed : null,
+                      ]}
+                      onPress={() => onChangePrivacy({ [item.key]: !isEnabled })}
+                      hitSlop={PRESSABLE_HIT_SLOP}
+                      accessibilityRole="switch"
+                      accessibilityLabel={item.title}
+                      accessibilityState={{ checked: isEnabled }}
+                    >
+                      <View style={styles.settingsPrivacyCopy}>
+                        <Text style={styles.settingsPrivacyTitle}>{item.title}</Text>
+                        <Text style={styles.settingsPrivacyBody}>{item.body}</Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.settingsPrivacyToggle,
+                          isEnabled ? styles.settingsPrivacyToggleActive : null,
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.settingsPrivacyKnob,
+                            isEnabled ? styles.settingsPrivacyKnobActive : null,
+                          ]}
+                        />
+                      </View>
+                    </Pressable>
+                  );
+                })}
+
+                <UiButton
+                  label={isSaving ? 'Kaydediliyor...' : 'Gizliligi Kaydet'}
+                  tone="brand"
+                  onPress={onSavePrivacy}
+                  disabled={isSaving || !isSignedIn}
+                />
               </>
             ) : null}
 
@@ -4776,6 +5586,27 @@ const MobileSettingsModal = ({
                       )}
                     </>
                   )}
+                </CollapsibleSectionCard>
+
+                <CollapsibleSectionCard
+                  accent="sage"
+                  title="Paylasim"
+                  meta="Profil ve yorum"
+                  defaultExpanded={false}
+                >
+                  <StatusStrip
+                    tone="muted"
+                    eyebrow="Paylasim"
+                    title="Paylasim merkezini ac"
+                    body="Profilini veya gunun yorumunu paylas."
+                  />
+
+                  <UiButton
+                    label="Paylasim Merkezine Git"
+                    tone="brand"
+                    onPress={onOpenShareHub}
+                    disabled={!isSignedIn}
+                  />
                 </CollapsibleSectionCard>
 
                 <CollapsibleSectionCard
@@ -5145,7 +5976,7 @@ const DiscoverRoutesCard = ({
         accent="sage"
         eyebrow="Explore Routes"
         title="Kesif Rotalari"
-        body="Webdeki kesif alanlarini mobile ayni dilde tasidik. Kategori secip ilgili rotayi ac."
+        body="Kategori secip ilgili rotayi ac."
         badges={[
           { label: `${routes.length} rota`, tone: 'sage' },
           { label: `${readyCount} hazir`, tone: readyCount > 0 ? 'sage' : 'clay' },
@@ -5362,6 +6193,7 @@ const ArenaLeaderboardCard = ({
 
 type PublicProfileDetail = {
   displayName?: string | null;
+  avatarUrl?: string | null;
   ritualsCount?: number | null;
   followingCount?: number | null;
   followersCount?: number | null;
@@ -5455,6 +6287,7 @@ const PublicProfileDetailCard = ({
   onRefresh: () => void;
 }) => {
   const profileDisplayName = String(profile?.displayName || displayNameHint || '@bilinmeyen').trim();
+  const normalizedAvatarUrl = String(profile?.avatarUrl || '').trim();
   const ritualsCount = Math.max(0, Number(profile?.ritualsCount || 0));
   const followingCount = Math.max(0, Number(profile?.followingCount || 0));
   const followersCount = Math.max(0, Number(profile?.followersCount || 0));
@@ -5523,6 +6356,28 @@ const PublicProfileDetailCard = ({
 
       {profile ? (
         <ScreenCard accent="sage">
+          <View style={styles.profileIdentityHeroRow}>
+            <View style={styles.profileIdentityAvatarWrap}>
+              {normalizedAvatarUrl ? (
+                <Image
+                  source={{ uri: normalizedAvatarUrl }}
+                  style={styles.profileIdentityAvatarImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Text style={styles.profileIdentityAvatarFallback}>
+                  {(profileDisplayName.slice(0, 1) || 'O').toUpperCase()}
+                </Text>
+              )}
+            </View>
+            <View style={styles.profileIdentityHeroCopy}>
+              <Text style={styles.detailInfoLabel}>Profil Fotografi</Text>
+              <Text style={styles.detailInfoValue}>
+                {normalizedAvatarUrl ? 'Aktif' : 'Eklenmedi'}
+              </Text>
+            </View>
+          </View>
+
           <Text style={styles.subSectionLabel}>Ozet</Text>
           <View style={styles.detailInfoGrid}>
             <View style={styles.detailInfoCard}>
@@ -5625,6 +6480,7 @@ export {
   setAppScreensThemeMode,
   AuthModal,
   AuthCard,
+  AuthGateScreen,
   CollapsibleSectionCard,
   SectionLeadCard,
   StatePanel,
@@ -5633,6 +6489,7 @@ export {
   MobileSettingsModal,
   ProfileXpCard,
   ProfileIdentityCard,
+  ProfileUnifiedCard,
   ProfileGenreDistributionCard,
   ProfileSnapshotCard,
   ProfileMarksCard,
@@ -5658,8 +6515,10 @@ export {
 };
 
 export type {
+  MobileAuthEntryStage,
   MobileSettingsGender,
   MobileSettingsLanguage,
   MobileSettingsIdentityDraft,
+  MobileSettingsPrivacyDraft,
   MobileSettingsSaveState,
 };

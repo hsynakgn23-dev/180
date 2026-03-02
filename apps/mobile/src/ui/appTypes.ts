@@ -9,8 +9,10 @@ type PushInboxFilter =
   | 'all'
   | 'unread_link'
   | 'with_link'
-  | 'reply'
+  | 'comment'
+  | 'like'
   | 'follow'
+  | 'daily_drop'
   | 'streak'
   | 'generic';
 
@@ -21,8 +23,10 @@ const PUSH_INBOX_FILTER_OPTIONS: Array<{ key: PushInboxFilter; label: string }> 
   { key: 'all', label: 'Tum' },
   { key: 'unread_link', label: 'Yeni Link' },
   { key: 'with_link', label: 'Linkli' },
-  { key: 'reply', label: 'Yanit' },
+  { key: 'comment', label: 'Yorum' },
+  { key: 'like', label: 'Begeni' },
   { key: 'follow', label: 'Takip' },
+  { key: 'daily_drop', label: 'Yeni 5' },
   { key: 'streak', label: 'Streak' },
   { key: 'generic', label: 'Diger' },
 ];

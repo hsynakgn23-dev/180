@@ -1,4 +1,5 @@
 import { isSupabaseLive, readSupabaseSessionSafe, supabase } from './supabase';
+import { normalizeMobileAvatarUrl } from './mobileAvatar';
 
 type SupabaseErrorLike = {
   code?: string | null;
@@ -88,7 +89,7 @@ const normalizeProfileIdentityDraft = (
   gender: normalizeProfileGender(input?.gender),
   birthDate: normalizeDateLabel(input?.birthDate),
   bio: normalizeText(input?.bio, 180),
-  avatarUrl: normalizeText(input?.avatarUrl, 1200),
+  avatarUrl: normalizeMobileAvatarUrl(input?.avatarUrl),
   profileLink: normalizeProfileLink(input?.profileLink),
 });
 
@@ -121,7 +122,7 @@ const buildIdentityFromProfile = (profile: ProfileRow | null): MobileProfileIden
     gender: normalizeProfileGender(xpState.gender ?? ''),
     birthDate: normalizeDateLabel(xpState.birthDate ?? xpState.birth_date ?? ''),
     bio: normalizeText(xpState.bio ?? '', 180),
-    avatarUrl: normalizeText(xpState.avatarUrl ?? xpState.avatar_url ?? '', 1200),
+    avatarUrl: normalizeMobileAvatarUrl(xpState.avatarUrl ?? xpState.avatar_url ?? ''),
     profileLink: normalizeProfileLink(xpState.profileLink ?? xpState.profile_link ?? ''),
   });
 

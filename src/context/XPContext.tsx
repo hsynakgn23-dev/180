@@ -4,6 +4,7 @@ import { TMDB_SEEDS } from '../data/tmdbSeeds';
 import { supabase, isSupabaseLive } from '../lib/supabase';
 import { moderateComment } from '../lib/commentModeration';
 import { trackEvent } from '../lib/analytics';
+import { MAX_AVATAR_DATA_URL_LENGTH, normalizeAvatarUrl } from '../lib/avatarUpload';
 export { getLeagueKeyByIndex, resolveLeagueInfo, resolveLeagueKey, resolveLeagueKeyFromXp } from '../domain/leagueSystem';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
@@ -190,7 +191,6 @@ const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
 const SHARE_REWARD_XP = 18;
 const USER_XP_STORAGE_KEY_PREFIX = '180_xp_data_';
 const USER_RITUAL_BACKUP_KEY_PREFIX = '180_ritual_backup_';
-const MAX_PERSISTED_AVATAR_URL_LENGTH = 180_000;
 const STORAGE_RECOVERY_KEYS = ['DAILY_CANDIDATE_POOL_V2', 'DAILY_SELECTION_V18'] as const;
 const INVITER_REWARD_XP = 0;
 const INVITEE_REWARD_XP = 50;
@@ -331,6 +331,7 @@ const normalizeXPState = (input: Partial<XPState> | null | undefined): XPState =
         birthDate: input.birthDate || '',
         bio: input.bio || fallback.bio,
         avatarId: input.avatarId || fallback.avatarId,
+        avatarUrl: normalizeAvatarUrl(input.avatarUrl),
         lastShareRewardDate: input.lastShareRewardDate || null,
         referralCode: input.referralCode || fallback.referralCode,
         referralCount: input.referralCount || 0,
@@ -371,7 +372,7 @@ const buildInviteLink = (inviteCode: string): string => {
 };
 
 const compactStateForPersistence = (state: XPState): XPState => {
-    if (!state.avatarUrl || state.avatarUrl.length <= MAX_PERSISTED_AVATAR_URL_LENGTH) {
+    if (!state.avatarUrl || state.avatarUrl.length <= MAX_AVATAR_DATA_URL_LENGTH) {
         return state;
     }
     return {
@@ -778,8 +779,10 @@ const mergeXPStates = (states: Array<XPState | null | undefined>): XPState | nul
     merged.birthDate = pickPreferredText((state) => state.birthDate);
     merged.bio = pickPreferredText((state) => state.bio) || merged.bio;
     merged.avatarId = pickPreferredText((state) => state.avatarId) || merged.avatarId;
-    merged.avatarUrl = priority.find((state) => typeof state.avatarUrl === 'string' && state.avatarUrl.trim())
-        ?.avatarUrl;
+    merged.avatarUrl = normalizeAvatarUrl(
+        priority.find((state) => typeof state.avatarUrl === 'string' && state.avatarUrl.trim())
+            ?.avatarUrl
+    ) || undefined;
 
     return normalizeXPState(merged);
 };
@@ -1378,7 +1381,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     };
 
     const updateAvatar = (url: string) => {
-        updateState({ avatarUrl: url });
+        updateState({ avatarUrl: normalizeAvatarUrl(url) || undefined });
         triggerWhisper("Visage captured.");
     };
 

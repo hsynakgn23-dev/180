@@ -1,4 +1,9 @@
 import { isSupabaseLive, supabase } from './supabase';
+import {
+  readMobileProfileVisibilityFromXpState,
+  type MobileProfileVisibility,
+} from './mobileProfileVisibility';
+import { resolveMobileAvatarFromXpState } from './mobileAvatar';
 
 type SupabaseErrorLike = {
   code?: string | null;
@@ -20,6 +25,7 @@ type RitualTimestampRow = {
 export type MobilePublicProfileSnapshot = {
   userId: string;
   displayName: string;
+  avatarUrl: string;
   totalXp: number;
   streak: number;
   ritualsCount: number;
@@ -30,6 +36,7 @@ export type MobilePublicProfileSnapshot = {
   featuredMarks: string[];
   lastRitualDate: string | null;
   source: 'xp_state' | 'fallback';
+  visibility: MobileProfileVisibility;
 };
 
 export type MobilePublicProfileSnapshotResult =
@@ -279,6 +286,8 @@ export const fetchMobilePublicProfileSnapshot = async ({
 
   const profileRow = (profileData || null) as ProfileRow | null;
   const xpStats = parseStatsFromXpState(profileRow?.xp_state || null);
+  const avatarUrl = resolveMobileAvatarFromXpState(profileRow?.xp_state);
+  const visibility = readMobileProfileVisibilityFromXpState(profileRow?.xp_state);
   const followCounts = await readFollowCounts(normalizedUserId);
 
   const displayNameBase =
@@ -294,16 +303,18 @@ export const fetchMobilePublicProfileSnapshot = async ({
       profile: {
         userId: normalizedUserId,
         displayName: displayNameBase,
-        totalXp: xpStats.totalXp,
-        streak: xpStats.streak,
-        ritualsCount: xpStats.ritualsCount,
-        daysPresent: xpStats.daysPresent,
-        followersCount: followCounts.followersCount,
-        followingCount: followCounts.followingCount,
-        marks: xpStats.marks,
-        featuredMarks: xpStats.featuredMarks,
-        lastRitualDate: xpStats.lastRitualDate,
+        avatarUrl,
+        totalXp: visibility.showStats ? xpStats.totalXp : 0,
+        streak: visibility.showStats ? xpStats.streak : 0,
+        ritualsCount: visibility.showStats ? xpStats.ritualsCount : 0,
+        daysPresent: visibility.showStats ? xpStats.daysPresent : 0,
+        followersCount: visibility.showFollowCounts ? followCounts.followersCount : 0,
+        followingCount: visibility.showFollowCounts ? followCounts.followingCount : 0,
+        marks: visibility.showMarks ? xpStats.marks : [],
+        featuredMarks: visibility.showMarks ? xpStats.featuredMarks : [],
+        lastRitualDate: visibility.showActivity ? xpStats.lastRitualDate : null,
         source: 'xp_state',
+        visibility,
       },
     };
   }
@@ -316,17 +327,18 @@ export const fetchMobilePublicProfileSnapshot = async ({
     profile: {
       userId: normalizedUserId,
       displayName: displayNameBase,
+      avatarUrl,
       totalXp: 0,
-      streak: computeCurrentStreak(uniqueDays),
-      ritualsCount: timeline.ritualsCount,
-      daysPresent: uniqueDays.length,
-      followersCount: followCounts.followersCount,
-      followingCount: followCounts.followingCount,
+      streak: visibility.showStats ? computeCurrentStreak(uniqueDays) : 0,
+      ritualsCount: visibility.showStats ? timeline.ritualsCount : 0,
+      daysPresent: visibility.showStats ? uniqueDays.length : 0,
+      followersCount: visibility.showFollowCounts ? followCounts.followersCount : 0,
+      followingCount: visibility.showFollowCounts ? followCounts.followingCount : 0,
       marks: [],
       featuredMarks: [],
-      lastRitualDate: timeline.lastRitualDate,
+      lastRitualDate: visibility.showActivity ? timeline.lastRitualDate : null,
       source: 'fallback',
+      visibility,
     },
   };
 };
-

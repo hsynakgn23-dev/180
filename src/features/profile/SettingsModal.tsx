@@ -16,6 +16,7 @@ import {
     type StoredLetterboxdImport
 } from '../../lib/letterboxdImport';
 import { trackEvent } from '../../lib/analytics';
+import { readAvatarFileAsDataUrl } from '../../lib/avatarUpload';
 
 interface SettingsModalProps {
     isOpen: boolean;
@@ -328,18 +329,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         setStatusMessage(profileResult.message || text.settings.statusIdentitySaved);
     };
 
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            if (typeof reader.result === 'string') {
-                updateAvatar(reader.result);
-                setStatusMessage(text.settings.statusAvatarUpdated);
-            }
-        };
-        reader.readAsDataURL(file);
+        try {
+            const dataUrl = await readAvatarFileAsDataUrl(file);
+            updateAvatar(dataUrl);
+            setStatusMessage(text.settings.statusAvatarUpdated);
+        } catch (error) {
+            setStatusMessage(error instanceof Error ? error.message : 'Avatar file could not be processed.');
+        } finally {
+            e.target.value = '';
+        }
     };
 
     const handleLetterboxdImport = async (event: React.ChangeEvent<HTMLInputElement>) => {

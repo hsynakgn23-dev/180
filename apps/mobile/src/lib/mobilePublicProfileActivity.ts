@@ -1,4 +1,5 @@
 import { isSupabaseLive, supabase } from './supabase';
+import { readMobileProfileVisibilityFromXpState } from './mobileProfileVisibility';
 
 type SupabaseErrorLike = {
   code?: string | null;
@@ -128,6 +129,31 @@ export const fetchMobilePublicProfileActivity = async ({
     };
   }
 
+  const { data: profileData, error: profileError } = await supabase
+    .from('profiles')
+    .select('xp_state')
+    .eq('user_id', normalizedUserId)
+    .maybeSingle();
+
+  if (profileError && !isSupabaseCapabilityError(profileError)) {
+    return {
+      ok: false,
+      message: normalizeText(profileError.message, 220) || 'Profil filmi okunamadi.',
+      items: [],
+    };
+  }
+
+  const visibility = readMobileProfileVisibilityFromXpState(
+    (profileData as { xp_state?: unknown } | null)?.xp_state
+  );
+  if (!visibility.showActivity) {
+    return {
+      ok: true,
+      message: 'Film kayitlari kapali.',
+      items: [],
+    };
+  }
+
   const queryLimit = Math.max(20, Math.min(180, Math.floor(Number(limit) || 80)));
   const variants: Array<{ select: string; orderBy: 'timestamp' | 'created_at' }> = [
     { select: 'id,movie_title,text,poster_path,year,timestamp', orderBy: 'timestamp' },
@@ -151,7 +177,7 @@ export const fetchMobilePublicProfileActivity = async ({
       if (isSupabaseCapabilityError(error)) continue;
       return {
         ok: false,
-        message: normalizeText(error.message, 220) || 'Profil aktivitesi okunamadi.',
+        message: normalizeText(error.message, 220) || 'Profil filmi okunamadi.',
         items: [],
       };
     }
@@ -164,14 +190,14 @@ export const fetchMobilePublicProfileActivity = async ({
   if (items.length === 0) {
     return {
       ok: true,
-      message: hasReadError ? 'Profil aktivitesi bu projede erisilebilir degil.' : 'Aktivite kaydi yok.',
+      message: hasReadError ? 'Film kayitlari bu projede erisilebilir degil.' : 'Film kaydi yok.',
       items: [],
     };
   }
 
   return {
     ok: true,
-    message: 'Profil aktivitesi guncellendi.',
+    message: 'Film kayitlari guncellendi.',
     items,
   };
 };

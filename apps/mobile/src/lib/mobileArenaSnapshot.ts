@@ -1,5 +1,6 @@
 import { isSupabaseLive, supabase } from './supabase';
 import { resolveUserIdsByAuthorNames, toAuthorIdentityKey } from './mobileAuthorUserMap';
+import { resolveMobileAvatarFromXpState } from './mobileAvatar';
 
 type SupabaseErrorLike = {
   code?: string | null;
@@ -54,20 +55,6 @@ const normalizeText = (value: unknown, maxLength = 120): string => {
   const text = String(value ?? '').trim();
   if (!text) return '';
   return text.length > maxLength ? text.slice(0, maxLength) : text;
-};
-
-const normalizeAvatarUrl = (value: unknown): string => {
-  const normalized = normalizeText(value, 1200);
-  if (!normalized) return '';
-  if (/^https?:\/\//i.test(normalized)) return normalized;
-  if (/^data:image\//i.test(normalized)) return normalized;
-  return '';
-};
-
-const resolveAvatarFromXpState = (value: unknown): string => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
-  const xpState = value as Record<string, unknown>;
-  return normalizeAvatarUrl(xpState.avatarUrl || xpState.avatar_url);
 };
 
 const normalizeArenaName = (value: unknown): string =>
@@ -264,7 +251,7 @@ const hydrateArenaEntryAvatars = async (
   for (const row of avatarRows) {
     const userId = normalizeText(row.user_id, 120);
     if (!userId || avatarMap.has(userId)) continue;
-    const avatarUrl = resolveAvatarFromXpState(row.xp_state);
+    const avatarUrl = resolveMobileAvatarFromXpState(row.xp_state);
     if (!avatarUrl) continue;
     avatarMap.set(userId, avatarUrl);
   }

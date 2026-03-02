@@ -5,6 +5,7 @@ import {
   resolveMobileLeagueInfo,
   resolveMobileLeagueInfoFromXp,
 } from './mobileLeagueSystem';
+import { resolveMobileAvatarFromXpState } from './mobileAvatar';
 
 type SupabaseErrorLike = {
   code?: string | null;
@@ -138,20 +139,6 @@ const toSafeInt = (value: unknown): number => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return 0;
   return Math.max(0, Math.floor(parsed));
-};
-
-const normalizeAvatarUrl = (value: unknown): string => {
-  const normalized = normalizeText(value, 1200);
-  if (!normalized) return '';
-  if (/^https?:\/\//i.test(normalized)) return normalized;
-  if (/^data:image\//i.test(normalized)) return normalized;
-  return '';
-};
-
-const resolveAvatarFromXpState = (value: unknown): string => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
-  const xpState = value as Record<string, unknown>;
-  return normalizeAvatarUrl(xpState.avatarUrl || xpState.avatar_url);
 };
 
 const clampInteger = (value: unknown, min: number, max: number, fallback: number): number => {
@@ -319,7 +306,7 @@ const hydrateAuthorAvatars = async (items: RitualLiteItem[]): Promise<RitualLite
     }
 
     if (!avatarMap.has(userId)) {
-      const avatarUrl = resolveAvatarFromXpState(row.xp_state);
+      const avatarUrl = resolveMobileAvatarFromXpState(row.xp_state);
       if (avatarUrl) {
         avatarMap.set(userId, avatarUrl);
       }
@@ -571,7 +558,7 @@ const readFallbackFromXpState = async (): Promise<MobileCommentFeedItem[]> => {
   const xpTotal = toSafeInt((xpState as Record<string, unknown> | null)?.totalXP);
   const { leagueKey: fallbackLeagueKey, leagueInfo: fallbackLeagueInfo } =
     resolveMobileLeagueInfoFromXp(xpTotal);
-  const fallbackAvatarUrl = resolveAvatarFromXpState(xpState);
+  const fallbackAvatarUrl = resolveMobileAvatarFromXpState(xpState);
   const dailyRituals = Array.isArray((xpState as Record<string, unknown> | null)?.dailyRituals)
     ? ((xpState as Record<string, unknown>).dailyRituals as Array<Record<string, unknown>>)
     : [];

@@ -5,6 +5,7 @@ import {
   getLeagueIndexFromXp,
   resolveLeagueInfo,
   resolveLeagueKeyFromXp,
+  type LeagueKey,
   type LeagueInfo,
 } from '../../../../src/domain/leagueSystem';
 
@@ -12,12 +13,12 @@ export { LEAGUES_DATA as MOBILE_LEAGUES_DATA, LEAGUE_NAMES as MOBILE_LEAGUE_NAME
 export type { LeagueInfo as MobileLeagueInfo };
 export { getLeagueIndexFromXp };
 
-const FALLBACK_LEAGUE_KEY = 'Bronze';
+const FALLBACK_LEAGUE_KEY: LeagueKey = 'Bronze';
 
-export const normalizeMobileLeagueKey = (value: unknown): string => {
+export const normalizeMobileLeagueKey = (value: unknown): LeagueKey => {
   const normalized = String(value || '').trim();
   if (!normalized) return FALLBACK_LEAGUE_KEY;
-  const exact = LEAGUES_DATA[normalized] ? normalized : '';
+  const exact = LEAGUE_NAMES.find((key) => key === normalized);
   if (exact) return exact;
 
   const lowered = normalized.toLowerCase();
@@ -25,17 +26,17 @@ export const normalizeMobileLeagueKey = (value: unknown): string => {
   return match || FALLBACK_LEAGUE_KEY;
 };
 
-export const resolveMobileLeagueKeyFromXp = (xp: number): string => resolveLeagueKeyFromXp(xp);
+export const resolveMobileLeagueKeyFromXp = (xp: number): LeagueKey => resolveLeagueKeyFromXp(xp);
 
 export const resolveMobileLeagueInfo = (leagueKey: string | null | undefined): LeagueInfo =>
   resolveLeagueInfo(normalizeMobileLeagueKey(leagueKey));
 
-export const resolveMobileLeagueInfoFromXp = (xp: number): { leagueKey: string; leagueInfo: LeagueInfo } => {
+export const resolveMobileLeagueInfoFromXp = (xp: number): { leagueKey: LeagueKey; leagueInfo: LeagueInfo } => {
   const leagueKey = resolveMobileLeagueKeyFromXp(xp);
   return { leagueKey, leagueInfo: resolveMobileLeagueInfo(leagueKey) };
 };
 
-export const resolveMobileNextLeagueKey = (leagueKey: string): string | null => {
+export const resolveMobileNextLeagueKey = (leagueKey: string): LeagueKey | null => {
   const index = LEAGUE_NAMES.indexOf(normalizeMobileLeagueKey(leagueKey));
   if (index < 0) return LEAGUE_NAMES[0] || FALLBACK_LEAGUE_KEY;
   return index + 1 < LEAGUE_NAMES.length ? LEAGUE_NAMES[index + 1] : null;

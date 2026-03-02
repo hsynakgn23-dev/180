@@ -6,7 +6,7 @@ export type PushInboxItem = {
   title: string;
   body: string;
   deepLink: string | null;
-  kind: 'reply' | 'follow' | 'streak' | 'generic';
+  kind: 'comment' | 'like' | 'follow' | 'daily_drop' | 'streak' | 'generic';
   receivedAt: string;
   source: 'received' | 'opened';
   opened: boolean;
@@ -83,9 +83,21 @@ const toPushInboxItem = (raw: PushInboxRawItem): PushInboxItem => {
   const source = raw.source === 'opened' ? 'opened' : 'received';
   const deepLinkText = normalizeText(raw.deepLink, 500);
   const kindRaw = normalizeText(raw.kind, 40).toLowerCase();
+  const normalizedKind =
+    kindRaw === 'reply'
+      ? 'comment'
+      : kindRaw === 'echo'
+        ? 'like'
+        : kindRaw === 'daily'
+          ? 'daily_drop'
+          : kindRaw;
   const kind =
-    kindRaw === 'reply' || kindRaw === 'follow' || kindRaw === 'streak'
-      ? kindRaw
+    normalizedKind === 'comment' ||
+    normalizedKind === 'like' ||
+    normalizedKind === 'follow' ||
+    normalizedKind === 'daily_drop' ||
+    normalizedKind === 'streak'
+      ? normalizedKind
       : 'generic';
 
   return {

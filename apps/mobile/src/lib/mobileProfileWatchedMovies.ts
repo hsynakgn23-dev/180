@@ -22,6 +22,7 @@ export type MobileWatchedMovie = {
   watchedAt: string;
   watchedDayKey: string;
   watchCount: number;
+  source?: 'ritual' | 'letterboxd';
 };
 
 export type MobileProfileWatchedMoviesResult =
@@ -104,6 +105,7 @@ const normalizeMovieRows = (rows: RitualMovieRow[]): MobileWatchedMovie[] => {
       watchedAt,
       watchedDayKey: toDayKey(watchedAt),
       watchCount: 1,
+      source: 'ritual',
     });
   }
 
