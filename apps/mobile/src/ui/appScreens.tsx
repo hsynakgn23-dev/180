@@ -884,35 +884,6 @@ const LegacyAuthModal = ({
   );
 };
 
-const AuthProviderButton = ({
-  label,
-  onPress,
-  disabled = false,
-  icon,
-}: {
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
-  icon: ReactNode;
-}) => (
-  <Pressable
-    style={({ pressed }) => [
-      styles.authProviderButton,
-      pressed && !disabled ? styles.authProviderButtonPressed : null,
-      disabled ? styles.authProviderButtonDisabled : null,
-    ]}
-    onPress={onPress}
-    disabled={disabled}
-    hitSlop={PRESSABLE_HIT_SLOP}
-    accessibilityRole="button"
-    accessibilityLabel={label}
-    accessibilityState={{ disabled }}
-  >
-    <View style={styles.authProviderIconWrap}>{icon}</View>
-    <Text style={styles.authProviderButtonText}>{label}</Text>
-  </Pressable>
-);
-
 const AuthProviderLogoButton = ({
   label,
   onPress,
@@ -1275,14 +1246,14 @@ const AuthCard = ({
                   onPress={onGoogleSignIn}
                   disabled={isBusy || !isConfigured}
                   tone="light"
-                  icon={<FontAwesome name="google" size={28} color="#EA4335" />}
+                  icon={<FontAwesome name="google" size={28} color="#A45E4A" />}
                 />
                 <AuthProviderLogoButton
                   label="Apple ile uye ol"
                   onPress={onAppleSignIn}
                   disabled={isBusy}
                   tone="dark"
-                  icon={<Ionicons name="logo-apple" size={28} color="#F5F5F5" />}
+                  icon={<Ionicons name="logo-apple" size={28} color="#E5E4E2" />}
                 />
                 {showAppleSignIn ? (
                   <Text style={styles.authProviderHintText}>Apple yakinda.</Text>

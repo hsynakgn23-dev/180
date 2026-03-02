@@ -1406,11 +1406,11 @@ export const styles = StyleSheet.create({
   },
   authProviderLogoButtonLight: {
     borderColor: 'rgba(255, 255, 255, 0.18)',
-    backgroundColor: '#f7f5ef',
+    backgroundColor: '#f4f1ea',
   },
   authProviderLogoButtonDark: {
     borderColor: 'rgba(255, 255, 255, 0.12)',
-    backgroundColor: '#080808',
+    backgroundColor: '#171717',
   },
   authProviderLogoButtonPressed: {
     opacity: 0.9,
@@ -1722,7 +1722,7 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 22,
     paddingVertical: 20,
     alignItems: 'center',
-    ...buildViewShadow({ color: '#000000', opacity: 0.35, radius: 20, offsetY: 12, elevation: 16 }),
+    ...buildViewShadow({ color: '#121212', opacity: 0.35, radius: 20, offsetY: 12, elevation: 16 }),
   },
   leagueTransitionLine: {
     width: 84,

@@ -1,6 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
 import * as Clipboard from 'expo-clipboard';
-import * as AppleAuthentication from 'expo-apple-authentication';
 import * as DocumentPicker from 'expo-document-picker';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import * as WebBrowser from 'expo-web-browser';
@@ -366,23 +365,6 @@ const writeStoredAuthRememberMe = async (rememberMe: boolean): Promise<void> => 
   }
 };
 
-const normalizeAuthErrorMessage = (value: unknown, fallback: string): string => {
-  if (value instanceof Error) {
-    const normalized = value.message.trim();
-    return normalized || fallback;
-  }
-  if (value && typeof value === 'object') {
-    const normalized = String((value as { message?: unknown }).message || '').trim();
-    if (normalized) return normalized;
-  }
-  return fallback;
-};
-
-const isAppleAuthCanceled = (value: unknown): boolean => {
-  const code = String((value as { code?: unknown } | null)?.code || '').trim();
-  return code === 'ERR_REQUEST_CANCELED';
-};
-
 const normalizeDateLabel = (value: string): string => {
   const normalized = String(value || '').trim();
   if (!normalized) return '';
@@ -622,7 +604,6 @@ export default function App() {
   const [authRememberMe, setAuthRememberMe] = useState(true);
   const [authFlowMode, setAuthFlowMode] = useState<AuthFlowMode>('login');
   const [authEntryStage, setAuthEntryStage] = useState<MobileAuthEntryStage>('intro');
-  const [appleAuthAvailable, setAppleAuthAvailable] = useState(false);
   const [authState, setAuthState] = useState<AuthState>({
     status: 'idle',
     message: 'Session kontrol ediliyor...',
@@ -933,23 +914,6 @@ export default function App() {
   const handleSetAuthRememberMe = useCallback((nextValue: boolean) => {
     setAuthRememberMe(nextValue);
     void writeStoredAuthRememberMe(nextValue);
-  }, []);
-
-  useEffect(() => {
-    if (Platform.OS !== 'ios') return;
-
-    let cancelled = false;
-    AppleAuthentication.isAvailableAsync()
-      .then((available) => {
-        if (!cancelled) setAppleAuthAvailable(available);
-      })
-      .catch(() => {
-        if (!cancelled) setAppleAuthAvailable(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   const refreshRitualQueue = useCallback(async () => {
@@ -2482,113 +2446,6 @@ export default function App() {
       message: 'Apple ile uye ol yakinda aktif olacak.',
     });
   }, []);
-
-  const handleAppleSignIn = useCallback(async () => {
-    if (Platform.OS !== 'ios') {
-      setAuthState({
-        status: 'error',
-        message: 'Apple girisi yalnizca iOS cihazlarda acilabilir.',
-      });
-      return;
-    }
-
-    if (!appleAuthAvailable) {
-      setAuthState({
-        status: 'error',
-        message: 'Bu cihazda Apple girisi hazir degil.',
-      });
-      return;
-    }
-
-    if (!isSupabaseConfigured || !supabase) {
-      setAuthState({
-        status: 'error',
-        message: 'Apple girisi icin Supabase ayarlari eksik.',
-      });
-      return;
-    }
-
-    setAuthState({
-      status: 'loading',
-      message: 'Apple girisi baslatiliyor...',
-    });
-    void trackMobileEvent('oauth_start', {
-      provider: 'apple',
-      surface: 'mobile_native',
-    });
-
-    try {
-      const credential = await AppleAuthentication.signInAsync({
-        requestedScopes: [
-          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-          AppleAuthentication.AppleAuthenticationScope.EMAIL,
-        ],
-      });
-
-      const identityToken = String(credential.identityToken || '').trim();
-      if (!identityToken) {
-        setAuthState({
-          status: 'error',
-          message: 'Apple kimlik tokeni alinamadi.',
-        });
-        void trackMobileEvent('oauth_failure', {
-          provider: 'apple',
-          reason: 'missing_identity_token',
-        });
-        return;
-      }
-
-      const { data, error } = await supabase.auth.signInWithIdToken({
-        provider: 'apple',
-        token: identityToken,
-      });
-
-      if (error || !data.session?.access_token) {
-        const message = error?.message || 'Apple girisi tamamlanamadi.';
-        setAuthState({
-          status: 'error',
-          message,
-        });
-        void trackMobileEvent('oauth_failure', {
-          provider: 'apple',
-          reason: message,
-        });
-        return;
-      }
-
-      const resolvedEmail =
-        String(data.user?.email || credential.email || '').trim() || 'Apple hesabi';
-      setAuthState({
-        status: 'signed_in',
-        message: 'Apple girisi basarili.',
-        email: resolvedEmail,
-      });
-      setAuthPassword('');
-      setAuthConfirmPassword('');
-      setAuthFlowMode('login');
-      void trackMobileEvent('login_success', {
-        method: 'apple',
-      });
-    } catch (error) {
-      if (isAppleAuthCanceled(error)) {
-        setAuthState({
-          status: 'signed_out',
-          message: 'Apple girisi iptal edildi.',
-        });
-        return;
-      }
-
-      const message = normalizeAuthErrorMessage(error, 'Apple girisi baslatilamadi.');
-      setAuthState({
-        status: 'error',
-        message,
-      });
-      void trackMobileEvent('oauth_failure', {
-        provider: 'apple',
-        reason: message,
-      });
-    }
-  }, [appleAuthAvailable]);
 
   const handleCompletePasswordReset = useCallback(async () => {
     const password = authPassword.trim();
@@ -5495,7 +5352,18 @@ export default function App() {
                           {publicWatchedMovies.length > 0 ? (
                             <View style={styles.movieList}>
                               {publicWatchedMovies.map((movie) => (
-                                <View key={movie.id} style={styles.movieRow}>
+                                <Pressable
+                                  key={movie.id}
+                                  style={({ pressed }) => [
+                                    styles.movieRow,
+                                    pressed ? styles.movieRowPressed : null,
+                                  ]}
+                                  onPress={() => {
+                                    void handleOpenPublicProfileMovieArchive(movie);
+                                  }}
+                                  accessibilityRole="button"
+                                  accessibilityLabel={`${movie.movieTitle} film izi detayini ac`}
+                                >
                                   <Text style={styles.movieTitle}>{movie.movieTitle}</Text>
                                   <Text style={styles.movieMeta}>
                                     {movie.year ? `${movie.year} | ` : ''}
@@ -5503,7 +5371,7 @@ export default function App() {
                                     {movie.watchCount > 1 ? ` | Tekrar: ${movie.watchCount}` : ''}
                                   </Text>
                                   <Text style={styles.movieRowActionHint}>Film Izi</Text>
-                                </View>
+                                </Pressable>
                               ))}
                             </View>
                           ) : (
