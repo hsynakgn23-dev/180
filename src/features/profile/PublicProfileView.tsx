@@ -5,6 +5,11 @@ import { useLanguage } from '../../context/LanguageContext';
 import { TMDB_SEEDS } from '../../data/tmdbSeeds';
 import { resolvePosterCandidates } from '../../lib/posterCandidates';
 import { isSupabaseLive, supabase } from '../../lib/supabase';
+import {
+    getDefaultProfileVisibility,
+    readProfileVisibilityFromXpState,
+    type ProfileVisibility
+} from '../../lib/profileVisibility';
 
 export interface PublicProfileTarget {
     userId?: string | null;
@@ -61,6 +66,7 @@ type PublicProfileData = {
     daysPresent: number;
     rituals: PublicRitual[];
     followCounts: FollowCountState;
+    visibility: ProfileVisibility;
 };
 
 const LEVEL_THRESHOLD = 500;
@@ -295,7 +301,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
             }
 
             const resolvedUserId = target.userId || ritualRows.find((row) => row.user_id)?.user_id || null;
-            const displayName = ritualRows[0]?.author || normalizedUsername || text.profileWidget.observer;
+            let displayName = ritualRows[0]?.author || normalizedUsername || text.profileWidget.observer;
             const rituals: PublicRitual[] = ritualRows.map((row) => {
                 const rawTimestamp = row.timestamp || new Date().toISOString();
                 return {
@@ -323,6 +329,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
             let league = rituals[0]?.league || 'Bronze';
             let followingCount = 0;
             let followersCount = 0;
+            let visibility = getDefaultProfileVisibility();
 
             if (resolvedUserId) {
                 const { data: profileRow, error: profileError } = await supabase
@@ -333,6 +340,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
 
                 if (!profileError && profileRow?.xp_state && typeof profileRow.xp_state === 'object') {
                     const xpState = profileRow.xp_state as Record<string, unknown>;
+                    visibility = readProfileVisibilityFromXpState(xpState);
                     fullName = typeof xpState.fullName === 'string' ? xpState.fullName : '';
                     username = typeof xpState.username === 'string' && xpState.username.trim()
                         ? xpState.username
@@ -352,6 +360,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                     daysPresent = Array.isArray(xpState.activeDays) ? xpState.activeDays.length : daysPresent;
                     followingCount = Array.isArray(xpState.following) ? xpState.following.length : 0;
                     if (typeof profileRow.display_name === 'string' && profileRow.display_name.trim()) {
+                        displayName = profileRow.display_name.trim();
                         username = username || profileRow.display_name;
                     }
                 } else if (profileError && !isSupabaseCapabilityError(profileError)) {
@@ -375,6 +384,11 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                 if (!followersCountRes.error && typeof followersCountRes.count === 'number') {
                     followersCount = followersCountRes.count;
                 }
+            }
+
+            if (!visibility.showFollowCounts) {
+                followingCount = 0;
+                followersCount = 0;
             }
 
             if (streak === 0) {
@@ -407,7 +421,8 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                 followCounts: {
                     followers: followersCount,
                     following: followingCount
-                }
+                },
+                visibility
             };
 
             if (!active) return;
@@ -436,6 +451,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
     }, [isFollowingUser, profile]);
 
     const commentsCount = profile?.rituals.length || 0;
+    const visibility = profile?.visibility || getDefaultProfileVisibility();
     const uniqueFilmsCount = useMemo(() => {
         if (!profile) return 0;
         return new Set(profile.rituals.map((ritual) => ritual.movieTitle.toLowerCase().trim())).size;
@@ -588,19 +604,27 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                                                 {isFollowing ? text.profile.following : text.profile.follow}
                                             </button>
                                         )}
-                                        <button
-                                            type="button"
-                                            onClick={handleReadComments}
-                                            className="px-4 py-2 rounded border border-white/15 text-[10px] uppercase tracking-[0.16em] text-white/80 hover:border-sage/40 hover:text-sage transition-colors"
-                                        >
-                                            {text.profile.commentsAndReplies}
-                                        </button>
+                                        {visibility.showActivity && (
+                                            <button
+                                                type="button"
+                                                onClick={handleReadComments}
+                                                className="px-4 py-2 rounded border border-white/15 text-[10px] uppercase tracking-[0.16em] text-white/80 hover:border-sage/40 hover:text-sage transition-colors"
+                                            >
+                                                {text.profile.commentsAndReplies}
+                                            </button>
+                                        )}
                                     </div>
 
-                                    <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3.5 mb-5 text-[10px] uppercase tracking-[0.14em]">
-                                        <span className="text-[#E5E4E2]/80">{text.profile.following}: {profile.followCounts.following}</span>
-                                        <span className="text-[#E5E4E2]/80">{text.profile.followers}: {profile.followCounts.followers}</span>
-                                    </div>
+                                    {visibility.showFollowCounts ? (
+                                        <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3.5 mb-5 text-[10px] uppercase tracking-[0.14em]">
+                                            <span className="text-[#E5E4E2]/80">{text.profile.following}: {profile.followCounts.following}</span>
+                                            <span className="text-[#E5E4E2]/80">{text.profile.followers}: {profile.followCounts.followers}</span>
+                                        </div>
+                                    ) : (
+                                        <p className="mb-5 text-[10px] uppercase tracking-[0.14em] text-gray-500">
+                                            Follow counts hidden
+                                        </p>
+                                    )}
 
                                     <p className="text-xs font-serif italic text-sage/60 text-center max-w-xs leading-relaxed">
                                         "{profile.bio}"
@@ -610,32 +634,43 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
 
                             <div className="bg-white/5 border border-white/5 rounded-xl p-5 sm:p-6 animate-fade-in">
                                 <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase mb-5">{text.profile.stats}</h3>
-                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-5 text-center">
-                                    <div className="flex flex-col gap-1.5">
-                                        <span className="text-2xl sm:text-3xl font-bold text-sage">{profile.streak || 0}</span>
-                                        <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profileWidget.streak}</span>
+                                {visibility.showStats ? (
+                                    <div className={`grid ${visibility.showFollowCounts ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5' : 'grid-cols-2 sm:grid-cols-3'} gap-4 sm:gap-5 text-center`}>
+                                        <div className="flex flex-col gap-1.5">
+                                            <span className="text-2xl sm:text-3xl font-bold text-sage">{profile.streak || 0}</span>
+                                            <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profileWidget.streak}</span>
+                                        </div>
+                                        <div className="flex flex-col gap-1.5">
+                                            <span className="text-2xl sm:text-3xl font-bold text-sage">{profile.daysPresent}</span>
+                                            <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profile.days}</span>
+                                        </div>
+                                        <div className="flex flex-col gap-1.5">
+                                            <span className="text-2xl sm:text-3xl font-bold text-sage">{commentsCount}</span>
+                                            <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profile.comments}</span>
+                                        </div>
+                                        {visibility.showFollowCounts && (
+                                            <>
+                                                <div className="flex flex-col gap-1.5">
+                                                    <span className="text-2xl sm:text-3xl font-bold text-sage">{profile.followCounts.following}</span>
+                                                    <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profile.following}</span>
+                                                </div>
+                                                <div className="flex flex-col gap-1.5">
+                                                    <span className="text-2xl sm:text-3xl font-bold text-sage">{profile.followCounts.followers}</span>
+                                                    <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profile.followers}</span>
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
-                                    <div className="flex flex-col gap-1.5">
-                                        <span className="text-2xl sm:text-3xl font-bold text-sage">{profile.daysPresent}</span>
-                                        <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profile.days}</span>
-                                    </div>
-                                    <div className="flex flex-col gap-1.5">
-                                        <span className="text-2xl sm:text-3xl font-bold text-sage">{commentsCount}</span>
-                                        <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profile.comments}</span>
-                                    </div>
-                                    <div className="flex flex-col gap-1.5">
-                                        <span className="text-2xl sm:text-3xl font-bold text-sage">{profile.followCounts.following}</span>
-                                        <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profile.following}</span>
-                                    </div>
-                                    <div className="flex flex-col gap-1.5">
-                                        <span className="text-2xl sm:text-3xl font-bold text-sage">{profile.followCounts.followers}</span>
-                                        <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profile.followers}</span>
-                                    </div>
-                                </div>
+                                ) : (
+                                    <p className="text-[10px] uppercase tracking-[0.16em] text-gray-500">
+                                        This user hides profile stats.
+                                    </p>
+                                )}
                             </div>
                         </div>
 
                         <div className="space-y-7">
+                            {visibility.showStats ? (
                             <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
                                 <div className="flex justify-between items-end mb-5 border-b border-gray-100/10 pb-4">
                                     <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase">{text.profile.activity}</h3>
@@ -673,7 +708,14 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                                     </div>
                                 </div>
                             </div>
+                            ) : (
+                            <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
+                                <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase mb-3">{text.profile.activity}</h3>
+                                <p className="text-[10px] uppercase tracking-[0.16em] text-gray-500">This user hides activity stats.</p>
+                            </div>
+                            )}
 
+                            {visibility.showActivity ? (
                             <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
                                 <div className="flex justify-between items-end mb-5 border-b border-gray-100/10 pb-4">
                                     <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase">{text.profile.filmArchive}</h3>
@@ -709,7 +751,14 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                                     </div>
                                 )}
                             </div>
+                            ) : (
+                            <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
+                                <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase mb-3">{text.profile.filmArchive}</h3>
+                                <p className="text-[10px] uppercase tracking-[0.16em] text-gray-500">This user hides archive activity.</p>
+                            </div>
+                            )}
 
+                            {visibility.showActivity ? (
                             <div ref={commentsSectionRef} className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
                                 <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase mb-5">{text.profile.commentsAndReplies}</h3>
                                 <p className="text-[9px] tracking-[0.14em] uppercase text-gray-500 mb-4">
@@ -733,6 +782,12 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                                     )}
                                 </div>
                             </div>
+                            ) : (
+                            <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
+                                <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase mb-3">{text.profile.commentsAndReplies}</h3>
+                                <p className="text-[10px] uppercase tracking-[0.16em] text-gray-500">This user hides comments and replies.</p>
+                            </div>
+                            )}
                         </div>
                     </div>
                 )}

@@ -2004,7 +2004,33 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginLeft: 8,
+    flexWrap: 'wrap',
+  },
+  commentFeedInlineAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 4,
+  },
+  commentFeedInlineActionActive: {
+    opacity: 1,
+  },
+  commentFeedInlineActionText: {
+    color: '#C9C6BF',
+    fontSize: 10,
+    fontFamily: 'Inter_600SemiBold',
+    fontWeight: '600',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  commentFeedInlineActionTextActive: {
+    color: '#E5E4E2',
+  },
+  commentFeedInlineActionDanger: {
+    opacity: 0.92,
+  },
+  commentFeedInlineActionDangerText: {
+    color: '#A57164',
   },
   commentFeedActionButton: {
     paddingHorizontal: 10,
@@ -2504,7 +2530,7 @@ export const styles = StyleSheet.create({
   },
   movieArchiveEntryHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 8,
   },
@@ -2536,6 +2562,14 @@ export const styles = StyleSheet.create({
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  movieArchiveDeleteText: {
+    color: '#A57164',
+    fontSize: 10,
+    fontFamily: 'Inter_700Bold',
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
   },
   modalActionStack: {
     marginTop: 6,

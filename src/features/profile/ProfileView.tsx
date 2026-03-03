@@ -383,7 +383,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                 shareX: 'X',
                 rewardHint: 'Gunluk ilk uygun paylasim +18 XP',
                 commentLocked: 'Yorum paylasimi icin once bugun yorum yaz.',
-                streakLocked: 'Streak paylasimi icin once bugunku rituelini tamamla.',
+                streakLocked: 'Streak paylasimi icin once bugunku yorumunu tamamla.',
+                copiedHint: 'Paylasim metni panoya kopyalandi.',
                 failedHint: 'Paylasim hazirlanamadi. Tekrar dene.',
                 claimedHint: 'Bugun paylasim bonusu zaten alindi.'
             };
@@ -401,7 +402,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                 shareX: 'X',
                 rewardHint: 'Primer compartido valido del dia: +18 XP',
                 commentLocked: 'Escribe un comentario hoy antes de reclamar XP por compartir.',
-                streakLocked: 'Completa el ritual de hoy antes de reclamar XP por racha.',
+                streakLocked: 'Completa el comentario de hoy antes de reclamar XP por racha.',
+                copiedHint: 'El texto para compartir se copio al portapapeles.',
                 failedHint: 'No se pudo preparar el compartido. Intenta otra vez.',
                 claimedHint: 'El bonus de compartido de hoy ya fue reclamado.'
             };
@@ -419,7 +421,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                 shareX: 'X',
                 rewardHint: 'Premier partage valide du jour : +18 XP',
                 commentLocked: 'Ecris un commentaire aujourd\'hui avant le bonus de partage.',
-                streakLocked: 'Termine le rituel du jour avant le bonus de serie.',
+                streakLocked: 'Termine le commentaire du jour avant le bonus de serie.',
+                copiedHint: 'Le texte de partage a ete copie.',
                 failedHint: 'Impossible de preparer le partage. Reessaie.',
                 claimedHint: 'Le bonus de partage du jour est deja pris.'
             };
@@ -436,7 +439,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
             shareX: 'X',
             rewardHint: 'First eligible share of the day: +18 XP',
             commentLocked: 'Write a comment today before claiming comment-share XP.',
-            streakLocked: 'Complete today\'s ritual before claiming streak-share XP.',
+            streakLocked: 'Complete today\'s comment before claiming streak-share XP.',
+            copiedHint: 'Share text copied to clipboard.',
             failedHint: 'Could not prepare share. Try again.',
             claimedHint: 'Today\'s share bonus has already been claimed.'
         };
@@ -518,41 +522,65 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
 
         const payload = buildSharePayload(platform, goal);
         const pageUrl = goal === 'streak' ? profileOgUrl : filmOgUrl;
-        const shareUrl = new URL(inviteLink || window.location.origin);
-        shareUrl.searchParams.set('utm_source', 'invite_share');
-        shareUrl.searchParams.set('utm_medium', platform);
-        shareUrl.searchParams.set('utm_campaign', 'referral_mvp');
-        shareUrl.searchParams.set('utm_content', `profile_${platform}_${goal}`);
-        if (inviteCode) {
-            shareUrl.searchParams.set('invite', inviteCode);
+        const rawShareBase = inviteLink || pageUrl || window.location.href;
+        let destinationUrl = pageUrl || window.location.href;
+
+        try {
+            const shareUrl = new URL(rawShareBase, window.location.origin);
+            shareUrl.searchParams.set('utm_source', 'invite_share');
+            shareUrl.searchParams.set('utm_medium', platform);
+            shareUrl.searchParams.set('utm_campaign', 'referral_mvp');
+            shareUrl.searchParams.set('utm_content', `profile_${platform}_${goal}`);
+            if (inviteCode) {
+                shareUrl.searchParams.set('invite', inviteCode);
+            }
+            appendMobileDeepLinkParams(shareUrl, {
+                type: 'share',
+                platform,
+                goal,
+                inviteCode: inviteCode || undefined
+            });
+            destinationUrl = shareUrl.toString();
+        } catch {
+            destinationUrl = pageUrl || window.location.href;
         }
-        appendMobileDeepLinkParams(shareUrl, {
-            type: 'share',
-            platform,
-            goal,
-            inviteCode: inviteCode || undefined
-        });
-        const destinationUrl = shareUrl.toString();
 
         try {
             if (platform === 'x') {
                 const xIntentUrl = `https://x.com/intent/tweet?text=${encodeURIComponent(payload)}&url=${encodeURIComponent(destinationUrl)}`;
                 window.open(xIntentUrl, '_blank', 'noopener,noreferrer');
             } else {
-                await copyToClipboard(`${payload}\n${destinationUrl}\n${pageUrl}`);
-                const target = platform === 'instagram'
-                    ? 'https://www.instagram.com/'
-                    : 'https://www.tiktok.com/';
-                window.open(target, '_blank', 'noopener,noreferrer');
+                if (navigator.share) {
+                    await navigator.share({
+                        title: '180 Absolute Cinema',
+                        text: payload,
+                        url: destinationUrl
+                    });
+                } else {
+                    const copied = await copyToClipboard(`${payload}\n${destinationUrl}`);
+                    if (!copied) {
+                        setShareStatus(shareCopy.failedHint);
+                        return;
+                    }
+                }
             }
 
             const rewardResult = awardShareXP(platform, goal);
-            if (rewardResult.ok) {
+            if (platform !== 'x' && !navigator.share) {
+                setShareStatus(
+                    rewardResult.ok
+                        ? `${shareCopy.copiedHint} ${shareCopy.rewardHint}`
+                        : `${shareCopy.copiedHint} ${shareCopy.claimedHint}`
+                );
+            } else if (rewardResult.ok) {
                 setShareStatus(shareCopy.rewardHint);
             } else {
                 setShareStatus(shareCopy.claimedHint);
             }
-        } catch {
+        } catch (error) {
+            if (error instanceof DOMException && error.name === 'AbortError') {
+                return;
+            }
             setShareStatus(shareCopy.failedHint);
         }
     };
@@ -1184,17 +1212,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                             </div>
                         </div>
 
-                        {/* Social Share Card */}
-                        <div className="relative overflow-hidden rounded-xl border border-sage/20 bg-gradient-to-br from-[#111814] via-[#161616] to-[#2a1f1a] p-6 animate-fade-in shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
-                            <div className="pointer-events-none absolute -top-16 -right-16 w-48 h-48 rounded-full bg-sage/15 blur-3xl" />
-                            <div className="pointer-events-none absolute -bottom-20 -left-10 w-44 h-44 rounded-full bg-clay/20 blur-3xl" />
-                            <div className="relative z-10">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h3 className="text-lg font-bold tracking-[0.06em] uppercase text-white">{shareCopy.title}</h3>
-                                    <span className="text-[10px] uppercase tracking-[0.2em] text-clay/80">{shareCopy.rewardHint}</span>
+                        <div className="bg-white/5 border border-white/10 rounded-xl p-4 sm:p-5 animate-fade-in">
+                            <div className="flex items-start justify-between gap-4 mb-4">
+                                <div>
+                                    <h3 className="text-sm font-bold tracking-[0.18em] uppercase text-sage">{shareCopy.title}</h3>
+                                    <p className="mt-2 text-[11px] text-white/65">{shareCopy.subtitle}</p>
                                 </div>
-
-                                <p className="text-[11px] text-white/70 mb-4">{shareCopy.subtitle}</p>
+                                <span className="text-[9px] uppercase tracking-[0.16em] text-gray-500 text-right">{shareCopy.rewardHint}</span>
+                            </div>
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
                                     <button
@@ -1272,10 +1297,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                                     </button>
                                 </div>
 
-                                {shareStatus && (
-                                    <p className="mt-3 text-[10px] uppercase tracking-[0.14em] text-sage/90">{shareStatus}</p>
-                                )}
-                            </div>
+                            {shareStatus && (
+                                <p className="mt-3 text-[10px] uppercase tracking-[0.14em] text-sage/90">{shareStatus}</p>
+                            )}
                         </div>
 
                         {/* Film Journal Card */}

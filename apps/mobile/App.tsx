@@ -26,6 +26,7 @@ import {
   Linking,
   Platform,
   Pressable,
+  RefreshControl,
   Share,
   ScrollView,
   Text,
@@ -99,6 +100,7 @@ import {
   type CommentFeedSort,
 } from './src/lib/mobileCommentsFeed';
 import {
+  deleteMobileCommentRitual,
   echoMobileCommentRitual,
   fetchMobileCommentReplies,
   submitMobileCommentReply,
@@ -179,6 +181,7 @@ import {
 import { resolveMobileWebBaseUrl } from './src/lib/mobileEnv';
 import {
   readStoredMobileThemeMode,
+  writeStoredMobileThemeMode,
   type MobileThemeMode,
 } from './src/lib/mobileThemeMode';
 
@@ -668,7 +671,12 @@ export default function App() {
   });
   const [themeMode, setThemeMode] = useState<MobileThemeMode>('midnight');
   const [settingsVisible, setSettingsVisible] = useState(false);
-  const [settingsLanguage, setSettingsLanguage] = useState<MobileSettingsLanguage>('en');
+  const [settingsLanguage, setSettingsLanguage] = useState<MobileSettingsLanguage>('tr');
+  const [dailyPullRefreshing, setDailyPullRefreshing] = useState(false);
+  const [explorePullRefreshing, setExplorePullRefreshing] = useState(false);
+  const [inboxPullRefreshing, setInboxPullRefreshing] = useState(false);
+  const [marksPullRefreshing, setMarksPullRefreshing] = useState(false);
+  const [profilePullRefreshing, setProfilePullRefreshing] = useState(false);
   const [settingsIdentityDraft, setSettingsIdentityDraft] = useState<MobileSettingsIdentityDraft>(
     DEFAULT_SETTINGS_IDENTITY
   );
@@ -810,6 +818,8 @@ export default function App() {
     displayNameHint: string;
     source: PublicProfileOpenOrigin;
   } | null>(null);
+  const profileScrollRef = useRef<ScrollView | null>(null);
+  const [profileShareHubOffsetY, setProfileShareHubOffsetY] = useState(0);
   const [, setActiveTab] = useState<MainTabKey>('daily');
   const [debugExpanded, setDebugExpanded] = useState(false);
   const {
@@ -1149,7 +1159,7 @@ export default function App() {
     const message = !result.ok
       ? `Letterboxd filmleri gosteriliyor. ${result.message}`
       : letterboxdSnapshot?.items.length
-        ? 'Ritual ve Letterboxd filmleri guncellendi.'
+        ? 'Yorum ve Letterboxd filmleri guncellendi.'
         : result.message;
 
     setWatchedMoviesState({
@@ -2589,6 +2599,10 @@ export default function App() {
   }, [themeMode]);
 
   useEffect(() => {
+    void writeStoredMobileThemeMode(themeMode);
+  }, [themeMode]);
+
+  useEffect(() => {
     let active = true;
     void (async () => {
       const [rawIdentity, rawLanguage, rawPrivacy] = await Promise.all([
@@ -3034,11 +3048,61 @@ export default function App() {
     });
   };
 
+  const handlePullRefreshDaily = useCallback(async () => {
+    if (dailyPullRefreshing) return;
+    setDailyPullRefreshing(true);
+    try {
+      await Promise.all([loadDailyMovies(), refreshDailyCommentFeed()]);
+    } finally {
+      setDailyPullRefreshing(false);
+    }
+  }, [dailyPullRefreshing, loadDailyMovies, refreshDailyCommentFeed]);
+
+  const handlePullRefreshExplore = useCallback(async () => {
+    if (explorePullRefreshing) return;
+    setExplorePullRefreshing(true);
+    try {
+      await Promise.all([
+        refreshArenaLeaderboard(),
+        refreshCommentFeed(commentFeedScope, debouncedCommentFeedQuery, commentFeedSort),
+      ]);
+    } finally {
+      setExplorePullRefreshing(false);
+    }
+  }, [
+    commentFeedScope,
+    commentFeedSort,
+    debouncedCommentFeedQuery,
+    explorePullRefreshing,
+    refreshArenaLeaderboard,
+    refreshCommentFeed,
+  ]);
+
+  const handlePullRefreshInbox = useCallback(async () => {
+    if (inboxPullRefreshing) return;
+    setInboxPullRefreshing(true);
+    try {
+      await refreshPushInbox();
+    } finally {
+      setInboxPullRefreshing(false);
+    }
+  }, [inboxPullRefreshing, refreshPushInbox]);
+
+  const handlePullRefreshMarks = useCallback(async () => {
+    if (marksPullRefreshing) return;
+    setMarksPullRefreshing(true);
+    try {
+      await refreshProfileStats();
+    } finally {
+      setMarksPullRefreshing(false);
+    }
+  }, [marksPullRefreshing, refreshProfileStats]);
+
   const handleSubmitRitualDraft = useCallback(async () => {
     if (!selectedDailyMovie) {
       setRitualSubmitState({
         status: 'error',
-        message: 'Ritual icin once film secimi yapilmali.',
+        message: 'Yorum icin once film secimi yapilmali.',
       });
       return;
     }
@@ -3047,14 +3111,14 @@ export default function App() {
     if (!text) {
       setRitualSubmitState({
         status: 'error',
-        message: 'Ritual metni bos olamaz.',
+        message: 'Yorum metni bos olamaz.',
       });
       return;
     }
 
     setRitualSubmitState({
       status: 'submitting',
-      message: 'Ritual gonderiliyor...',
+      message: 'Yorum gonderiliyor...',
     });
 
     const draftLeagueKey =
@@ -3350,7 +3414,7 @@ export default function App() {
   const publicProfileLeadMetrics = [
     ...(publicProfileVisibility.showStats
       ? [
-          { label: 'Ritual', value: String(publicProfileStats.rituals) },
+          { label: 'Yorum', value: String(publicProfileStats.rituals) },
           { label: 'Streak', value: String(publicProfileStats.streak) },
         ]
       : [{ label: 'Istatistik', value: 'Gizli' }]),
@@ -3706,6 +3770,55 @@ export default function App() {
       return result;
     },
     [profileDisplayName, resolveNotificationActorLabel]
+  );
+
+  const deleteOwnCommentById = useCallback(
+    async (id: string) => {
+      const result = await deleteMobileCommentRitual(id);
+
+      setCommentFeedState((prev) => ({
+        ...prev,
+        message: result.message,
+        items: result.ok ? prev.items.filter((entry) => entry.id !== id) : prev.items,
+      }));
+      setDailyCommentFeedState((prev) => ({
+        ...prev,
+        message: result.message,
+        items: result.ok ? prev.items.filter((entry) => entry.id !== id) : prev.items,
+      }));
+      setProfileMovieArchiveModalState((prev) => ({
+        ...prev,
+        message: prev.visible ? result.message : prev.message,
+        entries: result.ok ? prev.entries.filter((entry) => entry.id !== id) : prev.entries,
+      }));
+
+      if (result.ok) {
+        void refreshProfileStats();
+        void refreshWatchedMovies();
+      }
+
+      return result;
+    },
+    [refreshProfileStats, refreshWatchedMovies]
+  );
+
+  const handleDeleteComment = useCallback(
+    async (item: CommentFeedState['items'][number]) => {
+      if (!item.isMine) {
+        return {
+          ok: false,
+          message: 'Sadece kendi yorumunu silebilirsin.',
+        };
+      }
+
+      return deleteOwnCommentById(item.id);
+    },
+    [deleteOwnCommentById]
+  );
+
+  const handleDeleteProfileMovieArchiveEntry = useCallback(
+    async (entry: MobileProfileMovieArchiveEntry) => deleteOwnCommentById(entry.id),
+    [deleteOwnCommentById]
   );
 
   useEffect(() => {
@@ -4264,16 +4377,30 @@ export default function App() {
     }
   }, []);
 
-  const handleRefreshExploreSurface = useCallback(() => {
-    void refreshArenaLeaderboard();
-    void refreshCommentFeed(commentFeedScope, debouncedCommentFeedQuery, commentFeedSort);
-  }, [commentFeedScope, commentFeedSort, debouncedCommentFeedQuery, refreshArenaLeaderboard, refreshCommentFeed]);
-
-  const handleRefreshProfileSurface = useCallback(() => {
-    void refreshProfileStats();
-    void refreshWatchedMovies();
-    void refreshProfileGenreDistribution();
-  }, [refreshProfileGenreDistribution, refreshProfileStats, refreshWatchedMovies]);
+  const handlePullRefreshProfile = useCallback(async () => {
+    if (profilePullRefreshing) return;
+    setProfilePullRefreshing(true);
+    try {
+      if (publicProfileFullState.visible) {
+        await handleRefreshPublicProfileFull();
+      } else {
+        await Promise.all([
+          refreshProfileStats(),
+          refreshWatchedMovies(),
+          refreshProfileGenreDistribution(),
+        ]);
+      }
+    } finally {
+      setProfilePullRefreshing(false);
+    }
+  }, [
+    handleRefreshPublicProfileFull,
+    profilePullRefreshing,
+    publicProfileFullState.visible,
+    refreshProfileGenreDistribution,
+    refreshProfileStats,
+    refreshWatchedMovies,
+  ]);
 
   const handleClaimInvite = useCallback(async (rawInviteCode: string) => {
     const inviteCodeText = String(rawInviteCode || '').trim().toUpperCase();
@@ -4493,6 +4620,20 @@ export default function App() {
     isShareRouteActive,
     refreshInviteProgram,
   ]);
+
+  useEffect(() => {
+    if (screenPlan.screen !== 'share_hub') return;
+    if (publicProfileFullState.visible) return;
+
+    const timeout = setTimeout(() => {
+      profileScrollRef.current?.scrollTo({
+        y: Math.max(profileShareHubOffsetY - 24, 0),
+        animated: true,
+      });
+    }, 80);
+
+    return () => clearTimeout(timeout);
+  }, [profileShareHubOffsetY, publicProfileFullState.visible, screenPlan.screen]);
 
   const handleShareHubShare = useCallback(
     async (platform: SharePlatform) => {
@@ -4755,7 +4896,7 @@ export default function App() {
       </View>
       <Text style={styles.heroEyebrow}>Absolute Cinema</Text>
       <Text style={styles.title}>180 Absolute Cinema</Text>
-      <Text style={styles.subtitle}>Gunluk secim, ritual notu ve sosyal akis tek yerde.</Text>
+      <Text style={styles.subtitle}>Gunluk secim, yorum notu ve sosyal akis tek yerde.</Text>
       <View style={styles.heroMetaRow}>
         <Text style={styles.heroBadgeMuted}>
           {isSignedIn ? 'Oturum: hazir' : 'Oturum: gerekli'}
@@ -4908,6 +5049,7 @@ export default function App() {
         />
         <LeaguePromotionModal
           event={leaguePromotionEvent}
+          language={settingsLanguage}
           onClose={() => setLeaguePromotionEvent(null)}
         />
         <Animated.View
@@ -4999,6 +5141,15 @@ export default function App() {
                       keyboardShouldPersistTaps="handled"
                       keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
                       automaticallyAdjustKeyboardInsets
+                      refreshControl={
+                        <RefreshControl
+                          refreshing={dailyPullRefreshing}
+                          onRefresh={() => {
+                            void handlePullRefreshDaily();
+                          }}
+                          tintColor={isDawnTheme ? '#A57164' : '#8A9A5B'}
+                        />
+                      }
                       showsVerticalScrollIndicator={false}
                     >
                       {renderHeroCard('Daily')}
@@ -5017,9 +5168,6 @@ export default function App() {
                           setSelectedDailyMovieId(movieId);
                           setDailyMovieDetailsVisible(true);
                         }}
-                        onRetry={() => {
-                          void loadDailyMovies();
-                        }}
                       />
                       <CommentFeedCard
                         state={dailyCommentFeedState}
@@ -5032,10 +5180,8 @@ export default function App() {
                         onEcho={handleEchoComment}
                         onLoadReplies={handleLoadCommentReplies}
                         onSubmitReply={handleSubmitCommentReply}
+                        onDeleteItem={handleDeleteComment}
                         onOpenAuthorProfile={handleOpenCommentAuthorProfile}
-                        onRefresh={() => {
-                          void refreshDailyCommentFeed();
-                        }}
                       />
                     </ScrollView>
                   </KeyboardAvoidingView>
@@ -5055,6 +5201,15 @@ export default function App() {
                       keyboardShouldPersistTaps="handled"
                       keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
                       automaticallyAdjustKeyboardInsets
+                      refreshControl={
+                        <RefreshControl
+                          refreshing={explorePullRefreshing}
+                          onRefresh={() => {
+                            void handlePullRefreshExplore();
+                          }}
+                          tintColor={isDawnTheme ? '#A57164' : '#8A9A5B'}
+                        />
+                      }
                       showsVerticalScrollIndicator={false}
                     >
                       <SectionLeadCard
@@ -5075,7 +5230,7 @@ export default function App() {
                         ]}
                         metrics={[
                           { label: 'Seri', value: streakSummary },
-                          { label: 'Ritual', value: ritualsCountSummary },
+                          { label: 'Yorum', value: ritualsCountSummary },
                           { label: 'Arena', value: String(arenaState.entries.length || 0) },
                           {
                             label: 'Yorum',
@@ -5085,13 +5240,6 @@ export default function App() {
                                 : commentFeedState.status === 'loading'
                                   ? '...'
                                   : '--',
-                          },
-                        ]}
-                        actions={[
-                          {
-                            label: 'Arena Yenile',
-                            tone: 'neutral',
-                            onPress: handleRefreshExploreSurface,
                           },
                         ]}
                       />
@@ -5143,14 +5291,8 @@ export default function App() {
                         onEcho={handleEchoComment}
                         onLoadReplies={handleLoadCommentReplies}
                         onSubmitReply={handleSubmitCommentReply}
+                        onDeleteItem={handleDeleteComment}
                         onOpenAuthorProfile={handleOpenCommentAuthorProfile}
-                        onRefresh={() => {
-                          void refreshCommentFeed(
-                            commentFeedScope,
-                            debouncedCommentFeedQuery,
-                            commentFeedSort
-                          );
-                        }}
                       />
                       {isDevSurfaceEnabled ? <PlatformRulesCard /> : null}
                     </ScrollView>
@@ -5164,6 +5306,15 @@ export default function App() {
                     contentContainerStyle={[styles.container, styles.containerWithTabs]}
                     keyboardShouldPersistTaps="handled"
                     keyboardDismissMode="on-drag"
+                    refreshControl={
+                      <RefreshControl
+                        refreshing={inboxPullRefreshing}
+                        onRefresh={() => {
+                          void handlePullRefreshInbox();
+                        }}
+                        tintColor={isDawnTheme ? '#A57164' : '#8A9A5B'}
+                      />
+                    }
                     showsVerticalScrollIndicator={false}
                   >
                     <PushInboxCard
@@ -5189,6 +5340,15 @@ export default function App() {
                     contentContainerStyle={[styles.container, styles.containerWithTabs]}
                     keyboardShouldPersistTaps="handled"
                     keyboardDismissMode="on-drag"
+                    refreshControl={
+                      <RefreshControl
+                        refreshing={marksPullRefreshing}
+                        onRefresh={() => {
+                          void handlePullRefreshMarks();
+                        }}
+                        tintColor={isDawnTheme ? '#A57164' : '#8A9A5B'}
+                      />
+                    }
                     showsVerticalScrollIndicator={false}
                   >
                     {isDevSurfaceEnabled
@@ -5197,7 +5357,7 @@ export default function App() {
                           body: 'Rozet arsivini tek sekmeden takip et.',
                           badges: [
                             { label: `Seri ${streakSummary}` },
-                            { label: `Ritual ${ritualsCountSummary}` },
+                            { label: `Yorum ${ritualsCountSummary}` },
                           ],
                         })
                       : null}
@@ -5207,7 +5367,12 @@ export default function App() {
                         <Text style={styles.sectionHeaderMeta}>Koleksiyon</Text>
                       </View>
                     </View>
-                    <ProfileMarksCard state={profileState} isSignedIn={isSignedIn} mode="all" />
+                    <ProfileMarksCard
+                      state={profileState}
+                      isSignedIn={isSignedIn}
+                      language={settingsLanguage}
+                      mode="all"
+                    />
                     <CollapsibleSectionCard
                       accent="clay"
                       title="Ligler"
@@ -5234,9 +5399,19 @@ export default function App() {
               <Tab.Screen name={MAIN_TAB_BY_KEY.profile}>
                 {() => (
                   <ScrollView
+                    ref={profileScrollRef}
                     contentContainerStyle={[styles.container, styles.containerWithTabs]}
                     keyboardShouldPersistTaps="handled"
                     keyboardDismissMode="on-drag"
+                    refreshControl={
+                      <RefreshControl
+                        refreshing={profilePullRefreshing}
+                        onRefresh={() => {
+                          void handlePullRefreshProfile();
+                        }}
+                        tintColor={isDawnTheme ? '#A57164' : '#8A9A5B'}
+                      />
+                    }
                     showsVerticalScrollIndicator={false}
                   >
                     {isDevSurfaceEnabled
@@ -5281,6 +5456,9 @@ export default function App() {
                             ...(publicProfileModalState.followsYou
                               ? [{ label: 'Seni takip ediyor', tone: 'clay' as const }]
                               : []),
+                            ...(!publicProfileVisibility.showActivity
+                              ? [{ label: 'Aktivite gizli', tone: 'muted' as const }]
+                              : []),
                           ]}
                           metrics={publicProfileLeadMetrics}
                           actions={[
@@ -5297,15 +5475,8 @@ export default function App() {
                                 ]
                               : []),
                             {
-                              label: 'Yenile',
+                              label: 'Kapat',
                               tone: 'neutral' as const,
-                              onPress: () => {
-                                void handleRefreshPublicProfileFull();
-                              },
-                            },
-                            {
-                              label: 'Kendi Profilim',
-                              tone: 'teal' as const,
                               onPress: handleClosePublicProfileFull,
                             },
                           ]}
@@ -5343,73 +5514,76 @@ export default function App() {
                           </View>
                         </CollapsibleSectionCard>
 
-                        <CollapsibleSectionCard
-                          accent="sage"
-                          title="Film Arsivi"
-                          meta={`${publicWatchedMovies.length} film`}
-                          defaultExpanded
-                        >
-                          {publicWatchedMovies.length > 0 ? (
-                            <View style={styles.movieList}>
-                              {publicWatchedMovies.map((movie) => (
-                                <Pressable
-                                  key={movie.id}
-                                  style={({ pressed }) => [
-                                    styles.movieRow,
-                                    pressed ? styles.movieRowPressed : null,
-                                  ]}
-                                  onPress={() => {
-                                    void handleOpenPublicProfileMovieArchive(movie);
-                                  }}
-                                  accessibilityRole="button"
-                                  accessibilityLabel={`${movie.movieTitle} film izi detayini ac`}
-                                >
-                                  <Text style={styles.movieTitle}>{movie.movieTitle}</Text>
-                                  <Text style={styles.movieMeta}>
-                                    {movie.year ? `${movie.year} | ` : ''}
-                                    Son izleme: {movie.watchedDayKey || '-'}
-                                    {movie.watchCount > 1 ? ` | Tekrar: ${movie.watchCount}` : ''}
-                                  </Text>
-                                  <Text style={styles.movieRowActionHint}>Film Izi</Text>
-                                </Pressable>
-                              ))}
-                            </View>
-                          ) : (
-                            <StatePanel
-                              tone="sage"
-                              variant={
-                                publicProfileFullState.status === 'loading'
-                                  ? 'loading'
-                                  : publicProfileFullState.status === 'error'
-                                    ? 'error'
-                                    : 'empty'
-                              }
-                              eyebrow="Public Film Arsivi"
-                              title={
-                                publicProfileFullState.status === 'loading'
-                                  ? 'Film izi taraniyor'
-                                  : publicProfileFullState.status === 'error'
-                                    ? 'Film arsivi okunamadi'
-                                    : 'Bu profilde henuz film izi yok'
-                              }
-                              body={
-                                publicProfileFullState.status === 'error'
-                                  ? publicProfileFullState.message ||
-                                    'Public film arsivi okunurken gecici bir sorun olustu.'
-                                  : 'Izlenen filmler burada listelenir.'
-                              }
-                              meta="Yorumlar bu profilde gosterilmez."
-                              actionLabel={
-                                publicProfileFullState.status === 'loading'
-                                  ? undefined
-                                  : 'Public Profili Yenile'
-                              }
-                              onAction={() => {
-                                void handleRefreshPublicProfileFull();
-                              }}
-                            />
-                          )}
-                        </CollapsibleSectionCard>
+                        {publicProfileVisibility.showActivity ? (
+                          <CollapsibleSectionCard
+                            accent="sage"
+                            title="Film Arsivi"
+                            meta={`${publicWatchedMovies.length} film`}
+                            defaultExpanded
+                          >
+                            {publicWatchedMovies.length > 0 ? (
+                              <View style={styles.movieList}>
+                                {publicWatchedMovies.map((movie) => (
+                                  <Pressable
+                                    key={movie.id}
+                                    style={({ pressed }) => [
+                                      styles.movieRow,
+                                      pressed ? styles.movieRowPressed : null,
+                                    ]}
+                                    onPress={() => {
+                                      void handleOpenPublicProfileMovieArchive(movie);
+                                    }}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={`${movie.movieTitle} film izi detayini ac`}
+                                  >
+                                    <Text style={styles.movieTitle}>{movie.movieTitle}</Text>
+                                    <Text style={styles.movieMeta}>
+                                      {movie.year ? `${movie.year} | ` : ''}
+                                      Son izleme: {movie.watchedDayKey || '-'}
+                                      {movie.watchCount > 1 ? ` | Tekrar: ${movie.watchCount}` : ''}
+                                    </Text>
+                                    <Text style={styles.movieRowActionHint}>Film Izi</Text>
+                                  </Pressable>
+                                ))}
+                              </View>
+                            ) : (
+                              <StatePanel
+                                tone="sage"
+                                variant={
+                                  publicProfileFullState.status === 'loading'
+                                    ? 'loading'
+                                    : publicProfileFullState.status === 'error'
+                                      ? 'error'
+                                      : 'empty'
+                                }
+                                eyebrow="Public Film Arsivi"
+                                title={
+                                  publicProfileFullState.status === 'loading'
+                                    ? 'Film izi taraniyor'
+                                    : publicProfileFullState.status === 'error'
+                                      ? 'Film arsivi okunamadi'
+                                      : 'Bu profilde henuz film izi yok'
+                                }
+                                body={
+                                  publicProfileFullState.status === 'error'
+                                    ? publicProfileFullState.message ||
+                                      'Public film arsivi okunurken gecici bir sorun olustu.'
+                                    : 'Izlenen filmler burada listelenir.'
+                                }
+                                meta="Yorumlar bu profilde gosterilmez."
+                              />
+                            )}
+                          </CollapsibleSectionCard>
+                        ) : (
+                          <StatePanel
+                            tone="sage"
+                            variant="empty"
+                            eyebrow="Public Aktivite"
+                            title="Bu kullanici aktivite alanini gizledi"
+                            body="Film arsivi ve yorum akisi bu profilde gosterilmiyor."
+                            meta="Takip iliskisi etkilenmez."
+                          />
+                        )}
 
                         <View style={styles.sectionAnchor}>
                           <View style={styles.sectionHeaderRow}>
@@ -5425,6 +5599,7 @@ export default function App() {
                           <ProfileMarksCard
                             state={publicProfileMarksState}
                             isSignedIn={isSignedIn || Boolean(publicSnapshot)}
+                            language={settingsLanguage}
                             mode="unlocked"
                           />
                         ) : (
@@ -5445,6 +5620,8 @@ export default function App() {
                         <ProfileUnifiedCard
                           state={profileState}
                           isSignedIn={isSignedIn}
+                          language={settingsLanguage}
+                          isShareHubActive={screenPlan.screen === 'share_hub'}
                           themeModeLabel={themeModeLabel}
                           displayName={profileShellTitle}
                           avatarUrl={profileAvatarUrl}
@@ -5462,7 +5639,6 @@ export default function App() {
                           onOpenMovieArchive={(movie) => {
                             void handleOpenProfileMovieArchive(movie);
                           }}
-                          onRefresh={handleRefreshProfileSurface}
                         />
                         {isSignedIn ? (
                           <>
@@ -5474,20 +5650,26 @@ export default function App() {
                               />
                             ) : null}
                             {screenPlan.screen === 'share_hub' ? (
-                              <ShareHubScreen
-                                inviteCode={inviteCode}
-                                inviteLink={effectiveShareInviteLink}
-                                platform={sharePlatform}
-                                goal={selectedShareGoal}
-                                streakValue={profileState.status === 'success' ? profileState.streak : 0}
-                                commentPreview={shareCommentPreview}
-                                canShareComment={canShareComment}
-                                canShareStreak={canShareStreak}
-                                shareStatus={shareHubState.message}
-                                shareStatusTone={shareHubState.status}
-                                onSetGoal={setSelectedShareGoal}
-                                onShare={handleShareHubShare}
-                              />
+                              <View
+                                onLayout={(event) => {
+                                  setProfileShareHubOffsetY(event.nativeEvent.layout.y);
+                                }}
+                              >
+                                <ShareHubScreen
+                                  inviteCode={inviteCode}
+                                  inviteLink={effectiveShareInviteLink}
+                                  platform={sharePlatform}
+                                  goal={selectedShareGoal}
+                                  streakValue={profileState.status === 'success' ? profileState.streak : 0}
+                                  commentPreview={shareCommentPreview}
+                                  canShareComment={canShareComment}
+                                  canShareStreak={canShareStreak}
+                                  shareStatus={shareHubState.message}
+                                  shareStatusTone={shareHubState.status}
+                                  onSetGoal={setSelectedShareGoal}
+                                  onShare={handleShareHubShare}
+                                />
+                              </View>
                             ) : null}
                           </>
                         ) : null}
@@ -5646,6 +5828,7 @@ export default function App() {
             movie={profileMovieArchiveModalState.movie}
             entries={profileMovieArchiveModalState.entries}
             onRefresh={handleRefreshProfileMovieArchive}
+            onDeleteEntry={handleDeleteProfileMovieArchiveEntry}
             onClose={handleCloseProfileMovieArchive}
           />
 
@@ -5665,9 +5848,13 @@ export default function App() {
           <MobileSettingsModal
             visible={settingsVisible}
             onClose={() => setSettingsVisible(false)}
+            language={settingsLanguage}
+            themeMode={themeMode}
             identityDraft={settingsIdentityDraft}
             onChangeIdentity={handleChangeSettingsIdentity}
             onSaveIdentity={handleSaveSettingsIdentity}
+            onChangeTheme={setThemeMode}
+            onChangeLanguage={setSettingsLanguage}
             privacyDraft={settingsPrivacyDraft}
             onChangePrivacy={handleChangeSettingsPrivacy}
             onSavePrivacy={handleSaveSettingsPrivacy}

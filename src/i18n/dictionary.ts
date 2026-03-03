@@ -952,6 +952,16 @@ UI_DICTIONARY.fr = {
     }
 };
 
+UI_DICTIONARY.tr.webToApp.subtitle = 'Bir sonraki yorum akisini mobilde ac ve ritmini koru.';
+UI_DICTIONARY.tr.profile.rituals = 'Yorumlar';
+UI_DICTIONARY.en.webToApp.subtitle = 'Open your next comment flow on mobile and keep your momentum synced.';
+UI_DICTIONARY.en.landing.manifestoBody = '180 is built to turn daily film watching into a focused comment practice.';
+UI_DICTIONARY.en.profile.rituals = 'Comments';
+UI_DICTIONARY.es.webToApp.subtitle = 'Open your next comment flow on mobile and keep your momentum synced.';
+UI_DICTIONARY.es.profile.rituals = 'Comentarios';
+UI_DICTIONARY.fr.webToApp.subtitle = 'Open your next comment flow on mobile and keep your momentum synced.';
+UI_DICTIONARY.fr.profile.rituals = 'Commentaires';
+
 export const MARK_DICTIONARY: Record<LanguageCode, Record<string, MarkCopy>> = {
     tr: {
         first_mark: { title: 'Ilk Isaret', description: 'Ilk rituelini tamamla.', whisper: 'Baslangic yapildi.' },
@@ -1038,6 +1048,30 @@ const cloneMarkSection = (section: Record<string, MarkCopy>): Record<string, Mar
         Object.entries(section).map(([id, value]) => [id, { ...value }])
     ) as Record<string, MarkCopy>;
 
+MARK_DICTIONARY.es = cloneMarkSection(MARK_DICTIONARY.en);
+MARK_DICTIONARY.fr = cloneMarkSection(MARK_DICTIONARY.en);
+
+MARK_DICTIONARY.tr.first_mark.description = 'Ilk yorumunu tamamla.';
+MARK_DICTIONARY.tr.minimalist.description = '40 karakterden kisa bir yorum yaz.';
+MARK_DICTIONARY.tr.deep_diver.description = 'Uzun bir yorum gonder (160+ karakter).';
+MARK_DICTIONARY.tr.no_rush.description = 'Ardisik olmadan 10 yorum tamamla.';
+MARK_DICTIONARY.tr.ritual_marathon.description = '20 yorum gonder.';
+MARK_DICTIONARY.tr.one_genre_devotion.description = 'Tek bir turde 20 yorum yaz.';
+MARK_DICTIONARY.tr.genre_nomad.description = 'Art arda 5 farkli turde 5 yorum yaz.';
+MARK_DICTIONARY.tr.watched_on_time.description = '05:00-07:00 arasinda yorum gonder.';
+MARK_DICTIONARY.tr.midnight_ritual.description = '00:00-01:00 arasinda yorum gonder.';
+MARK_DICTIONARY.tr.archive_keeper.description = '50 yorum gonder.';
+
+MARK_DICTIONARY.en.first_mark.description = 'Complete your first comment.';
+MARK_DICTIONARY.en.minimalist.description = 'Write a comment with < 40 characters.';
+MARK_DICTIONARY.en.deep_diver.description = 'Submit a long-form comment (160+ chars).';
+MARK_DICTIONARY.en.no_rush.description = 'Complete 10 comments, none consecutive.';
+MARK_DICTIONARY.en.ritual_marathon.description = 'Submit 20 comments.';
+MARK_DICTIONARY.en.one_genre_devotion.description = '20 comments in one genre.';
+MARK_DICTIONARY.en.genre_nomad.description = 'Write 5 comments in 5 different genres in a row.';
+MARK_DICTIONARY.en.watched_on_time.description = 'Submit a comment between 05:00 and 07:00.';
+MARK_DICTIONARY.en.midnight_ritual.description = 'Comment between 00:00-01:00.';
+MARK_DICTIONARY.en.archive_keeper.description = 'Submit 50 comments.';
 MARK_DICTIONARY.es = cloneMarkSection(MARK_DICTIONARY.en);
 MARK_DICTIONARY.fr = cloneMarkSection(MARK_DICTIONARY.en);
 

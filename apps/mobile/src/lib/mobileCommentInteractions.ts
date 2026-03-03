@@ -37,6 +37,10 @@ export type MobileCommentEchoResult =
   | { ok: true; message: string }
   | { ok: false; reason: 'auth_required' | 'supabase_unavailable' | 'unknown'; message: string };
 
+export type MobileCommentDeleteResult =
+  | { ok: true; message: string }
+  | { ok: false; reason: 'auth_required' | 'supabase_unavailable' | 'unknown'; message: string };
+
 const MAX_REPLY_CHARS = 180;
 
 const normalizeText = (value: unknown, maxLength = 240): string => {
@@ -229,6 +233,47 @@ export const fetchMobileCommentReplies = async (
     ok: true,
     replies,
     message: replies.length > 0 ? 'Yanitlar guncellendi.' : 'Bu yorum icin henuz yanit yok.',
+  };
+};
+
+export const deleteMobileCommentRitual = async (
+  ritualId: string
+): Promise<MobileCommentDeleteResult> => {
+  const normalizedRitualId = normalizeText(ritualId, 120);
+  if (!normalizedRitualId) {
+    return {
+      ok: false,
+      reason: 'unknown',
+      message: 'Silinecek yorum kaydi bulunamadi.',
+    };
+  }
+
+  const identity = await readSessionIdentity();
+  if (!identity.ok) {
+    return {
+      ok: false,
+      reason: identity.reason,
+      message: identity.message,
+    };
+  }
+
+  const { error } = await supabase!
+    .from('rituals')
+    .delete()
+    .eq('id', normalizedRitualId)
+    .eq('user_id', identity.userId);
+
+  if (error) {
+    return {
+      ok: false,
+      reason: 'unknown',
+      message: normalizeText(error.message, 220) || 'Yorum silinemedi.',
+    };
+  }
+
+  return {
+    ok: true,
+    message: 'Yorum silindi.',
   };
 };
 

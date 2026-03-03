@@ -134,17 +134,50 @@ export type MobileLeaguePromotionEvent = {
   previousLeagueKey?: string | null;
 };
 
+const MOBILE_LEAGUE_TRANSITION_COPY: Record<
+  MobileSettingsLanguage,
+  { badge: string; body: string; meta: string; action: string }
+> = {
+  tr: {
+    badge: 'Lig Atlandi',
+    body: 'Tebrikler. Toplam XP seviyen bu lige yukseldi.',
+    meta: 'Lig gecisi tamamlandi',
+    action: 'Tamam',
+  },
+  en: {
+    badge: 'League Advanced',
+    body: 'Congratulations. Your total XP has moved up into this league.',
+    meta: 'League promoted',
+    action: 'Done',
+  },
+  es: {
+    badge: 'Liga Ascendida',
+    body: 'Felicidades. Tu XP total subio a esta liga.',
+    meta: 'Ascenso completado',
+    action: 'Listo',
+  },
+  fr: {
+    badge: 'Ligue Debloquee',
+    body: 'Felicitations. Ton XP total est monte jusqua cette ligue.',
+    meta: 'Promotion confirmee',
+    action: 'Terminer',
+  },
+};
+
 const LeaguePromotionModal = ({
   event,
+  language = 'tr',
   onClose,
 }: {
   event: MobileLeaguePromotionEvent | null;
+  language?: MobileSettingsLanguage;
   onClose: () => void;
 }) => {
   useWebModalFocusReset(Boolean(event));
   if (!event) return null;
 
   const accentColor = String(event.leagueColor || '#8A9A5B').trim() || '#8A9A5B';
+  const copy = MOBILE_LEAGUE_TRANSITION_COPY[language] || MOBILE_LEAGUE_TRANSITION_COPY.tr;
 
   return (
     <Modal
@@ -171,20 +204,20 @@ const LeaguePromotionModal = ({
           ]}
         >
           <View style={[styles.leagueTransitionLine, { backgroundColor: accentColor }]} />
-          <Text style={styles.leagueTransitionEyebrow}>League Advanced</Text>
+          <Text style={styles.leagueTransitionEyebrow}>{copy.badge}</Text>
           <Text style={[styles.leagueTransitionLeagueName, { color: accentColor }]}>
             {event.leagueName || event.leagueKey}
           </Text>
-          <Text style={styles.leagueTransitionBody}>
-            Tebrikler. Toplam XP seviyen yeni lige yukseldi.
-          </Text>
+          <Text style={styles.leagueTransitionBody}>{copy.body}</Text>
           {event.previousLeagueKey ? (
             <Text style={styles.leagueTransitionMeta}>
               {event.previousLeagueKey}
               {' -> '}
               {event.leagueKey}
             </Text>
-          ) : null}
+          ) : (
+            <Text style={styles.leagueTransitionMeta}>{copy.meta}</Text>
+          )}
           <Pressable
             style={styles.leagueTransitionButton}
             onPress={onClose}
@@ -192,7 +225,7 @@ const LeaguePromotionModal = ({
             accessibilityRole="button"
             accessibilityLabel="Lig atlama ekranini tamamla"
           >
-            <Text style={styles.leagueTransitionButtonText}>Tamam</Text>
+            <Text style={styles.leagueTransitionButtonText}>{copy.action}</Text>
           </Pressable>
         </View>
       </View>
@@ -1540,19 +1573,15 @@ const AuthGateScreen = ({
 const ProfileSnapshotCard = ({
   state,
   isSignedIn,
-  onRefresh,
 }: {
   state: ProfileState;
   isSignedIn: boolean;
-  onRefresh: () => void;
 }) => {
-  const isRefreshing = state.status === 'loading';
-
   return (
     <ScreenCard accent="sage">
       <Text style={styles.screenTitle}>Profil Ozeti</Text>
       <Text style={styles.screenBody}>
-        Mobilde streak ve profil metriklerinin cloud senkron durumunu hizli kontrol et.
+        Mobilde streak ve profil metriklerinin guncel ozetini burada gorebilirsin.
       </Text>
 
       {!isSignedIn ? (
@@ -1564,9 +1593,8 @@ const ProfileSnapshotCard = ({
       {state.status === 'success' ? (
         <>
           <Text style={styles.screenMeta}>User: {state.displayName}</Text>
-          <Text style={styles.screenMeta}>Source: {state.source}</Text>
           <Text style={styles.screenMeta}>League: {state.leagueKey}</Text>
-          <Text style={styles.screenMeta}>Last ritual day: {state.lastRitualDate || 'none'}</Text>
+          <Text style={styles.screenMeta}>Last comment day: {state.lastRitualDate || 'none'}</Text>
           <View style={styles.profileGrid}>
             <View style={styles.profileMetricCard}>
               <Text style={styles.profileMetricValue}>{state.totalXp}</Text>
@@ -1578,7 +1606,7 @@ const ProfileSnapshotCard = ({
             </View>
             <View style={styles.profileMetricCard}>
               <Text style={styles.profileMetricValue}>{state.ritualsCount}</Text>
-              <Text style={styles.profileMetricLabel}>Rituals</Text>
+              <Text style={styles.profileMetricLabel}>Comments</Text>
             </View>
             <View style={styles.profileMetricCard}>
               <Text style={styles.profileMetricValue}>{state.daysPresent}</Text>
@@ -1608,18 +1636,6 @@ const ProfileSnapshotCard = ({
       >
         {state.message}
       </Text>
-
-      <Pressable
-        style={[styles.retryButton, !isSignedIn || isRefreshing ? styles.claimButtonDisabled : null]}
-        disabled={!isSignedIn || isRefreshing}
-        onPress={onRefresh}
-        hitSlop={PRESSABLE_HIT_SLOP}
-        accessibilityRole="button"
-        accessibilityLabel={isRefreshing ? 'Profil yukleniyor' : 'Profili yenile'}
-        accessibilityState={{ disabled: !isSignedIn || isRefreshing }}
-      >
-        <Text style={styles.retryText}>{isRefreshing ? 'Yukleniyor...' : 'Profili Yenile'}</Text>
-      </Pressable>
     </ScreenCard>
   );
 };
@@ -1955,11 +1971,9 @@ const ProfileIdentityCard = ({
 const ProfileGenreDistributionCard = ({
   items,
   isSignedIn,
-  onRefresh,
 }: {
   items: Array<{ genre: string; count: number }>;
   isSignedIn: boolean;
-  onRefresh: () => void;
 }) => {
   const topGenre = items[0];
   const totalCount = items.reduce((sum, item) => sum + Math.max(0, Number(item.count || 0)), 0);
@@ -1970,7 +1984,7 @@ const ProfileGenreDistributionCard = ({
         accent="sage"
         eyebrow="Taste Map"
         title="Tur Dagilimi"
-        body="Ritual kayitlarindan cikan baskin tur izi. Profilin hangi sinema damarinda aktigini hizli gosterir."
+        body="Yorum kayitlarindan cikan baskin tur izi. Profilin hangi sinema damarinda aktigini hizli gosterir."
         badges={[
           { label: isSignedIn ? 'profil verisi hazir' : 'oturum gerekli', tone: isSignedIn ? 'sage' : 'clay' },
           { label: `${items.length} tur`, tone: items.length > 0 ? 'sage' : 'muted' },
@@ -1981,14 +1995,6 @@ const ProfileGenreDistributionCard = ({
           { label: 'Gorunen', value: String(items.length) },
           { label: 'Lider', value: topGenre ? String(topGenre.count) : '--' },
         ]}
-        actions={[
-          {
-            label: isSignedIn ? 'Dagilimi Yenile' : 'Oturum Bekleniyor',
-            tone: 'neutral',
-            onPress: onRefresh,
-            disabled: !isSignedIn,
-          },
-        ]}
       />
 
       {!isSignedIn ? (
@@ -1997,7 +2003,7 @@ const ProfileGenreDistributionCard = ({
           variant="empty"
           eyebrow="Genre"
           title="Tur haritasi icin oturum ac"
-          body="Tur dagilimi, profiline yazilan ritual verileri uzerinden hesaplanir."
+          body="Tur dagilimi, profiline yazilan yorum verileri uzerinden hesaplanir."
           meta="Giris yaptiginda bu alan favori eksenlerini otomatik olarak listeler."
         />
       ) : items.length === 0 ? (
@@ -2006,10 +2012,8 @@ const ProfileGenreDistributionCard = ({
           variant="empty"
           eyebrow="Genre"
           title="Henuz dagilim olusmadi"
-          body="Farkli turlerde ritual biraktikca burada baskin sinema haritan gorunecek."
+          body="Farkli turlerde yorum biraktikca burada baskin sinema haritan gorunecek."
           meta="Veri geldikten sonra en guclu bes kategori listelenir."
-          actionLabel="Dagilimi Yenile"
-          onAction={onRefresh}
         />
       ) : (
         <>
@@ -2017,8 +2021,8 @@ const ProfileGenreDistributionCard = ({
             tone="sage"
             eyebrow="Taste Pulse"
             title={`${topGenre?.genre || 'Baskin tur'} onde gidiyor`}
-            body={`Toplam ${totalCount} ritual kaydi icinde en guclu genre izi ${topGenre?.genre || 'belirsiz'}.`}
-            meta="Bu dagilim yeni yorumlar geldikce profil tarafinda yenilenir."
+            body={`Toplam ${totalCount} yorum kaydi icinde en guclu genre izi ${topGenre?.genre || 'belirsiz'}.`}
+            meta="Yeni yorumlar geldikce dagilim otomatik guncellenir."
           />
 
           <ScreenCard accent="sage">
@@ -2041,7 +2045,6 @@ const ProfileGenreDistributionCard = ({
 const WatchedMoviesCard = ({
   state,
   isSignedIn,
-  onRefresh,
   onOpenMovieArchive,
 }: {
   state: {
@@ -2050,7 +2053,6 @@ const WatchedMoviesCard = ({
     items: MobileWatchedMovie[];
   };
   isSignedIn: boolean;
-  onRefresh: () => void;
   onOpenMovieArchive: (movie: MobileWatchedMovie) => void;
 }) => {
   const repeatedCount = state.items.filter((movie) => movie.watchCount > 1).length;
@@ -2064,7 +2066,7 @@ const WatchedMoviesCard = ({
         accent="sage"
         eyebrow="Watch Archive"
         title="Izlenen Filmler"
-        body="Ritual ve Letterboxd filmlerin burada."
+        body="Yorum ve Letterboxd filmlerin burada."
         badges={[
           { label: isSignedIn ? 'cloud bagli' : 'oturum gerekli', tone: isSignedIn ? 'sage' : 'clay' },
           { label: `${state.items.length} film`, tone: state.items.length > 0 ? 'sage' : 'muted' },
@@ -2074,14 +2076,6 @@ const WatchedMoviesCard = ({
           { label: 'Film', value: String(state.items.length) },
           { label: 'Tekrar', value: String(repeatedCount) },
           { label: 'Son Gun', value: latestMovie?.watchedDayKey || '--' },
-        ]}
-        actions={[
-          {
-            label: state.status === 'loading' ? 'Yukleniyor...' : 'Arsivi Yenile',
-            tone: 'neutral',
-            onPress: onRefresh,
-            disabled: !isSignedIn || state.status === 'loading',
-          },
         ]}
       />
 
@@ -2133,8 +2127,6 @@ const WatchedMoviesCard = ({
                 : state.message || 'Filmler geldikce burada gorunur.'
           }
           meta="Letterboxd kayitlari profil listesine eklenir."
-          actionLabel={!isSignedIn || state.status === 'loading' ? undefined : 'Izlenen Filmleri Yenile'}
-          onAction={!isSignedIn || state.status === 'loading' ? undefined : onRefresh}
         />
       ) : (
         <ScreenCard accent="sage">
@@ -2206,11 +2198,15 @@ const MobileMarkPill = ({
   motion,
   isUnlocked,
   isFeatured,
+  onPress,
+  accessibilityLabel,
 }: {
   title: string;
   motion: string;
   isUnlocked: boolean;
   isFeatured: boolean;
+  onPress?: () => void;
+  accessibilityLabel?: string;
 }) => {
   const progress = useMemo(() => new Animated.Value(0), []);
 
@@ -2341,7 +2337,7 @@ const MobileMarkPill = ({
     }
   })();
 
-  return (
+  const content = (
     <Animated.View
       style={[
         styles.markPill,
@@ -2371,11 +2367,160 @@ const MobileMarkPill = ({
       </View>
     </Animated.View>
   );
+
+  if (!onPress) {
+    return content;
+  }
+
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={PRESSABLE_HIT_SLOP}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel || `${title} detayini ac`}
+    >
+      {content}
+    </Pressable>
+  );
+};
+
+const MOBILE_MARK_DETAIL_COPY: Record<
+  MobileSettingsLanguage,
+  {
+    eyebrow: string;
+    requirement: string;
+    whisper: string;
+    unlocked: string;
+    locked: string;
+    featured: string;
+    close: string;
+    empty: string;
+  }
+> = {
+  tr: {
+    eyebrow: 'Mark Detayi',
+    requirement: 'Nasil kazanilir',
+    whisper: 'Kisa not',
+    unlocked: 'Acik',
+    locked: 'Kilitli',
+    featured: 'Vitrin',
+    close: 'Kapat',
+    empty: 'Bu mark icin aciklama yakinda eklenecek.',
+  },
+  en: {
+    eyebrow: 'Mark Detail',
+    requirement: 'How to earn',
+    whisper: 'Whisper',
+    unlocked: 'Unlocked',
+    locked: 'Locked',
+    featured: 'Featured',
+    close: 'Close',
+    empty: 'Details for this mark will appear soon.',
+  },
+  es: {
+    eyebrow: 'Detalle de Marca',
+    requirement: 'Como se gana',
+    whisper: 'Susurro',
+    unlocked: 'Desbloqueada',
+    locked: 'Bloqueada',
+    featured: 'Destacada',
+    close: 'Cerrar',
+    empty: 'Los detalles de esta marca apareceran pronto.',
+  },
+  fr: {
+    eyebrow: 'Detail de Marque',
+    requirement: 'Comment lobtenir',
+    whisper: 'Chuchotement',
+    unlocked: 'Debloquee',
+    locked: 'Verrouillee',
+    featured: 'En vitrine',
+    close: 'Fermer',
+    empty: 'Les details de cette marque arrivent bientot.',
+  },
+};
+
+const MobileMarkDetailModal = ({
+  mark,
+  language = 'tr',
+  isUnlocked,
+  isFeatured,
+  onClose,
+}: {
+  mark: ReturnType<typeof resolveMobileMarkMeta> | null;
+  language?: MobileSettingsLanguage;
+  isUnlocked: boolean;
+  isFeatured: boolean;
+  onClose: () => void;
+}) => {
+  useWebModalFocusReset(Boolean(mark));
+  if (!mark) return null;
+
+  const copy = MOBILE_MARK_DETAIL_COPY[language] || MOBILE_MARK_DETAIL_COPY.tr;
+
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.modalOverlaySurface}>
+        <Pressable style={{ flex: 1 }} onPress={onClose} />
+        <View style={styles.modalSheetSurface}>
+          <View style={styles.modalNavRow}>
+            <Text style={styles.sectionHeader}>{copy.eyebrow}</Text>
+            <Pressable onPress={onClose} hitSlop={PRESSABLE_HIT_SLOP}>
+              <Text style={styles.modalCloseTextBtn}>{copy.close}</Text>
+            </Pressable>
+          </View>
+
+          <ScrollView
+            contentContainerStyle={styles.modalSheetScroll}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.modalContentSurface}>
+              <Text style={styles.sectionLeadEyebrow}>{mark.categoryLabel}</Text>
+              <Text style={styles.sectionLeadTitle}>{mark.title}</Text>
+
+              <View style={styles.sectionLeadBadgeRow}>
+                <View
+                  style={[
+                    styles.sectionLeadBadge,
+                    isUnlocked ? styles.sectionLeadBadgeSage : styles.sectionLeadBadgeMuted,
+                  ]}
+                >
+                  <Text style={styles.sectionLeadBadgeText}>
+                    {isUnlocked ? copy.unlocked : copy.locked}
+                  </Text>
+                </View>
+                {isFeatured ? (
+                  <View style={[styles.sectionLeadBadge, styles.sectionLeadBadgeClay]}>
+                    <Text style={styles.sectionLeadBadgeText}>{copy.featured}</Text>
+                  </View>
+                ) : null}
+              </View>
+
+              <Text style={styles.subSectionLabel}>{copy.requirement}</Text>
+              <Text style={styles.movieDetailBody}>{mark.description || copy.empty}</Text>
+
+              {mark.whisper ? (
+                <>
+                  <Text style={styles.subSectionLabel}>{copy.whisper}</Text>
+                  <Text style={styles.movieDetailCast}>{mark.whisper}</Text>
+                </>
+              ) : null}
+            </View>
+
+            <View style={styles.modalActionStack}>
+              <UiButton label={copy.close} tone="neutral" stretch onPress={onClose} />
+            </View>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
 };
 
 const ProfileUnifiedCard = ({
   state,
   isSignedIn,
+  language = 'tr',
+  isShareHubActive = false,
   themeModeLabel,
   displayName,
   avatarUrl,
@@ -2389,10 +2534,11 @@ const ProfileUnifiedCard = ({
   onOpenProfileLink,
   onOpenShareHub,
   onOpenMovieArchive,
-  onRefresh,
 }: {
   state: ProfileState;
   isSignedIn: boolean;
+  language?: MobileSettingsLanguage;
+  isShareHubActive?: boolean;
   themeModeLabel: string;
   displayName: string;
   avatarUrl?: string;
@@ -2410,7 +2556,6 @@ const ProfileUnifiedCard = ({
   onOpenProfileLink?: () => void;
   onOpenShareHub: () => void;
   onOpenMovieArchive: (movie: MobileWatchedMovie) => void;
-  onRefresh: () => void;
 }) => {
   const normalizedDisplayName = String(displayName || '').trim() || 'Observer';
   const normalizedAvatarUrl = String(avatarUrl || '').trim();
@@ -2438,9 +2583,14 @@ const ProfileUnifiedCard = ({
   const unlockedMarks = isProfileReady ? state.marks : [];
   const featuredMarks = isProfileReady ? state.featuredMarks : [];
   const markPreviewIds = (featuredMarks.length > 0 ? featuredMarks : unlockedMarks).slice(0, 8);
-  const topFeaturedTitle = featuredMarks[0] ? resolveMobileMarkTitle(featuredMarks[0]) : '';
+  const [activeMarkId, setActiveMarkId] = useState<string | null>(null);
+  const topFeaturedTitle = featuredMarks[0]
+    ? resolveMobileMarkTitle(featuredMarks[0], language)
+    : '';
+  const activeMark = activeMarkId ? resolveMobileMarkMeta(activeMarkId, language) : null;
 
   return (
+    <>
     <ScreenCard accent="sage">
       <View style={styles.profileUnifiedHeaderRow}>
         <View style={styles.profileUnifiedHeaderCopy}>
@@ -2531,7 +2681,7 @@ const ProfileUnifiedCard = ({
 
       <View style={styles.detailInfoGrid}>
         <View style={styles.detailInfoCard}>
-          <Text style={styles.detailInfoLabel}>Ritual</Text>
+          <Text style={styles.detailInfoLabel}>Yorum</Text>
           <Text style={styles.detailInfoValue}>
             {isProfileReady ? String(state.ritualsCount) : '--'}
           </Text>
@@ -2567,22 +2717,20 @@ const ProfileUnifiedCard = ({
       </View>
 
       <View style={styles.sectionLeadActionRow}>
-        <UiButton
-          label="Profili Yenile"
-          tone="neutral"
-          onPress={onRefresh}
-          disabled={!isSignedIn || state.status === 'loading'}
-        />
-        <UiButton
-          label={hasLink ? 'Linki Ac' : 'Paylasim Alani'}
-          tone={hasLink ? 'teal' : 'brand'}
-          onPress={() => {
-            if (hasLink) {
+        {hasLink ? (
+          <UiButton
+            label="Linki Ac"
+            tone="teal"
+            onPress={() => {
               onOpenProfileLink?.();
-              return;
-            }
-            onOpenShareHub();
-          }}
+            }}
+            disabled={!isSignedIn}
+          />
+        ) : null}
+        <UiButton
+          label={isShareHubActive ? 'Paylasim Acik' : 'Paylas'}
+          tone="neutral"
+          onPress={onOpenShareHub}
           disabled={!isSignedIn}
         />
       </View>
@@ -2673,7 +2821,7 @@ const ProfileUnifiedCard = ({
         ) : (
           <Text style={styles.profileUnifiedEmptyText}>
             {isSignedIn
-              ? 'Tur dagilimi henuz olusmadi. Yeni ritual geldikce burada yogunluk gorunecek.'
+              ? 'Tur dagilimi henuz olusmadi. Yeni yorumlar geldikce burada yogunluk gorunecek.'
               : 'Oturum acinca tur dagilimi burada toplanir.'}
           </Text>
         )}
@@ -2747,15 +2895,17 @@ const ProfileUnifiedCard = ({
         {markPreviewIds.length > 0 ? (
           <View style={styles.markPillRow}>
             {markPreviewIds.map((markId) => {
-              const markMeta = resolveMobileMarkMeta(markId);
+              const markMeta = resolveMobileMarkMeta(markId, language);
               const isFeatured = featuredMarks.includes(markId);
               return (
                 <MobileMarkPill
                   key={`profile-hub-mark-${markId}`}
-                  title={resolveMobileMarkTitle(markId)}
+                  title={resolveMobileMarkTitle(markId, language)}
                   motion={markMeta.motion}
                   isUnlocked
                   isFeatured={isFeatured}
+                  onPress={() => setActiveMarkId(markId)}
+                  accessibilityLabel={`${markMeta.title} mark detayini ac`}
                 />
               );
             })}
@@ -2763,40 +2913,50 @@ const ProfileUnifiedCard = ({
         ) : (
           <Text style={styles.profileUnifiedEmptyText}>
             {isSignedIn
-              ? 'Henuz acik mark yok. Yeni ritual ve streak ile vitrin dolacak.'
+              ? 'Henuz acik mark yok. Yeni yorumlar ve streak ile vitrin dolacak.'
               : 'Oturum acinca mark vitrinleri burada gorunur.'}
           </Text>
         )}
       </View>
-
-      <Text style={styles.screenMeta}>
-        {`Profil: ${state.message}${watchedMoviesState.message ? ` | Arsiv: ${watchedMoviesState.message}` : ''}`}
-      </Text>
     </ScreenCard>
+    <MobileMarkDetailModal
+      mark={activeMark}
+      language={language}
+      isUnlocked={Boolean(activeMarkId && unlockedMarks.includes(activeMarkId))}
+      isFeatured={Boolean(activeMarkId && featuredMarks.includes(activeMarkId))}
+      onClose={() => setActiveMarkId(null)}
+    />
+    </>
   );
 };
 
 const ProfileMarksCard = ({
   state,
   isSignedIn,
+  language = 'tr',
   mode = 'all',
 }: {
   state: ProfileState;
   isSignedIn: boolean;
+  language?: MobileSettingsLanguage;
   mode?: 'all' | 'unlocked';
 }) => {
   const unlockedMarks = state.status === 'success' ? state.marks : [];
   const featuredMarks = state.status === 'success' ? state.featuredMarks : [];
+  const [activeMarkId, setActiveMarkId] = useState<string | null>(null);
   const unlockedSet = useMemo(() => new Set(unlockedMarks), [unlockedMarks]);
   const groupedUnlockedMarks = useMemo(
-    () => groupMobileMarksByCategory(unlockedMarks),
-    [unlockedMarks]
+    () => groupMobileMarksByCategory(unlockedMarks, language),
+    [language, unlockedMarks]
   );
   const groupedCatalogMarks = useMemo(
-    () => groupMobileMarksByCategory(MOBILE_MARK_CATALOG.map((mark) => mark.id)),
-    []
+    () => groupMobileMarksByCategory(MOBILE_MARK_CATALOG.map((mark) => mark.id), language),
+    [language]
   );
-  const topFeaturedTitle = featuredMarks[0] ? resolveMobileMarkTitle(featuredMarks[0]) : '';
+  const topFeaturedTitle = featuredMarks[0]
+    ? resolveMobileMarkTitle(featuredMarks[0], language)
+    : '';
+  const activeMark = activeMarkId ? resolveMobileMarkMeta(activeMarkId, language) : null;
   const visibleGroups = mode === 'unlocked' ? groupedUnlockedMarks : groupedCatalogMarks;
 
   return (
@@ -2850,14 +3010,16 @@ const ProfileMarksCard = ({
               <Text style={styles.subSectionLabel}>Vitrin</Text>
               <View style={styles.markPillRow}>
                 {featuredMarks.map((markId) => {
-                  const markMeta = resolveMobileMarkMeta(markId);
+                  const markMeta = resolveMobileMarkMeta(markId, language);
                   return (
                     <MobileMarkPill
                       key={`featured-${markId}`}
-                      title={resolveMobileMarkTitle(markId)}
+                      title={resolveMobileMarkTitle(markId, language)}
                       motion={markMeta.motion}
                       isUnlocked
                       isFeatured
+                      onPress={() => setActiveMarkId(markId)}
+                      accessibilityLabel={`${markMeta.title} mark detayini ac`}
                     />
                   );
                 })}
@@ -2871,7 +3033,7 @@ const ProfileMarksCard = ({
               variant="empty"
               eyebrow="Marks"
               title="Henuz acik mark yok"
-              body="Yeni ritual ve streak ile koleksiyon dolacak."
+              body="Yeni yorumlar ve streak ile koleksiyon dolacak."
             />
           ) : (
             <ScreenCard accent="sage">
@@ -2881,7 +3043,7 @@ const ProfileMarksCard = ({
               <View style={styles.markCategoryList}>
                 {visibleGroups.map((group) => (
                   <View key={`mark-category-${group.category}`} style={styles.markCategoryBlock}>
-                    <Text style={styles.markCategoryTitle}>{group.category}</Text>
+                    <Text style={styles.markCategoryTitle}>{group.label}</Text>
                     <View style={styles.markPillRow}>
                       {group.marks.map((mark) => {
                         const isUnlocked = mode === 'unlocked' ? true : unlockedSet.has(mark.id);
@@ -2893,6 +3055,8 @@ const ProfileMarksCard = ({
                             motion={mark.motion}
                             isUnlocked={isUnlocked}
                             isFeatured={isUnlocked && isFeatured}
+                            onPress={() => setActiveMarkId(mark.id)}
+                            accessibilityLabel={`${mark.title} mark detayini ac`}
                           />
                         );
                       })}
@@ -2904,6 +3068,13 @@ const ProfileMarksCard = ({
           )}
         </>
       )}
+      <MobileMarkDetailModal
+        mark={activeMark}
+        language={language}
+        isUnlocked={Boolean(activeMarkId && unlockedSet.has(activeMarkId))}
+        isFeatured={Boolean(activeMarkId && featuredMarks.includes(activeMarkId))}
+        onClose={() => setActiveMarkId(null)}
+      />
     </>
   );
 };
@@ -3288,8 +3459,8 @@ const CommentFeedCard = ({
   onEcho,
   onLoadReplies,
   onSubmitReply,
+  onDeleteItem,
   onOpenAuthorProfile,
-  onRefresh,
   selectedMovieTitle,
   movieFilterMode = 'all',
 }: {
@@ -3311,8 +3482,10 @@ const CommentFeedCard = ({
     item: CommentFeedState['items'][number],
     text: string
   ) => Promise<{ ok: boolean; message: string; reply?: MobileCommentReply }>;
+  onDeleteItem?: (
+    item: CommentFeedState['items'][number]
+  ) => Promise<{ ok: boolean; message: string }>;
   onOpenAuthorProfile: (item: CommentFeedState['items'][number]) => void;
-  onRefresh: () => void;
   selectedMovieTitle?: string | null;
   movieFilterMode?: 'all' | 'selected_movie';
 }) => {
@@ -3323,6 +3496,7 @@ const CommentFeedCard = ({
   const [replyLoading, setReplyLoading] = useState<Record<string, boolean>>({});
   const [replySubmitting, setReplySubmitting] = useState<Record<string, boolean>>({});
   const [echoSubmitting, setEchoSubmitting] = useState<Record<string, boolean>>({});
+  const [deleteSubmitting, setDeleteSubmitting] = useState<Record<string, boolean>>({});
   const [repliesByItemId, setRepliesByItemId] = useState<Record<string, MobileCommentReply[]>>({});
   const normalizedSelectedMovieTitle = String(selectedMovieTitle || '').trim();
   const normalizedCurrentUserAvatarUrl = String(currentUserAvatarUrl || '').trim();
@@ -3347,6 +3521,9 @@ const CommentFeedCard = ({
     setReplyLoading((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => visibleIds.has(key))));
     setReplySubmitting((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => visibleIds.has(key))));
     setEchoSubmitting((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => visibleIds.has(key))));
+    setDeleteSubmitting((prev) =>
+      Object.fromEntries(Object.entries(prev).filter(([key]) => visibleIds.has(key)))
+    );
     setRepliesByItemId((prev) =>
       Object.fromEntries(Object.entries(prev).filter(([key]) => visibleIds.has(key)))
     );
@@ -3437,6 +3614,27 @@ const CommentFeedCard = ({
     [onSubmitReply, replyDrafts, replySubmitting]
   );
 
+  const handleDeletePress = useCallback(
+    async (item: CommentFeedState['items'][number]) => {
+      if (!onDeleteItem || deleteSubmitting[item.id]) return;
+
+      setDeleteSubmitting((prev) => ({
+        ...prev,
+        [item.id]: true,
+      }));
+      const result = await onDeleteItem(item);
+      setReplyMessages((prev) => ({
+        ...prev,
+        [item.id]: result.message,
+      }));
+      setDeleteSubmitting((prev) => ({
+        ...prev,
+        [item.id]: false,
+      }));
+    },
+    [deleteSubmitting, onDeleteItem]
+  );
+
   return (
     <KeyboardAvoidingView
       enabled={Platform.OS !== 'web'}
@@ -3459,21 +3657,6 @@ const CommentFeedCard = ({
           Film filtresi: {normalizedSelectedMovieTitle || 'Film secimi bekleniyor'}
         </Text>
       ) : null}
-      <Text style={styles.screenMeta}>
-        Kaynak: {state.source === 'live' ? 'canli' : 'fallback'} | Kayit: {state.items.length}
-      </Text>
-      <Text
-        style={[
-          styles.screenMeta,
-          state.status === 'error'
-            ? styles.ritualStateError
-            : state.status === 'ready'
-              ? styles.ritualStateOk
-              : styles.screenMeta,
-        ]}
-      >
-        {state.message}
-      </Text>
 
       {showFilters ? (
         <>
@@ -3570,13 +3753,9 @@ const CommentFeedCard = ({
           title={state.status === 'error' ? 'Yorumlar alinamadi' : 'Bu filtrede yorum yok'}
           body={
             state.status === 'error'
-              ? 'Akis gecici olarak okunamadi. Yenileyip tekrar deneyebilirsin.'
+              ? 'Akis gecici olarak okunamadi. Asagi cekip tekrar deneyebilirsin.'
               : 'Filtreyi degistirerek daha genis bir akis gorebilir ya da yeni yorumlar geldikce burayi tekrar kontrol edebilirsin.'
           }
-          meta={state.message}
-          actionLabel="Akisi Yenile"
-          onAction={onRefresh}
-          actionTone={state.status === 'error' ? 'danger' : 'brand'}
         />
       ) : (
         <View style={styles.commentFeedList}>
@@ -3629,15 +3808,11 @@ const CommentFeedCard = ({
                 </View>
                 <Text style={styles.commentFeedBody}>{item.text}</Text>
                 <View style={styles.commentFeedActionRow}>
-                  <Text style={styles.commentFeedMeta}>
-                    Echo: {item.echoCount} | Reply: {item.replyCount}
-                    {showOpsMeta ? `  |  ops::day:${item.dayKey || '?'}` : ''}
-                  </Text>
                   <View style={styles.commentFeedInlineActions}>
                     <Pressable
                       style={[
-                        styles.commentFeedActionButton,
-                        item.isEchoedByMe ? styles.commentFeedActionButtonActive : null,
+                        styles.commentFeedInlineAction,
+                        item.isEchoedByMe ? styles.commentFeedInlineActionActive : null,
                         echoSubmitting[item.id] ? styles.claimButtonDisabled : null,
                       ]}
                       onPress={() => {
@@ -3647,19 +3822,24 @@ const CommentFeedCard = ({
                       accessibilityRole="button"
                       accessibilityLabel={`${item.author} yorumuna echo ver`}
                     >
+                      <Ionicons
+                        name={item.isEchoedByMe ? 'radio' : 'radio-outline'}
+                        size={16}
+                        color={item.isEchoedByMe ? '#A57164' : '#C9C6BF'}
+                      />
                       <Text
                         style={[
-                          styles.commentFeedActionButtonText,
-                          item.isEchoedByMe ? styles.commentFeedActionButtonTextActive : null,
+                          styles.commentFeedInlineActionText,
+                          item.isEchoedByMe ? styles.commentFeedInlineActionTextActive : null,
                         ]}
                       >
-                        {item.isEchoedByMe ? 'Echoed' : 'Echo'}
+                        Echo {item.echoCount}
                       </Text>
                     </Pressable>
                     <Pressable
                       style={[
-                        styles.commentFeedActionButton,
-                        expandedReplies[item.id] ? styles.commentFeedActionButtonActive : null,
+                        styles.commentFeedInlineAction,
+                        expandedReplies[item.id] ? styles.commentFeedInlineActionActive : null,
                       ]}
                       onPress={() => {
                         void handleToggleReplies(item);
@@ -3667,15 +3847,45 @@ const CommentFeedCard = ({
                       accessibilityRole="button"
                       accessibilityLabel={`${item.author} yorumunun yanitlarini ac`}
                     >
+                      <Ionicons
+                        name="chatbubble-ellipses-outline"
+                        size={16}
+                        color={expandedReplies[item.id] ? '#A57164' : '#C9C6BF'}
+                      />
                       <Text
                         style={[
-                          styles.commentFeedActionButtonText,
-                          expandedReplies[item.id] ? styles.commentFeedActionButtonTextActive : null,
+                          styles.commentFeedInlineActionText,
+                          expandedReplies[item.id] ? styles.commentFeedInlineActionTextActive : null,
                         ]}
                       >
-                        Reply
+                        Yanit {item.replyCount}
                       </Text>
                     </Pressable>
+                    {item.isMine && onDeleteItem && !item.id.startsWith('xp-') ? (
+                      <Pressable
+                        style={[
+                          styles.commentFeedInlineAction,
+                          styles.commentFeedInlineActionDanger,
+                          deleteSubmitting[item.id] ? styles.claimButtonDisabled : null,
+                        ]}
+                        onPress={() => {
+                          void handleDeletePress(item);
+                        }}
+                        disabled={deleteSubmitting[item.id]}
+                        accessibilityRole="button"
+                        accessibilityLabel="Kendi yorumunu sil"
+                      >
+                        <Ionicons name="trash-outline" size={16} color="#A57164" />
+                        <Text
+                          style={[
+                            styles.commentFeedInlineActionText,
+                            styles.commentFeedInlineActionDangerText,
+                          ]}
+                        >
+                          {deleteSubmitting[item.id] ? 'Siliniyor' : 'Sil'}
+                        </Text>
+                      </Pressable>
+                    ) : null}
                   </View>
                 </View>
                 {replyMessages[item.id] ? (
@@ -3777,26 +3987,6 @@ const CommentFeedCard = ({
             </Text>
           </Pressable>
         ) : null}
-
-        {showFilters ? (
-          <Pressable
-            style={[
-              styles.retryButton,
-              styles.commentFeedBottomActionButton,
-              isBusy ? styles.claimButtonDisabled : null,
-            ]}
-            disabled={isBusy}
-            onPress={onRefresh}
-            hitSlop={PRESSABLE_HIT_SLOP}
-            accessibilityRole="button"
-            accessibilityLabel={isBusy ? 'Yorum akisi yenileniyor' : 'Yorum akisina yenile'}
-            accessibilityState={{ disabled: isBusy }}
-          >
-            <Text style={styles.retryText}>
-              {isBusy ? 'Yukleniyor...' : 'Yorum Akisini Yenile'}
-            </Text>
-          </Pressable>
-        ) : null}
       </View>
       </ScreenCard>
     </KeyboardAvoidingView>
@@ -3862,13 +4052,11 @@ const DailyHomeScreen = ({
   showOpsMeta = false,
   selectedMovieId,
   onSelectMovie,
-  onRetry,
 }: {
   state: DailyState;
   showOpsMeta?: boolean;
   selectedMovieId?: number | null;
   onSelectMovie?: (movieId: number) => void;
-  onRetry: () => void;
 }) => {
   const railRef = useRef<FlatList<DailyMovieRailItem> | null>(null);
   const railScrollOffsetRef = useRef(0);
@@ -3965,13 +4153,10 @@ const DailyHomeScreen = ({
         variant="error"
         eyebrow="Gunluk Filmler"
         title="Bugunun filmleri simdi acilamadi"
-        body="Baglanti veya servis kaynakli gecici bir sorun var. Tekrar denediginde secki yeniden cekilecek."
+        body="Baglanti veya servis kaynakli gecici bir sorun var. Sayfayi asagi cekerek seckiyi yeniden isteyebilirsin."
         meta={
           showOpsMeta ? `Detay: ${state.message} | Uc nokta: ${state.endpoint || 'yok'}` : state.message
         }
-        actionLabel="Tekrar Dene"
-        onAction={onRetry}
-        actionTone="danger"
       />
     );
   }
@@ -3988,10 +4173,8 @@ const DailyHomeScreen = ({
         variant="empty"
         eyebrow="Gunluk Filmler"
         title="Bugun icin film bulunmadi"
-        body="Gunluk liste henuz gelmedi. Yenileyince secki tekrar denenecek."
+        body="Gunluk liste henuz gelmedi. Sayfayi asagi cekerek seckiyi yeniden isteyebilirsin."
         meta={successState.warning || undefined}
-        actionLabel="Yenile"
-        onAction={onRetry}
       />
     );
   }
@@ -4156,28 +4339,60 @@ const MovieDetailsModal = ({
     <Modal visible={Boolean(movie)} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalOverlaySurface}>
         <Pressable style={{ flex: 1 }} onPress={onClose} />
-        <View style={styles.modalContentSurface}>
-          {posterUri ? (
-            <Image source={{ uri: posterUri }} style={styles.movieDetailPoster} resizeMode="cover" />
-          ) : null}
-          <Text style={styles.movieDetailTitle}>{movie.title}</Text>
-          <Text style={styles.movieDetailMeta}>
-            {movie.year ? `${movie.year} | ` : ''}
-            {movie.genre || 'Tur bilgisi hazirlaniyor'} | Puan: {movie.voteAverage?.toFixed(1) || 'N/A'}
-          </Text>
-          <Text style={styles.movieDetailBody}>{movie.overview || 'Konu ozeti bulunamiyor.'}</Text>
-          <Text style={styles.movieDetailCast}>Yonetmen: {directorLabel}</Text>
-          <Text style={styles.movieDetailCast}>Oyuncular: {castLabel}</Text>
-          {movie.originalLanguage ? (
-            <Text style={styles.movieDetailCast}>Dil: {movie.originalLanguage.toUpperCase()}</Text>
-          ) : null}
-
-          <View style={styles.modalActionStack}>
-            {onOpenCommentComposer ? (
-              <UiButton label="Bu Film Icin Yorum Yaz" tone="brand" stretch onPress={onOpenCommentComposer} />
-            ) : null}
-            <UiButton label="Kapat" tone="neutral" stretch onPress={onClose} />
+        <View style={styles.modalSheetSurface}>
+          <View style={styles.modalNavRow}>
+            <Text style={styles.sectionHeader}>Film Detayi</Text>
+            <Pressable onPress={onClose} hitSlop={PRESSABLE_HIT_SLOP}>
+              <Text style={styles.modalCloseTextBtn}>Kapat</Text>
+            </Pressable>
           </View>
+
+          <ScrollView contentContainerStyle={styles.modalSheetScroll} showsVerticalScrollIndicator={false}>
+            <View style={styles.modalContentSurface}>
+              <View style={styles.movieArchiveHeader}>
+                {posterUri ? (
+                  <Image source={{ uri: posterUri }} style={styles.movieArchivePoster} resizeMode="cover" />
+                ) : (
+                  <View style={styles.movieArchivePosterFallback}>
+                    <Text style={styles.movieArchivePosterFallbackText}>180</Text>
+                  </View>
+                )}
+                <View style={styles.movieArchiveHeaderContent}>
+                  <Text style={styles.movieDetailTitle}>{movie.title}</Text>
+                  <Text style={styles.movieDetailMeta}>
+                    {movie.year ? `${movie.year} | ` : ''}
+                    {movie.genre || 'Tur bilgisi hazirlaniyor'}
+                  </Text>
+                  <View style={styles.movieArchiveBadgeRow}>
+                    <View style={styles.movieArchiveBadge}>
+                      <Text style={styles.movieArchiveBadgeText}>
+                        Puan {movie.voteAverage?.toFixed(1) || 'N/A'}
+                      </Text>
+                    </View>
+                    {movie.originalLanguage ? (
+                      <View style={styles.movieArchiveBadge}>
+                        <Text style={styles.movieArchiveBadgeText}>
+                          Dil {movie.originalLanguage.toUpperCase()}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={styles.movieDetailCast}>Yonetmen: {directorLabel}</Text>
+                  <Text style={styles.movieDetailCast}>Oyuncular: {castLabel}</Text>
+                </View>
+              </View>
+
+              <Text style={styles.subSectionLabel}>Ozet</Text>
+              <Text style={styles.movieDetailBody}>{movie.overview || 'Konu ozeti bulunamiyor.'}</Text>
+            </View>
+
+            <View style={styles.modalActionStack}>
+              {onOpenCommentComposer ? (
+                <UiButton label="Bu Film Icin Yorum Yaz" tone="brand" stretch onPress={onOpenCommentComposer} />
+              ) : null}
+              <UiButton label="Kapat" tone="neutral" stretch onPress={onClose} />
+            </View>
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -4190,7 +4405,8 @@ const ProfileMovieArchiveModal = ({
   message,
   movie,
   entries,
-  onRefresh,
+  onRefresh: _onRefresh,
+  onDeleteEntry,
   onClose,
 }: {
   visible: boolean;
@@ -4199,6 +4415,9 @@ const ProfileMovieArchiveModal = ({
   movie: MobileWatchedMovie | null;
   entries: MobileProfileMovieArchiveEntry[];
   onRefresh: () => void;
+  onDeleteEntry?: (
+    entry: MobileProfileMovieArchiveEntry
+  ) => Promise<{ ok: boolean; message: string }>;
   onClose: () => void;
 }) => {
   useWebModalFocusReset(visible && Boolean(movie));
@@ -4206,6 +4425,7 @@ const ProfileMovieArchiveModal = ({
 
   const posterUri = resolvePosterUrl(movie.posterPath || entries[0]?.posterPath || null);
   const entryCountLabel = `${entries.length} yorum kaydi`;
+  const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -4283,9 +4503,7 @@ const ProfileMovieArchiveModal = ({
                     ? message || 'Film arsivi okunurken gecici bir sorun olustu.'
                     : 'Bu film icin mobil yuzeyde gosterilecek yorum kaydi bulunamadi.'
                 }
-                meta="Yeni ritual geldikce bu alan otomatik dolar."
-                actionLabel="Arsivi Yenile"
-                onAction={onRefresh}
+                meta="Yeni yorum geldikce bu alan otomatik dolar."
               />
             ) : null}
 
@@ -4294,9 +4512,30 @@ const ProfileMovieArchiveModal = ({
                 {entries.map((entry) => (
                   <View key={entry.id} style={styles.movieArchiveEntryCard}>
                     <View style={styles.movieArchiveEntryHeader}>
-                      <Text style={styles.movieArchiveEntryDate}>{entry.date}</Text>
-                      {entry.genre ? (
-                        <Text style={styles.movieArchiveEntryGenre}>{entry.genre}</Text>
+                      <View style={{ flex: 1, gap: 4 }}>
+                        <Text style={styles.movieArchiveEntryDate}>{entry.date}</Text>
+                        {entry.genre ? (
+                          <Text style={styles.movieArchiveEntryGenre}>{entry.genre}</Text>
+                        ) : null}
+                      </View>
+                      {onDeleteEntry ? (
+                        <Pressable
+                          onPress={() => {
+                            if (deletingEntryId) return;
+                            setDeletingEntryId(entry.id);
+                            void onDeleteEntry(entry).finally(() => {
+                              setDeletingEntryId((current) => (current === entry.id ? null : current));
+                            });
+                          }}
+                          disabled={Boolean(deletingEntryId)}
+                          hitSlop={PRESSABLE_HIT_SLOP}
+                          accessibilityRole="button"
+                          accessibilityLabel="Yorumu sil"
+                        >
+                          <Text style={styles.movieArchiveDeleteText}>
+                            {deletingEntryId === entry.id ? 'Siliniyor...' : 'Sil'}
+                          </Text>
+                        </Pressable>
                       ) : null}
                     </View>
                     <Text style={styles.movieArchiveEntryBody}>"{entry.text}"</Text>
@@ -4324,7 +4563,6 @@ const ProfileMovieArchiveModal = ({
             ) : null}
 
             <View style={styles.modalActionStack}>
-              <UiButton label="Arsivi Yenile" tone="brand" stretch onPress={onRefresh} />
               <UiButton label="Kapat" tone="neutral" stretch onPress={onClose} />
             </View>
           </ScrollView>
@@ -4341,7 +4579,7 @@ const PublicProfileMovieArchiveModal = ({
   displayName,
   movie,
   items,
-  onRefresh,
+  onRefresh: _onRefresh,
   onClose,
 }: {
   visible: boolean;
@@ -4427,7 +4665,7 @@ const PublicProfileMovieArchiveModal = ({
                 eyebrow="Public Arsiv"
                 title="Public akis tazeleniyor"
                 body="Seçilen kullanıcının bu filme ait yorumları yeniden yükleniyor."
-                meta={`${profileLabel} profilinden gelen ritual izi taraniyor.`}
+                meta={`${profileLabel} profilinden gelen yorum izi taraniyor.`}
               />
             ) : null}
 
@@ -4442,9 +4680,7 @@ const PublicProfileMovieArchiveModal = ({
                     ? message || 'Public film arsivi okunurken gecici bir sorun olustu.'
                     : 'Bu film icin public yorum kaydi bulunamadi.'
                 }
-                meta={`${profileLabel} yeni ritual biraktikca bu alan dolacak.`}
-                actionLabel="Public Arsivi Yenile"
-                onAction={onRefresh}
+                meta={`${profileLabel} yeni yorum biraktikca bu alan dolacak.`}
               />
             ) : null}
 
@@ -4465,7 +4701,6 @@ const PublicProfileMovieArchiveModal = ({
             ) : null}
 
             <View style={styles.modalActionStack}>
-              <UiButton label="Public Arsivi Yenile" tone="brand" stretch onPress={onRefresh} />
               <UiButton label="Kapat" tone="neutral" stretch onPress={onClose} />
             </View>
           </ScrollView>
@@ -4498,7 +4733,7 @@ const RitualDraftCard = ({
 }) => {
   const textLength = draftText.length;
   const canRetryQueue = queueState.pendingCount > 0 && queueState.status !== 'syncing' && isSignedIn;
-  const filmTitle = targetMovie?.title || 'Ritual Notu';
+  const filmTitle = targetMovie?.title || 'Yorum Notu';
   const genreLabel = String(targetMovie?.genre || '').trim() || 'Tur bekleniyor';
   const directorLabel =
     String(targetMovie?.director || '').trim() || 'Yonetmen bilgisi bekleniyor';
@@ -4532,7 +4767,7 @@ const RitualDraftCard = ({
     <>
       <SectionLeadCard
         accent="clay"
-        eyebrow="Ritual Studio"
+        eyebrow="Yorum Studio"
         title={filmTitle}
         body="Daily listesinden bir filme kisa, net ve tekrar okunabilir bir not birak. Baglanti kopsa bile taslak kuyrukta korunur."
         badges={[
@@ -4560,14 +4795,14 @@ const RitualDraftCard = ({
           !targetMovie
             ? 'Once bir daily filmi sec'
             : !isSignedIn
-              ? 'Ritual kaydi icin oturum ac'
+              ? 'Yorum kaydi icin oturum ac'
               : canSubmit
                 ? 'Yorum gonderime hazir'
                 : 'Taslagini sekillendir'
         }
         body={
           !targetMovie
-            ? 'Film secimi yapildiginda ritual composer ilgili baslik ve metadata ile dolar.'
+            ? 'Film secimi yapildiginda yorum composer ilgili baslik ve metadata ile dolar.'
             : !isSignedIn
               ? 'Yorumu yazabilirsin ama gonderim ve kuyruk tekrar denemesi icin mobil session gerekir.'
               : canSubmit
@@ -4598,13 +4833,13 @@ const RitualDraftCard = ({
           style={styles.ritualInput}
           multiline
           textAlignVertical="top"
-          placeholder="Ritual notlari..."
+          placeholder="Yorum notlari..."
           placeholderTextColor="#8e8b84"
           value={draftText}
           maxLength={180}
           onChangeText={onDraftTextChange}
           editable={targetMovie !== null && submitState.status !== 'submitting'}
-          accessibilityLabel="Ritual notu giris alani"
+          accessibilityLabel="Yorum notu giris alani"
         />
 
         <View style={styles.ritualMetaRow}>
@@ -4662,7 +4897,7 @@ const RitualDraftCard = ({
 
         <View style={styles.sectionLeadActionRow}>
           <UiButton
-            label={submitState.status === 'submitting' ? 'Gonderiliyor...' : 'Ritual Kaydet'}
+            label={submitState.status === 'submitting' ? 'Gonderiliyor...' : 'Yorumu Kaydet'}
             tone="brand"
             stretch
             onPress={onSubmit}
@@ -4744,7 +4979,7 @@ const SETTINGS_GENDER_OPTIONS: Array<{ key: MobileSettingsGender; label: string 
   { key: 'prefer_not_to_say', label: 'Belirtmek istemiyorum' },
 ];
 const SETTINGS_PLATFORM_RULES = [
-  'Ritual notlari net, kisa ve konu odakli olmali.',
+  'Yorum notlari net, kisa ve konu odakli olmali.',
   'Toksik/nefret dili ve spam icerik kaldirilir.',
   'Ayni davet kodunu kotuye kullanma davranisi engellenir.',
   'Tekrarlayan ihlallerde hesap aksiyonu uygulanabilir.',
@@ -4976,9 +5211,13 @@ const RitualComposerModal = ({
 const MobileSettingsModal = ({
   visible,
   onClose,
+  language = 'tr',
+  themeMode,
   identityDraft,
   onChangeIdentity,
   onSaveIdentity,
+  onChangeTheme,
+  onChangeLanguage,
   saveState,
   onPickAvatar,
   onClearAvatar,
@@ -5010,9 +5249,13 @@ const MobileSettingsModal = ({
 }: {
   visible: boolean;
   onClose: () => void;
+  language?: MobileSettingsLanguage;
+  themeMode: MobileThemeMode;
   identityDraft: MobileSettingsIdentityDraft;
   onChangeIdentity: (patch: Partial<MobileSettingsIdentityDraft>) => void;
   onSaveIdentity: () => void;
+  onChangeTheme: (mode: MobileThemeMode) => void;
+  onChangeLanguage: (language: MobileSettingsLanguage) => void;
   saveState: MobileSettingsSaveState;
   onPickAvatar: () => void;
   onClearAvatar: () => void;
@@ -5042,7 +5285,7 @@ const MobileSettingsModal = ({
   onImportLetterboxd: () => void;
   onOpenShareHub: () => void;
 }) => {
-  const [activeTab, setActiveTab] = useState<'identity' | 'privacy' | 'session'>('identity');
+  const [activeTab, setActiveTab] = useState<'identity' | 'appearance' | 'privacy'>('identity');
   useWebModalFocusReset(visible);
 
   useEffect(() => {
@@ -5073,7 +5316,7 @@ const MobileSettingsModal = ({
   const identityProfileLink = String(identityDraft.profileLink || '').trim();
   const activeGenderLabel =
     SETTINGS_GENDER_OPTIONS.find((option) => option.key === identityDraft.gender)?.label || 'Seç';
-  const settingsCopy = MOBILE_SETTINGS_COPY.tr;
+  const settingsCopy = MOBILE_SETTINGS_COPY[language] || MOBILE_SETTINGS_COPY.tr;
   const accountDeletionTitle = settingsCopy.accountDeletion.title;
   const accountDeletionBody = settingsCopy.accountDeletion.body;
   const accountDeletionMeta = settingsCopy.accountDeletion.meta;
@@ -5093,8 +5336,8 @@ const MobileSettingsModal = ({
           <View style={styles.settingsTabRow}>
             {([
               { id: 'identity', label: settingsCopy.tabs.identity },
+              { id: 'appearance', label: settingsCopy.tabs.appearance },
               { id: 'privacy', label: 'Gizlilik' },
-              { id: 'session', label: settingsCopy.tabs.session },
             ] as const).map((tab) => (
               <Pressable
                 key={tab.id}
@@ -5364,6 +5607,150 @@ const MobileSettingsModal = ({
               </>
             ) : null}
 
+            {activeTab === 'appearance' ? (
+              <>
+                <SectionLeadCard
+                  accent={themeMode === 'dawn' ? 'clay' : 'sage'}
+                  eyebrow={settingsCopy.appearance.eyebrow}
+                  title={settingsCopy.appearance.themeTitle}
+                  body={settingsCopy.appearance.body}
+                  badges={[
+                    {
+                      label:
+                        themeMode === 'dawn'
+                          ? settingsCopy.appearance.themeDawn
+                          : settingsCopy.appearance.themeMidnight,
+                      tone: themeMode === 'dawn' ? 'clay' : 'sage',
+                    },
+                    { label: language.toUpperCase(), tone: 'muted' },
+                  ]}
+                  metrics={[
+                    {
+                      label: settingsCopy.appearance.themeMetric,
+                      value:
+                        themeMode === 'dawn'
+                          ? settingsCopy.appearance.themeDawn
+                          : settingsCopy.appearance.themeMidnight,
+                    },
+                    {
+                      label: settingsCopy.appearance.languageMetric,
+                      value: language.toUpperCase(),
+                    },
+                  ]}
+                />
+
+                <CollapsibleSectionCard
+                  accent={themeMode === 'dawn' ? 'clay' : 'sage'}
+                  title={settingsCopy.appearance.themeTitle}
+                  meta={
+                    themeMode === 'dawn'
+                      ? settingsCopy.appearance.themeDawn
+                      : settingsCopy.appearance.themeMidnight
+                  }
+                  defaultExpanded
+                >
+                  <Text style={styles.screenBody}>{settingsCopy.appearance.themeDescription}</Text>
+                  <View style={styles.themeModeSegmentContainer}>
+                    <Pressable
+                      style={[
+                        styles.themeModeSegmentOption,
+                        themeMode === 'midnight' ? styles.themeModeSegmentActiveMidnight : null,
+                      ]}
+                      onPress={() => onChangeTheme('midnight')}
+                      accessibilityRole="button"
+                      accessibilityLabel={settingsCopy.appearance.themeMidnight}
+                    >
+                      <Text
+                        style={[
+                          styles.themeModeSegmentText,
+                          themeMode === 'midnight'
+                            ? styles.themeModeSegmentTextActiveMidnight
+                            : null,
+                        ]}
+                      >
+                        {settingsCopy.appearance.themeMidnight}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[
+                        styles.themeModeSegmentOption,
+                        themeMode === 'dawn' ? styles.themeModeSegmentActiveDawn : null,
+                      ]}
+                      onPress={() => onChangeTheme('dawn')}
+                      accessibilityRole="button"
+                      accessibilityLabel={settingsCopy.appearance.themeDawn}
+                    >
+                      <Text
+                        style={[
+                          styles.themeModeSegmentText,
+                          themeMode === 'dawn' ? styles.themeModeSegmentTextActiveDawn : null,
+                        ]}
+                      >
+                        {settingsCopy.appearance.themeDawn}
+                      </Text>
+                    </Pressable>
+                  </View>
+                  <StatusStrip
+                    tone={themeMode === 'dawn' ? 'clay' : 'sage'}
+                    eyebrow={settingsCopy.appearance.themeStatusEyebrow}
+                    title={
+                      themeMode === 'dawn'
+                        ? settingsCopy.appearance.themeDawn
+                        : settingsCopy.appearance.themeMidnight
+                    }
+                    body={
+                      themeMode === 'dawn'
+                        ? settingsCopy.appearance.themeStatusBodyDawn
+                        : settingsCopy.appearance.themeStatusBodyMidnight
+                    }
+                  />
+                </CollapsibleSectionCard>
+
+                <CollapsibleSectionCard
+                  accent="sage"
+                  title={settingsCopy.appearance.languageTitle}
+                  meta={language.toUpperCase()}
+                  defaultExpanded
+                >
+                  <Text style={styles.screenBody}>{settingsCopy.appearance.languageDescription}</Text>
+                  <View style={styles.settingsGenderRow}>
+                    {([
+                      { code: 'tr', label: 'TR' },
+                      { code: 'en', label: 'EN' },
+                      { code: 'es', label: 'ES' },
+                      { code: 'fr', label: 'FR' },
+                    ] as const).map((option) => (
+                      <Pressable
+                        key={option.code}
+                        style={[
+                          styles.settingsGenderChip,
+                          language === option.code ? styles.settingsGenderChipActive : null,
+                        ]}
+                        onPress={() => onChangeLanguage(option.code)}
+                        hitSlop={PRESSABLE_HIT_SLOP}
+                      >
+                        <Text
+                          style={[
+                            styles.settingsGenderChipText,
+                            language === option.code ? styles.settingsGenderChipTextActive : null,
+                          ]}
+                        >
+                          {option.label}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <StatusStrip
+                    tone="sage"
+                    eyebrow={settingsCopy.appearance.languageStatusEyebrow}
+                    title={language.toUpperCase()}
+                    body={settingsCopy.appearance.languageStatusBody}
+                    meta={settingsCopy.appearance.languageCoverageMeta}
+                  />
+                </CollapsibleSectionCard>
+              </>
+            ) : null}
+
             {activeTab === 'privacy' ? (
               <>
                 <SectionLeadCard
@@ -5391,7 +5778,7 @@ const MobileSettingsModal = ({
                   {
                     key: 'showStats',
                     title: 'Istatistikleri goster',
-                    body: 'Ritual, streak ve gun ozetini goster.',
+                    body: 'Yorum, streak ve gun ozetini goster.',
                   },
                   {
                     key: 'showFollowCounts',
@@ -6016,15 +6403,15 @@ const ArenaChallengeCard = ({
       accent="clay"
       eyebrow="Arena Pulse"
       title="Haftalik challenge nabzi"
-      body="Gunluk ritual ritmi, aktif seri ve yorum akisi Arena tablosundaki yerini belirler."
+      body="Gunluk yorum ritmi, aktif seri ve sosyal akis Arena tablosundaki yerini belirler."
       badges={[
         { label: `Seri ${streakLabel}`, tone: 'sage' },
-        { label: `Ritual ${ritualsLabel}`, tone: 'muted' },
+        { label: `Yorum ${ritualsLabel}`, tone: 'muted' },
         { label: 'haftalik tempo', tone: 'clay' },
       ]}
       metrics={[
         { label: 'Seri', value: streakLabel },
-        { label: 'Ritual', value: ritualsLabel },
+        { label: 'Yorum', value: ritualsLabel },
         { label: 'Mod', value: 'Haftalik' },
       ]}
       actions={onOpenDaily ? [{ label: 'Gunluk Akisa Gec', tone: 'brand', onPress: onOpenDaily }] : undefined}
@@ -6041,7 +6428,7 @@ const ArenaChallengeCard = ({
 
 const ArenaLeaderboardCard = ({
   state,
-  onRefresh,
+  onRefresh: _onRefresh,
   onOpenProfile,
 }: {
   state: ArenaLeaderboardState;
@@ -6053,31 +6440,11 @@ const ArenaLeaderboardCard = ({
       accent="sage"
       eyebrow="Arena Board"
       title="Arena Leaderboard"
-      body="Son ritual aktivitesinden uretilen haftalik siralama. Nick uzerine dokunarak profili ac."
+      body="Son yorum aktivitesinden uretilen haftalik siralama. Nick uzerine dokunarak profili ac."
       badges={[
-        { label: state.source === 'live' ? 'canli kaynak' : 'fallback kaynak', tone: state.source === 'live' ? 'sage' : 'clay' },
         { label: `${state.entries.length} oyuncu`, tone: 'muted' },
       ]}
-      metrics={[
-        { label: 'Kaynak', value: state.source === 'live' ? 'live' : 'fallback' },
-        { label: 'Durum', value: state.status },
-      ]}
-      actions={[
-        {
-          label: state.status === 'loading' ? 'Yenileniyor...' : 'Leaderboard Yenile',
-          tone: 'neutral',
-          onPress: onRefresh,
-          disabled: state.status === 'loading',
-        },
-      ]}
-    />
-
-    <StatusStrip
-      tone={state.status === 'error' ? 'clay' : state.source === 'live' ? 'sage' : 'muted'}
-      eyebrow="Arena Feed"
-      title={state.status === 'error' ? 'Leaderboard okunamadi' : state.source === 'live' ? 'Canli siralama acik' : 'Fallback siralama aktif'}
-      body={state.message}
-      meta="Profil acilislari siralama satirlarindan tetiklenir."
+      metrics={[{ label: 'Durum', value: state.status === 'loading' ? 'Hazirlaniyor' : 'Haftalik' }]}
     />
 
     {state.status === 'loading' && state.entries.length === 0 ? (
@@ -6086,8 +6453,7 @@ const ArenaLeaderboardCard = ({
         variant="loading"
         eyebrow="Arena"
         title="Haftalik siralama yukleniyor"
-        body="Canli ritual aktivitesi ve profil gecisleri toparlaniyor."
-        meta="Kaynak canli degilse fallback tablo devreye girebilir."
+        body="Canli yorum aktivitesi ve profil gecisleri toparlaniyor."
       />
     ) : null}
 
@@ -6100,11 +6466,8 @@ const ArenaLeaderboardCard = ({
         body={
           state.status === 'error'
             ? 'Siralama okunurken gecici bir sorun olustu.'
-            : 'Yeni ritual ve echo hareketleri geldikce arena siralamasi burada gorunecek.'
+            : 'Yeni yorum ve echo hareketleri geldikce arena siralamasi burada gorunecek.'
         }
-        meta={state.message}
-        actionLabel="Leaderboard Yenile"
-        onAction={onRefresh}
       />
     ) : null}
 
@@ -6143,7 +6506,7 @@ const ArenaLeaderboardCard = ({
                   <Text style={styles.arenaLeaderboardName}>{item.displayName}</Text>
                 </Pressable>
                 <Text style={styles.arenaLeaderboardMeta}>
-                  Ritual {item.ritualsCount} | Echo {item.echoCount}
+                  Yorum {item.ritualsCount} | Echo {item.echoCount}
                 </Text>
               </View>
               <UiButton
@@ -6240,7 +6603,6 @@ const PublicProfileDetailCard = ({
   onToggleFollow,
   onOpenFullProfile,
   onBack,
-  onRefresh,
 }: {
   status: 'idle' | 'loading' | 'ready' | 'error';
   message: string;
@@ -6255,7 +6617,6 @@ const PublicProfileDetailCard = ({
   onToggleFollow: () => void;
   onOpenFullProfile: () => void;
   onBack: () => void;
-  onRefresh: () => void;
 }) => {
   const profileDisplayName = String(profile?.displayName || displayNameHint || '@bilinmeyen').trim();
   const normalizedAvatarUrl = String(profile?.avatarUrl || '').trim();
@@ -6279,7 +6640,7 @@ const PublicProfileDetailCard = ({
           ...(!isSelfProfile && followsYou ? [{ label: 'seni takip ediyor', tone: 'sage' as const }] : []),
         ]}
         metrics={[
-          { label: 'Ritual', value: String(ritualsCount) },
+          { label: 'Yorum', value: String(ritualsCount) },
           { label: 'Takip', value: String(followingCount) },
           { label: 'Takipci', value: String(followersCount) },
         ]}
@@ -6288,11 +6649,6 @@ const PublicProfileDetailCard = ({
             label: 'Profili Tam Ac',
             tone: 'brand',
             onPress: onOpenFullProfile,
-          },
-          {
-            label: 'Yenile',
-            tone: 'neutral',
-            onPress: onRefresh,
           },
           {
             label: 'Kapat',
@@ -6319,9 +6675,6 @@ const PublicProfileDetailCard = ({
           eyebrow="Public Profil"
           title="Profil acilamadi"
           body={message}
-          actionLabel="Yenile"
-          onAction={onRefresh}
-          actionTone="danger"
         />
       ) : null}
 
@@ -6352,7 +6705,7 @@ const PublicProfileDetailCard = ({
           <Text style={styles.subSectionLabel}>Ozet</Text>
           <View style={styles.detailInfoGrid}>
             <View style={styles.detailInfoCard}>
-              <Text style={styles.detailInfoLabel}>Ritual</Text>
+              <Text style={styles.detailInfoLabel}>Yorum</Text>
               <Text style={styles.detailInfoValue}>{ritualsCount}</Text>
             </View>
             <View style={styles.detailInfoCard}>
@@ -6402,7 +6755,7 @@ const PublicProfileDetailCard = ({
 
 const PlatformRulesCard = () => {
   const rules = [
-    'Ritual notlari net, kisa ve konu odakli olmali.',
+    'Yorum notlari net, kisa ve konu odakli olmali.',
     'Toksik/nefret dili ve spam icerik kaldirilir.',
     'Ayni davet kodunu kotuye kullanma davranisi engellenir.',
     'Tekrarlayan ihlallerde hesap aksiyonu uygulanabilir.',

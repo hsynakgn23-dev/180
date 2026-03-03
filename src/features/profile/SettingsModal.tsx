@@ -17,13 +17,24 @@ import {
 } from '../../lib/letterboxdImport';
 import { trackEvent } from '../../lib/analytics';
 import { readAvatarFileAsDataUrl } from '../../lib/avatarUpload';
+import { isSupabaseLive, supabase } from '../../lib/supabase';
+import {
+    getDefaultProfileVisibility,
+    normalizeProfileVisibility,
+    readProfileVisibilityFromXpState,
+    writeProfileVisibilityToXpState,
+    type ProfileVisibility
+} from '../../lib/profileVisibility';
 
 interface SettingsModalProps {
     isOpen: boolean;
     onClose: () => void;
 }
 
-type SettingsTab = 'identity' | 'appearance' | 'session';
+type SettingsTab = 'identity' | 'appearance' | 'privacy' | 'session';
+
+const getPrivacyStorageKey = (identity: string): string =>
+    `ac_web_profile_visibility_v1:${identity.trim().toLowerCase()}`;
 
 type ImportCopy = {
     title: string;
@@ -91,6 +102,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     const [pendingImportFileName, setPendingImportFileName] = useState('');
     const [inviteCodeDraft, setInviteCodeDraft] = useState('');
     const [inviteStatus, setInviteStatus] = useState('');
+    const [privacyDraft, setPrivacyDraft] = useState<ProfileVisibility>(getDefaultProfileVisibility());
     const genderOptions: Array<{ value: RegistrationGender; label: string }> = getRegistrationGenderOptions(language);
 
     const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -270,6 +282,75 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         };
     }, [inviteClaimsCount, inviteRewardConfig.inviteeXp, inviteRewardConfig.inviterXp, inviteRewardsEarned, language]);
 
+    const privacyCopy = React.useMemo(() => {
+        if (language === 'tr') {
+            return {
+                tab: 'Gizlilik',
+                title: 'Profil Gizliligi',
+                subtitle: 'Web public profilinde hangi alanlarin gorunecegini sec.',
+                statsTitle: 'Istatistikleri goster',
+                statsBody: 'Seri, gun ve yorum ozetleri public profilde gorunsun.',
+                followsTitle: 'Takip sayilarini goster',
+                followsBody: 'Takip ve takipci sayilari public profilde gorunsun.',
+                marksTitle: 'Marklari goster',
+                marksBody: 'Acik marklar future web yuzeyleri icin saklansin.',
+                save: 'Gizliligi Kaydet',
+                saved: 'Gizlilik ayarlari kaydedildi.',
+                failed: 'Gizlilik ayarlari kaydedilemedi.',
+                signInRequired: 'Gizlilik ayarlari icin once giris yap.'
+            };
+        }
+        if (language === 'es') {
+            return {
+                tab: 'Privacidad',
+                title: 'Privacidad del Perfil',
+                subtitle: 'Elige que se muestra en tu perfil publico web.',
+                statsTitle: 'Mostrar estadisticas',
+                statsBody: 'Muestra racha, dias y resumen de comentarios.',
+                followsTitle: 'Mostrar conteos de seguimiento',
+                followsBody: 'Muestra totales de siguiendo y seguidores.',
+                marksTitle: 'Mostrar marcas',
+                marksBody: 'Guarda tus marcas abiertas para futuras superficies web.',
+                save: 'Guardar Privacidad',
+                saved: 'La privacidad se guardo.',
+                failed: 'No se pudo guardar la privacidad.',
+                signInRequired: 'Inicia sesion para guardar privacidad.'
+            };
+        }
+        if (language === 'fr') {
+            return {
+                tab: 'Confidentialite',
+                title: 'Confidentialite du Profil',
+                subtitle: 'Choisis ce qui apparait sur ton profil public web.',
+                statsTitle: 'Afficher les stats',
+                statsBody: 'Affiche la serie, les jours et le resume des commentaires.',
+                followsTitle: 'Afficher les abonnements',
+                followsBody: 'Affiche les totaux abonnes et abonnements.',
+                marksTitle: 'Afficher les marques',
+                marksBody: 'Conserve les marques debloquees pour les futures surfaces web.',
+                save: 'Enregistrer la Confidentialite',
+                saved: 'Les reglages de confidentialite sont enregistres.',
+                failed: 'La confidentialite na pas pu etre enregistree.',
+                signInRequired: 'Connecte-toi pour enregistrer la confidentialite.'
+            };
+        }
+        return {
+            tab: 'Privacy',
+            title: 'Profile Privacy',
+            subtitle: 'Choose what appears on your public web profile.',
+            statsTitle: 'Show stats',
+            statsBody: 'Show streak, days, and comment summaries on the public profile.',
+            followsTitle: 'Show follow counts',
+            followsBody: 'Show following and follower totals on the public profile.',
+            marksTitle: 'Show marks',
+            marksBody: 'Keep unlocked marks available for future web surfaces.',
+            save: 'Save Privacy',
+            saved: 'Privacy settings saved.',
+            failed: 'Privacy settings could not be saved.',
+            signInRequired: 'Sign in to save privacy settings.'
+        };
+    }, [language]);
+
     useEffect(() => {
         if (!isOpen) return;
 
@@ -285,11 +366,54 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         setPendingImportFileName('');
         setInviteCodeDraft('');
         setInviteStatus('');
+        const privacyIdentity = user?.id || user?.email || '';
+        if (privacyIdentity) {
+            try {
+                const raw = localStorage.getItem(getPrivacyStorageKey(privacyIdentity));
+                if (raw) {
+                    setPrivacyDraft(normalizeProfileVisibility(JSON.parse(raw) as ProfileVisibility));
+                } else {
+                    setPrivacyDraft(getDefaultProfileVisibility());
+                }
+            } catch {
+                setPrivacyDraft(getDefaultProfileVisibility());
+            }
+        } else {
+            setPrivacyDraft(getDefaultProfileVisibility());
+        }
 
         setTheme(resolveThemeMode());
         setLetterboxdSnapshot(readStoredLetterboxdImport(user?.id || user?.email || ''));
 
     }, [isOpen, bio, fullName, username, gender, birthDate, user?.id, user?.email]);
+
+    useEffect(() => {
+        if (!isOpen || !user?.id || !isSupabaseLive() || !supabase) return;
+        let active = true;
+
+        void supabase
+            .from('profiles')
+            .select('xp_state')
+            .eq('user_id', user.id)
+            .maybeSingle()
+            .then(({ data, error }) => {
+                if (!active || error || !data?.xp_state) return;
+                const nextVisibility = readProfileVisibilityFromXpState(data.xp_state);
+                setPrivacyDraft(nextVisibility);
+                try {
+                    localStorage.setItem(
+                        getPrivacyStorageKey(user.id || user.email || ''),
+                        JSON.stringify(nextVisibility)
+                    );
+                } catch {
+                    // ignore local cache failures
+                }
+            });
+
+        return () => {
+            active = false;
+        };
+    }, [isOpen, user?.email, user?.id]);
 
     useEffect(() => {
         if (!statusMessage) return;
@@ -327,6 +451,65 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         }
         updateIdentity(bioDraft, avatarId);
         setStatusMessage(profileResult.message || text.settings.statusIdentitySaved);
+    };
+
+    const handleSavePrivacy = async () => {
+        if (!user) {
+            setStatusMessage(privacyCopy.signInRequired);
+            return;
+        }
+
+        const normalizedVisibility = normalizeProfileVisibility(privacyDraft);
+        const localIdentity = user.id || user.email || '';
+        if (localIdentity) {
+            try {
+                localStorage.setItem(
+                    getPrivacyStorageKey(localIdentity),
+                    JSON.stringify(normalizedVisibility)
+                );
+            } catch {
+                // ignore local cache failures
+            }
+        }
+
+        if (!isSupabaseLive() || !supabase || !user.id) {
+            setPrivacyDraft(normalizedVisibility);
+            setStatusMessage(privacyCopy.saved);
+            return;
+        }
+
+        const { data: profileRow } = await supabase
+            .from('profiles')
+            .select('xp_state')
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+        const baseXpState =
+            profileRow?.xp_state && typeof profileRow.xp_state === 'object'
+                ? (profileRow.xp_state as Record<string, unknown>)
+                : {};
+
+        const nextXpState = writeProfileVisibilityToXpState(baseXpState, normalizedVisibility);
+        const { error } = await supabase
+            .from('profiles')
+            .upsert(
+                {
+                    user_id: user.id,
+                    email: user.email,
+                    display_name: usernameDraft || fullNameDraft || user.name,
+                    xp_state: nextXpState,
+                    updated_at: new Date().toISOString()
+                },
+                { onConflict: 'user_id' }
+            );
+
+        if (error) {
+            setStatusMessage(privacyCopy.failed);
+            return;
+        }
+
+        setPrivacyDraft(normalizedVisibility);
+        setStatusMessage(privacyCopy.saved);
     };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -483,7 +666,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                         {([
                             { id: 'identity', label: text.settings.tabIdentity },
                             { id: 'appearance', label: text.settings.tabAppearance },
-                            { id: 'session', label: text.settings.tabSession }
+                            { id: 'privacy', label: privacyCopy.tab }
                         ] as const).map((tab) => (
                             <button
                                 key={tab.id}
@@ -761,6 +944,64 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                     ))}
                                 </div>
                             </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'privacy' && (
+                        <div className="space-y-5 animate-fade-in">
+                            <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+                                <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-2">{privacyCopy.title}</p>
+                                <p className="text-xs text-gray-500">{privacyCopy.subtitle}</p>
+                            </div>
+
+                            {([
+                                { key: 'showStats', title: privacyCopy.statsTitle, body: privacyCopy.statsBody },
+                                { key: 'showFollowCounts', title: privacyCopy.followsTitle, body: privacyCopy.followsBody },
+                                { key: 'showMarks', title: privacyCopy.marksTitle, body: privacyCopy.marksBody }
+                            ] as const).map((item) => {
+                                const enabled = privacyDraft[item.key];
+                                return (
+                                    <button
+                                        key={item.key}
+                                        type="button"
+                                        onClick={() =>
+                                            setPrivacyDraft((prev) => ({
+                                                ...prev,
+                                                [item.key]: !enabled
+                                            }))
+                                        }
+                                        className={`w-full rounded-xl border p-4 text-left transition-colors ${
+                                            enabled
+                                                ? 'border-sage/35 bg-sage/10'
+                                                : 'border-white/10 bg-white/5 hover:border-sage/25'
+                                        }`}
+                                    >
+                                        <div className="flex items-start justify-between gap-4">
+                                            <div>
+                                                <p className="text-[10px] uppercase tracking-[0.16em] text-[#E5E4E2]">{item.title}</p>
+                                                <p className="mt-2 text-xs text-gray-500">{item.body}</p>
+                                            </div>
+                                            <span
+                                                className={`mt-0.5 inline-flex min-w-[58px] justify-center rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] ${
+                                                    enabled
+                                                        ? 'border-sage/40 text-sage bg-sage/10'
+                                                        : 'border-white/10 text-gray-500'
+                                                }`}
+                                            >
+                                                {enabled ? 'On' : 'Off'}
+                                            </span>
+                                        </div>
+                                    </button>
+                                );
+                            })}
+
+                            <button
+                                type="button"
+                                onClick={() => void handleSavePrivacy()}
+                                className="w-full bg-sage text-[#121212] rounded py-2.5 text-[10px] uppercase tracking-[0.2em] font-bold hover:opacity-90 transition-opacity"
+                            >
+                                {privacyCopy.save}
+                            </button>
                         </div>
                     )}
 
