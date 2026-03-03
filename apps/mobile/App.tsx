@@ -1217,12 +1217,6 @@ export default function App() {
     }
   }, []);
 
-  const handleRefreshProfileMovieArchive = useCallback(() => {
-    const movie = profileMovieArchiveModalState.movie;
-    if (!movie) return;
-    void handleOpenProfileMovieArchive(movie);
-  }, [handleOpenProfileMovieArchive, profileMovieArchiveModalState.movie]);
-
   const resolvePublicMovieArchiveItems = useCallback(
     (movie: PublicWatchedMovieSummary, sourceItems: MobilePublicProfileActivityItem[]) => {
       const movieTitle = String(movie.movieTitle || '').trim().toLowerCase();
@@ -1280,65 +1274,6 @@ export default function App() {
       resolvePublicMovieArchiveItems,
     ]
   );
-
-  const handleRefreshPublicProfileMovieArchive = useCallback(async () => {
-    const movie = publicProfileMovieArchiveModalState.movie;
-    const userId =
-      String(publicProfileTarget?.userId || '').trim() ||
-      String(publicProfileModalState.profile?.userId || '').trim();
-    const displayName =
-      String(publicProfileMovieArchiveModalState.displayName || '').trim() ||
-      String(publicProfileModalState.profile?.displayName || '').trim() ||
-      publicProfileFullState.displayName ||
-      publicProfileModalState.displayNameHint;
-
-    if (!movie || !userId) return;
-
-    setPublicProfileMovieArchiveModalState((prev) => ({
-      ...prev,
-      visible: true,
-      status: 'loading',
-      message: 'Public film arsivi yenileniyor...',
-      items: [],
-    }));
-
-    const result = await fetchMobilePublicProfileActivity({
-      userId,
-      limit: 100,
-    });
-
-    setPublicProfileFullState((prev) => ({
-      ...prev,
-      visible: true,
-      status: result.ok ? 'ready' : 'error',
-      message: result.message,
-      displayName: displayName || prev.displayName,
-      items: result.items,
-    }));
-
-    const items = result.ok ? resolvePublicMovieArchiveItems(movie, result.items) : [];
-    setPublicProfileMovieArchiveModalState({
-      visible: true,
-      status: result.ok && items.length > 0 ? 'ready' : 'error',
-      message: result.ok
-        ? items.length > 0
-          ? `${displayName || '@bilinmeyen'} icin ${items.length} yorum kaydi bulundu.`
-          : 'Bu film icin public yorum kaydi bulunamadi.'
-        : result.message,
-      displayName: displayName || '@bilinmeyen',
-      movie,
-      items,
-    });
-  }, [
-    publicProfileFullState.displayName,
-    publicProfileModalState.displayNameHint,
-    publicProfileModalState.profile?.displayName,
-    publicProfileModalState.profile?.userId,
-    publicProfileMovieArchiveModalState.displayName,
-    publicProfileMovieArchiveModalState.movie,
-    publicProfileTarget?.userId,
-    resolvePublicMovieArchiveItems,
-  ]);
 
   const resolvePublicProfileUserId = useCallback(
     async ({ userId, username }: { userId?: string | null; username?: string | null }) => {
@@ -5173,7 +5108,6 @@ export default function App() {
                         state={dailyCommentFeedState}
                         currentUserAvatarUrl={profileAvatarUrl}
                         showFilters={false}
-                        showOpsMeta={isDevSurfaceEnabled}
                         onScopeChange={() => undefined}
                         onSortChange={() => undefined}
                         onQueryChange={() => undefined}
@@ -5267,9 +5201,6 @@ export default function App() {
                       />
                       <ArenaLeaderboardCard
                         state={arenaState}
-                        onRefresh={() => {
-                          void refreshArenaLeaderboard();
-                        }}
                         onOpenProfile={(item) => {
                           void handleOpenArenaProfile(item);
                         }}
@@ -5284,7 +5215,6 @@ export default function App() {
                         state={commentFeedState}
                         currentUserAvatarUrl={profileAvatarUrl}
                         showFilters
-                        showOpsMeta={isDevSurfaceEnabled}
                         onScopeChange={handleCommentFeedScopeChange}
                         onSortChange={handleCommentFeedSortChange}
                         onQueryChange={handleCommentFeedQueryChange}
@@ -5827,7 +5757,6 @@ export default function App() {
             message={profileMovieArchiveModalState.message}
             movie={profileMovieArchiveModalState.movie}
             entries={profileMovieArchiveModalState.entries}
-            onRefresh={handleRefreshProfileMovieArchive}
             onDeleteEntry={handleDeleteProfileMovieArchiveEntry}
             onClose={handleCloseProfileMovieArchive}
           />
@@ -5839,9 +5768,6 @@ export default function App() {
             displayName={publicProfileMovieArchiveModalState.displayName}
             movie={publicProfileMovieArchiveModalState.movie}
             items={publicProfileMovieArchiveModalState.items}
-            onRefresh={() => {
-              void handleRefreshPublicProfileMovieArchive();
-            }}
             onClose={handleClosePublicProfileMovieArchive}
           />
 

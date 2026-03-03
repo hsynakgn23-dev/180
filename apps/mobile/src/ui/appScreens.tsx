@@ -3451,7 +3451,6 @@ const CommentFeedCard = ({
   state,
   currentUserAvatarUrl,
   showFilters = true,
-  showOpsMeta = false,
   onScopeChange,
   onSortChange,
   onQueryChange,
@@ -3467,7 +3466,6 @@ const CommentFeedCard = ({
   state: CommentFeedState;
   currentUserAvatarUrl?: string;
   showFilters?: boolean;
-  showOpsMeta?: boolean;
   onScopeChange: (scope: CommentFeedScope) => void;
   onSortChange: (sort: CommentFeedSort) => void;
   onQueryChange: (query: string) => void;
@@ -4405,7 +4403,6 @@ const ProfileMovieArchiveModal = ({
   message,
   movie,
   entries,
-  onRefresh: _onRefresh,
   onDeleteEntry,
   onClose,
 }: {
@@ -4414,18 +4411,17 @@ const ProfileMovieArchiveModal = ({
   message: string;
   movie: MobileWatchedMovie | null;
   entries: MobileProfileMovieArchiveEntry[];
-  onRefresh: () => void;
   onDeleteEntry?: (
     entry: MobileProfileMovieArchiveEntry
   ) => Promise<{ ok: boolean; message: string }>;
   onClose: () => void;
 }) => {
   useWebModalFocusReset(visible && Boolean(movie));
+  const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
   if (!visible || !movie) return null;
 
   const posterUri = resolvePosterUrl(movie.posterPath || entries[0]?.posterPath || null);
   const entryCountLabel = `${entries.length} yorum kaydi`;
-  const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -4579,7 +4575,6 @@ const PublicProfileMovieArchiveModal = ({
   displayName,
   movie,
   items,
-  onRefresh: _onRefresh,
   onClose,
 }: {
   visible: boolean;
@@ -4594,7 +4589,6 @@ const PublicProfileMovieArchiveModal = ({
     watchCount: number;
   } | null;
   items: MobilePublicProfileActivityItem[];
-  onRefresh: () => void;
   onClose: () => void;
 }) => {
   useWebModalFocusReset(visible && Boolean(movie));
@@ -6428,11 +6422,9 @@ const ArenaChallengeCard = ({
 
 const ArenaLeaderboardCard = ({
   state,
-  onRefresh: _onRefresh,
   onOpenProfile,
 }: {
   state: ArenaLeaderboardState;
-  onRefresh: () => void;
   onOpenProfile: (item: ArenaLeaderboardItem) => void;
 }) => (
   <>
