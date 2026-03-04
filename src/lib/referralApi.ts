@@ -1,3 +1,4 @@
+import { getConfiguredApiBase } from './apiBase';
 import { isSupabaseLive, supabase } from './supabase';
 
 type ReferralApiErrorCode =
@@ -35,7 +36,9 @@ type ClaimInvitePayload = {
 const REFERRAL_DEVICE_KEY_STORAGE = '180_referral_device_key_v1';
 
 const getApiBase = (): string => {
-    const configuredBase = String(import.meta.env.VITE_REFERRAL_API_BASE || '').trim();
+    const configuredBase = String(
+        import.meta.env.VITE_REFERRAL_API_BASE || getConfiguredApiBase()
+    ).trim();
     if (!configuredBase) return '';
     return configuredBase.replace(/\/+$/, '');
 };

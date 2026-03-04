@@ -1,4 +1,5 @@
 import {
+    type AdminContext,
     clampInteger,
     normalizeUuid,
     parseBody,
@@ -15,12 +16,7 @@ export const config = {
 };
 
 const buildModerationSnapshot = async (
-    serviceClient: Awaited<ReturnType<typeof requireAdminAccess>> extends {
-        ok: true;
-        context: infer Context;
-    }
-        ? Context['serviceClient']
-        : never,
+    serviceClient: AdminContext['serviceClient'],
     targetUserId: string
 ) => {
     const [profileRes, authUserRes] = await Promise.all([

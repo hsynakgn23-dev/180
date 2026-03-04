@@ -1,0 +1,9 @@
+node_modules
+build
+dist
+.git
+.gitignore
+.vercel
+artifacts
+coverage
+npm-debug.log*

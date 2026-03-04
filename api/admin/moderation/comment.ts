@@ -103,16 +103,25 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         );
     }
 
+    const existingRecord =
+        existingRow && typeof existingRow === 'object' && !Array.isArray(existingRow)
+            ? (existingRow as unknown as Record<string, unknown>)
+            : {};
+    const updatedRecord =
+        updatedRow && typeof updatedRow === 'object' && !Array.isArray(updatedRow)
+            ? (updatedRow as unknown as Record<string, unknown>)
+            : {};
+
     const moderationPayload = {
         actor_user_id: authUser.id,
-        target_user_id: normalizeUuid((existingRow as Record<string, unknown>).user_id) || null,
+        target_user_id: normalizeUuid(existingRecord.user_id) || null,
         action: `${entityType}_${action}`,
         reason_code: reasonCode,
         note,
         metadata: {
-            author: toText((existingRow as Record<string, unknown>).author, 120),
-            movieTitle: toText((existingRow as Record<string, unknown>).movie_title, 180),
-            preview: toText((existingRow as Record<string, unknown>).text, 220)
+            author: toText(existingRecord.author, 120),
+            movieTitle: toText(existingRecord.movie_title, 180),
+            preview: toText(existingRecord.text, 220)
         },
         [entityConfig.idField]: entityId
     };
@@ -141,15 +150,12 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
                 entityType,
                 entityId,
                 action,
-                isRemoved: Boolean((updatedRow as Record<string, unknown>).is_removed),
-                userId: normalizeUuid((updatedRow as Record<string, unknown>).user_id) || null,
-                author: toText((updatedRow as Record<string, unknown>).author, 120),
-                movieTitle: toText((updatedRow as Record<string, unknown>).movie_title, 180),
-                text: toText((updatedRow as Record<string, unknown>).text, 280),
-                removalReason: toText(
-                    (updatedRow as Record<string, unknown>).removal_reason,
-                    80
-                )
+                isRemoved: Boolean(updatedRecord.is_removed),
+                userId: normalizeUuid(updatedRecord.user_id) || null,
+                author: toText(updatedRecord.author, 120),
+                movieTitle: toText(updatedRecord.movie_title, 180),
+                text: toText(updatedRecord.text, 280),
+                removalReason: toText(updatedRecord.removal_reason, 80)
             }
         },
         corsHeaders

@@ -6,6 +6,10 @@ export const config = {
 };
 
 type ApiRequest = {
+    method?: string;
+    body?: unknown;
+    headers?: Record<string, string | undefined> | Headers;
+    on?: (event: string, callback: (chunk: Buffer | string) => void) => void;
     url?: string;
 };
 

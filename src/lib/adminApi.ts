@@ -1,4 +1,5 @@
 import { isSupabaseLive, supabase } from './supabase';
+import { buildApiUrl } from './apiBase';
 
 type AdminApiErrorCode =
     | 'UNAUTHORIZED'
@@ -153,7 +154,7 @@ const requestAdminApi = async <T>(
 };
 
 export const readAdminSession = async (): Promise<AdminApiResponse<AdminSessionPayload>> =>
-    requestAdminApi<AdminSessionPayload>('/api/admin/session', {
+    requestAdminApi<AdminSessionPayload>(buildApiUrl('/api/admin/session'), {
         method: 'GET'
     });
 
@@ -167,7 +168,7 @@ export const readAdminDashboard = async (
     }
     params.set('limit', String(limit));
     const suffix = params.toString() ? `?${params.toString()}` : '';
-    return requestAdminApi<AdminDashboardPayload>(`/api/admin/dashboard${suffix}`, {
+    return requestAdminApi<AdminDashboardPayload>(buildApiUrl(`/api/admin/dashboard${suffix}`), {
         method: 'GET'
     });
 };
@@ -189,7 +190,7 @@ export const moderateAdminComment = async (input: {
         movieTitle?: string;
         text: string;
         removalReason: string;
-    }>('/api/admin/moderation/comment', {
+    }>(buildApiUrl('/api/admin/moderation/comment'), {
         method: 'POST',
         body: JSON.stringify(input)
     });
@@ -205,7 +206,7 @@ export const moderateAdminUser = async (input: {
         action: 'suspend' | 'unsuspend' | 'delete';
         targetUserId: string;
         suspendedUntil?: string | null;
-    }>('/api/admin/moderation/user', {
+    }>(buildApiUrl('/api/admin/moderation/user'), {
         method: 'POST',
         body: JSON.stringify(input)
     });

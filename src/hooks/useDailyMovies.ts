@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { TMDB_SEEDS } from '../data/tmdbSeeds';
 import { DAILY_SLOTS, FALLBACK_GRADIENTS } from '../data/dailyConfig';
 import type { Movie } from '../data/mockMovies';
+import { buildApiUrl } from '../lib/apiBase';
 import { supabase, isSupabaseLive } from '../lib/supabase';
 
 type LooseMovie = Partial<Movie> & {
@@ -194,7 +195,7 @@ const readDailyShowcaseFromEdgeCache = async (
 ): Promise<Movie[] | null> => {
     try {
         const cacheBust = options.noStore ? `&_=${Date.now()}` : '';
-        const response = await fetch(`/api/daily?date=${encodeURIComponent(dateKey)}${cacheBust}`, {
+        const response = await fetch(buildApiUrl(`/api/daily?date=${encodeURIComponent(dateKey)}${cacheBust}`), {
             headers: {
                 Accept: 'application/json'
             },
@@ -219,7 +220,7 @@ const readDailyShowcaseFromEdgeCache = async (
 const readCurrentDailyDateFromEdge = async (): Promise<string | null> => {
     try {
         const cacheBust = Date.now();
-        const response = await fetch(`/api/daily?ping=1&_=${cacheBust}`, {
+        const response = await fetch(buildApiUrl(`/api/daily?ping=1&_=${cacheBust}`), {
             headers: {
                 Accept: 'application/json'
             },
@@ -241,7 +242,7 @@ const readCurrentDailyShowcaseFromEdge = async (
 ): Promise<{ date: string; movies: Movie[] } | null> => {
     try {
         const cacheBust = Date.now();
-        const response = await fetch(`/api/daily?date=${encodeURIComponent(dateKey)}&_=${cacheBust}`, {
+        const response = await fetch(buildApiUrl(`/api/daily?date=${encodeURIComponent(dateKey)}&_=${cacheBust}`), {
             headers: {
                 Accept: 'application/json'
             },
@@ -1301,7 +1302,7 @@ export const useDailyMovies = ({
 
             if (finalMovies.length !== DAILY_MOVIE_COUNT && isSupabaseLive() && supabase) {
                 try {
-                    await fetch('/api/cron/daily');
+                    await fetch(buildApiUrl('/api/cron/daily'));
                     const refreshedFromCache = await readDailyShowcaseFromEdgeCache(todayKey);
                     if (
                         isSelectionEligibleForDaily(refreshedFromCache || []) &&

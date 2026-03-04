@@ -1,4 +1,5 @@
 import {
+    type AdminContext,
     clampInteger,
     getQueryValue,
     isSupabaseCapabilityError,
@@ -93,13 +94,6 @@ const readRecentReplies = async (serviceClient: AdminContext['serviceClient'], l
         error
     };
 };
-
-type AdminContext = Awaited<ReturnType<typeof requireAdminAccess>> extends {
-    ok: true;
-    context: infer Context;
-}
-    ? Context
-    : never;
 
 export default async function handler(req: ApiRequest, res: ApiResponse) {
     const access = await requireAdminAccess(req, res, 'GET,OPTIONS');

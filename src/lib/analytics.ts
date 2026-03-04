@@ -1,4 +1,5 @@
 import type { AnalyticsEventName } from '../domain/analyticsEvents';
+import { buildApiUrl } from './apiBase';
 
 type AnalyticsPrimitive = string | number | boolean | null;
 
@@ -55,7 +56,7 @@ const isAnalyticsEnabled = (): boolean =>
 
 const getEndpoint = (): string => {
     const configured = String(import.meta.env.VITE_ANALYTICS_ENDPOINT || '').trim();
-    return configured || '/api/analytics';
+    return configured || buildApiUrl('/api/analytics');
 };
 
 const safeGetStorageItem = (storage: Storage, key: string): string | null => {

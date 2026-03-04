@@ -1,3 +1,5 @@
+import { buildAbsoluteApiUrl } from './apiBase';
+
 type ProfileOgCardInput = {
     handle?: string;
     name?: string;
@@ -29,17 +31,6 @@ const normalizeInt = (value: number | string | null | undefined): string => {
     return '0';
 };
 
-const getAppOrigin = (): string => {
-    const envOrigin = (import.meta.env.VITE_PUBLIC_APP_URL || '').trim();
-    if (envOrigin) {
-        return envOrigin.replace(/\/+$/, '');
-    }
-    if (typeof window !== 'undefined' && window.location?.origin) {
-        return window.location.origin;
-    }
-    return '';
-};
-
 const buildApiUrl = (path: string, params: Record<string, string>): string => {
     const query = new URLSearchParams();
     for (const [key, rawValue] of Object.entries(params)) {
@@ -49,14 +40,11 @@ const buildApiUrl = (path: string, params: Record<string, string>): string => {
         }
     }
     const suffix = query.toString();
-    const relativePath = `${path}${suffix ? `?${suffix}` : ''}`;
-    const origin = getAppOrigin();
-    if (!origin) return relativePath;
-    return `${origin}${relativePath}`;
+    return `${path}${suffix ? `?${suffix}` : ''}`;
 };
 
 export const buildProfileOgImageUrl = (input: ProfileOgCardInput): string => {
-    return buildApiUrl('/api/og/profile', {
+    return buildApiUrl(buildAbsoluteApiUrl('/api/og/profile'), {
         handle: normalizeText(input.handle || 'observer', 24) || 'observer',
         name: normalizeText(input.name || '', 34),
         league: normalizeText(input.league || '', 24),
@@ -67,7 +55,7 @@ export const buildProfileOgImageUrl = (input: ProfileOgCardInput): string => {
 
 export const buildFilmOgImageUrl = (input: FilmOgCardInput): string => {
     const year = normalizeInt(input.year);
-    return buildApiUrl('/api/og/film', {
+    return buildApiUrl(buildAbsoluteApiUrl('/api/og/film'), {
         title: normalizeText(input.title || 'Untitled Film', 64) || 'Untitled Film',
         year: year === '0' ? '' : year,
         genre: normalizeText(input.genre || '', 26),

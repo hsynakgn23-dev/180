@@ -1,0 +1,15 @@
+.git
+.gitignore
+.gcloudignore
+.vercel
+.vscode
+.idea
+node_modules
+build
+dist
+artifacts
+.env
+apps/mobile/.env
+apps/mobile/.env.release
+coverage
+npm-debug.log*
