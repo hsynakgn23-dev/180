@@ -167,7 +167,7 @@ export const claimInviteCodeViaApi = async (
     };
   }
   const deviceKey = await getReferralDeviceKey();
-  return postReferralApi<ClaimInvitePayload>('/api/referral/claim', {
+  return postReferralApi<ClaimInvitePayload>('/api/referral?action=claim', {
     code: inviteCode,
     deviceKey
   });
@@ -177,5 +177,5 @@ export const ensureInviteCodeViaApi = async (
   rawSeed: string
 ): Promise<ReferralApiResponse<EnsureInviteCodePayload>> => {
   const seed = normalizeText(rawSeed, 120) || `mobile-${Date.now().toString(36)}`;
-  return postReferralApi<EnsureInviteCodePayload>('/api/referral/create', { seed });
+  return postReferralApi<EnsureInviteCodePayload>('/api/referral?action=create', { seed });
 };

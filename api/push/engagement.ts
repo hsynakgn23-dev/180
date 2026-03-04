@@ -277,10 +277,12 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
         const ritualResult = await readRitualTarget(pushConfig, ritualId);
         if (!ritualResult.ok) {
+            const ritualError =
+                'error' in ritualResult ? ritualResult.error : 'Ritual target could not be read.';
             return sendJson(
                 res,
                 404,
-                { ok: false, errorCode: 'SERVER_ERROR', message: ritualResult.error },
+                { ok: false, errorCode: 'SERVER_ERROR', message: ritualError },
                 corsHeaders
             );
         }
@@ -310,13 +312,15 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
     const tokenResult = await readUserPushTokens(pushConfig, targetUserId);
     if (!tokenResult.ok) {
+        const tokenError =
+            'error' in tokenResult ? tokenResult.error : 'Recipient push tokens could not be read.';
         return sendJson(
             res,
             500,
             {
                 ok: false,
                 errorCode: 'SERVER_ERROR',
-                message: tokenResult.error
+                message: tokenError
             },
             corsHeaders
         );
@@ -363,13 +367,15 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     );
 
     if (!pushResult.ok) {
+        const pushError =
+            'error' in pushResult ? pushResult.error : 'Expo push send failed.';
         return sendJson(
             res,
             502,
             {
                 ok: false,
                 errorCode: 'EXPO_PUSH_FAILED',
-                message: pushResult.error
+                message: pushError
             },
             corsHeaders
         );

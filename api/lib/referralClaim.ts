@@ -1,4 +1,4 @@
-import { createCorsHeaders } from '../lib/cors.js';
+import { createCorsHeaders } from './cors.js';
 
 export const config = {
     runtime: 'nodejs'

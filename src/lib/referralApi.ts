@@ -126,10 +126,10 @@ export const getReferralDeviceKey = (): string => {
 };
 
 export const ensureInviteCodeViaApi = async (seed: string): Promise<ReferralApiResponse<EnsureInviteCodePayload>> =>
-    postReferralApi<EnsureInviteCodePayload>('/api/referral/create', { seed });
+    postReferralApi<EnsureInviteCodePayload>('/api/referral?action=create', { seed });
 
 export const claimInviteCodeViaApi = async (
     code: string,
     deviceKey: string
 ): Promise<ReferralApiResponse<ClaimInvitePayload>> =>
-    postReferralApi<ClaimInvitePayload>('/api/referral/claim', { code, deviceKey });
+    postReferralApi<ClaimInvitePayload>('/api/referral?action=claim', { code, deviceKey });

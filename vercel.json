@@ -4,6 +4,16 @@
   "buildCommand": "npm run build",
   "devCommand": "vite --port $PORT",
   "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/api/referral/create",
+      "destination": "/api/referral?action=create"
+    },
+    {
+      "source": "/api/referral/claim",
+      "destination": "/api/referral?action=claim"
+    }
+  ],
   "crons": [
     {
       "path": "/api/cron/daily",
