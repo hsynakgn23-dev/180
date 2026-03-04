@@ -4,10 +4,60 @@ import { useLanguage } from '../../context/LanguageContext';
 import { getRegistrationGenderOptions } from '../../i18n/localization';
 import { trackEvent } from '../../lib/analytics';
 
+const GoogleMark: React.FC = () => (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5">
+        <path
+            fill="#EA4335"
+            d="M12.24 10.286v3.821h5.445c-.235 1.235-.939 2.281-1.995 2.984l3.225 2.503c1.878-1.73 2.965-4.275 2.965-7.286 0-.704-.064-1.381-.181-2.022z"
+        />
+        <path
+            fill="#34A853"
+            d="M12 22c2.7 0 4.965-.896 6.62-2.423l-3.225-2.503c-.896.6-2.04.954-3.395.954-2.607 0-4.817-1.76-5.607-4.124H3.06v2.592A9.997 9.997 0 0 0 12 22"
+        />
+        <path
+            fill="#4A90E2"
+            d="M6.393 13.904A5.996 5.996 0 0 1 6.08 12c0-.662.113-1.304.313-1.904V7.504H3.06A9.997 9.997 0 0 0 2 12c0 1.612.387 3.138 1.06 4.496z"
+        />
+        <path
+            fill="#FBBC05"
+            d="M12 5.972c1.467 0 2.784.505 3.821 1.498l2.864-2.864C16.96 3.004 14.694 2 12 2A9.997 9.997 0 0 0 3.06 7.504l3.333 2.592C7.183 7.732 9.393 5.972 12 5.972"
+        />
+    </svg>
+);
+
+const AppleMark: React.FC = () => (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 fill-current">
+        <path d="M15.337 1.908c.137 1.115-.342 2.236-.93 2.934-.615.731-1.631 1.298-2.688 1.216-.144-1.068.396-2.186.996-2.86.663-.75 1.799-1.292 2.622-1.29M19.19 17.048c-.524 1.214-.773 1.756-1.447 2.865-.94 1.549-2.265 3.481-3.906 3.495-1.458.014-1.835-.95-3.813-.94-1.977.01-2.392.958-3.85.944-1.64-.014-2.895-1.759-3.835-3.308-2.629-4.334-2.904-9.418-1.284-11.91 1.15-1.771 2.97-2.808 4.68-2.808 1.743 0 2.84.958 4.28.958 1.397 0 2.248-.96 4.265-.96 1.523 0 3.139.83 4.288 2.262-3.763 2.064-3.153 7.475.622 8.402" />
+    </svg>
+);
+
+const ProviderButton: React.FC<{
+    label: string;
+    onClick: () => void;
+    disabled?: boolean;
+    tone: 'light' | 'dark';
+    icon: React.ReactNode;
+}> = ({ label, onClick, disabled = false, tone, icon }) => (
+    <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        className={`w-full rounded-md border px-4 py-3 text-xs font-bold uppercase tracking-[0.15em] transition-colors flex items-center justify-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed ${
+            tone === 'light'
+                ? 'border-white/15 bg-[#F3F0EA] text-[#121212] hover:bg-[#f7f4ef]'
+                : 'border-white/15 bg-[#121212] text-[#E5E4E2] hover:bg-[#181818]'
+        }`}
+    >
+        <span className="flex items-center justify-center">{icon}</span>
+        <span>{label}</span>
+    </button>
+);
+
 export const LoginView: React.FC = () => {
     const {
         login,
         loginWithGoogle,
+        loginWithApple,
         requestPasswordReset,
         completePasswordReset,
         isPasswordRecoveryMode,
@@ -25,6 +75,7 @@ export const LoginView: React.FC = () => {
     const [birthDate, setBirthDate] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+    const [isAppleLoading, setIsAppleLoading] = useState(false);
     const [statusMessage, setStatusMessage] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
 
@@ -56,6 +107,10 @@ export const LoginView: React.FC = () => {
         () => getRegistrationGenderOptions(language),
         [language]
     );
+    const isProviderLoading = isGoogleLoading || isAppleLoading;
+    const appleContinueLabel = language === 'tr' ? 'Apple ile Devam Et' : 'Continue with Apple';
+    const appleRedirectingLabel = language === 'tr' ? 'Apple yonlendiriliyor...' : 'Redirecting to Apple...';
+    const appleFailedLabel = language === 'tr' ? 'Apple girisi basarisiz.' : 'Apple sign-in failed.';
 
     useEffect(() => {
         if (!isPasswordRecoveryMode) return;
@@ -149,7 +204,7 @@ export const LoginView: React.FC = () => {
     };
 
     const handleGoogle = async () => {
-        if (isGoogleLoading) return;
+        if (isProviderLoading) return;
         setIsGoogleLoading(true);
         setErrorMessage('');
         setStatusMessage('');
@@ -162,6 +217,23 @@ export const LoginView: React.FC = () => {
             }
         } finally {
             setIsGoogleLoading(false);
+        }
+    };
+
+    const handleApple = async () => {
+        if (isProviderLoading) return;
+        setIsAppleLoading(true);
+        setErrorMessage('');
+        setStatusMessage('');
+        trackEvent('oauth_start', { provider: 'apple', authMode });
+
+        try {
+            const result = await loginWithApple();
+            if (!result.ok) {
+                setErrorMessage(result.message || appleFailedLabel);
+            }
+        } finally {
+            setIsAppleLoading(false);
         }
     };
 
@@ -396,15 +468,22 @@ export const LoginView: React.FC = () => {
                             </div>
 
                             {authMode === 'supabase' ? (
-                                <button
-                                    type="button"
-                                    onClick={handleGoogle}
-                                    disabled={isGoogleLoading}
-                                    className="w-full bg-white/10 text-[#E5E4E2] font-bold py-3 uppercase tracking-[0.15em] text-xs rounded-md hover:bg-white/15 transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                                >
-                                    <div className="w-3 h-3 bg-current rounded-full opacity-50"></div>
-                                    {isGoogleLoading ? text.login.googleRedirecting : text.login.googleContinue}
-                                </button>
+                                <div className="flex flex-col gap-3">
+                                    <ProviderButton
+                                        label={isGoogleLoading ? text.login.googleRedirecting : text.login.googleContinue}
+                                        onClick={handleGoogle}
+                                        disabled={isProviderLoading}
+                                        tone="light"
+                                        icon={<GoogleMark />}
+                                    />
+                                    <ProviderButton
+                                        label={isAppleLoading ? appleRedirectingLabel : appleContinueLabel}
+                                        onClick={handleApple}
+                                        disabled={isProviderLoading}
+                                        tone="dark"
+                                        icon={<AppleMark />}
+                                    />
+                                </div>
                             ) : (
                                 <div className="text-[10px] text-gray-500 text-center border border-white/10 rounded px-3 py-2">
                                     {text.login.localAuthInfo}

@@ -150,7 +150,7 @@ import {
 import {
   ArenaChallengeCard,
   ArenaLeaderboardCard,
-  AuthGateScreen,
+  AuthModal,
   CollapsibleSectionCard,
   CommentFeedCard,
   DailyHomeScreen,
@@ -606,11 +606,12 @@ export default function App() {
   const [authConfirmPassword, setAuthConfirmPassword] = useState('');
   const [authRememberMe, setAuthRememberMe] = useState(true);
   const [authFlowMode, setAuthFlowMode] = useState<AuthFlowMode>('login');
-  const [authEntryStage, setAuthEntryStage] = useState<MobileAuthEntryStage>('intro');
+  const [, setAuthEntryStage] = useState<MobileAuthEntryStage>('intro');
   const [authState, setAuthState] = useState<AuthState>({
     status: 'idle',
     message: 'Session kontrol ediliyor...',
   });
+  const [authModalVisible, setAuthModalVisible] = useState(false);
   const [ritualDraftText, setRitualDraftText] = useState('');
   const [ritualSubmitState, setRitualSubmitState] = useState<RitualSubmitState>({
     status: 'idle',
@@ -834,7 +835,6 @@ export default function App() {
   const { pageEntrance, pageEnterTranslateY } = usePageEntranceAnimation();
   const hasCloudIdentityHydratedRef = useRef(false);
   const hasCloudPrivacyHydratedRef = useRef(false);
-  const hasHandledInitialAuthPromptRef = useRef(false);
   const lastObservedLeagueIndexRef = useRef<number | null>(null);
   const lastHandledAuthCallbackUrlRef = useRef<string | null>(null);
   const lastHandledPublicProfileIntentRef = useRef<string | null>(null);
@@ -925,6 +925,20 @@ export default function App() {
     setAuthRememberMe(nextValue);
     void writeStoredAuthRememberMe(nextValue);
   }, []);
+
+  const openAuthModal = useCallback(
+    (mode: AuthFlowMode = 'login') => {
+      setAuthEntryStage('form');
+      setAuthFlowMode(mode);
+      setAuthModalVisible(true);
+    },
+    []
+  );
+
+  const closeAuthModal = useCallback(() => {
+    if (authState.status === 'loading') return;
+    setAuthModalVisible(false);
+  }, [authState.status]);
 
   const refreshRitualQueue = useCallback(async () => {
     const counts = await getQueuedRitualDraftCounts();
@@ -2652,7 +2666,7 @@ export default function App() {
   }, [authState.status, refreshDailyCommentFeed]);
 
   useEffect(() => {
-    void refreshAuthState({ applyRememberMePolicy: true });
+    void refreshAuthState();
     void refreshRitualQueue();
     if (!supabase) return;
 
@@ -2679,6 +2693,7 @@ export default function App() {
         setAuthFlowMode(callbackResult.recoveryMode ? 'recovery' : 'login');
         setAuthPassword('');
         setAuthConfirmPassword('');
+        setAuthModalVisible(true);
         setAuthState({
           status: 'error',
           message: callbackResult.message,
@@ -2705,6 +2720,7 @@ export default function App() {
       if (callbackResult.recoveryMode) {
         setAuthEntryStage('form');
         setAuthFlowMode('recovery');
+        setAuthModalVisible(true);
         setAuthPassword('');
         setAuthConfirmPassword('');
       } else {
@@ -2744,15 +2760,8 @@ export default function App() {
 
   useEffect(() => {
     if (authState.status === 'signed_in') {
-      hasHandledInitialAuthPromptRef.current = true;
-      return;
+      setAuthModalVisible(false);
     }
-    if (authState.status !== 'signed_out' && authState.status !== 'error') return;
-    if (hasHandledInitialAuthPromptRef.current) return;
-
-    hasHandledInitialAuthPromptRef.current = true;
-    setAuthFlowMode('login');
-    setAuthEntryStage('intro');
   }, [authState.status]);
 
   useEffect(() => {
@@ -2770,9 +2779,8 @@ export default function App() {
     if (lastAutoOpenedAuthRouteRef.current === routeKey) return;
 
     lastAutoOpenedAuthRouteRef.current = routeKey;
-    setAuthFlowMode('login');
-    setAuthEntryStage('form');
-  }, [activeIntent, authState.status]);
+    openAuthModal('login');
+  }, [activeIntent, authState.status, openAuthModal]);
 
   useEffect(() => {
     if (authState.status === 'signed_in') {
@@ -3034,6 +3042,15 @@ export default function App() {
   }, [marksPullRefreshing, refreshProfileStats]);
 
   const handleSubmitRitualDraft = useCallback(async () => {
+    if (authState.status !== 'signed_in') {
+      openAuthModal('login');
+      setRitualSubmitState({
+        status: 'error',
+        message: 'Yorum gondermek icin once giris yapmalisin.',
+      });
+      return;
+    }
+
     if (!selectedDailyMovie) {
       setRitualSubmitState({
         status: 'error',
@@ -3123,6 +3140,8 @@ export default function App() {
     });
     setRitualComposerVisible(false);
   }, [
+    authState.status,
+    openAuthModal,
     profileState,
     refreshDailyCommentFeed,
     refreshProfileStats,
@@ -3488,6 +3507,9 @@ export default function App() {
       platform: 'x',
       goal: canShareStreak ? 'streak' : 'comment',
     });
+    if (authState.status !== 'signed_in') {
+      openAuthModal('login');
+    }
     if (tabNavigationRef.isReady()) {
       tabNavigationRef.navigate(MAIN_TAB_BY_KEY.profile);
     }
@@ -3496,7 +3518,7 @@ export default function App() {
       hasInviteCode: Boolean(effectiveShareInviteCode),
       preferredGoal: canShareStreak ? 'streak' : 'comment',
     });
-  }, [canShareStreak, effectiveShareInviteCode, setManualIntent]);
+  }, [authState.status, canShareStreak, effectiveShareInviteCode, openAuthModal, setManualIntent]);
 
   const handleCommentFeedScopeChange = useCallback((scope: CommentFeedScope) => {
     setCommentFeedScope(scope);
@@ -4338,6 +4360,11 @@ export default function App() {
   ]);
 
   const handleClaimInvite = useCallback(async (rawInviteCode: string) => {
+    if (authState.status !== 'signed_in') {
+      openAuthModal('login');
+      return;
+    }
+
     const inviteCodeText = String(rawInviteCode || '').trim().toUpperCase();
     if (!inviteCodeText) {
       setInviteClaimState({
@@ -4428,7 +4455,7 @@ export default function App() {
         apiMessage: errorMessage,
       });
     }
-  }, []);
+  }, [authState.status, openAuthModal]);
 
   const handleApplyInviteCodeFromSettings = useCallback(async () => {
     const inviteCodeText = String(inviteCodeDraft || '').trim().toUpperCase();
@@ -4996,41 +5023,6 @@ export default function App() {
             },
           ]}
         >
-          {authState.status !== 'signed_in' ? (
-            <AuthGateScreen
-              authState={authState}
-              email={authEmail}
-              fullName={authFullName}
-              username={authUsername}
-              birthDate={authBirthDate}
-              password={authPassword}
-              confirmPassword={authConfirmPassword}
-              mode={authFlowMode}
-              onEmailChange={setAuthEmail}
-              onFullNameChange={setAuthFullName}
-              onUsernameChange={setAuthUsername}
-              onBirthDateChange={setAuthBirthDate}
-              onPasswordChange={setAuthPassword}
-              onConfirmPasswordChange={setAuthConfirmPassword}
-              onModeChange={(nextMode) => {
-                setAuthEntryStage('form');
-                setAuthFlowMode(nextMode);
-              }}
-              onSignIn={handleSignIn}
-              onRegister={handleRegister}
-              rememberMe={authRememberMe}
-              onRememberMeChange={handleSetAuthRememberMe}
-              onGoogleSignIn={handleGoogleSignIn}
-              onAppleSignIn={handlePreviewAppleSignIn}
-              onRequestPasswordReset={handleRequestPasswordReset}
-              onCompletePasswordReset={handleCompletePasswordReset}
-              entryStage={authEntryStage}
-              onContinue={() => {
-                setAuthEntryStage('form');
-                setAuthFlowMode((prev) => (prev === 'recovery' ? prev : 'login'));
-              }}
-            />
-          ) : (
           <NavigationContainer
             ref={tabNavigationRef}
             theme={tabTheme}
@@ -5680,7 +5672,18 @@ export default function App() {
                           }}
                         />
                       </View>
-                    ) : null}
+                    ) : (
+                      <View style={[styles.singleActionRow, { marginTop: 12 }]}>
+                        <UiButton
+                          label="Giris Yap / Uye Ol"
+                          tone="secondary"
+                          stretch
+                          onPress={() => {
+                            openAuthModal('login');
+                          }}
+                        />
+                      </View>
+                    )}
                       </>
                     ) : null}
                   </ScrollView>
@@ -5688,7 +5691,35 @@ export default function App() {
               </Tab.Screen>
             </Tab.Navigator>
           </NavigationContainer>
-          )}
+
+          <AuthModal
+            visible={authModalVisible}
+            onClose={closeAuthModal}
+            authState={authState}
+            email={authEmail}
+            fullName={authFullName}
+            username={authUsername}
+            birthDate={authBirthDate}
+            password={authPassword}
+            confirmPassword={authConfirmPassword}
+            mode={authFlowMode}
+            onEmailChange={setAuthEmail}
+            onFullNameChange={setAuthFullName}
+            onUsernameChange={setAuthUsername}
+            onBirthDateChange={setAuthBirthDate}
+            onPasswordChange={setAuthPassword}
+            onConfirmPasswordChange={setAuthConfirmPassword}
+            onModeChange={setAuthFlowMode}
+            onSignIn={handleSignIn}
+            onRegister={handleRegister}
+            rememberMe={authRememberMe}
+            onRememberMeChange={handleSetAuthRememberMe}
+            showAppleSignIn
+            onAppleSignIn={handlePreviewAppleSignIn}
+            onGoogleSignIn={handleGoogleSignIn}
+            onRequestPasswordReset={handleRequestPasswordReset}
+            onCompletePasswordReset={handleCompletePasswordReset}
+          />
 
           <MovieDetailsModal
             movie={

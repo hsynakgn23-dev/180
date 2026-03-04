@@ -220,6 +220,9 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
     const [error, setError] = useState<string | null>(null);
     const [profile, setProfile] = useState<PublicProfileData | null>(null);
     const [isFollowBusy, setIsFollowBusy] = useState(false);
+    const [isBlockBusy, setIsBlockBusy] = useState(false);
+    const [isBlockedByViewer, setIsBlockedByViewer] = useState(false);
+    const [relationshipMessage, setRelationshipMessage] = useState<string | null>(null);
     const commentsSectionRef = useRef<HTMLDivElement | null>(null);
     const relativeTimeLabels = useMemo(
         () => ({
@@ -450,6 +453,37 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
         return isFollowingUser(profile.userId, profile.username || profile.displayName);
     }, [isFollowingUser, profile]);
 
+    useEffect(() => {
+        let active = true;
+
+        if (!isSupabaseLive() || !supabase || !user?.id || !profile?.userId || isOwnProfile) {
+            setIsBlockedByViewer(false);
+            return () => {
+                active = false;
+            };
+        }
+
+        void supabase
+            .from('user_blocks')
+            .select('blocked_user_id')
+            .eq('blocker_user_id', user.id)
+            .eq('blocked_user_id', profile.userId)
+            .maybeSingle()
+            .then(({ data, error: blockError }) => {
+                if (!active) return;
+                if (blockError && !isSupabaseCapabilityError(blockError)) {
+                    console.error('[PublicProfile] failed to read block state', blockError);
+                    setIsBlockedByViewer(false);
+                    return;
+                }
+                setIsBlockedByViewer(Boolean(data));
+            });
+
+        return () => {
+            active = false;
+        };
+    }, [isOwnProfile, profile?.userId, user?.id]);
+
     const commentsCount = profile?.rituals.length || 0;
     const visibility = profile?.visibility || getDefaultProfileVisibility();
     const uniqueFilmsCount = useMemo(() => {
@@ -483,6 +517,10 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
 
     const handleFollowToggle = async () => {
         if (!profile || isOwnProfile || isFollowBusy) return;
+        if (isBlockedByViewer) {
+            setRelationshipMessage(text.profile.blockedNotice);
+            return;
+        }
         setIsFollowBusy(true);
         const wasFollowing = isFollowing;
         const result = await toggleFollowUser({
@@ -506,9 +544,82 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
         setIsFollowBusy(false);
     };
 
+    const handleBlockToggle = async () => {
+        if (!profile?.userId || !user?.id || isOwnProfile || isBlockBusy || !supabase) return;
+
+        if (!isBlockedByViewer && !window.confirm(text.profile.blockConfirm)) {
+            return;
+        }
+
+        setIsBlockBusy(true);
+        setRelationshipMessage(null);
+
+        if (!isBlockedByViewer && isFollowing) {
+            setIsFollowBusy(true);
+            const wasFollowing = true;
+            const unfollowResult = await toggleFollowUser({
+                userId: profile.userId,
+                username: profile.username || profile.displayName
+            });
+            if (unfollowResult.ok) {
+                setProfile((prev) => {
+                    if (!prev) return prev;
+                    return {
+                        ...prev,
+                        followCounts: {
+                            ...prev.followCounts,
+                            followers: Math.max(0, prev.followCounts.followers - (wasFollowing ? 1 : 0))
+                        }
+                    };
+                });
+            }
+            setIsFollowBusy(false);
+        }
+
+        if (isBlockedByViewer) {
+            const { error: unblockError } = await supabase
+                .from('user_blocks')
+                .delete()
+                .eq('blocker_user_id', user.id)
+                .eq('blocked_user_id', profile.userId);
+
+            if (unblockError) {
+                console.error('[PublicProfile] failed to remove block', unblockError);
+                setRelationshipMessage(unblockError.message || text.profile.profileLoadFailed);
+                setIsBlockBusy(false);
+                return;
+            }
+
+            setIsBlockedByViewer(false);
+            setRelationshipMessage(text.profile.unblockSuccess);
+            setIsBlockBusy(false);
+            return;
+        }
+
+        const { error: blockError } = await supabase.from('user_blocks').insert([
+            {
+                blocker_user_id: user.id,
+                blocked_user_id: profile.userId
+            }
+        ]);
+
+        if (blockError) {
+            console.error('[PublicProfile] failed to create block', blockError);
+            setRelationshipMessage(blockError.message || text.profile.profileLoadFailed);
+            setIsBlockBusy(false);
+            return;
+        }
+
+        setIsBlockedByViewer(true);
+        setRelationshipMessage(text.profile.blockSuccess);
+        setIsBlockBusy(false);
+    };
+
     const handleReadComments = () => {
         commentsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
+
+    const hideBlockedContent = isBlockedByViewer && !isOwnProfile;
 
     return (
         <div className="relative min-h-screen overflow-x-hidden bg-[var(--color-bg)] text-[#E5E4E2] flex flex-col">
@@ -592,19 +703,33 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
 
                                     <div className="mb-5 flex flex-wrap items-center justify-center gap-2.5">
                                         {!isOwnProfile && (
-                                            <button
-                                                type="button"
-                                                onClick={() => void handleFollowToggle()}
-                                                disabled={isFollowBusy}
-                                                className={`px-4 py-2 rounded border text-[10px] uppercase tracking-[0.16em] transition-colors ${isFollowing
-                                                    ? 'border-sage/50 text-sage bg-sage/10 hover:bg-sage/15'
-                                                    : 'border-white/15 text-white/80 hover:border-sage/40 hover:text-sage'
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => void handleFollowToggle()}
+                                                    disabled={isFollowBusy || isBlockedByViewer}
+                                                    className={`px-4 py-2 rounded border text-[10px] uppercase tracking-[0.16em] transition-colors ${isFollowing
+                                                        ? 'border-sage/50 text-sage bg-sage/10 hover:bg-sage/15'
+                                                        : 'border-white/15 text-white/80 hover:border-sage/40 hover:text-sage'
+                                                        } disabled:opacity-60`}
+                                                >
+                                                    {isFollowing ? text.profile.following : text.profile.follow}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => void handleBlockToggle()}
+                                                    disabled={isBlockBusy}
+                                                    className={`px-4 py-2 rounded border text-[10px] uppercase tracking-[0.16em] transition-colors ${
+                                                        isBlockedByViewer
+                                                            ? 'border-sage/40 text-sage bg-sage/10 hover:bg-sage/15'
+                                                            : 'border-red-300/30 text-red-200/85 hover:border-red-300/50 hover:text-red-100'
                                                     } disabled:opacity-60`}
-                                            >
-                                                {isFollowing ? text.profile.following : text.profile.follow}
-                                            </button>
+                                                >
+                                                    {isBlockedByViewer ? text.profile.unblock : text.profile.block}
+                                                </button>
+                                            </>
                                         )}
-                                        {visibility.showActivity && (
+                                        {!hideBlockedContent && visibility.showActivity && (
                                             <button
                                                 type="button"
                                                 onClick={handleReadComments}
@@ -622,19 +747,28 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                                         </div>
                                     ) : (
                                         <p className="mb-5 text-[10px] uppercase tracking-[0.14em] text-gray-500">
-                                            Follow counts hidden
+                                            {text.profile.followCountsHidden}
                                         </p>
                                     )}
 
                                     <p className="text-xs font-serif italic text-sage/60 text-center max-w-xs leading-relaxed">
                                         "{profile.bio}"
                                     </p>
+                                    {relationshipMessage ? (
+                                        <p className="mt-4 text-center text-[10px] uppercase tracking-[0.14em] text-sage/80">
+                                            {relationshipMessage}
+                                        </p>
+                                    ) : null}
                                 </div>
                             </div>
 
                             <div className="bg-white/5 border border-white/5 rounded-xl p-5 sm:p-6 animate-fade-in">
                                 <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase mb-5">{text.profile.stats}</h3>
-                                {visibility.showStats ? (
+                                {hideBlockedContent ? (
+                                    <p className="text-[10px] uppercase tracking-[0.16em] text-gray-500">
+                                        {text.profile.blockedNoticeMeta}
+                                    </p>
+                                ) : visibility.showStats ? (
                                     <div className={`grid ${visibility.showFollowCounts ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5' : 'grid-cols-2 sm:grid-cols-3'} gap-4 sm:gap-5 text-center`}>
                                         <div className="flex flex-col gap-1.5">
                                             <span className="text-2xl sm:text-3xl font-bold text-sage">{profile.streak || 0}</span>
@@ -663,14 +797,20 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                                     </div>
                                 ) : (
                                     <p className="text-[10px] uppercase tracking-[0.16em] text-gray-500">
-                                        This user hides profile stats.
+                                        {text.profile.profileStatsHidden}
                                     </p>
                                 )}
                             </div>
                         </div>
 
                         <div className="space-y-7">
-                            {visibility.showStats ? (
+                            {hideBlockedContent ? (
+                            <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
+                                <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase mb-3">{text.profile.activity}</h3>
+                                <p className="text-[10px] uppercase tracking-[0.16em] text-gray-500">{text.profile.blockedNotice}</p>
+                                <p className="mt-3 text-[10px] uppercase tracking-[0.16em] text-gray-600">{text.profile.blockedNoticeMeta}</p>
+                            </div>
+                            ) : visibility.showStats ? (
                             <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
                                 <div className="flex justify-between items-end mb-5 border-b border-gray-100/10 pb-4">
                                     <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase">{text.profile.activity}</h3>
@@ -711,11 +851,11 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                             ) : (
                             <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
                                 <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase mb-3">{text.profile.activity}</h3>
-                                <p className="text-[10px] uppercase tracking-[0.16em] text-gray-500">This user hides activity stats.</p>
+                                <p className="text-[10px] uppercase tracking-[0.16em] text-gray-500">{text.profile.activityHidden}</p>
                             </div>
                             )}
 
-                            {visibility.showActivity ? (
+                            {!hideBlockedContent && visibility.showActivity ? (
                             <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
                                 <div className="flex justify-between items-end mb-5 border-b border-gray-100/10 pb-4">
                                     <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase">{text.profile.filmArchive}</h3>
@@ -754,11 +894,13 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                             ) : (
                             <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
                                 <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase mb-3">{text.profile.filmArchive}</h3>
-                                <p className="text-[10px] uppercase tracking-[0.16em] text-gray-500">This user hides archive activity.</p>
+                                <p className="text-[10px] uppercase tracking-[0.16em] text-gray-500">
+                                    {hideBlockedContent ? text.profile.blockedNotice : text.profile.archiveHidden}
+                                </p>
                             </div>
                             )}
 
-                            {visibility.showActivity ? (
+                            {!hideBlockedContent && visibility.showActivity ? (
                             <div ref={commentsSectionRef} className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
                                 <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase mb-5">{text.profile.commentsAndReplies}</h3>
                                 <p className="text-[9px] tracking-[0.14em] uppercase text-gray-500 mb-4">
@@ -785,7 +927,9 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                             ) : (
                             <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-fade-in">
                                 <h3 className="text-sm font-bold tracking-[0.2em] text-sage uppercase mb-3">{text.profile.commentsAndReplies}</h3>
-                                <p className="text-[10px] uppercase tracking-[0.16em] text-gray-500">This user hides comments and replies.</p>
+                                <p className="text-[10px] uppercase tracking-[0.16em] text-gray-500">
+                                    {hideBlockedContent ? text.profile.blockedNotice : text.profile.commentsHidden}
+                                </p>
                             </div>
                             )}
                         </div>

@@ -12,6 +12,7 @@ import type { Movie } from './data/mockMovies'
 import { LanguageProvider, useLanguage } from './context/LanguageContext'
 import type { PublicProfileTarget } from './features/profile/PublicProfileView'
 import { appendMobileDeepLinkParamsToHref } from './domain/deepLinks'
+import { readAdminSession } from './lib/adminApi'
 
 const DailyShowcase = lazy(() =>
   import('./features/daily-showcase/DailyShowcase').then((mod) => ({ default: mod.DailyShowcase }))
@@ -42,6 +43,9 @@ const LandingPage = lazy(() =>
 )
 const WebToAppPrompt = lazy(() =>
   import('./components/WebToAppPrompt').then((mod) => ({ default: mod.WebToAppPrompt }))
+)
+const AdminPanel = lazy(() =>
+  import('./features/admin/AdminPanel').then((mod) => ({ default: mod.AdminPanel }))
 )
 
 const parsePublicProfileHash = (hash: string): PublicProfileTarget | null => {
@@ -78,6 +82,11 @@ const parsePublicProfileHash = (hash: string): PublicProfileTarget | null => {
   }
 }
 
+const parseAdminHash = (hash: string): boolean => {
+  const normalized = (hash || '').trim()
+  return normalized === '#/admin' || normalized.startsWith('#/admin?')
+}
+
 const AppContent = () => {
   const { text } = useLanguage();
   const {
@@ -99,6 +108,8 @@ const AppContent = () => {
   const [showProfile, setShowProfile] = useState(false);
   const [startProfileInSettings, setStartProfileInSettings] = useState(false);
   const [publicProfileTarget, setPublicProfileTarget] = useState<PublicProfileTarget | null>(() => parsePublicProfileHash(window.location.hash));
+  const [showAdminPanel, setShowAdminPanel] = useState<boolean>(() => parseAdminHash(window.location.hash));
+  const [canOpenAdminPanel, setCanOpenAdminPanel] = useState(false);
   const [DebugPanelComponent, setDebugPanelComponent] = useState<ComponentType | null>(null);
 
   const [showLanding, setShowLanding] = useState(true);
@@ -133,6 +144,7 @@ const AppContent = () => {
   useEffect(() => {
     const syncFromHash = () => {
       setPublicProfileTarget(parsePublicProfileHash(window.location.hash));
+      setShowAdminPanel(parseAdminHash(window.location.hash));
     };
 
     syncFromHash();
@@ -143,23 +155,54 @@ const AppContent = () => {
   useEffect(() => {
     if (!publicProfileTarget) return;
     setShowProfile(false);
+    setShowAdminPanel(false);
     setStartProfileInSettings(false);
     setActiveMovie(null);
     setDetailMovie(null);
   }, [publicProfileTarget]);
 
   useEffect(() => {
-    if (!showProfile && !publicProfileTarget) return;
+    if (!showAdminPanel) return;
+    setShowProfile(false);
+    setStartProfileInSettings(false);
+    setPublicProfileTarget(null);
+    setActiveMovie(null);
+    setDetailMovie(null);
+  }, [showAdminPanel]);
+
+  useEffect(() => {
+    if (!showProfile && !publicProfileTarget && !showAdminPanel) return;
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-  }, [showProfile, publicProfileTarget]);
+  }, [showAdminPanel, showProfile, publicProfileTarget]);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!user?.id) {
+      setCanOpenAdminPanel(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    void readAdminSession().then((result) => {
+      if (!active) return;
+      setCanOpenAdminPanel(Boolean(result.ok && result.data));
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
 
   const openHome = () => {
     setActiveMovie(null);
     setDetailMovie(null);
     setShowProfile(false);
+    setShowAdminPanel(false);
     setStartProfileInSettings(false);
     setPublicProfileTarget(null);
-    if (window.location.hash.startsWith('#/u/')) {
+    if (window.location.hash.startsWith('#/u/') || parseAdminHash(window.location.hash)) {
       window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -227,12 +270,25 @@ const AppContent = () => {
       {/* Top Right Controls */}
       <div className="fixed top-3 right-3 sm:top-6 sm:right-6 z-40 flex items-start sm:items-center gap-2 sm:gap-4">
         <NotificationCenter />
+        {canOpenAdminPanel ? (
+          <button
+            type="button"
+            onClick={() => {
+              window.location.hash = '/admin'
+              setShowAdminPanel(true)
+            }}
+            className="rounded-full border border-sage/30 bg-[#121212]/95 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-sage hover:border-sage/60 transition-colors"
+          >
+            Admin
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={() => {
-            if (window.location.hash.startsWith('#/u/')) {
+            if (window.location.hash.startsWith('#/u/') || parseAdminHash(window.location.hash)) {
               window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
               setPublicProfileTarget(null);
+              setShowAdminPanel(false);
             }
             setStartProfileInSettings(false);
             setShowProfile(true);
@@ -252,17 +308,19 @@ const AppContent = () => {
         <div className="hidden sm:block">
           <ProfileWidget
             onClick={() => {
-              if (window.location.hash.startsWith('#/u/')) {
+              if (window.location.hash.startsWith('#/u/') || parseAdminHash(window.location.hash)) {
                 window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
                 setPublicProfileTarget(null);
+                setShowAdminPanel(false);
               }
               setStartProfileInSettings(false);
               setShowProfile(true);
             }}
             onOpenSettings={() => {
-              if (window.location.hash.startsWith('#/u/')) {
+              if (window.location.hash.startsWith('#/u/') || parseAdminHash(window.location.hash)) {
                 window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
                 setPublicProfileTarget(null);
+                setShowAdminPanel(false);
               }
               setStartProfileInSettings(true);
               setShowProfile(true);
@@ -313,7 +371,16 @@ const AppContent = () => {
         </Suspense>
       )}
 
-      <div className={`min-h-screen overflow-x-hidden font-sans selection:bg-sage selection:text-white transition-opacity duration-500 ${activeMovie || showProfile || detailMovie || publicProfileTarget ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+      {showAdminPanel && (
+        <Suspense fallback={null}>
+          <AdminPanel
+            onClose={openHome}
+            onHome={openHome}
+          />
+        </Suspense>
+      )}
+
+      <div className={`min-h-screen overflow-x-hidden font-sans selection:bg-sage selection:text-white transition-opacity duration-500 ${activeMovie || showProfile || detailMovie || publicProfileTarget || showAdminPanel ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
         <div className="h-[72px] sm:h-[160px] w-full bg-transparent flex items-end justify-center pb-2 sm:pb-8 pointer-events-none" />
 
         <main className="container mx-auto px-4 sm:px-6 relative z-10">

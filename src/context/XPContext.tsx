@@ -174,6 +174,7 @@ interface XPContextType {
     requestPasswordReset: (email: string) => Promise<AuthResult>;
     completePasswordReset: (newPassword: string) => Promise<AuthResult>;
     loginWithGoogle: () => Promise<AuthResult>;
+    loginWithApple: () => Promise<AuthResult>;
     logout: () => Promise<void>;
     avatarUrl?: string; // Custom uploaded avatar
     updateAvatar: (url: string) => void;
@@ -812,6 +813,36 @@ const getLegacyStoredUser = (): SessionUser | null => {
     }
 };
 
+const POST_AUTH_HASH_STORAGE_KEY = '180_post_auth_hash';
+
+const isLocalAuthOrigin = (origin: string): boolean => {
+    try {
+        const url = new URL(origin);
+        return url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+    } catch {
+        return false;
+    }
+};
+
+const rememberPostAuthHash = () => {
+    if (typeof window === 'undefined') return;
+    const currentHash = String(window.location.hash || '').trim();
+    if (!currentHash || currentHash === '#') {
+        window.sessionStorage.removeItem(POST_AUTH_HASH_STORAGE_KEY);
+        return;
+    }
+    window.sessionStorage.setItem(POST_AUTH_HASH_STORAGE_KEY, currentHash);
+};
+
+const consumePostAuthHash = (): string => {
+    if (typeof window === 'undefined') return '';
+    const value = String(window.sessionStorage.getItem(POST_AUTH_HASH_STORAGE_KEY) || '').trim();
+    if (value) {
+        window.sessionStorage.removeItem(POST_AUTH_HASH_STORAGE_KEY);
+    }
+    return value;
+};
+
 const isPasswordRecoveryUrl = (): boolean => {
     if (typeof window === 'undefined') return false;
     const hash = window.location.hash.toLowerCase();
@@ -820,6 +851,12 @@ const isPasswordRecoveryUrl = (): boolean => {
 };
 
 const buildAuthRedirectTo = (): string => {
+    if (typeof window !== 'undefined') {
+        const currentOrigin = String(window.location.origin || '').trim();
+        if (currentOrigin && isLocalAuthOrigin(currentOrigin)) {
+            return `${currentOrigin}/`;
+        }
+    }
     const envRedirect = import.meta.env.VITE_AUTH_REDIRECT_TO;
     if (typeof envRedirect === 'string' && envRedirect.trim()) {
         return envRedirect.trim();
@@ -850,10 +887,10 @@ const normalizeAuthError = (message: string): string => {
     if (lowered.includes('email not confirmed')) return 'E-posta onayi gerekli.';
     if (lowered.includes('user already registered')) return 'Bu e-posta zaten kayitli.';
     if (lowered.includes('unsupported provider') || lowered.includes('provider is not enabled')) {
-        return 'Google girisi aktif degil. Supabase Dashboard > Authentication > Providers > Google bolumunden etkinlestir.';
+        return 'Sosyal giris aktif degil. Supabase Dashboard > Authentication > Providers bolumunden Google veya Apple girisini etkinlestir.';
     }
     if (lowered.includes('redirect_to is not allowed') || lowered.includes('redirect url')) {
-        return 'Google yonlendirme adresi hatali. Supabase ve Google Console ayarlarina mevcut site adresini ekle.';
+        return 'OAuth yonlendirme adresi hatali. Supabase ve saglayici ayarlarina mevcut site adresini ekle.';
     }
     if (lowered.includes('email rate limit exceeded') || lowered.includes('rate limit')) {
         return 'Cok fazla deneme yapildi. Biraz bekleyip tekrar dene.';
@@ -947,9 +984,6 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
         void supabase.auth.getSession().then(({ data }) => {
             const sessionUser = data.session?.user ?? null;
-            if (!sessionUser && sessionUserRef.current) {
-                return;
-            }
             applyAuthUser(sessionUser);
         });
 
@@ -964,10 +998,13 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             }
 
             const sessionUser = session?.user ?? null;
-            if (!sessionUser && sessionUserRef.current) {
-                return;
-            }
             applyAuthUser(sessionUser);
+            if (sessionUser && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+                const postAuthHash = consumePostAuthHash();
+                if (postAuthHash && typeof window !== 'undefined') {
+                    window.location.hash = postAuthHash.replace(/^#/, '');
+                }
+            }
         });
 
         return () => {
@@ -1304,25 +1341,30 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         }
     };
 
-    const loginWithGoogle = async (): Promise<AuthResult> => {
+    const loginWithOAuthProvider = async (provider: 'google' | 'apple'): Promise<AuthResult> => {
         if (!isSupabaseLive() || !supabase) {
-            return { ok: false, message: 'Google login icin Supabase gerekli.' };
+            return { ok: false, message: 'Sosyal giris icin Supabase gerekli.' };
         }
 
         try {
+            rememberPostAuthHash();
             const redirectTo = buildAuthRedirectTo();
             const { error } = await supabase.auth.signInWithOAuth({
-                provider: 'google',
+                provider,
                 options: { redirectTo }
             });
 
             if (error) return { ok: false, message: normalizeAuthError(error.message) };
             return { ok: true };
         } catch (error) {
-            const message = error instanceof Error ? error.message : 'Google login failed.';
+            const message = error instanceof Error ? error.message : 'OAuth login failed.';
             return { ok: false, message: normalizeAuthError(message) };
         }
     };
+
+    const loginWithGoogle = async (): Promise<AuthResult> => loginWithOAuthProvider('google');
+
+    const loginWithApple = async (): Promise<AuthResult> => loginWithOAuthProvider('apple');
 
     const requestPasswordReset = async (email: string): Promise<AuthResult> => {
         const normalizedEmail = email.trim().toLowerCase();
@@ -2235,6 +2277,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             requestPasswordReset,
             completePasswordReset,
             loginWithGoogle,
+            loginWithApple,
             logout,
             avatarUrl: state.avatarUrl,
             updateAvatar,

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "admin:dev": "npx vercel dev --listen 5173",
     "build": "tsc -b && vite build",
     "build:ci": "npm run build || npm run build || npm run build",
     "analyze": "tsc -b && vite build --mode analyze",

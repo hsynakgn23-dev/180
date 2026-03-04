@@ -281,6 +281,19 @@ export type UiDictionary = {
         follow: string;
         following: string;
         followers: string;
+        block: string;
+        blocked: string;
+        unblock: string;
+        blockConfirm: string;
+        blockSuccess: string;
+        unblockSuccess: string;
+        blockedNotice: string;
+        blockedNoticeMeta: string;
+        followCountsHidden: string;
+        profileStatsHidden: string;
+        activityHidden: string;
+        archiveHidden: string;
+        commentsHidden: string;
         leagueLabel: string;
         loadingProfile: string;
         profileLoadFailed: string;
@@ -414,7 +427,7 @@ export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
             closeMovieModal: 'Film penceresini kapat', unknownGenre: 'Tur bilinmiyor', commentsAndReplies: 'Yorumlar ve Yanitlar', commentRecords: '{count} yorum kaydi',
             close: 'Kapat', repliesLoading: 'Yanitlar yukleniyor...', replies: 'Yanitlar ({count})', deleteComment: 'Yorumu sil', noReplies: 'Bu yoruma henuz yanit yok.',
             openFilmDetails: '{title} yorum ve yanitlarini ac', observerHandle: 'gozlemci', curatorFallback: 'KURATOR', filmCount: '{count} Film', commentCount: '{count} yorum',
-            filmFallback: 'Film #{id}', follow: 'Takip Et', following: 'Takipte', followers: 'Takipciler', leagueLabel: 'Lig',
+            filmFallback: 'Film #{id}', follow: 'Takip Et', following: 'Takipte', followers: 'Takipciler', block: 'Engelle', blocked: 'Engellendi', unblock: 'Engeli Kaldir', blockConfirm: 'Bu kullaniciyi engellemek istiyor musun?', blockSuccess: 'Kullanici engellendi.', unblockSuccess: 'Kullanici engeli kaldirildi.', blockedNotice: 'Bu kullaniciyi engelledin. Icerik gizlendi.', blockedNoticeMeta: 'Engeli kaldirmadan bu profilin yorumlarini tekrar goremezsin.', followCountsHidden: 'Takip sayilari gizli.', profileStatsHidden: 'Bu kullanici profil istatistiklerini gizliyor.', activityHidden: 'Bu kullanici aktivite ozetini gizliyor.', archiveHidden: 'Bu kullanici arsiv aktivitesini gizliyor.', commentsHidden: 'Bu kullanici yorum ve yanitlarini gizliyor.', leagueLabel: 'Lig',
             loadingProfile: 'Profil yukleniyor...', profileLoadFailed: 'Profil verisi yuklenemedi.', publicProfileRequiresSupabase: 'Genel profil Supabase gerektirir.',
             timeToday: 'Bugun', timeJustNow: 'Simdi', timeHoursAgo: '{count}s once', timeDaysAgo: '{count}g once'
         },
@@ -538,7 +551,7 @@ export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
             closeMovieModal: 'Close film modal', unknownGenre: 'Unknown genre', commentsAndReplies: 'Comments and Replies', commentRecords: '{count} comment records',
             close: 'Close', repliesLoading: 'Loading replies...', replies: 'Replies ({count})', deleteComment: 'Delete comment', noReplies: 'No replies for this comment yet.',
             openFilmDetails: 'Open comments and replies for {title}', observerHandle: 'observer', curatorFallback: 'CURATOR', filmCount: '{count} Films', commentCount: '{count} comments',
-            filmFallback: 'Film #{id}', follow: 'Follow', following: 'Following', followers: 'Followers', leagueLabel: 'League',
+            filmFallback: 'Film #{id}', follow: 'Follow', following: 'Following', followers: 'Followers', block: 'Block', blocked: 'Blocked', unblock: 'Unblock', blockConfirm: 'Do you want to block this user?', blockSuccess: 'User blocked.', unblockSuccess: 'User unblocked.', blockedNotice: 'You blocked this user. Content is hidden.', blockedNoticeMeta: 'You will not see this profile again until you remove the block.', followCountsHidden: 'Follow counts are hidden.', profileStatsHidden: 'This user hides profile stats.', activityHidden: 'This user hides activity stats.', archiveHidden: 'This user hides archive activity.', commentsHidden: 'This user hides comments and replies.', leagueLabel: 'League',
             loadingProfile: 'Loading profile...', profileLoadFailed: 'Profile could not be loaded.', publicProfileRequiresSupabase: 'Public profile requires Supabase.',
             timeToday: 'Today', timeJustNow: 'Just now', timeHoursAgo: '{count}h ago', timeDaysAgo: '{count}d ago'
         },
@@ -736,6 +749,14 @@ UI_DICTIONARY.es = {
         follow: 'Seguir',
         following: 'Siguiendo',
         followers: 'Seguidores',
+        block: 'Bloquear',
+        blocked: 'Bloqueado',
+        unblock: 'Desbloquear',
+        blockConfirm: 'Quieres bloquear a este usuario?',
+        blockSuccess: 'Usuario bloqueado.',
+        unblockSuccess: 'Usuario desbloqueado.',
+        blockedNotice: 'Has bloqueado a este usuario. El contenido esta oculto.',
+        blockedNoticeMeta: 'No volveras a ver este perfil hasta quitar el bloqueo.',
         leagueLabel: 'Liga',
         loadingProfile: 'Cargando perfil...',
         profileLoadFailed: 'No se pudo cargar el perfil.',
@@ -937,6 +958,14 @@ UI_DICTIONARY.fr = {
         follow: 'Suivre',
         following: 'Abonne',
         followers: 'Abonnes',
+        block: 'Bloquer',
+        blocked: 'Bloque',
+        unblock: 'Debloquer',
+        blockConfirm: 'Voulez-vous bloquer cet utilisateur ?',
+        blockSuccess: 'Utilisateur bloque.',
+        unblockSuccess: 'Utilisateur debloque.',
+        blockedNotice: 'Vous avez bloque cet utilisateur. Le contenu est masque.',
+        blockedNoticeMeta: 'Vous ne reverrez pas ce profil avant de lever le blocage.',
         leagueLabel: 'Ligue',
         loadingProfile: 'Chargement du profil...',
         profileLoadFailed: 'Le profil n a pas pu etre charge.',
