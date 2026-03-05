@@ -1,0 +1,9 @@
+api/
+server/
+apps/
+scripts/
+sql/
+build/
+Dockerfile
+tsconfig.cloudrun.json
+.gcloudignore
