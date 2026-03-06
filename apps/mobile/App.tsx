@@ -21,10 +21,12 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import {
+  ActivityIndicator,
   Animated,
   KeyboardAvoidingView,
   Image,
   Linking,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -34,6 +36,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { WebView } from 'react-native-webview';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { appendMobileDeepLinkParams, buildMobileDeepLinkFromRouteIntent } from '../../packages/shared/src/mobile';
 import { fetchDailyMovies } from './src/lib/dailyApi';
@@ -137,6 +140,11 @@ import {
   MOBILE_SHARE_REWARD_XP,
 } from './src/lib/mobileShareRewardSync';
 import { isSupabaseConfigured, readSupabaseSessionSafe, supabase } from './src/lib/supabase';
+import {
+  resolveSupabaseUserAuthLabel,
+  resolveSupabaseUserDisplayName,
+  resolveSupabaseUserEmail,
+} from './src/lib/supabaseUser';
 import { UiButton } from './src/ui/primitives';
 import { styles } from './src/ui/appStyles';
 import {
@@ -510,6 +518,13 @@ type PublicProfileMovieArchiveModalState = {
   movie: PublicWatchedMovieSummary | null;
   items: MobilePublicProfileActivityItem[];
 };
+type DiscoverRouteSurfaceState = {
+  visible: boolean;
+  title: string;
+  url: string;
+  loading: boolean;
+  error: string;
+};
 
 type MainTabParamList = {
   Daily: undefined;
@@ -632,6 +647,14 @@ export default function App() {
   });
   const [selectedDailyMovieId, setSelectedDailyMovieId] = useState<number | null>(null);
   const [dailyMovieDetailsVisible, setDailyMovieDetailsVisible] = useState(false);
+  const [discoverRouteSurfaceState, setDiscoverRouteSurfaceState] =
+    useState<DiscoverRouteSurfaceState>({
+      visible: false,
+      title: '',
+      url: '',
+      loading: false,
+      error: '',
+    });
   const [ritualComposerVisible, setRitualComposerVisible] = useState(false);
   const [ritualQueueState, setRitualQueueState] = useState<RitualQueueState>({
     status: 'idle',
@@ -889,8 +912,10 @@ export default function App() {
 
     try {
       const sessionResult = await readSupabaseSessionSafe();
-      const userEmail = String(sessionResult.session?.user?.email || '').trim();
-      if (sessionResult.session?.access_token && userEmail) {
+      const sessionUser = sessionResult.session?.user;
+      const userId = String(sessionUser?.id || '').trim();
+      const authLabel = resolveSupabaseUserAuthLabel(sessionUser);
+      if (sessionResult.session?.access_token && userId) {
         if (applyRememberMePolicy) {
           const rememberMe = await readStoredAuthRememberMe();
           if (!rememberMe) {
@@ -906,7 +931,7 @@ export default function App() {
         setAuthState({
           status: 'signed_in',
           message: 'Mobil oturum hazir.',
-          email: userEmail,
+          email: authLabel,
         });
         return;
       }
@@ -1114,7 +1139,7 @@ export default function App() {
     if (authState.status !== 'signed_in') return '';
     const sessionResult = await readSupabaseSessionSafe();
     const userId = String(sessionResult.session?.user?.id || '').trim();
-    const userEmail = String(sessionResult.session?.user?.email || '').trim().toLowerCase();
+    const userEmail = resolveSupabaseUserEmail(sessionResult.session?.user);
     return userId || userEmail;
   }, [authState.status]);
 
@@ -2074,7 +2099,7 @@ export default function App() {
       setAuthState({
         status: 'signed_in',
         message: 'Giris basarili.',
-        email: data.user?.email || email,
+        email: resolveSupabaseUserAuthLabel(data.user || data.session?.user || null),
       });
       setAuthEntryStage('form');
       setAuthFullName('');
@@ -2179,8 +2204,8 @@ export default function App() {
         return;
       }
 
-      const resolvedEmail = String(data.user?.email || email).trim().toLowerCase() || email;
-      const hasLiveSession = Boolean(data.session?.access_token && resolvedEmail);
+      const authLabel = resolveSupabaseUserAuthLabel(data.user || data.session?.user || null);
+      const hasLiveSession = Boolean(data.session?.access_token);
 
       setSettingsIdentityDraft((prev) => ({
         ...prev,
@@ -2202,7 +2227,7 @@ export default function App() {
               message: authRememberMe
                 ? 'Kayit tamamlandi. Oturum acildi.'
                 : 'Kayit tamamlandi. Oturum bu acilis icin aktif; sonraki acilista tekrar giris istenebilir.',
-              email: resolvedEmail,
+              email: authLabel,
             }
           : {
               status: 'signed_out',
@@ -2500,10 +2525,24 @@ export default function App() {
         return;
       }
 
+      const resolvedSessionUser = data.user || data.session?.user || null;
       const resolvedEmail =
-        String(data.user?.email || data.session?.user?.email || credential.email || authEmail || '')
-          .trim()
-          .toLowerCase() || 'apple-user@private.local';
+        resolveSupabaseUserEmail(resolvedSessionUser) ||
+        String(credential.email || authEmail || '').trim().toLowerCase() ||
+        resolveSupabaseUserAuthLabel(resolvedSessionUser);
+      const resolvedFullName = [
+        String(credential.fullName?.givenName || '').trim(),
+        String(credential.fullName?.familyName || '').trim(),
+      ]
+        .filter(Boolean)
+        .join(' ') || resolveSupabaseUserDisplayName(resolvedSessionUser);
+
+      if (resolvedFullName) {
+        setSettingsIdentityDraft((prev) => ({
+          ...prev,
+          fullName: prev.fullName || resolvedFullName,
+        }));
+      }
 
       setAuthFlowMode('login');
       setAuthEntryStage('form');
@@ -2588,7 +2627,7 @@ export default function App() {
       }
 
       const sessionResult = await readSupabaseSessionSafe();
-      const email = String(sessionResult.session?.user?.email || authEmail).trim().toLowerCase();
+      const email = resolveSupabaseUserAuthLabel(sessionResult.session?.user || null);
       setAuthPassword('');
       setAuthConfirmPassword('');
       setAuthFlowMode('login');
@@ -2848,7 +2887,7 @@ export default function App() {
       }
 
       const email = supabase
-        ? String((await readSupabaseSessionSafe()).session?.user?.email || '').trim().toLowerCase()
+        ? resolveSupabaseUserAuthLabel((await readSupabaseSessionSafe()).session?.user || null)
         : '';
 
       if (callbackResult.recoveryMode) {
@@ -3924,12 +3963,22 @@ export default function App() {
     [deleteOwnCommentById]
   );
 
+  const handleCloseDiscoverRouteSurface = useCallback(() => {
+    setDiscoverRouteSurfaceState({
+      visible: false,
+      title: '',
+      url: '',
+      loading: false,
+      error: '',
+    });
+  }, []);
+
   useEffect(() => {
     setInviteClaimState({ status: 'idle' });
   }, [screenPlan.screen, inviteCode]);
 
   const handleOpenDiscoverRoute = useCallback(
-    async (route: { id: string; href: string }) => {
+    async (route: { id: string; title: string; href: string }) => {
       if (!route.href) {
         void trackMobileEvent('page_view', {
           reason: 'mobile_discover_route_missing_base',
@@ -3938,12 +3987,27 @@ export default function App() {
         return;
       }
 
+      if (Platform.OS !== 'web') {
+        setDiscoverRouteSurfaceState({
+          visible: true,
+          title: route.title,
+          url: route.href,
+          loading: true,
+          error: '',
+        });
+        void trackMobileEvent('page_view', {
+          reason: 'mobile_discover_route_surface_opened',
+          route: route.id,
+        });
+        return;
+      }
+
       try {
-        const browserResult = await WebBrowser.openBrowserAsync(route.href);
+        await Linking.openURL(route.href);
         void trackMobileEvent('page_view', {
           reason: 'mobile_discover_route_opened',
           route: route.id,
-          result: browserResult.type,
+          result: 'external_link',
         });
       } catch (error) {
         void trackMobileEvent('page_view', {
@@ -6025,6 +6089,88 @@ export default function App() {
               handleOpenShareHubFromProfile();
             }}
           />
+
+          <Modal
+            visible={discoverRouteSurfaceState.visible}
+            animationType="slide"
+            presentationStyle="fullScreen"
+            onRequestClose={handleCloseDiscoverRouteSurface}
+          >
+            <SafeAreaView style={styles.discoverRouteSurfaceModal} edges={['top', 'bottom']}>
+              <View style={styles.discoverRouteSurfaceHeader}>
+                <View style={styles.discoverRouteSurfaceHeaderCopy}>
+                  <Text style={styles.discoverRouteSurfaceEyebrow}>Discover Route</Text>
+                  <Text style={styles.discoverRouteSurfaceTitle}>
+                    {discoverRouteSurfaceState.title || 'Route'}
+                  </Text>
+                </View>
+                <View style={styles.discoverRouteSurfaceActions}>
+                  <UiButton
+                    label="Safari"
+                    tone="neutral"
+                    onPress={() => {
+                      const targetUrl = String(discoverRouteSurfaceState.url || '').trim();
+                      if (!targetUrl) return;
+                      void Linking.openURL(targetUrl);
+                    }}
+                  />
+                  <UiButton
+                    label="Kapat"
+                    tone="brand"
+                    onPress={handleCloseDiscoverRouteSurface}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.discoverRouteSurfaceBody}>
+                <WebView
+                  source={{ uri: discoverRouteSurfaceState.url }}
+                  sharedCookiesEnabled
+                  setSupportMultipleWindows={false}
+                  startInLoadingState
+                  onLoadStart={() =>
+                    setDiscoverRouteSurfaceState((prev) => ({
+                      ...prev,
+                      loading: true,
+                      error: '',
+                    }))
+                  }
+                  onLoadEnd={() =>
+                    setDiscoverRouteSurfaceState((prev) => ({
+                      ...prev,
+                      loading: false,
+                    }))
+                  }
+                  onError={(event) =>
+                    setDiscoverRouteSurfaceState((prev) => ({
+                      ...prev,
+                      loading: false,
+                      error:
+                        String(event.nativeEvent.description || '').trim() ||
+                        'Route yuklenemedi.',
+                    }))
+                  }
+                  renderLoading={() => (
+                    <View style={styles.discoverRouteSurfaceLoading}>
+                      <ActivityIndicator size="small" color="#c7bcb2" />
+                      <Text style={styles.discoverRouteSurfaceLoadingText}>
+                        Discover rotasi yukleniyor...
+                      </Text>
+                    </View>
+                  )}
+                />
+
+                {discoverRouteSurfaceState.error ? (
+                  <View style={styles.discoverRouteSurfaceErrorCard}>
+                    <Text style={styles.discoverRouteSurfaceErrorTitle}>Rota yuklenemedi</Text>
+                    <Text style={styles.discoverRouteSurfaceErrorBody}>
+                      {discoverRouteSurfaceState.error}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            </SafeAreaView>
+          </Modal>
         </Animated.View>
         <StatusBar style={isDawnTheme ? 'dark' : 'light'} />
       </SafeAreaView>

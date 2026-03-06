@@ -1,4 +1,5 @@
 import { isSupabaseLive, readSupabaseSessionSafe, supabase } from './supabase';
+import { resolveSupabaseUserEmail } from './supabaseUser';
 import {
   getDefaultMobileProfileVisibility,
   normalizeMobileProfileVisibility,
@@ -64,8 +65,8 @@ const readSignedInIdentity = async (): Promise<
 
   const sessionResult = await readSupabaseSessionSafe();
   const userId = normalizeText(sessionResult.session?.user?.id, 120);
-  const userEmail = normalizeText(sessionResult.session?.user?.email, 180);
-  if (!userId || !userEmail) {
+  const userEmail = resolveSupabaseUserEmail(sessionResult.session?.user);
+  if (!userId) {
     return { ok: false, message: 'Gizlilik ayarlari icin once giris yap.' };
   }
 
@@ -151,7 +152,7 @@ export const syncMobileProfilePrivacyToCloud = async (
   const { error: writeError } = await supabase.from('profiles').upsert(
     {
       user_id: identity.userId,
-      email: identity.userEmail,
+      email: identity.userEmail || null,
       xp_state: nextXpState,
       updated_at: nowIso,
     },

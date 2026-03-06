@@ -1,4 +1,5 @@
 import { isSupabaseLive, readSupabaseSessionSafe, supabase } from './supabase';
+import { resolveSupabaseUserEmail } from './supabaseUser';
 import { resolveUserIdsByAuthorNames, toAuthorIdentityKey } from './mobileAuthorUserMap';
 import {
   normalizeMobileLeagueKey,
@@ -541,7 +542,7 @@ const readFallbackFromXpState = async (): Promise<MobileCommentFeedItem[]> => {
 
   const sessionResult = await readSupabaseSessionSafe();
   const userId = normalizeText(sessionResult.session?.user?.id, 80);
-  const userEmail = normalizeText(sessionResult.session?.user?.email, 160);
+  const userEmail = resolveSupabaseUserEmail(sessionResult.session?.user);
   if (!userId) return [];
 
   const { data: profileData, error } = await supabase

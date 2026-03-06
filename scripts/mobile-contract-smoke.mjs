@@ -9,6 +9,8 @@ const envModule = await import('../apps/mobile/src/lib/mobileEnv.ts');
 const authRedirectModule = await import('../apps/mobile/src/lib/mobileAuthRedirect.ts');
 const publicProfileModule = await import('../apps/mobile/src/lib/mobilePublicProfile.ts');
 const authorMapModule = await import('../apps/mobile/src/lib/mobileAuthorUserMap.ts');
+const avatarModule = await import('../apps/mobile/src/lib/mobileAvatar.ts');
+const supabaseUserModule = await import('../apps/mobile/src/lib/supabaseUser.ts');
 
 const {
   normalizeInviteCode,
@@ -30,6 +32,8 @@ const {
 const { resolveMobileAuthCallbackUrl, resolveMobileAuthReturnUrl } = authRedirectModule;
 const { buildMobilePublicProfileUrl, isAllowedMobilePublicProfileUrl } = publicProfileModule;
 const { toAuthorIdentityKey } = authorMapModule;
+const { normalizeMobileAvatarUrl, MAX_MOBILE_AVATAR_URL_LENGTH } = avatarModule;
+const { resolveSupabaseUserAuthLabel, resolveSupabaseUserEmail } = supabaseUserModule;
 
 let failed = false;
 
@@ -273,6 +277,28 @@ runCase('mobile auth redirect respects explicit callback and return overrides', 
     }),
     'absolutecinema://oauth'
   );
+});
+
+runCase('mobile avatar normalizer rejects oversized payloads without truncating', () => {
+  const oversizedDataUrl = `data:image/png;base64,${'A'.repeat(MAX_MOBILE_AVATAR_URL_LENGTH + 8)}`;
+  assert.equal(normalizeMobileAvatarUrl(oversizedDataUrl), '');
+});
+
+runCase('supabase user helpers recover Apple identity without direct email field', () => {
+  const sessionUser = {
+    id: '12345678-1234-1234-1234-123456789012',
+    email: null,
+    user_metadata: { full_name: 'Absolute Viewer' },
+    identities: [
+      {
+        identity_data: {
+          email: 'apple-viewer@privaterelay.appleid.com',
+        },
+      },
+    ],
+  };
+  assert.equal(resolveSupabaseUserEmail(sessionUser), 'apple-viewer@privaterelay.appleid.com');
+  assert.equal(resolveSupabaseUserAuthLabel(sessionUser), 'apple-viewer@privaterelay.appleid.com');
 });
 
 runCase('mobile env resolver falls back from daily endpoint to referral/push base', () => {

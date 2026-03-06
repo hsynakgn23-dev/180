@@ -1,5 +1,6 @@
 import { isSupabaseLive, readSupabaseSessionSafe, supabase } from './supabase';
 import { normalizeMobileAvatarUrl } from './mobileAvatar';
+import { resolveSupabaseUserEmail } from './supabaseUser';
 
 type SupabaseErrorLike = {
   code?: string | null;
@@ -200,8 +201,8 @@ const readSignedInIdentity = async (): Promise<
 
   const sessionResult = await readSupabaseSessionSafe();
   const userId = normalizeText(sessionResult.session?.user?.id, 120);
-  const userEmail = normalizeText(sessionResult.session?.user?.email, 180);
-  if (!userId || !userEmail) {
+  const userEmail = resolveSupabaseUserEmail(sessionResult.session?.user);
+  if (!userId) {
     return { ok: false, message: 'Profil senkronu icin once mobilde giris yap.' };
   }
 
@@ -277,7 +278,7 @@ const syncProfileIdentityToCloud = async (
   const { error: writeError } = await supabase.from('profiles').upsert(
     {
       user_id: identity.userId,
-      email: identity.userEmail,
+      email: identity.userEmail || null,
       display_name: displayName,
       xp_state: nextXpState,
       updated_at: nowIso,

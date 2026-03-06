@@ -5,9 +5,7 @@ export const MAX_MOBILE_AVATAR_URL_LENGTH =
 const normalizeAvatarText = (value: unknown): string => {
   const text = String(value ?? '').trim();
   if (!text) return '';
-  return text.length > MAX_MOBILE_AVATAR_URL_LENGTH
-    ? text.slice(0, MAX_MOBILE_AVATAR_URL_LENGTH)
-    : text;
+  return text.length > MAX_MOBILE_AVATAR_URL_LENGTH ? '' : text;
 };
 
 export const normalizeMobileAvatarUrl = (value: unknown): string => {

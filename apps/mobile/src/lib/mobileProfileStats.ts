@@ -1,4 +1,5 @@
 import { isSupabaseLive, readSupabaseSessionSafe, supabase } from './supabase';
+import { resolveSupabaseUserEmail } from './supabaseUser';
 import {
   resolveMobileLeagueInfoFromXp,
   resolveMobileNextLeagueKey,
@@ -271,7 +272,7 @@ export const fetchMobileProfileStats = async (): Promise<MobileProfileStatsResul
 
   const sessionResult = await readSupabaseSessionSafe();
   const userId = normalizeText(sessionResult.session?.user?.id, 80);
-  const userEmail = normalizeText(sessionResult.session?.user?.email, 160);
+  const userEmail = resolveSupabaseUserEmail(sessionResult.session?.user);
   if (!userId) {
     return {
       ok: false,

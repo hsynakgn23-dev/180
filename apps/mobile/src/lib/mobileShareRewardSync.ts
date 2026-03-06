@@ -1,5 +1,6 @@
 import { isSupabaseLive, readSupabaseSessionSafe, supabase } from './supabase';
 import { normalizeMobileAvatarUrl } from './mobileAvatar';
+import { resolveSupabaseUserEmail } from './supabaseUser';
 
 type SupabaseErrorLike = {
   code?: string | null;
@@ -380,7 +381,7 @@ export const claimMobileShareReward = async (
 
   const sessionResult = await readSupabaseSessionSafe();
   const userId = normalizeText(sessionResult.session?.user?.id, 120);
-  const userEmail = normalizeText(sessionResult.session?.user?.email, 220);
+  const userEmail = resolveSupabaseUserEmail(sessionResult.session?.user);
   if (!userId) {
     return {
       ok: false,

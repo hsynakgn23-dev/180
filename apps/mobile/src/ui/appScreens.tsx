@@ -6358,7 +6358,7 @@ const DiscoverRoutesCard = ({
                   title={route.href ? 'Rota acilmaya hazir' : 'URL konfigrasyonu bekleniyor'}
                   body={
                     route.href
-                      ? 'Bu rota mobil yuzeyden web kesfine dogrudan gecer.'
+                      ? 'Bu rota mobil yuzeyin icindeki kesif katmaninda acilir.'
                       : 'Bu rota icin web URL konfigrasyonu tamamlanmamis.'
                   }
                   meta={route.href || undefined}
