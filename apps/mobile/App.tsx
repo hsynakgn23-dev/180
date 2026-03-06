@@ -1,4 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
@@ -94,6 +95,10 @@ import {
   type MobileProfileVisibility,
 } from './src/lib/mobileProfilePrivacySync';
 import { applyMobileAuthCallbackFromUrl } from './src/lib/mobileAuthCallback';
+import {
+  resolveMobileAuthCallbackUrl,
+  resolveMobileAuthReturnUrl,
+} from './src/lib/mobileAuthRedirect';
 import {
   fetchMobileCommentFeed,
   type CommentFeedScope,
@@ -197,8 +202,8 @@ const PUSH_FEATURE_ENABLED = isEnvFlagEnabled(process.env.EXPO_PUBLIC_PUSH_ENABL
 const INTERNAL_OPS_VISIBLE =
   __DEV__ && isEnvFlagEnabled(process.env.EXPO_PUBLIC_MOBILE_INTERNAL_SURFACES, false);
 const MOBILE_DEEP_LINK_BASE = 'absolutecinema://open';
-const MOBILE_AUTH_REDIRECT_TO =
-  String(process.env.EXPO_PUBLIC_AUTH_REDIRECT_TO || '').trim() || MOBILE_DEEP_LINK_BASE;
+const MOBILE_AUTH_RETURN_TO = resolveMobileAuthReturnUrl();
+const MOBILE_AUTH_CALLBACK_URL = resolveMobileAuthCallbackUrl();
 const MOBILE_UI_PACKAGE_LABEL = 'UI Package 6.46';
 const MOBILE_PROFILE_IDENTITY_STORAGE_KEY = 'ac_mobile_profile_identity_v1';
 const MOBILE_PROFILE_LANGUAGE_STORAGE_KEY = 'ac_mobile_profile_language_v1';
@@ -230,6 +235,12 @@ const normalizeExternalUrl = (value: string): string => {
   if (!normalized) return '';
   if (/^https?:\/\//i.test(normalized)) return normalized;
   return `https://${normalized}`;
+};
+
+const createAppleSignInNonce = (): string => {
+  const maybeCrypto = globalThis.crypto as { randomUUID?: () => string } | undefined;
+  if (maybeCrypto?.randomUUID) return maybeCrypto.randomUUID();
+  return `apple-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 };
 
 const resolveAvatarMimeType = (input: {
@@ -2251,7 +2262,7 @@ export default function App() {
 
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: MOBILE_AUTH_REDIRECT_TO,
+        redirectTo: MOBILE_AUTH_CALLBACK_URL,
       });
       if (error) {
         setAuthState({
@@ -2275,7 +2286,7 @@ export default function App() {
       });
       void trackMobileEvent('password_reset_requested', {
         method: 'email',
-        redirectTo: MOBILE_AUTH_REDIRECT_TO,
+        redirectTo: MOBILE_AUTH_CALLBACK_URL,
       });
     } catch (error) {
       const message =
@@ -2317,7 +2328,7 @@ export default function App() {
         const { data, error } = await supabase.auth.signInWithOAuth({
           provider,
           options: {
-            redirectTo: MOBILE_AUTH_REDIRECT_TO,
+            redirectTo: MOBILE_AUTH_CALLBACK_URL,
             skipBrowserRedirect: true,
           },
         });
@@ -2349,7 +2360,8 @@ export default function App() {
 
         void trackMobileEvent('oauth_redirect_started', {
           provider,
-          redirectTo: MOBILE_AUTH_REDIRECT_TO,
+          redirectTo: MOBILE_AUTH_CALLBACK_URL,
+          returnTo: MOBILE_AUTH_RETURN_TO,
         });
 
         const authSessionResult =
@@ -2358,7 +2370,7 @@ export default function App() {
                 type: 'opened' as const,
                 url: null as string | null,
               }))
-            : await WebBrowser.openAuthSessionAsync(redirectUrl, MOBILE_AUTH_REDIRECT_TO);
+            : await WebBrowser.openAuthSessionAsync(redirectUrl, MOBILE_AUTH_RETURN_TO);
 
         if (Platform.OS === 'web') {
           setAuthFlowMode('login');
@@ -2411,8 +2423,122 @@ export default function App() {
   }, [handleOAuthSignIn]);
 
   const handleAppleSignIn = useCallback(async () => {
-    await handleOAuthSignIn('apple');
-  }, [handleOAuthSignIn]);
+    if (Platform.OS !== 'ios') {
+      await handleOAuthSignIn('apple');
+      return;
+    }
+
+    if (!isSupabaseConfigured || !supabase) {
+      setAuthState({
+        status: 'error',
+        message: 'Apple girisi icin Supabase ayarlari eksik.',
+      });
+      return;
+    }
+
+    setAuthState({
+      status: 'loading',
+      message: 'Apple girisi icin dogrulama bekleniyor...',
+    });
+    setAuthEntryStage('form');
+    void trackMobileEvent('oauth_start', {
+      provider: 'apple',
+      surface: 'mobile_native',
+    });
+
+    try {
+      const isAvailable = await AppleAuthentication.isAvailableAsync();
+      if (!isAvailable) {
+        setAuthState({
+          status: 'error',
+          message: 'Bu cihazda Apple girisi kullanilamiyor.',
+        });
+        void trackMobileEvent('oauth_failure', {
+          provider: 'apple',
+          reason: 'apple_auth_unavailable',
+        });
+        return;
+      }
+
+      const nonce = createAppleSignInNonce();
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+        nonce,
+      });
+
+      const identityToken = String(credential.identityToken || '').trim();
+      if (!identityToken) {
+        setAuthState({
+          status: 'error',
+          message: 'Apple identity token donmedi.',
+        });
+        void trackMobileEvent('oauth_failure', {
+          provider: 'apple',
+          reason: 'missing_apple_identity_token',
+        });
+        return;
+      }
+
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: 'apple',
+        token: identityToken,
+        nonce,
+      });
+
+      if (error) {
+        setAuthState({
+          status: 'error',
+          message: error.message || 'Apple girisi tamamlanamadi.',
+        });
+        void trackMobileEvent('oauth_failure', {
+          provider: 'apple',
+          reason: error.message || 'apple_id_token_sign_in_failed',
+        });
+        return;
+      }
+
+      const resolvedEmail =
+        String(data.user?.email || data.session?.user?.email || credential.email || authEmail || '')
+          .trim()
+          .toLowerCase() || 'apple-user@private.local';
+
+      setAuthFlowMode('login');
+      setAuthEntryStage('form');
+      setAuthState({
+        status: 'signed_in',
+        message: 'Apple girisi tamamlandi.',
+        email: resolvedEmail,
+      });
+      void trackMobileEvent('login_success', {
+        method: 'apple_id_token',
+      });
+    } catch (error) {
+      const errorCode = String((error as { code?: unknown } | null)?.code || '')
+        .trim()
+        .toUpperCase();
+      const message = error instanceof Error ? error.message : 'Apple girisi baslatilamadi.';
+      const normalizedMessage = message.toLowerCase();
+      const cancelled =
+        errorCode.includes('CANCEL') ||
+        normalizedMessage.includes('cancel') ||
+        normalizedMessage.includes('iptal');
+
+      setAuthState({
+        status: cancelled ? 'signed_out' : 'error',
+        message: cancelled ? 'Apple girisi iptal edildi.' : message,
+      });
+
+      if (!cancelled) {
+        void trackMobileEvent('oauth_failure', {
+          provider: 'apple',
+          reason: message,
+        });
+      }
+    }
+  }, [authEmail, handleOAuthSignIn]);
 
   const handleCompletePasswordReset = useCallback(async () => {
     const password = authPassword.trim();
@@ -3813,18 +3939,11 @@ export default function App() {
       }
 
       try {
-        const canOpen = await Linking.canOpenURL(route.href);
-        if (!canOpen) {
-          void trackMobileEvent('page_view', {
-            reason: 'mobile_discover_route_unsupported',
-            route: route.id,
-          });
-          return;
-        }
-        await Linking.openURL(route.href);
+        const browserResult = await WebBrowser.openBrowserAsync(route.href);
         void trackMobileEvent('page_view', {
           reason: 'mobile_discover_route_opened',
           route: route.id,
+          result: browserResult.type,
         });
       } catch (error) {
         void trackMobileEvent('page_view', {
@@ -5768,7 +5887,7 @@ export default function App() {
             onRegister={handleRegister}
             rememberMe={authRememberMe}
             onRememberMeChange={handleSetAuthRememberMe}
-            showAppleSignIn={Platform.OS === 'ios'}
+            showAppleSignIn
             onAppleSignIn={handleAppleSignIn}
             onGoogleSignIn={handleGoogleSignIn}
             onRequestPasswordReset={handleRequestPasswordReset}

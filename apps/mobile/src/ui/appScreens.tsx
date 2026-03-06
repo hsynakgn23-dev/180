@@ -1555,7 +1555,7 @@ const AuthGateScreen = ({
             onRegister={onRegister}
             rememberMe={rememberMe}
             onRememberMeChange={onRememberMeChange}
-            showAppleSignIn={Platform.OS === 'ios'}
+            showAppleSignIn
             onAppleSignIn={onAppleSignIn}
             onGoogleSignIn={onGoogleSignIn}
             onRequestPasswordReset={onRequestPasswordReset}

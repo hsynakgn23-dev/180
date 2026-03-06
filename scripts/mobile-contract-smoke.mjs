@@ -6,6 +6,7 @@ const deepLinkModule = await import('../packages/shared/src/mobile/deepLinks.ts'
 const promptModule = await import('../packages/shared/src/mobile/mobileWebPromptContract.ts');
 const analyticsModule = await import('../packages/shared/src/mobile/analyticsEvents.ts');
 const envModule = await import('../apps/mobile/src/lib/mobileEnv.ts');
+const authRedirectModule = await import('../apps/mobile/src/lib/mobileAuthRedirect.ts');
 const publicProfileModule = await import('../apps/mobile/src/lib/mobilePublicProfile.ts');
 const authorMapModule = await import('../apps/mobile/src/lib/mobileAuthorUserMap.ts');
 
@@ -26,6 +27,7 @@ const {
   resolveMobilePushApiBase,
   resolveMobileWebBaseUrl,
 } = envModule;
+const { resolveMobileAuthCallbackUrl, resolveMobileAuthReturnUrl } = authRedirectModule;
 const { buildMobilePublicProfileUrl, isAllowedMobilePublicProfileUrl } = publicProfileModule;
 const { toAuthorIdentityKey } = authorMapModule;
 
@@ -244,6 +246,33 @@ runCase('mobile env resolver supports default Expo public env reads', () => {
       delete process.env.EXPO_PUBLIC_WEB_APP_URL;
     }
   }
+});
+
+runCase('mobile auth redirect derives web callback bridge with app return url', () => {
+  const callbackUrl = resolveMobileAuthCallbackUrl({
+    EXPO_PUBLIC_WEB_APP_URL: 'https://cinema.example.com/runtime',
+  });
+  assert.equal(
+    callbackUrl,
+    'https://cinema.example.com/runtime/auth/mobile-callback/?app_redirect=absolutecinema%3A%2F%2Fopen'
+  );
+  assert.equal(resolveMobileAuthReturnUrl({}), 'absolutecinema://open');
+});
+
+runCase('mobile auth redirect respects explicit callback and return overrides', () => {
+  assert.equal(
+    resolveMobileAuthCallbackUrl({
+      EXPO_PUBLIC_AUTH_REDIRECT_TO: 'https://cinema.example.com/auth/direct',
+      EXPO_PUBLIC_AUTH_RETURN_TO: 'absolutecinema://oauth',
+    }),
+    'https://cinema.example.com/auth/direct'
+  );
+  assert.equal(
+    resolveMobileAuthReturnUrl({
+      EXPO_PUBLIC_AUTH_RETURN_TO: 'absolutecinema://oauth',
+    }),
+    'absolutecinema://oauth'
+  );
 });
 
 runCase('mobile env resolver falls back from daily endpoint to referral/push base', () => {
