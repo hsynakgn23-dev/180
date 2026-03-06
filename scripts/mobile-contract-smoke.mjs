@@ -232,6 +232,20 @@ runCase('mobile env resolver keeps explicit web base and strips query/hash', () 
   assert.equal(webBase, 'https://cinema.example.com/app');
 });
 
+runCase('mobile env resolver supports default Expo public env reads', () => {
+  const previousWebAppUrl = process.env.EXPO_PUBLIC_WEB_APP_URL;
+  process.env.EXPO_PUBLIC_WEB_APP_URL = 'https://cinema.example.com/runtime/';
+  try {
+    assert.equal(resolveMobileWebBaseUrl(), 'https://cinema.example.com/runtime');
+  } finally {
+    if (typeof previousWebAppUrl === 'string') {
+      process.env.EXPO_PUBLIC_WEB_APP_URL = previousWebAppUrl;
+    } else {
+      delete process.env.EXPO_PUBLIC_WEB_APP_URL;
+    }
+  }
+});
+
 runCase('mobile env resolver falls back from daily endpoint to referral/push base', () => {
   const env = {
     EXPO_PUBLIC_DAILY_API_URL: 'https://cinema.example.com/api/daily',

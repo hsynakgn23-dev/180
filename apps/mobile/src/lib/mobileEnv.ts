@@ -116,7 +116,31 @@ export const deriveOriginFromEndpoint = (value: unknown, marker: string): string
   return `${parsed.origin}${basePath === '/' ? '' : basePath}`;
 };
 
-const readEnv = (env: MobileEnvRecord, key: string): string => normalizeText(env[key], 1000);
+const readStaticExpoPublicEnv = (key: string): string => {
+  switch (key) {
+    case 'EXPO_PUBLIC_WEB_BASE_URL':
+      return normalizeText(process.env.EXPO_PUBLIC_WEB_BASE_URL, 1000);
+    case 'EXPO_PUBLIC_WEB_APP_URL':
+      return normalizeText(process.env.EXPO_PUBLIC_WEB_APP_URL, 1000);
+    case 'EXPO_PUBLIC_REFERRAL_API_BASE':
+      return normalizeText(process.env.EXPO_PUBLIC_REFERRAL_API_BASE, 1000);
+    case 'EXPO_PUBLIC_ANALYTICS_ENDPOINT':
+      return normalizeText(process.env.EXPO_PUBLIC_ANALYTICS_ENDPOINT, 1000);
+    case 'EXPO_PUBLIC_DAILY_API_URL':
+      return normalizeText(process.env.EXPO_PUBLIC_DAILY_API_URL, 1000);
+    case 'EXPO_PUBLIC_PUSH_API_BASE':
+      return normalizeText(process.env.EXPO_PUBLIC_PUSH_API_BASE, 1000);
+    default:
+      return '';
+  }
+};
+
+const readEnv = (env: MobileEnvRecord, key: string): string => {
+  const explicitValue = normalizeText(env[key], 1000);
+  if (explicitValue) return explicitValue;
+  if (env !== process.env) return '';
+  return readStaticExpoPublicEnv(key);
+};
 
 export const resolveMobileWebBaseUrl = (env: MobileEnvRecord = process.env): string => {
   const explicitWebBaseAlias = adaptBaseUrlForBrowser(readEnv(env, 'EXPO_PUBLIC_WEB_BASE_URL'));

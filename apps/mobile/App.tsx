@@ -150,10 +150,12 @@ import {
 import {
   ArenaChallengeCard,
   ArenaLeaderboardCard,
+  AuthGateScreen,
   AuthModal,
   CollapsibleSectionCard,
   CommentFeedCard,
   DailyHomeScreen,
+  ScreenErrorBoundary,
   DiscoverRoutesCard,
   InviteClaimScreen,
   LeaguePromotionModal,
@@ -606,7 +608,7 @@ export default function App() {
   const [authConfirmPassword, setAuthConfirmPassword] = useState('');
   const [authRememberMe, setAuthRememberMe] = useState(true);
   const [authFlowMode, setAuthFlowMode] = useState<AuthFlowMode>('login');
-  const [, setAuthEntryStage] = useState<MobileAuthEntryStage>('intro');
+  const [authEntryStage, setAuthEntryStage] = useState<MobileAuthEntryStage>('form');
   const [authState, setAuthState] = useState<AuthState>({
     status: 'idle',
     message: 'Session kontrol ediliyor...',
@@ -839,6 +841,7 @@ export default function App() {
   const lastHandledAuthCallbackUrlRef = useRef<string | null>(null);
   const lastHandledPublicProfileIntentRef = useRef<string | null>(null);
   const lastAutoOpenedAuthRouteRef = useRef<string | null>(null);
+  const hasAutoOpenedLaunchAuthRef = useRef(false);
 
   const primaryDailyMovie =
     dailyState.status === 'success' && dailyState.movies.length > 0 ? dailyState.movies[0] : null;
@@ -2768,6 +2771,18 @@ export default function App() {
       setAuthModalVisible(false);
     }
   }, [authState.status]);
+
+  useEffect(() => {
+    if (authState.status === 'signed_in') {
+      hasAutoOpenedLaunchAuthRef.current = true;
+      return;
+    }
+    if (authState.status !== 'signed_out') return;
+    if (authModalVisible || hasAutoOpenedLaunchAuthRef.current) return;
+
+    hasAutoOpenedLaunchAuthRef.current = true;
+    openAuthModal('login');
+  }, [authModalVisible, authState.status, openAuthModal]);
 
   useEffect(() => {
     const requiresAuth = activeIntent.target === 'invite' || activeIntent.target === 'share';
@@ -5324,23 +5339,55 @@ export default function App() {
               </Tab.Screen>
 
               <Tab.Screen name={MAIN_TAB_BY_KEY.profile}>
-                {() => (
-                  <ScrollView
-                    ref={profileScrollRef}
-                    contentContainerStyle={[styles.container, styles.containerWithTabs]}
-                    keyboardShouldPersistTaps="handled"
-                    keyboardDismissMode="on-drag"
-                    refreshControl={
-                      <RefreshControl
-                        refreshing={profilePullRefreshing}
-                        onRefresh={() => {
-                          void handlePullRefreshProfile();
-                        }}
-                        tintColor={isDawnTheme ? '#A57164' : '#8A9A5B'}
+                {() =>
+                  !isSignedIn && !publicProfileFullState.visible ? (
+                    <ScreenErrorBoundary section="Profil">
+                      <AuthGateScreen
+                        authState={authState}
+                        email={authEmail}
+                        fullName={authFullName}
+                        username={authUsername}
+                        birthDate={authBirthDate}
+                        password={authPassword}
+                        confirmPassword={authConfirmPassword}
+                        mode={authFlowMode}
+                        onEmailChange={setAuthEmail}
+                        onFullNameChange={setAuthFullName}
+                        onUsernameChange={setAuthUsername}
+                        onBirthDateChange={setAuthBirthDate}
+                        onPasswordChange={setAuthPassword}
+                        onConfirmPasswordChange={setAuthConfirmPassword}
+                        onModeChange={setAuthFlowMode}
+                        onSignIn={handleSignIn}
+                        onRegister={handleRegister}
+                        rememberMe={authRememberMe}
+                        onRememberMeChange={handleSetAuthRememberMe}
+                        onGoogleSignIn={handleGoogleSignIn}
+                        onAppleSignIn={handleAppleSignIn}
+                        onRequestPasswordReset={handleRequestPasswordReset}
+                        onCompletePasswordReset={handleCompletePasswordReset}
+                        entryStage={authEntryStage}
+                        onContinue={() => setAuthEntryStage('form')}
                       />
-                    }
-                    showsVerticalScrollIndicator={false}
-                  >
+                    </ScreenErrorBoundary>
+                  ) : (
+                    <ScreenErrorBoundary section="Profil">
+                      <ScrollView
+                        ref={profileScrollRef}
+                        contentContainerStyle={[styles.container, styles.containerWithTabs]}
+                        keyboardShouldPersistTaps="handled"
+                        keyboardDismissMode="on-drag"
+                        refreshControl={
+                          <RefreshControl
+                            refreshing={profilePullRefreshing}
+                            onRefresh={() => {
+                              void handlePullRefreshProfile();
+                            }}
+                            tintColor={isDawnTheme ? '#A57164' : '#8A9A5B'}
+                          />
+                        }
+                        showsVerticalScrollIndicator={false}
+                      >
                     {isDevSurfaceEnabled
                       ? renderSurfaceIntro({
                           title: 'Profil ve Hesap',
@@ -5691,8 +5738,10 @@ export default function App() {
                     )}
                       </>
                     ) : null}
-                  </ScrollView>
-                )}
+                      </ScrollView>
+                    </ScreenErrorBoundary>
+                  )
+                }
               </Tab.Screen>
             </Tab.Navigator>
           </NavigationContainer>
