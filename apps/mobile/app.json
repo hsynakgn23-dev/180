@@ -21,9 +21,12 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.hsyna.absolutecinema",
+      "bundleIdentifier": "com.absolutecinema",
       "buildNumber": "1",
-      "usesAppleSignIn": true
+      "usesAppleSignIn": true,
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.hsyna.absolutecinema",

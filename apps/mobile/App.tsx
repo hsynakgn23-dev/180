@@ -2288,123 +2288,128 @@ export default function App() {
     }
   }, [authEmail]);
 
-  const handleGoogleSignIn = useCallback(async () => {
-    if (!isSupabaseConfigured || !supabase) {
+  const handleOAuthSignIn = useCallback(
+    async (provider: 'google' | 'apple') => {
+      const providerLabel = provider === 'apple' ? 'Apple' : 'Google';
+
+      if (!isSupabaseConfigured || !supabase) {
+        setAuthState({
+          status: 'error',
+          message: `${providerLabel} girisi icin Supabase ayarlari eksik.`,
+        });
+        return;
+      }
+
       setAuthState({
-        status: 'error',
-        message: 'Google girisi icin Supabase ayarlari eksik.',
+        status: 'loading',
+        message: `${providerLabel} girisi icin yonlendiriliyor...`,
       });
-      return;
-    }
+      setAuthEntryStage('form');
+      void trackMobileEvent('oauth_start', {
+        provider,
+        surface: 'mobile_native',
+      });
 
-    setAuthState({
-      status: 'loading',
-      message: 'Google girisi icin yonlendiriliyor...',
-    });
-    setAuthEntryStage('form');
-    void trackMobileEvent('oauth_start', {
-      provider: 'google',
-      surface: 'mobile_native',
-    });
+      try {
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider,
+          options: {
+            redirectTo: MOBILE_AUTH_REDIRECT_TO,
+            skipBrowserRedirect: true,
+          },
+        });
 
-    try {
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
+        if (error) {
+          setAuthState({
+            status: 'error',
+            message: error.message || `${providerLabel} girisi baslatilamadi.`,
+          });
+          void trackMobileEvent('oauth_failure', {
+            provider,
+            reason: error.message || 'oauth_start_failed',
+          });
+          return;
+        }
+
+        const redirectUrl = String(data?.url || '').trim();
+        if (!redirectUrl) {
+          setAuthState({
+            status: 'error',
+            message: `${providerLabel} girisi icin yonlendirme URL olusmadi.`,
+          });
+          void trackMobileEvent('oauth_failure', {
+            provider,
+            reason: 'missing_oauth_url',
+          });
+          return;
+        }
+
+        void trackMobileEvent('oauth_redirect_started', {
+          provider,
           redirectTo: MOBILE_AUTH_REDIRECT_TO,
-          skipBrowserRedirect: true,
-        },
-      });
+        });
 
-      if (error) {
+        const authSessionResult =
+          Platform.OS === 'web'
+            ? await WebBrowser.openBrowserAsync(redirectUrl).then(() => ({
+                type: 'opened' as const,
+                url: null as string | null,
+              }))
+            : await WebBrowser.openAuthSessionAsync(redirectUrl, MOBILE_AUTH_REDIRECT_TO);
+
+        if (Platform.OS === 'web') {
+          setAuthFlowMode('login');
+          setAuthState({
+            status: 'signed_out',
+            message: `${providerLabel} girisini tarayicida tamamla; uygulama callback ile geri donecek.`,
+          });
+          return;
+        }
+
+        if (authSessionResult.type === 'success' && authSessionResult.url) {
+          handleIncomingUrl(authSessionResult.url);
+          return;
+        }
+
+        if (authSessionResult.type === 'cancel' || authSessionResult.type === 'dismiss') {
+          setAuthState({
+            status: 'signed_out',
+            message: `${providerLabel} girisi iptal edildi.`,
+          });
+          return;
+        }
+
         setAuthState({
           status: 'error',
-          message: error.message || 'Google girisi baslatilamadi.',
+          message: `${providerLabel} callback uygulamaya donmedi.`,
         });
         void trackMobileEvent('oauth_failure', {
-          provider: 'google',
-          reason: error.message || 'oauth_start_failed',
+          provider,
+          reason: `oauth_session_${authSessionResult.type}`,
         });
-        return;
-      }
-
-      const redirectUrl = String(data?.url || '').trim();
-      if (!redirectUrl) {
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : `${providerLabel} girisi baslatilamadi.`;
         setAuthState({
           status: 'error',
-          message: 'Google girisi icin yonlendirme URL olusmadi.',
+          message,
         });
         void trackMobileEvent('oauth_failure', {
-          provider: 'google',
-          reason: 'missing_oauth_url',
+          provider,
+          reason: message,
         });
-        return;
       }
+    },
+    [handleIncomingUrl]
+  );
 
-      void trackMobileEvent('oauth_redirect_started', {
-        provider: 'google',
-        redirectTo: MOBILE_AUTH_REDIRECT_TO,
-      });
+  const handleGoogleSignIn = useCallback(async () => {
+    await handleOAuthSignIn('google');
+  }, [handleOAuthSignIn]);
 
-      const authSessionResult =
-        Platform.OS === 'web'
-          ? await WebBrowser.openBrowserAsync(redirectUrl).then(() => ({
-              type: 'opened' as const,
-              url: null as string | null,
-            }))
-          : await WebBrowser.openAuthSessionAsync(redirectUrl, MOBILE_AUTH_REDIRECT_TO);
-
-      if (Platform.OS === 'web') {
-        setAuthFlowMode('login');
-        setAuthState({
-          status: 'signed_out',
-          message: 'Google girisini tarayicida tamamla; uygulama callback ile geri donecek.',
-        });
-        return;
-      }
-
-      if (authSessionResult.type === 'success' && authSessionResult.url) {
-        handleIncomingUrl(authSessionResult.url);
-        return;
-      }
-
-      if (authSessionResult.type === 'cancel' || authSessionResult.type === 'dismiss') {
-        setAuthState({
-          status: 'signed_out',
-          message: 'Google girisi iptal edildi.',
-        });
-        return;
-      }
-
-      setAuthState({
-        status: 'error',
-        message: 'Google callback uygulamaya donmedi.',
-      });
-      void trackMobileEvent('oauth_failure', {
-        provider: 'google',
-        reason: `oauth_session_${authSessionResult.type}`,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Google girisi baslatilamadi.';
-      setAuthState({
-        status: 'error',
-        message,
-      });
-      void trackMobileEvent('oauth_failure', {
-        provider: 'google',
-        reason: message,
-      });
-    }
-  }, [handleIncomingUrl]);
-
-  const handlePreviewAppleSignIn = useCallback(() => {
-    setAuthEntryStage('form');
-    setAuthFlowMode('register');
-    setAuthState({
-      status: 'signed_out',
-      message: 'Apple ile uye ol yakinda aktif olacak.',
-    });
-  }, []);
+  const handleAppleSignIn = useCallback(async () => {
+    await handleOAuthSignIn('apple');
+  }, [handleOAuthSignIn]);
 
   const handleCompletePasswordReset = useCallback(async () => {
     const password = authPassword.trim();
@@ -5714,8 +5719,8 @@ export default function App() {
             onRegister={handleRegister}
             rememberMe={authRememberMe}
             onRememberMeChange={handleSetAuthRememberMe}
-            showAppleSignIn
-            onAppleSignIn={handlePreviewAppleSignIn}
+            showAppleSignIn={Platform.OS === 'ios'}
+            onAppleSignIn={handleAppleSignIn}
             onGoogleSignIn={handleGoogleSignIn}
             onRequestPasswordReset={handleRequestPasswordReset}
             onCompletePasswordReset={handleCompletePasswordReset}

@@ -1281,18 +1281,15 @@ const AuthCard = ({
                   tone="light"
                   icon={<FontAwesome name="google" size={28} color="#A45E4A" />}
                 />
-                <AuthProviderLogoButton
-                  label="Apple ile uye ol"
-                  onPress={onAppleSignIn}
-                  disabled={isBusy}
-                  tone="dark"
-                  icon={<Ionicons name="logo-apple" size={28} color="#E5E4E2" />}
-                />
                 {showAppleSignIn ? (
-                  <Text style={styles.authProviderHintText}>Apple yakinda.</Text>
-                ) : (
-                  <Text style={styles.authProviderHintText}>Apple yakinda.</Text>
-                )}
+                  <AuthProviderLogoButton
+                    label={isBusy ? 'Apple yonlendiriliyor' : 'Apple ile uye ol'}
+                    onPress={onAppleSignIn}
+                    disabled={isBusy || !isConfigured}
+                    tone="dark"
+                    icon={<Ionicons name="logo-apple" size={28} color="#E5E4E2" />}
+                  />
+                ) : null}
               </>
             ) : null}
           </View>
@@ -1558,7 +1555,7 @@ const AuthGateScreen = ({
             onRegister={onRegister}
             rememberMe={rememberMe}
             onRememberMeChange={onRememberMeChange}
-            showAppleSignIn
+            showAppleSignIn={Platform.OS === 'ios'}
             onAppleSignIn={onAppleSignIn}
             onGoogleSignIn={onGoogleSignIn}
             onRequestPasswordReset={onRequestPasswordReset}

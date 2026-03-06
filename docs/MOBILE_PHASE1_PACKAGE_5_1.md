@@ -27,4 +27,4 @@
 - Expo app currently uses a contract smoke view to validate deep-link generation/parsing and screen mapping.
 - Mobile app identifier placeholders were set to:
   - `com.hsyna.absolutecinema` (Android)
-  - `com.hsyna.absolutecinema` (iOS)
+  - `com.absolutecinema` (iOS)
