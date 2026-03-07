@@ -65,3 +65,36 @@ export const resolveSupabaseUserDisplayName = (user: SupabaseUserLike): string =
   return userId ? `user-${userId.slice(0, 8)}` : 'Observer';
 };
 
+const normalizeAvatarUrl = (value: unknown): string => {
+  const normalized = normalizeText(value, 2000);
+  if (!normalized) return '';
+  if (/^https?:\/\//i.test(normalized)) return normalized;
+  if (/^data:image\//i.test(normalized)) return normalized;
+  return '';
+};
+
+export const resolveSupabaseUserAvatarUrl = (user: SupabaseUserLike): string => {
+  const metadataAvatarUrl = normalizeAvatarUrl(
+    readRecordText(
+      user?.user_metadata,
+      ['avatar_url', 'avatarUrl', 'picture', 'picture_url', 'profile_image', 'profile_image_url'],
+      2000
+    )
+  );
+  if (metadataAvatarUrl) return metadataAvatarUrl;
+
+  if (Array.isArray(user?.identities)) {
+    for (const identity of user.identities) {
+      const identityAvatarUrl = normalizeAvatarUrl(
+        readRecordText(
+          identity?.identity_data,
+          ['avatar_url', 'avatarUrl', 'picture', 'picture_url', 'profile_image', 'profile_image_url'],
+          2000
+        )
+      );
+      if (identityAvatarUrl) return identityAvatarUrl;
+    }
+  }
+
+  return '';
+};

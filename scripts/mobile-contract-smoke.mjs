@@ -33,7 +33,11 @@ const { resolveMobileAuthCallbackUrl, resolveMobileAuthReturnUrl } = authRedirec
 const { buildMobilePublicProfileUrl, isAllowedMobilePublicProfileUrl } = publicProfileModule;
 const { toAuthorIdentityKey } = authorMapModule;
 const { normalizeMobileAvatarUrl, MAX_MOBILE_AVATAR_URL_LENGTH } = avatarModule;
-const { resolveSupabaseUserAuthLabel, resolveSupabaseUserEmail } = supabaseUserModule;
+const {
+  resolveSupabaseUserAuthLabel,
+  resolveSupabaseUserAvatarUrl,
+  resolveSupabaseUserEmail,
+} = supabaseUserModule;
 
 let failed = false;
 
@@ -299,6 +303,15 @@ runCase('supabase user helpers recover Apple identity without direct email field
   };
   assert.equal(resolveSupabaseUserEmail(sessionUser), 'apple-viewer@privaterelay.appleid.com');
   assert.equal(resolveSupabaseUserAuthLabel(sessionUser), 'apple-viewer@privaterelay.appleid.com');
+});
+
+runCase('supabase user helpers recover provider avatar url', () => {
+  const sessionUser = {
+    user_metadata: {
+      picture: 'https://cdn.example.com/avatar.jpg',
+    },
+  };
+  assert.equal(resolveSupabaseUserAvatarUrl(sessionUser), 'https://cdn.example.com/avatar.jpg');
 });
 
 runCase('mobile env resolver falls back from daily endpoint to referral/push base', () => {

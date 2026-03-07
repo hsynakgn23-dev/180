@@ -47,6 +47,12 @@
           "color": "#121212"
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Avatar secmek icin fotograflarina erisim gerekiyor."
+        }
+      ],
       "expo-dev-client",
       "expo-web-browser"
     ],

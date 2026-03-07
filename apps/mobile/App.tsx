@@ -2,6 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import * as WebBrowser from 'expo-web-browser';
 import {
@@ -142,6 +143,7 @@ import {
 import { isSupabaseConfigured, readSupabaseSessionSafe, supabase } from './src/lib/supabase';
 import {
   resolveSupabaseUserAuthLabel,
+  resolveSupabaseUserAvatarUrl,
   resolveSupabaseUserDisplayName,
   resolveSupabaseUserEmail,
 } from './src/lib/supabaseUser';
@@ -251,9 +253,21 @@ const createAppleSignInNonce = (): string => {
   return `apple-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 };
 
+type PickedImageAsset = {
+  uri?: string | null;
+  mimeType?: string | null;
+  name?: string | null;
+  fileName?: string | null;
+  size?: number | null;
+  fileSize?: number | null;
+  file?: File;
+  base64?: string | null;
+};
+
 const resolveAvatarMimeType = (input: {
   mimeType?: string | null;
   name?: string | null;
+  fileName?: string | null;
   uri?: string | null;
 }): string => {
   const explicitMimeType = String(input.mimeType || '')
@@ -261,7 +275,7 @@ const resolveAvatarMimeType = (input: {
     .toLowerCase();
   if (explicitMimeType.startsWith('image/')) return explicitMimeType;
 
-  const lookup = `${input.name || ''} ${input.uri || ''}`.toLowerCase();
+  const lookup = `${input.fileName || ''} ${input.name || ''} ${input.uri || ''}`.toLowerCase();
   if (lookup.includes('.png')) return 'image/png';
   if (lookup.includes('.webp')) return 'image/webp';
   if (lookup.includes('.gif')) return 'image/gif';
@@ -338,18 +352,15 @@ const readPickedAssetAsText = async (
   return await LegacyFileSystem.readAsStringAsync(asset.uri);
 };
 
-const readPickedAssetAsDataUrl = async (
-  asset: DocumentPicker.DocumentPickerAsset,
-  mimeType: string
-): Promise<string> => {
+const readPickedAssetAsDataUrl = async (asset: PickedImageAsset, mimeType: string): Promise<string> => {
+  const inlineBase64 = String(asset.base64 || '').trim();
+  if (inlineBase64) {
+    return `data:${mimeType};base64,${inlineBase64}`;
+  }
+
   if (Platform.OS === 'web') {
     if (asset.file) {
       return await blobToDataUrl(asset.file);
-    }
-
-    const base64 = String(asset.base64 || '').trim();
-    if (base64) {
-      return `data:${mimeType};base64,${base64}`;
     }
 
     const uri = String(asset.uri || '').trim();
@@ -367,6 +378,40 @@ const readPickedAssetAsDataUrl = async (
     encoding: 'base64',
   });
   return `data:${mimeType};base64,${String(base64 || '').trim()}`;
+};
+
+const pickAvatarAsset = async (): Promise<PickedImageAsset | null> => {
+  if (Platform.OS === 'web') {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: ['image/*'],
+      copyToCacheDirectory: true,
+      multiple: false,
+      base64: true,
+    });
+    return result.canceled ? null : result.assets?.[0] || null;
+  }
+
+  const currentPermissions = await ImagePicker.getMediaLibraryPermissionsAsync();
+  const mediaLibraryPermission =
+    currentPermissions.status === 'granted'
+      ? currentPermissions
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (mediaLibraryPermission.status !== 'granted') {
+    throw new Error('Fotograflara erisim izni verilmedi.');
+  }
+
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ['images'],
+    allowsEditing: true,
+    aspect: [1, 1],
+    quality: 0.82,
+    base64: true,
+    allowsMultipleSelection: false,
+    presentationStyle: ImagePicker.UIImagePickerPresentationStyle.FULL_SCREEN,
+    preferredAssetRepresentationMode:
+      ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
+  });
+  return result.canceled ? null : result.assets?.[0] || null;
 };
 
 const readStoredAuthRememberMe = async (): Promise<boolean> => {
@@ -1074,6 +1119,34 @@ export default function App() {
       reason: 'mobile_profile_privacy_cloud_loaded',
     });
   }, []);
+
+  const hydrateSettingsIdentityFromSession = useCallback(async () => {
+    if (!supabase || authState.status !== 'signed_in') return;
+
+    const sessionResult = await readSupabaseSessionSafe();
+    const sessionUser = sessionResult.session?.user || null;
+    if (!sessionUser) return;
+
+    const providerDisplayName = resolveSupabaseUserDisplayName(sessionUser);
+    const providerAvatarUrl = resolveSupabaseUserAvatarUrl(sessionUser);
+    if (!providerDisplayName && !providerAvatarUrl) return;
+
+    setSettingsIdentityDraft((prev) => {
+      const next = {
+        ...prev,
+        fullName: prev.fullName || providerDisplayName,
+        avatarUrl: prev.avatarUrl || providerAvatarUrl,
+      };
+      if (next.fullName === prev.fullName && next.avatarUrl === prev.avatarUrl) {
+        return prev;
+      }
+
+      void AsyncStorage.setItem(MOBILE_PROFILE_IDENTITY_STORAGE_KEY, JSON.stringify(next)).catch(
+        () => undefined
+      );
+      return next;
+    });
+  }, [authState.status]);
 
   const refreshProfileGenreDistribution = useCallback(async () => {
     if (!isSupabaseConfigured || !supabase || authState.status !== 'signed_in') {
@@ -2495,6 +2568,7 @@ export default function App() {
       });
 
       const identityToken = String(credential.identityToken || '').trim();
+      const authorizationCode = String(credential.authorizationCode || '').trim();
       if (!identityToken) {
         setAuthState({
           status: 'error',
@@ -2506,10 +2580,22 @@ export default function App() {
         });
         return;
       }
+      if (!authorizationCode) {
+        setAuthState({
+          status: 'error',
+          message: 'Apple authorization code donmedi.',
+        });
+        void trackMobileEvent('oauth_failure', {
+          provider: 'apple',
+          reason: 'missing_apple_authorization_code',
+        });
+        return;
+      }
 
       const { data, error } = await supabase.auth.signInWithIdToken({
         provider: 'apple',
         token: identityToken,
+        access_token: authorizationCode,
         nonce,
       });
 
@@ -2526,6 +2612,17 @@ export default function App() {
       }
 
       const resolvedSessionUser = data.user || data.session?.user || null;
+      if (!String(resolvedSessionUser?.id || '').trim()) {
+        setAuthState({
+          status: 'error',
+          message: 'Apple oturumu olusturulamadi.',
+        });
+        void trackMobileEvent('oauth_failure', {
+          provider: 'apple',
+          reason: 'apple_session_missing',
+        });
+        return;
+      }
       const resolvedEmail =
         resolveSupabaseUserEmail(resolvedSessionUser) ||
         String(credential.email || authEmail || '').trim().toLowerCase() ||
@@ -3002,6 +3099,11 @@ export default function App() {
     hasCloudPrivacyHydratedRef.current = true;
     void refreshSettingsPrivacyFromCloud();
   }, [authState.status, refreshSettingsPrivacyFromCloud]);
+
+  useEffect(() => {
+    if (authState.status !== 'signed_in') return;
+    void hydrateSettingsIdentityFromSession();
+  }, [authState.status, hydrateSettingsIdentityFromSession]);
 
   useEffect(() => {
     void syncLetterboxdImportState();
@@ -4281,30 +4383,17 @@ export default function App() {
 
     setIsPickingAvatar(true);
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ['image/*'],
-        copyToCacheDirectory: true,
-        multiple: false,
-        base64: Platform.OS === 'web',
-      });
-
-      if (result.canceled) {
+      const asset = await pickAvatarAsset();
+      if (!asset?.uri) {
         setSettingsSaveState((prev) =>
           prev.status === 'idle' && !prev.message ? prev : { status: 'idle', message: '' }
         );
         return;
       }
 
-      const asset = result.assets?.[0];
-      if (!asset?.uri) {
-        setSettingsSaveState({
-          status: 'error',
-          message: 'Gorsel okunamadi.',
-        });
-        return;
-      }
-
-      const assetSize = Number(asset.size || 0);
+      const assetSize = Number(
+        'fileSize' in asset ? asset.fileSize || 0 : 'size' in asset ? asset.size || 0 : 0
+      );
       if (Number.isFinite(assetSize) && assetSize > MAX_MOBILE_AVATAR_BYTES) {
         setSettingsSaveState({
           status: 'error',
@@ -4322,7 +4411,10 @@ export default function App() {
         return;
       }
 
-      const dataUrl = await readPickedAssetAsDataUrl(asset, mimeType);
+      const dataUrl = await readPickedAssetAsDataUrl(
+        asset,
+        String(asset.base64 || '').trim() ? 'image/jpeg' : mimeType
+      );
       const normalizedDataUrl = String(dataUrl || '').trim();
       if (!normalizedDataUrl) {
         setSettingsSaveState({
