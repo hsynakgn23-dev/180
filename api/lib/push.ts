@@ -1,3 +1,5 @@
+import { createSupabaseServiceHeaders } from './supabaseServiceHeaders.js';
+
 type SupabasePushConfig = {
     url: string;
     serviceRoleKey: string;
@@ -154,10 +156,7 @@ export const readUserPushTokens = async (
     const endpoint = `${config.url}/rest/v1/profiles?select=mobile_push_state&user_id=eq.${encodeURIComponent(normalizedUserId)}&limit=1`;
     try {
         const response = await fetch(endpoint, {
-            headers: {
-                apikey: config.serviceRoleKey,
-                Authorization: `Bearer ${config.serviceRoleKey}`
-            }
+            headers: createSupabaseServiceHeaders(config.serviceRoleKey)
         });
         if (!response.ok) {
             return {
@@ -187,10 +186,7 @@ export const readAllPushAudiences = async (
     const endpoint = `${config.url}/rest/v1/profiles?select=user_id,mobile_push_state&mobile_push_state=not.is.null`;
     try {
         const response = await fetch(endpoint, {
-            headers: {
-                apikey: config.serviceRoleKey,
-                Authorization: `Bearer ${config.serviceRoleKey}`
-            }
+            headers: createSupabaseServiceHeaders(config.serviceRoleKey)
         });
         if (!response.ok) {
             return {
@@ -251,12 +247,10 @@ export const createNotificationEvent = async (
     try {
         const response = await fetch(endpoint, {
             method: 'POST',
-            headers: {
-                apikey: config.serviceRoleKey,
-                Authorization: `Bearer ${config.serviceRoleKey}`,
+            headers: createSupabaseServiceHeaders(config.serviceRoleKey, {
                 'content-type': 'application/json',
                 Prefer: 'return=representation'
-            },
+            }),
             body: JSON.stringify(payload)
         });
 

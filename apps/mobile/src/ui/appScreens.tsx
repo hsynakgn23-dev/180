@@ -36,6 +36,13 @@ import { resolveMobileLeagueInfo, resolveMobileLeagueProgress } from '../lib/mob
 import { type PushInboxItem } from '../lib/mobilePushInbox';
 import { isSupabaseConfigured } from '../lib/supabase';
 import type { MobileThemeMode } from '../lib/mobileThemeMode';
+import {
+  readMobileDailyQuizBundle,
+  submitMobileDailyQuizAnswer,
+  type MobileDailyQuizBundle,
+  type MobileDailyQuizLanguageCode,
+  type MobileDailyQuizOptionKey,
+} from '../lib/mobileDailyQuizApi';
 import { getProgressHeadColor, getProgressTailColor } from '../../../../src/lib/progressVisuals';
 import { UiButton } from './primitives';
 import { styles } from './appStyles';
@@ -4294,12 +4301,387 @@ const DailyHomeScreen = ({
   );
 };
 
+type MobileQuizCopy = {
+  title: string;
+  subtitle: string;
+  loading: string;
+  pending: string;
+  error: string;
+  noQuestions: string;
+  signIn: string;
+  signInBody: string;
+  progress: string;
+  xp: string;
+  correct: string;
+  wrong: string;
+  saving: string;
+  unlockedHint: string;
+  commentCta: string;
+  authCta: string;
+};
+
+const MOBILE_QUIZ_COPY: Record<MobileDailyQuizLanguageCode, MobileQuizCopy> = {
+  tr: {
+    title: 'FILM QUIZ',
+    subtitle: 'Yorumu acmak ve XP kazanmak icin sorulari cevapla.',
+    loading: 'Sorular yukleniyor...',
+    pending: 'Bu film icin quiz henuz hazir degil.',
+    error: 'Quiz verisi su an yuklenemiyor.',
+    noQuestions: 'Bu film icin soru bulunamadi.',
+    signIn: 'Quiz ilerlemesi icin giris yap',
+    signInBody: 'Dogru cevaplar XP yazar ve yorum kilidini acmak icin hesaba kaydedilir.',
+    progress: 'Ilerleme',
+    xp: 'XP',
+    correct: 'Dogru',
+    wrong: 'Yanlis',
+    saving: 'Kaydediliyor...',
+    unlockedHint: 'Yorum yazma alani acildi. Istersen kalan sorulari da cozmeye devam edebilirsin.',
+    commentCta: 'Bu Film Icin Yorum Yaz',
+    authCta: 'Giris Yap',
+  },
+  en: {
+    title: 'FILM QUIZ',
+    subtitle: 'Answer questions to unlock comments and earn XP.',
+    loading: 'Loading questions...',
+    pending: 'The quiz for this film is not ready yet.',
+    error: 'Quiz data is unavailable right now.',
+    noQuestions: 'No questions are available for this film.',
+    signIn: 'Sign in to save quiz progress',
+    signInBody: 'Correct answers award XP and unlock comments on your account.',
+    progress: 'Progress',
+    xp: 'XP',
+    correct: 'Correct',
+    wrong: 'Wrong',
+    saving: 'Saving...',
+    unlockedHint: 'Comments are unlocked. You can still finish the remaining questions.',
+    commentCta: 'Write Comment',
+    authCta: 'Sign In',
+  },
+  es: {
+    title: 'QUIZ DE LA PELICULA',
+    subtitle: 'Responde para desbloquear comentarios y ganar XP.',
+    loading: 'Cargando preguntas...',
+    pending: 'El quiz de esta pelicula todavia no esta listo.',
+    error: 'Los datos del quiz no estan disponibles ahora.',
+    noQuestions: 'No hay preguntas para esta pelicula.',
+    signIn: 'Inicia sesion para guardar el progreso',
+    signInBody: 'Las respuestas correctas dan XP y desbloquean comentarios en tu cuenta.',
+    progress: 'Progreso',
+    xp: 'XP',
+    correct: 'Correcta',
+    wrong: 'Incorrecta',
+    saving: 'Guardando...',
+    unlockedHint: 'Los comentarios ya estan desbloqueados. Puedes seguir con las preguntas restantes.',
+    commentCta: 'Escribir comentario',
+    authCta: 'Iniciar sesion',
+  },
+  fr: {
+    title: 'QUIZ DU FILM',
+    subtitle: 'Reponds pour debloquer les commentaires et gagner des XP.',
+    loading: 'Chargement des questions...',
+    pending: 'Le quiz de ce film n est pas encore pret.',
+    error: 'Les donnees du quiz sont indisponibles pour le moment.',
+    noQuestions: 'Aucune question disponible pour ce film.',
+    signIn: 'Connecte-toi pour enregistrer ta progression',
+    signInBody: 'Les bonnes reponses donnent des XP et debloquent les commentaires pour ton compte.',
+    progress: 'Progression',
+    xp: 'XP',
+    correct: 'Bonne reponse',
+    wrong: 'Mauvaise reponse',
+    saving: 'Enregistrement...',
+    unlockedHint: 'Les commentaires sont debloques. Tu peux encore terminer les questions restantes.',
+    commentCta: 'Ecrire un commentaire',
+    authCta: 'Se connecter',
+  },
+};
+
+const getMobileUnlockHint = (
+  language: MobileDailyQuizLanguageCode,
+  requiredCorrectCount: number
+): string => {
+  switch (language) {
+    case 'tr':
+      return `Yorumu acmak icin en az ${requiredCorrectCount} dogru cevap gerekli.`;
+    case 'es':
+      return `Necesitas al menos ${requiredCorrectCount} respuestas correctas para abrir comentarios.`;
+    case 'fr':
+      return `Il faut au moins ${requiredCorrectCount} bonnes reponses pour ouvrir les commentaires.`;
+    case 'en':
+    default:
+      return `You need at least ${requiredCorrectCount} correct answers to unlock comments.`;
+  }
+};
+
+const updateMobileQuizBundleAfterAnswer = (
+  bundle: MobileDailyQuizBundle,
+  input: {
+    questionId: string;
+    selectedOption: MobileDailyQuizOptionKey;
+    isCorrect: boolean;
+    explanation: string;
+    progress: NonNullable<MobileDailyQuizBundle['progress']>;
+  }
+): MobileDailyQuizBundle => ({
+  ...bundle,
+  progress: input.progress,
+  questionsByMovie: bundle.questionsByMovie.map((movieBlock) => ({
+    ...movieBlock,
+    questions: movieBlock.questions.map((question) =>
+      question.id === input.questionId
+        ? {
+            ...question,
+            attempt: {
+              selectedOption: input.selectedOption,
+              isCorrect: input.isCorrect,
+              answeredAt: new Date().toISOString(),
+              explanation: input.explanation,
+            },
+          }
+        : question
+    ),
+  })),
+});
+
+const MobileDailyQuizPanel = ({
+  movieId,
+  dateKey,
+  language,
+  isSignedIn,
+  onStartComment,
+  onRequireAuth,
+}: {
+  movieId: number;
+  dateKey?: string | null;
+  language: MobileDailyQuizLanguageCode;
+  isSignedIn: boolean;
+  onStartComment: () => void;
+  onRequireAuth?: () => void;
+}) => {
+  const copy = MOBILE_QUIZ_COPY[language];
+  const [bundle, setBundle] = useState<MobileDailyQuizBundle | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [submittingQuestionId, setSubmittingQuestionId] = useState<string | null>(null);
+  const [lastXpDelta, setLastXpDelta] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+
+    const load = async () => {
+      setLoading(true);
+      setPending(false);
+      setError(null);
+      setLastXpDelta(0);
+
+      const result = await readMobileDailyQuizBundle({
+        dateKey,
+        language,
+      });
+
+      if (!active) return;
+
+      if (!result.ok) {
+        setBundle(null);
+        if (result.status === 404) {
+          setPending(true);
+        } else {
+          setError(result.error || copy.error);
+        }
+        setLoading(false);
+        return;
+      }
+
+      setBundle(result);
+      setLoading(false);
+    };
+
+    void load();
+
+    return () => {
+      active = false;
+    };
+  }, [copy.error, dateKey, language, movieId]);
+
+  const movieBlock = useMemo(
+    () => bundle?.questionsByMovie.find((entry) => entry.movieId === movieId) || null,
+    [bundle?.questionsByMovie, movieId]
+  );
+
+  const answeredCount = movieBlock?.questions.filter((question) => question.attempt).length || 0;
+  const correctCount = movieBlock?.questions.filter((question) => question.attempt?.isCorrect).length || 0;
+  const requiredCorrectCount = movieBlock?.requiredCorrectCount || 0;
+  const isUnlocked = requiredCorrectCount > 0 && correctCount >= requiredCorrectCount;
+  const unlockHint = getMobileUnlockHint(language, requiredCorrectCount);
+
+  const handleAnswer = useCallback(
+    async (questionId: string, selectedOption: MobileDailyQuizOptionKey) => {
+      if (!bundle || submittingQuestionId || !isSignedIn) return;
+
+      setSubmittingQuestionId(questionId);
+      setError(null);
+
+      const result = await submitMobileDailyQuizAnswer({
+        dateKey: bundle.date,
+        questionId,
+        selectedOption,
+        language,
+      });
+
+      if (!result.ok) {
+        setError(result.error || copy.error);
+        setSubmittingQuestionId(null);
+        return;
+      }
+
+      setLastXpDelta(result.xp.delta);
+      setBundle((current) =>
+        current
+          ? updateMobileQuizBundleAfterAnswer(current, {
+              questionId: result.questionId,
+              selectedOption: result.selectedOption,
+              isCorrect: result.isCorrect,
+              explanation: result.explanation,
+              progress: result.progress,
+            })
+          : current
+      );
+      setSubmittingQuestionId(null);
+    },
+    [bundle, copy.error, isSignedIn, language, submittingQuestionId]
+  );
+
+  return (
+    <View style={styles.dailyQuizPanel}>
+      <View style={styles.dailyQuizHeader}>
+        <Text style={styles.dailyQuizEyebrow}>{copy.title}</Text>
+        <Text style={styles.dailyQuizSubtitle}>{copy.subtitle}</Text>
+      </View>
+
+      {loading ? <Text style={styles.screenMeta}>{copy.loading}</Text> : null}
+      {!loading && pending ? <Text style={styles.screenMeta}>{copy.pending}</Text> : null}
+      {!loading && error ? <Text style={[styles.screenMeta, styles.ritualStateError]}>{error}</Text> : null}
+
+      {!loading && !pending && !error && !movieBlock ? (
+        <Text style={styles.screenMeta}>{copy.noQuestions}</Text>
+      ) : null}
+
+      {!loading && !pending && !error && movieBlock ? (
+        <View style={styles.dailyQuizStack}>
+          {!isSignedIn ? (
+            <View style={styles.dailyQuizStatusCard}>
+              <Text style={styles.dailyQuizStatusTitle}>{copy.signIn}</Text>
+              <Text style={styles.dailyQuizStatusBody}>{copy.signInBody}</Text>
+              {onRequireAuth ? (
+                <UiButton label={copy.authCta} tone="neutral" stretch onPress={onRequireAuth} />
+              ) : null}
+            </View>
+          ) : null}
+
+          <View style={styles.dailyQuizSummaryCard}>
+            <Text style={styles.dailyQuizSummaryText}>
+              {copy.progress}: {answeredCount}/{movieBlock.questions.length}
+            </Text>
+            <Text style={styles.dailyQuizSummaryText}>
+              {copy.correct}: {correctCount}/{requiredCorrectCount}
+            </Text>
+            <Text style={styles.dailyQuizSummaryText}>
+              {copy.xp}: {bundle?.progress?.xpAwarded || 0}
+            </Text>
+            {lastXpDelta > 0 ? <Text style={styles.dailyQuizSummaryText}>+{lastXpDelta} XP</Text> : null}
+          </View>
+
+          {movieBlock.questions.map((question) => {
+            const isSaving = submittingQuestionId === question.id;
+            const selectedOption = question.attempt?.selectedOption || null;
+            const isAnswered = Boolean(question.attempt);
+
+            return (
+              <View key={question.id} style={styles.dailyQuizQuestionCard}>
+                <Text style={styles.dailyQuizQuestionText}>{question.question}</Text>
+
+                <View style={styles.dailyQuizOptionList}>
+                  {question.options.map((option) => {
+                    const isSelected = selectedOption === option.key;
+                    const isCorrectSelection = isSelected && question.attempt?.isCorrect;
+                    const isWrongSelection = isSelected && question.attempt && !question.attempt.isCorrect;
+                    const optionStateStyle = isCorrectSelection
+                      ? styles.dailyQuizOptionCorrect
+                      : isWrongSelection
+                        ? styles.dailyQuizOptionWrong
+                        : isSelected
+                          ? styles.dailyQuizOptionSelected
+                          : null;
+                    const optionTextStateStyle = isCorrectSelection
+                      ? styles.dailyQuizOptionTextCorrect
+                      : isWrongSelection
+                        ? styles.dailyQuizOptionTextWrong
+                        : null;
+
+                    return (
+                      <Pressable
+                        key={option.key}
+                        style={({ pressed }) => [
+                          styles.dailyQuizOptionButton,
+                          optionStateStyle,
+                          pressed && !isAnswered && !isSaving && isSignedIn ? styles.dailyQuizOptionPressed : null,
+                          (!isSignedIn || isAnswered || isSaving) ? styles.dailyQuizOptionDisabled : null,
+                        ]}
+                        disabled={!isSignedIn || isAnswered || isSaving}
+                        onPress={() => {
+                          void handleAnswer(question.id, option.key);
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${option.key.toUpperCase()} ${option.label}`}
+                        accessibilityState={{ disabled: !isSignedIn || isAnswered || isSaving }}
+                      >
+                        <Text style={styles.dailyQuizOptionKey}>{option.key.toUpperCase()}</Text>
+                        <Text style={[styles.dailyQuizOptionText, optionTextStateStyle]}>{option.label}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                {isSaving ? <Text style={styles.dailyQuizSavingText}>{copy.saving}</Text> : null}
+
+                {question.attempt ? (
+                  <View style={styles.dailyQuizExplanationCard}>
+                    <Text style={styles.dailyQuizExplanationLabel}>
+                      {question.attempt.isCorrect ? copy.correct : copy.wrong}
+                    </Text>
+                    <Text style={styles.dailyQuizExplanationBody}>{question.attempt.explanation}</Text>
+                  </View>
+                ) : null}
+              </View>
+            );
+          })}
+
+          <View style={styles.dailyQuizStatusCard}>
+            <Text style={styles.dailyQuizStatusBody}>{isUnlocked ? copy.unlockedHint : unlockHint}</Text>
+            <UiButton
+              label={copy.commentCta}
+              tone="brand"
+              stretch
+              onPress={onStartComment}
+              disabled={!isUnlocked}
+            />
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+};
+
 const MovieDetailsModal = ({
   movie,
   onClose,
   onOpenCommentComposer,
+  onRequireAuth,
+  language,
+  isSignedIn,
 }: {
   movie: {
+    id: number;
     title: string;
     overview: string | null;
     voteAverage: number | null;
@@ -4309,9 +4691,13 @@ const MovieDetailsModal = ({
     cast?: string[];
     posterPath?: string | null;
     originalLanguage?: string | null;
+    dateKey?: string | null;
   } | null;
   onClose: () => void;
   onOpenCommentComposer?: () => void;
+  onRequireAuth?: () => void;
+  language: MobileDailyQuizLanguageCode;
+  isSignedIn: boolean;
 }) => {
   useWebModalFocusReset(Boolean(movie));
   if (!movie) return null;
@@ -4375,12 +4761,20 @@ const MovieDetailsModal = ({
 
               <Text style={styles.subSectionLabel}>Ozet</Text>
               <Text style={styles.movieDetailBody}>{movie.overview || 'Konu ozeti bulunamiyor.'}</Text>
+
+              {onOpenCommentComposer ? (
+                <MobileDailyQuizPanel
+                  movieId={movie.id}
+                  dateKey={movie.dateKey}
+                  language={language}
+                  isSignedIn={isSignedIn}
+                  onStartComment={onOpenCommentComposer}
+                  onRequireAuth={onRequireAuth}
+                />
+              ) : null}
             </View>
 
             <View style={styles.modalActionStack}>
-              {onOpenCommentComposer ? (
-                <UiButton label="Bu Film Icin Yorum Yaz" tone="brand" stretch onPress={onOpenCommentComposer} />
-              ) : null}
               <UiButton label="Kapat" tone="neutral" stretch onPress={onClose} />
             </View>
           </ScrollView>

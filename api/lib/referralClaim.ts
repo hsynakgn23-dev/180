@@ -1,4 +1,5 @@
 import { createCorsHeaders } from './cors.js';
+import { createSupabaseServiceHeaders } from './supabaseServiceHeaders.js';
 
 export const config = {
     runtime: 'nodejs'
@@ -222,12 +223,11 @@ const parseDbError = (value: unknown): { code: string; message: string; details:
     };
 };
 
-const serviceHeaders = (config: { serviceRoleKey: string }, extra: Record<string, string> = {}) => ({
-    apikey: config.serviceRoleKey,
-    Authorization: `Bearer ${config.serviceRoleKey}`,
-    'content-type': 'application/json',
-    ...extra
-});
+const serviceHeaders = (config: { serviceRoleKey: string }, extra: Record<string, string> = {}) =>
+    createSupabaseServiceHeaders(config.serviceRoleKey, {
+        'content-type': 'application/json',
+        ...extra
+    });
 
 const fallbackClaimReferralInvite = async (
     config: { url: string; serviceRoleKey: string },
@@ -499,11 +499,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
     const rpcResponse = await fetch(`${config.url}/rest/v1/rpc/claim_referral_invite`, {
         method: 'POST',
-        headers: {
-            apikey: config.serviceRoleKey,
-            Authorization: `Bearer ${config.serviceRoleKey}`,
+        headers: createSupabaseServiceHeaders(config.serviceRoleKey, {
             'content-type': 'application/json'
-        },
+        }),
         body: JSON.stringify({
             p_code: inviteCode,
             p_invitee_user_id: authUser.id,

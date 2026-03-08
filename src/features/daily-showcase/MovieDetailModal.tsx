@@ -2,6 +2,7 @@ import React from 'react';
 import type { Movie } from '../../data/mockMovies';
 import { resolvePosterCandidates } from '../../lib/posterCandidates';
 import { useLanguage } from '../../context/LanguageContext';
+import { DailyQuizPanel } from './DailyQuizPanel';
 
 interface MovieDetailModalProps {
     movie: Movie;
@@ -44,7 +45,7 @@ export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({ movie, onClo
                 onClick={onClose}
             />
 
-            <div className="relative w-full max-w-2xl bg-[#121212] border border-white/5 shadow-2xl overflow-hidden flex flex-col md:flex-row max-h-[90vh] md:max-h-[600px] animate-slide-up">
+            <div className="relative w-full max-w-2xl bg-[#121212] border border-white/5 shadow-2xl overflow-hidden flex flex-col md:max-w-4xl md:flex-row max-h-[90vh] md:max-h-[760px] animate-slide-up">
                 <div className="md:w-2/5 h-64 md:h-auto relative bg-[#1A1A1A] shrink-0">
                     {imgSrc ? (
                         <img
@@ -76,8 +77,8 @@ export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({ movie, onClo
                     </button>
                 </div>
 
-                <div className="flex-1 p-8 md:p-10 flex flex-col overflow-y-auto bg-[#121212]">
-                    <div className="mb-8">
+                <div className="flex-1 p-8 md:p-12 xl:p-14 flex flex-col overflow-y-auto bg-[#121212]">
+                    <div className="mb-8 md:mb-10">
                         <div className="flex justify-between items-start">
                             <div>
                                 <h4 className="text-[10px] font-bold tracking-[0.2em] text-[#8A9A5B] uppercase mb-2 opacity-80">
@@ -100,16 +101,16 @@ export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({ movie, onClo
                         </div>
                     </div>
 
-                    <div className="mb-8 grow">
-                        <p className="text-sm font-serif leading-relaxed text-[#E5E4E2]/80">
+                    <div className="mb-8 grow md:mb-10">
+                        <p className="max-w-2xl text-sm font-serif leading-relaxed text-[#E5E4E2]/80 md:text-[15px] md:leading-8">
                             {movie.overview || text.movieDetail.noDetails}
                         </p>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-6 mb-10 text-xs border-t border-white/5 pt-6">
+                    <div className="grid grid-cols-2 gap-6 mb-10 text-xs border-t border-white/5 pt-6 md:gap-8 md:mb-12 md:pt-8 md:text-sm">
                         <div>
                             <span className="block text-[9px] font-bold tracking-[0.2em] text-[#8A9A5B]/40 uppercase mb-1">{text.movieDetail.cast}</span>
-                            <span className="font-serif text-[#E5E4E2]">
+                            <span className="font-serif leading-6 text-[#E5E4E2] md:leading-7">
                                 {movie.cast?.join(', ') || text.movieDetail.unknown}
                             </span>
                         </div>
@@ -121,14 +122,7 @@ export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({ movie, onClo
                         </div>
                     </div>
 
-                    <div className="mt-auto">
-                        <button
-                            onClick={onStartRitual}
-                            className="w-full py-4 bg-[#8A9A5B] text-[#121212] text-xs font-bold tracking-[0.2em] uppercase hover:bg-[#9AB06B] transition-colors shadow-lg hover:shadow-xl hover:-translate-y-0.5"
-                        >
-                            {text.movieDetail.startComment}
-                        </button>
-                    </div>
+                    <DailyQuizPanel movie={movie} onStartComment={onStartRitual} />
                 </div>
             </div>
         </div>

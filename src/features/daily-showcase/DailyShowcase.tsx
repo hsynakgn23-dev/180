@@ -190,7 +190,7 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
     }
 
     return (
-        <section className="max-w-6xl mx-auto mb-24">
+        <section className="max-w-6xl mx-auto mb-10">
             {dailyStructuredData ? (
                 <script
                     type="application/ld+json"

@@ -7,6 +7,10 @@ import adminModerationUserHandler from '../api/admin/moderation/user.js';
 import analyticsHandler from '../api/analytics.js';
 import cronDailyHandler from '../api/cron/daily.js';
 import dailyHandler from '../api/daily.js';
+import dailyBundleHandler from '../api/daily-bundle.js';
+import dailyQuizAnswerHandler from '../api/daily-quiz-answer.js';
+import dailyQuizImportHandler from '../api/internal/daily-quiz-import.js';
+import dailySourceHandler from '../api/internal/daily-source.js';
 import ogFilmHandler from '../api/og/film.js';
 import ogProfileHandler from '../api/og/profile.js';
 import pushEngagementHandler from '../api/push/engagement.js';
@@ -45,6 +49,10 @@ const ROUTES: RouteEntry[] = [
     { path: '/api/analytics', handler: analyticsHandler as ApiRouteHandler },
     { path: '/api/cron/daily', handler: cronDailyHandler as ApiRouteHandler },
     { path: '/api/daily', handler: dailyHandler as ApiRouteHandler },
+    { path: '/api/daily-bundle', handler: dailyBundleHandler as ApiRouteHandler },
+    { path: '/api/daily-quiz-answer', handler: dailyQuizAnswerHandler as ApiRouteHandler },
+    { path: '/api/internal/daily-quiz-import', handler: dailyQuizImportHandler as ApiRouteHandler },
+    { path: '/api/internal/daily-source', handler: dailySourceHandler as ApiRouteHandler },
     { path: '/api/og/film', handler: ogFilmHandler as ApiRouteHandler },
     { path: '/api/og/profile', handler: ogProfileHandler as ApiRouteHandler },
     { path: '/api/push/engagement', handler: pushEngagementHandler as ApiRouteHandler },

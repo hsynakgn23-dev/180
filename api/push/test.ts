@@ -1,4 +1,5 @@
 import { createCorsHeaders } from '../lib/cors.js';
+import { createSupabaseServiceHeaders } from '../lib/supabaseServiceHeaders.js';
 
 export const config = {
     runtime: 'nodejs'
@@ -207,10 +208,7 @@ const readUserPushTokens = async (
     const endpoint = `${config.url}/rest/v1/profiles?select=mobile_push_state&user_id=eq.${encodeURIComponent(userId)}&limit=1`;
     try {
         const response = await fetch(endpoint, {
-            headers: {
-                apikey: config.serviceRoleKey,
-                Authorization: `Bearer ${config.serviceRoleKey}`
-            }
+            headers: createSupabaseServiceHeaders(config.serviceRoleKey)
         });
         if (!response.ok) {
             const text = (await response.text()) || `HTTP ${response.status}`;

@@ -6071,6 +6071,7 @@ export default function App() {
             movie={
               dailyMovieDetailsVisible && selectedDailyMovie
                 ? {
+                    id: selectedDailyMovie.id,
                     title: selectedDailyMovie.title,
                     overview: selectedDailyMovie.overview,
                     voteAverage: selectedDailyMovie.voteAverage,
@@ -6080,6 +6081,7 @@ export default function App() {
                     cast: selectedDailyMovie.cast,
                     posterPath: selectedDailyMovie.posterPath,
                     originalLanguage: selectedDailyMovie.originalLanguage,
+                    dateKey: dailyState.status === 'success' ? dailyState.date : null,
                   }
                 : null
             }
@@ -6088,6 +6090,12 @@ export default function App() {
               setDailyMovieDetailsVisible(false);
               setRitualComposerVisible(true);
             }}
+            onRequireAuth={() => {
+              setDailyMovieDetailsVisible(false);
+              openAuthModal('login');
+            }}
+            language={settingsLanguage}
+            isSignedIn={isSignedIn}
           />
 
           <RitualComposerModal

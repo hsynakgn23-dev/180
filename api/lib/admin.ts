@@ -1,4 +1,5 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { createSupabaseServiceClient } from './supabaseServiceClient.js';
 import { createCorsHeaders } from './cors.js';
 
 export type ApiRequest = {
@@ -226,12 +227,7 @@ const readAuthUser = async (
 };
 
 const createServiceClient = (config: SupabaseAdminConfig): SupabaseClient =>
-    createClient(config.url, config.serviceRoleKey, {
-        auth: {
-            persistSession: false,
-            autoRefreshToken: false
-        }
-    });
+    createSupabaseServiceClient(config.url, config.serviceRoleKey);
 
 const readAdminMembership = async (
     serviceClient: SupabaseClient,

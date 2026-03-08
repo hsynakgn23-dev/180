@@ -6,6 +6,7 @@ import {
     readUserPushTokens,
     sendExpoPushMessages
 } from '../lib/push.js';
+import { createSupabaseServiceHeaders } from '../lib/supabaseServiceHeaders.js';
 
 export const config = {
     runtime: 'nodejs'
@@ -120,10 +121,7 @@ const readRitualTarget = async (
     const endpoint = `${configValue.url}/rest/v1/rituals?select=user_id,movie_title&id=eq.${encodeURIComponent(ritualId)}&limit=1`;
     try {
         const response = await fetch(endpoint, {
-            headers: {
-                apikey: configValue.serviceRoleKey,
-                Authorization: `Bearer ${configValue.serviceRoleKey}`
-            }
+            headers: createSupabaseServiceHeaders(configValue.serviceRoleKey)
         });
         if (!response.ok) {
             return {

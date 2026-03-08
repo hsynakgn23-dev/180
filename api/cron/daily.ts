@@ -1,6 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { setCachedDailyMovies } from '../lib/dailyCache.js';
 import {
+    hasDailyQuizProviderConfig,
+    getQuizTargetDateKey,
+    prepareDailyQuizBatch,
+    publishDailyQuizBatch,
+    readPreparedDailyQuizMovies,
+    stageDailyQuizSourceBatch
+} from '../lib/dailyQuiz.js';
+import { createSupabaseServiceClient } from '../lib/supabaseServiceClient.js';
+import { createSupabaseServiceHeaders } from '../lib/supabaseServiceHeaders.js';
+import {
     getSupabasePushConfig,
     readAllPushAudiences,
     sendExpoPushMessages
@@ -730,6 +740,37 @@ const enrichSelectionWithCredits = async (
     return next;
 };
 
+const buildFallbackSelectionFromPool = async (pool: Movie[], apiKey: string): Promise<Movie[]> => {
+    const selected: Movie[] = [];
+    const usedDirectors = new Set<string>();
+
+    for (const candidate of pool) {
+        if (selected.length >= DAILY_MOVIE_COUNT) break;
+
+        const credits = await fetchTmdbCredits(apiKey, candidate.id);
+        const director = String(credits?.director || candidate.director || '').trim();
+        const directorKey = normalizeDirectorKey(director);
+        const cast = Array.isArray(credits?.cast) && credits.cast.length > 0
+            ? credits.cast
+            : Array.isArray(candidate.cast)
+                ? candidate.cast.filter((name) => String(name || '').trim().length > 0)
+                : [];
+
+        if (!directorKey || usedDirectors.has(directorKey) || cast.length === 0) {
+            continue;
+        }
+
+        usedDirectors.add(directorKey);
+        selected.push({
+            ...candidate,
+            director,
+            cast
+        });
+    }
+
+    return selected.slice(0, DAILY_MOVIE_COUNT);
+};
+
 const getCronSecret = (): string | null => {
     return process.env.CRON_SECRET || process.env.VERCEL_CRON_SECRET || null;
 };
@@ -810,6 +851,99 @@ const sendJson = (res: any, status: number, payload: Record<string, unknown>) =>
         status,
         headers: { 'content-type': 'application/json; charset=utf-8' }
     });
+};
+
+const normalizeText = (value: unknown, maxLength = 400): string => {
+    const text = String(value ?? '').trim();
+    if (!text) return '';
+    return text.length > maxLength ? text.slice(0, maxLength) : text;
+};
+
+const isValidDateKey = (value: string | null | undefined): value is string =>
+    typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+
+const isSupabaseSecretApiKey = (value: string): boolean =>
+    String(value || '').trim().startsWith('sb_secret_');
+
+const createSupabaseRestHeaders = (
+    serviceRoleKey: string,
+    extra: Record<string, string> = {}
+): Record<string, string> =>
+    createSupabaseServiceHeaders(serviceRoleKey, {
+        Accept: 'application/json',
+        ...extra
+    });
+
+const readDailyShowcaseRowsViaRest = async (
+    supabaseUrl: string,
+    serviceRoleKey: string,
+    input: { gteDate?: string; ltDate?: string }
+): Promise<any[]> => {
+    const params = new URLSearchParams({
+        select: 'date,movies',
+        limit: '120'
+    });
+    if (input.gteDate) {
+        params.set('date', `gte.${input.gteDate}`);
+    }
+    if (input.ltDate) {
+        params.append('date', `lt.${input.ltDate}`);
+    }
+
+    const endpoint = `${supabaseUrl.replace(/\/+$/, '')}/rest/v1/daily_showcase?${params.toString()}`;
+    const response = await fetch(endpoint, {
+        headers: createSupabaseRestHeaders(serviceRoleKey)
+    });
+    const payload = (await response.json().catch(() => [])) as unknown;
+    if (!response.ok) {
+        const first = Array.isArray(payload) ? payload[0] : payload;
+        const error = typeof first === 'object' && first ? first as Record<string, unknown> : {};
+        throw new Error(normalizeText(error.message || error.error || `HTTP ${response.status}`, 320));
+    }
+    return Array.isArray(payload) ? payload as any[] : [];
+};
+
+const readDailyShowcaseEntryViaRest = async (
+    supabaseUrl: string,
+    serviceRoleKey: string,
+    dateKey: string
+): Promise<any | null> => {
+    const endpoint =
+        `${supabaseUrl.replace(/\/+$/, '')}/rest/v1/daily_showcase` +
+        `?select=date,movies&date=eq.${encodeURIComponent(dateKey)}&limit=1`;
+    const response = await fetch(endpoint, {
+        headers: createSupabaseRestHeaders(serviceRoleKey)
+    });
+    const payload = (await response.json().catch(() => [])) as unknown;
+    if (!response.ok) {
+        const first = Array.isArray(payload) ? payload[0] : payload;
+        const error = typeof first === 'object' && first ? first as Record<string, unknown> : {};
+        throw new Error(normalizeText(error.message || error.error || `HTTP ${response.status}`, 320));
+    }
+    return Array.isArray(payload) && payload.length > 0 ? payload[0] : null;
+};
+
+const upsertDailyShowcaseViaRest = async (
+    supabaseUrl: string,
+    serviceRoleKey: string,
+    dateKey: string,
+    movies: Movie[]
+): Promise<void> => {
+    const endpoint = `${supabaseUrl.replace(/\/+$/, '')}/rest/v1/daily_showcase?on_conflict=date`;
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: createSupabaseRestHeaders(serviceRoleKey, {
+            'content-type': 'application/json',
+            Prefer: 'resolution=merge-duplicates,return=minimal'
+        }),
+        body: JSON.stringify([{ date: dateKey, movies }])
+    });
+
+    if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as unknown;
+        const error = typeof payload === 'object' && payload ? payload as Record<string, unknown> : {};
+        throw new Error(normalizeText(error.message || error.error || `HTTP ${response.status}`, 320));
+    }
 };
 
 const ensureBucket = async (supabase: any, bucket: string) => {
@@ -1082,10 +1216,16 @@ const buildDailyTmdbMovies = async (dateKey: string, excludedMovieIds: number[] 
         );
         selected = enforceGenreDiversity(selected, pool);
 
-        if (selected.length < DAILY_MOVIE_COUNT) return [];
-        selected = await enrichSelectionWithCredits(selected.slice(0, DAILY_MOVIE_COUNT), pool, apiKey);
-        if (!isSelectionEligibleForDaily(selected)) return [];
-        return applySlotStyles(selected).filter(isMovieEligibleForDaily);
+        if (selected.length >= DAILY_MOVIE_COUNT) {
+            selected = await enrichSelectionWithCredits(selected.slice(0, DAILY_MOVIE_COUNT), pool, apiKey);
+            if (isSelectionEligibleForDaily(selected)) {
+                return applySlotStyles(selected).filter(isMovieEligibleForDaily);
+            }
+        }
+
+        const fallbackSelection = await buildFallbackSelectionFromPool(pool, apiKey);
+        if (fallbackSelection.length < DAILY_MOVIE_COUNT) return [];
+        return applySlotStyles(fallbackSelection).filter(isMovieEligibleForDaily);
     } catch (error) {
         console.warn('[daily-cron] dynamic tmdb pool failed', error);
         return [];
@@ -1098,6 +1238,7 @@ export default async function handler(req: any, res: any) {
         const ping = getQueryParam(req, 'ping');
         const envCheck = getQueryParam(req, 'env');
         const debug = getQueryParam(req, 'debug') === '1';
+        const mode = normalizeText(getQueryParam(req, 'mode') || 'publish', 24).toLowerCase();
         if (ping === '1') {
             return sendJson(res, 200, {
                 ok: true,
@@ -1118,6 +1259,9 @@ export default async function handler(req: any, res: any) {
                 hasCronSecret: !!process.env.CRON_SECRET || !!process.env.VERCEL_CRON_SECRET
             });
         }
+        if (mode !== 'publish' && mode !== 'prepare') {
+            return sendJson(res, 400, { error: 'Unsupported mode.', mode });
+        }
         const secret = getCronSecret();
         const querySecret = getQueryParam(req, 'secret');
         if (secret) {
@@ -1137,29 +1281,53 @@ export default async function handler(req: any, res: any) {
             throw new Error(`SUPABASE_SERVICE_ROLE_KEY role is '${role}', expected 'service_role'`);
         }
         console.log('[daily-cron] env ok');
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-            auth: { persistSession: false }
-        });
+        const useRawSupabaseRest = isSupabaseSecretApiKey(supabaseServiceKey);
+        const supabase = useRawSupabaseRest
+            ? null
+            : createSupabaseServiceClient(supabaseUrl, supabaseServiceKey);
 
         const bucket = getBucketName();
         console.log('[daily-cron] bucket', bucket);
-        await ensureBucket(supabase, bucket);
-        const todayKey = getDailyDateKey();
-        const cooldownStartKey = getDateKeyDaysAgo(todayKey, DAILY_REPEAT_COOLDOWN_DAYS);
+        if (supabase) {
+            await ensureBucket(supabase, bucket);
+        }
+        const requestedDateKey = getQueryParam(req, 'date');
+        const targetDateKey = isValidDateKey(requestedDateKey)
+            ? requestedDateKey
+            : mode === 'prepare'
+                ? getQuizTargetDateKey(1)
+                : getDailyDateKey();
+        const cooldownStartKey = getDateKeyDaysAgo(targetDateKey, DAILY_REPEAT_COOLDOWN_DAYS);
         const forceValue = getQueryParam(req, 'force');
         const force = forceValue === '1' || forceValue === 'true';
         let cooldownMovieIds: number[] = [];
 
-        const { data: recentRows, error: recentRowsError } = await supabase
-            .from('daily_showcase')
-            .select('date,movies')
-            .gte('date', cooldownStartKey)
-            .lt('date', todayKey)
-            .limit(120);
+        let recentRows: any[] = [];
+        if (useRawSupabaseRest) {
+            try {
+                recentRows = await readDailyShowcaseRowsViaRest(supabaseUrl, supabaseServiceKey, {
+                    gteDate: cooldownStartKey,
+                    ltDate: targetDateKey
+                });
+            } catch (error) {
+                console.warn('[daily-cron] recent cooldown read failed', error);
+            }
+        } else {
+            const serviceSupabase = supabase;
+            if (!serviceSupabase) {
+                throw new Error('Missing Supabase service client.');
+            }
+            const { data, error: recentRowsError } = await serviceSupabase
+                .from('daily_showcase')
+                .select('date,movies')
+                .gte('date', cooldownStartKey)
+                .lt('date', targetDateKey)
+                .limit(120);
 
-        if (recentRowsError && recentRowsError.code !== 'PGRST116') {
-            console.warn('[daily-cron] recent cooldown read failed', recentRowsError.message);
+            if (recentRowsError && recentRowsError.code !== 'PGRST116') {
+                console.warn('[daily-cron] recent cooldown read failed', recentRowsError.message);
+            }
+            recentRows = Array.isArray(data) ? data : [];
         }
         if (Array.isArray(recentRows)) {
             cooldownMovieIds = normalizeMovieIds(
@@ -1172,14 +1340,30 @@ export default async function handler(req: any, res: any) {
             );
         }
 
-        const { data: existing, error: readError } = await supabase
-            .from('daily_showcase')
-            .select('*')
-            .eq('date', todayKey)
-            .single();
+        let existing: any = null;
+        if (useRawSupabaseRest) {
+            try {
+                existing = await readDailyShowcaseEntryViaRest(supabaseUrl, supabaseServiceKey, targetDateKey);
+            } catch (error) {
+                return sendJson(res, 500, {
+                    error: error instanceof Error ? error.message : 'Daily showcase read failed.'
+                });
+            }
+        } else {
+            const serviceSupabase = supabase;
+            if (!serviceSupabase) {
+                throw new Error('Missing Supabase service client.');
+            }
+            const { data, error: readError } = await serviceSupabase
+                .from('daily_showcase')
+                .select('*')
+                .eq('date', targetDateKey)
+                .single();
 
-        if (readError && readError.code !== 'PGRST116') {
-            return sendJson(res, 500, { error: readError.message });
+            if (readError && readError.code !== 'PGRST116') {
+                return sendJson(res, 500, { error: readError.message });
+            }
+            existing = data;
         }
 
         const existingMovies = Array.isArray(existing?.movies)
@@ -1190,57 +1374,250 @@ export default async function handler(req: any, res: any) {
             isSelectionEligibleForDaily(existingMovies) &&
             !existingMovies.some((movie) => cooldownMovieIdSet.has(movie.id));
 
-        let movies: Movie[] = !force && existingMoviesEligible ? existingMovies : [];
+        const preparedBatchResult = !force
+            ? await readPreparedDailyQuizMovies(targetDateKey)
+            : null;
+        const preparedMovies =
+            preparedBatchResult && preparedBatchResult.ok
+                ? (preparedBatchResult.movies as Movie[])
+                : [];
+        const preparedMoviesEligible =
+            preparedMovies.length > 0 &&
+            isSelectionEligibleForDaily(preparedMovies) &&
+            !preparedMovies.some((movie) => cooldownMovieIdSet.has(movie.id));
+
+        let movieSource: 'prepared_quiz_batch' | 'existing_daily_showcase' | 'dynamic_tmdb' =
+            preparedMoviesEligible
+                ? 'prepared_quiz_batch'
+                : existingMoviesEligible && !force
+                    ? 'existing_daily_showcase'
+                    : 'dynamic_tmdb';
+        let cooldownPolicy: 'strict' | 'relaxed' = 'strict';
+        let movies: Movie[] = preparedMoviesEligible
+            ? preparedMovies
+            : !force && existingMoviesEligible
+                ? existingMovies
+                : [];
         if (movies.length === 0) {
-            const dynamicMovies = await buildDailyTmdbMovies(todayKey, cooldownMovieIds);
+            const dynamicMovies = await buildDailyTmdbMovies(targetDateKey, cooldownMovieIds);
             movies = dynamicMovies.slice(0, DAILY_MOVIE_COUNT);
+            movieSource = 'dynamic_tmdb';
+            const strictSelectionValid =
+                isSelectionEligibleForDaily(movies) &&
+                !movies.some((movie) => cooldownMovieIdSet.has(movie.id));
+            if (!strictSelectionValid && cooldownMovieIds.length > 0) {
+                const relaxedMovies = await buildDailyTmdbMovies(targetDateKey);
+                const candidateMovies = relaxedMovies.slice(0, DAILY_MOVIE_COUNT);
+                if (isSelectionEligibleForDaily(candidateMovies)) {
+                    movies = candidateMovies;
+                    cooldownPolicy = 'relaxed';
+                }
+            }
         }
-        if (!isSelectionEligibleForDaily(movies) || movies.some((movie) => cooldownMovieIdSet.has(movie.id))) {
+        if (
+            !isSelectionEligibleForDaily(movies) ||
+            (cooldownPolicy === 'strict' && movies.some((movie) => cooldownMovieIdSet.has(movie.id)))
+        ) {
             return sendJson(res, 503, {
                 error: 'No eligible TMDB movies found for constraints',
-                date: todayKey,
-                timezone: DAILY_ROLLOVER_TIMEZONE_RESOLVED
+                date: targetDateKey,
+                mode,
+                timezone: DAILY_ROLLOVER_TIMEZONE_RESOLVED,
+                cooldownPolicy
             });
         }
         const diagnostics: PosterDiagnostic[] = [];
+        let storageBackedCount = 0;
+        let allStorageBacked = false;
+        let publishQuizSummary: { status: string; questionCount: number } = {
+            status: 'source_only',
+            questionCount: 0
+        };
 
-        const isStorageBacked = movies.every((m: any) => typeof m.posterPath === 'string' && m.posterPath.includes('/storage/v1/object/public/'));
-        if (existingMoviesEligible && isStorageBacked && !force) {
+        if (mode === 'prepare') {
+            const sourceStageResult = await stageDailyQuizSourceBatch({
+                dateKey: targetDateKey,
+                movies,
+                status: 'prepared',
+                metadata: {
+                    source: movieSource,
+                    sourceOnly: true,
+                    cooldownPolicy
+                }
+            });
+            if (!sourceStageResult.ok) {
+                return sendJson(res, sourceStageResult.status || 500, {
+                    ok: false,
+                    mode,
+                    date: targetDateKey,
+                    timezone: DAILY_ROLLOVER_TIMEZONE_RESOLVED,
+                    source: movieSource,
+                    error: sourceStageResult.error
+                });
+            }
+
+            let questionCount = 0;
+            let sourceModel = 'source-only';
+            let reused = false;
+            let quizGenerationError: string | null = null;
+            if (hasDailyQuizProviderConfig()) {
+                const prepareResult = await prepareDailyQuizBatch({
+                    dateKey: targetDateKey,
+                    movies,
+                    force
+                });
+                if (prepareResult.ok) {
+                    questionCount = prepareResult.questionCount;
+                    sourceModel = prepareResult.sourceModel;
+                    reused = prepareResult.reused;
+                } else {
+                    quizGenerationError = prepareResult.error;
+                }
+            }
+
             return sendJson(res, 200, {
                 ok: true,
-                reused: true,
-                date: todayKey,
-                timezone: DAILY_ROLLOVER_TIMEZONE_RESOLVED
+                mode,
+                prepared: true,
+                reused,
+                date: targetDateKey,
+                timezone: DAILY_ROLLOVER_TIMEZONE_RESOLVED,
+                source: movieSource,
+                cooldownPolicy,
+                count: movies.length,
+                storageBackedCount,
+                allStorageBacked,
+                questionCount,
+                sourceModel,
+                quizGeneration: quizGenerationError ? 'failed' : questionCount > 0 ? 'ready' : 'skipped',
+                quizGenerationError,
+                ...(debug
+                    ? {
+                          diagnosticsCount: diagnostics.length,
+                          diagnostics: diagnostics.slice(0, 10)
+                      }
+                    : {})
             });
         }
 
-        movies = await Promise.all(movies.map((movie) => ensurePosters(supabase, bucket, movie, diagnostics)));
+        if (useRawSupabaseRest) {
+            try {
+                await upsertDailyShowcaseViaRest(supabaseUrl, supabaseServiceKey, targetDateKey, movies);
+            } catch (error) {
+                return sendJson(res, 500, {
+                    error: error instanceof Error ? error.message : 'Daily showcase upsert failed.'
+                });
+            }
 
-        const extraMovies = EXTRA_POSTER_CACHE_MOVIES.filter(
-            (extraMovie) => !movies.some((movie) => movie.id === extraMovie.id)
-        );
-        if (extraMovies.length > 0) {
-            await Promise.all(extraMovies.map((movie) => ensurePosters(supabase, bucket, movie, diagnostics)));
-        }
+            try {
+                await setCachedDailyMovies(targetDateKey, movies);
+            } catch (cacheError) {
+                console.warn('[daily-cron] cache refresh failed', cacheError);
+            }
 
-        const storageBackedCount = movies.filter(
-            (movie) =>
-                typeof movie.posterPath === 'string' &&
-                movie.posterPath.includes('/storage/v1/object/public/')
-        ).length;
+            await stageDailyQuizSourceBatch({
+                dateKey: targetDateKey,
+                movies,
+                status: 'published',
+                metadata: {
+                    source: movieSource,
+                    sourceOnly: true,
+                    cooldownPolicy
+                }
+            });
+        } else {
+            movies = await Promise.all(movies.map((movie) => ensurePosters(supabase, bucket, movie, diagnostics)));
 
-        const { error: upsertError } = await supabase
-            .from('daily_showcase')
-            .upsert({ date: todayKey, movies }, { onConflict: 'date' });
+            storageBackedCount = movies.filter(
+                (movie) =>
+                    typeof movie.posterPath === 'string' &&
+                    movie.posterPath.includes('/storage/v1/object/public/')
+            ).length;
+            allStorageBacked = storageBackedCount === movies.length;
 
-        if (upsertError) {
-            return sendJson(res, 500, { error: upsertError.message });
-        }
+            const reusedExistingShowcase =
+                movieSource === 'existing_daily_showcase' &&
+                existingMoviesEligible &&
+                allStorageBacked &&
+                !force;
+            if (reusedExistingShowcase) {
+                const publishResult = await publishDailyQuizBatch({
+                    dateKey: targetDateKey,
+                    movies
+                });
+                if (!publishResult.ok) {
+                    return sendJson(res, publishResult.status || 500, {
+                        ok: false,
+                        mode,
+                        date: targetDateKey,
+                        timezone: DAILY_ROLLOVER_TIMEZONE_RESOLVED,
+                        source: movieSource,
+                        error: publishResult.error
+                    });
+                }
 
-        try {
-            await setCachedDailyMovies(todayKey, movies);
-        } catch (cacheError) {
-            console.warn('[daily-cron] cache refresh failed', cacheError);
+                return sendJson(res, 200, {
+                    ok: true,
+                    mode,
+                    reused: true,
+                    updated: false,
+                    date: targetDateKey,
+                    timezone: DAILY_ROLLOVER_TIMEZONE_RESOLVED,
+                    source: movieSource,
+                    cooldownPolicy,
+                    count: movies.length,
+                    storageBackedCount,
+                    allStorageBacked,
+                    quiz: {
+                        status: publishResult.batchStatus,
+                        questionCount: publishResult.questionCount
+                    }
+                });
+            }
+
+            const extraMovies = EXTRA_POSTER_CACHE_MOVIES.filter(
+                (extraMovie) => !movies.some((movie) => movie.id === extraMovie.id)
+            );
+            if (extraMovies.length > 0) {
+                await Promise.all(extraMovies.map((movie) => ensurePosters(supabase, bucket, movie, diagnostics)));
+            }
+
+            const serviceSupabase = supabase;
+            if (!serviceSupabase) {
+                throw new Error('Missing Supabase service client.');
+            }
+            const { error: upsertError } = await serviceSupabase
+                .from('daily_showcase')
+                .upsert({ date: targetDateKey, movies }, { onConflict: 'date' });
+
+            if (upsertError) {
+                return sendJson(res, 500, { error: upsertError.message });
+            }
+
+            try {
+                await setCachedDailyMovies(targetDateKey, movies);
+            } catch (cacheError) {
+                console.warn('[daily-cron] cache refresh failed', cacheError);
+            }
+
+            const publishResult = await publishDailyQuizBatch({
+                dateKey: targetDateKey,
+                movies
+            });
+            if (!publishResult.ok) {
+                return sendJson(res, publishResult.status || 500, {
+                    ok: false,
+                    mode,
+                    date: targetDateKey,
+                    timezone: DAILY_ROLLOVER_TIMEZONE_RESOLVED,
+                    source: movieSource,
+                    error: publishResult.error
+                });
+            }
+            publishQuizSummary = {
+                status: publishResult.batchStatus,
+                questionCount: publishResult.questionCount
+            };
         }
 
         let dailyPushSummary: {
@@ -1335,12 +1712,16 @@ export default async function handler(req: any, res: any) {
 
         return sendJson(res, 200, {
             ok: true,
+            mode,
             updated: true,
-            date: todayKey,
+            date: targetDateKey,
             timezone: DAILY_ROLLOVER_TIMEZONE_RESOLVED,
+            source: movieSource,
+            cooldownPolicy,
             count: movies.length,
             storageBackedCount,
             allStorageBacked: storageBackedCount === movies.length,
+            quiz: publishQuizSummary,
             push: dailyPushSummary,
             ...(debug
                 ? {

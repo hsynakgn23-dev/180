@@ -1,4 +1,5 @@
 import { createCorsHeaders } from './lib/cors.js';
+import { createSupabaseServiceHeaders } from './lib/supabaseServiceHeaders.js';
 
 export const config = {
     runtime: 'nodejs'
@@ -207,12 +208,10 @@ const insertEvents = async (rows: InsertRow[]): Promise<{ ok: boolean; error?: s
     const endpoint = `${config.url}/rest/v1/analytics_events?on_conflict=event_id`;
     const response = await fetch(endpoint, {
         method: 'POST',
-        headers: {
-            apikey: config.serviceRoleKey,
-            Authorization: `Bearer ${config.serviceRoleKey}`,
+        headers: createSupabaseServiceHeaders(config.serviceRoleKey, {
             'content-type': 'application/json',
             Prefer: 'resolution=merge-duplicates,return=minimal'
-        },
+        }),
         body: JSON.stringify(rows)
     });
 

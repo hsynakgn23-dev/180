@@ -1,4 +1,5 @@
 import { createCorsHeaders } from './cors.js';
+import { createSupabaseServiceHeaders } from './supabaseServiceHeaders.js';
 
 export const config = {
     runtime: 'nodejs'
@@ -252,11 +253,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
     const rpcResponse = await fetch(`${config.url}/rest/v1/rpc/get_or_create_referral_invite`, {
         method: 'POST',
-        headers: {
-            apikey: config.serviceRoleKey,
-            Authorization: `Bearer ${config.serviceRoleKey}`,
+        headers: createSupabaseServiceHeaders(config.serviceRoleKey, {
             'content-type': 'application/json'
-        },
+        }),
         body: JSON.stringify({
             p_inviter_user_id: authUser.id,
             p_inviter_email: authUser.email,

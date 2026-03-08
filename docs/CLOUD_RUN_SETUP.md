@@ -20,6 +20,7 @@ Cloud Run servisinde su degiskenler olmali:
 - `SUPABASE_STORAGE_BUCKET`
 - `DAILY_ROLLOVER_TIMEZONE`
 - `CRON_SECRET`
+- `DAILY_SOURCE_SECRET` (opsiyonel, internal film kaynak endpoint'i icin)
 
 Opsiyonel:
 
@@ -126,6 +127,23 @@ Vercel cron yerine Cloud Scheduler kullan:
 - schedule: `0 21 * * *`
 
 `21:00 UTC`, Istanbul gun degisimini mevcut uygulama akisina uygun tutar.
+
+Quiz hazirlama icin ikinci job:
+
+- hedef URL: `https://<cloud-run-url>/api/cron/daily?mode=prepare`
+- method: `GET`
+- header: `Authorization: Bearer <CRON_SECRET>`
+- schedule: `45 20 * * *`
+
+Bu job ertesi gunun 5 filmini `15 dakika` once kilitler.
+
+Internal film kaynak endpoint'i:
+
+- hedef URL: `https://<cloud-run-url>/api/internal/daily-source?target=next`
+- auth: `Authorization: Bearer <DAILY_SOURCE_SECRET>`
+- fallback: `DAILY_SOURCE_SECRET` yoksa `CRON_SECRET`
+
+Bu endpoint quiz ureten harici servislerin yarinin kilitli 5 filmine erismesini saglar.
 
 ## 7. Domain stratejisi
 
