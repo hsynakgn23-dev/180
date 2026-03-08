@@ -2622,14 +2622,14 @@ export const styles = StyleSheet.create({
   dailyQuizQuestionCard: {
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.06)',
-    backgroundColor: '#111111',
+    backgroundColor: '#171717',
     borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 14,
     gap: 12,
   },
   dailyQuizQuestionText: {
-    color: '#F4F1E8',
+    color: '#f4f1ea',
     fontSize: 15,
     lineHeight: 22,
     fontFamily: 'Inter_500Medium',
@@ -2643,7 +2643,7 @@ export const styles = StyleSheet.create({
     gap: 10,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.08)',
-    backgroundColor: '#181818',
+    backgroundColor: '#1f1f1f',
     borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 12,
@@ -2677,16 +2677,16 @@ export const styles = StyleSheet.create({
   },
   dailyQuizOptionText: {
     flex: 1,
-    color: '#E7E1D4',
+    color: '#e5e4e2',
     fontSize: 14,
     lineHeight: 21,
     fontFamily: 'Inter_400Regular',
   },
   dailyQuizOptionTextCorrect: {
-    color: '#dcfce7',
+    color: '#d9e2bf',
   },
   dailyQuizOptionTextWrong: {
-    color: '#fee2e2',
+    color: '#fecaca',
   },
   dailyQuizSavingText: {
     color: '#8A9A5B',
@@ -2714,7 +2714,7 @@ export const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   dailyQuizExplanationBody: {
-    color: '#DED7C8',
+    color: '#c9c6bf',
     fontSize: 13,
     lineHeight: 20,
     fontFamily: 'Inter_400Regular',
