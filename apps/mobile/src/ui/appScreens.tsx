@@ -4060,6 +4060,7 @@ const DailyHomeScreen = ({
   selectedMovieId?: number | null;
   onSelectMovie?: (movieId: number) => void;
 }) => {
+  const isWebSurface = Platform.OS === 'web';
   const railRef = useRef<FlatList<DailyMovieRailItem> | null>(null);
   const railScrollOffsetRef = useRef(0);
   const railDragStartOffsetRef = useRef(0);
@@ -4105,7 +4106,7 @@ const DailyHomeScreen = ({
   );
 
   const railResponderHandlers = useMemo(() => {
-    if (Platform.OS !== 'web') return null;
+    if (!isWebSurface) return null;
 
     return {
       onMoveShouldSetResponder: (event: { nativeEvent: { pageX: number } }) =>
@@ -4136,7 +4137,7 @@ const DailyHomeScreen = ({
       },
       onResponderTerminationRequest: () => false,
     };
-  }, [markRailGesture, railMovies.length, snapRailToNearest]);
+  }, [isWebSurface, markRailGesture, railMovies.length, snapRailToNearest]);
 
   if (state.status === 'loading' || state.status === 'idle') {
     return (
@@ -4305,14 +4306,22 @@ const DailyHomeScreen = ({
               markRailGesture();
               railScrollOffsetRef.current = event.nativeEvent.contentOffset.x;
             }}
-            onMomentumScrollEnd={(event) => {
-              markRailGesture();
-              snapRailToNearest(event.nativeEvent.contentOffset.x);
-            }}
-            onScrollEndDrag={(event) => {
-              markRailGesture();
-              snapRailToNearest(event.nativeEvent.contentOffset.x);
-            }}
+            onMomentumScrollEnd={
+              isWebSurface
+                ? (event) => {
+                    markRailGesture();
+                    snapRailToNearest(event.nativeEvent.contentOffset.x);
+                  }
+                : undefined
+            }
+            onScrollEndDrag={
+              isWebSurface
+                ? (event) => {
+                    markRailGesture();
+                    snapRailToNearest(event.nativeEvent.contentOffset.x);
+                  }
+                : undefined
+            }
             contentContainerStyle={styles.movieListHorizontal}
           />
         </View>
