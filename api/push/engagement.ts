@@ -1,5 +1,6 @@
 import { createCorsHeaders } from '../lib/cors.js';
 import {
+    createNotificationEvent,
     getSupabasePushConfig,
     readAuthUserFromAccessToken,
     readUserPushTokens,
@@ -253,6 +254,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     const actorLabel = resolveActorLabel(body?.actorLabel, authUser.email);
     let targetUserId = '';
     let movieTitle = '';
+    let ritualId: string | null = null;
 
     if (kind === 'follow') {
         targetUserId = normalizeText(body?.targetUserId, 120);
@@ -265,7 +267,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
             );
         }
     } else {
-        const ritualId = normalizeText(body?.ritualId, 120);
+        ritualId = normalizeText(body?.ritualId, 120);
         if (!ritualId) {
             return sendJson(
                 res,
@@ -310,6 +312,31 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         );
     }
 
+    const copy = buildNotificationCopy({
+        kind,
+        actorLabel,
+        movieTitle
+    });
+
+    const notificationEventResult = await createNotificationEvent(pushConfig, {
+        recipientUserId: targetUserId,
+        actorUserId: authUser.id,
+        ritualId,
+        kind,
+        title: copy.title,
+        body: copy.body,
+        deepLink: MOBILE_DAILY_DEEP_LINK,
+        metadata: {
+            source: 'mobile_engagement_api',
+            kind,
+            actorLabel,
+            targetUserId,
+            ritualId,
+            movieTitle: movieTitle || null
+        }
+    });
+    const notificationEventId = notificationEventResult.ok ? notificationEventResult.eventId : null;
+
     const tokenResult = await readUserPushTokens(pushConfig, targetUserId);
     if (!tokenResult.ok) {
         const tokenError =
@@ -338,18 +365,14 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
                     errorCount: 0,
                     skipped: true,
                     targetUserId,
+                    notificationRecorded: Boolean(notificationEventId),
+                    notificationId: notificationEventId,
                     message: 'Recipient has no registered push tokens.'
                 }
             },
             corsHeaders
         );
     }
-
-    const copy = buildNotificationCopy({
-        kind,
-        actorLabel,
-        movieTitle
-    });
 
     const pushResult = await sendExpoPushMessages(
         tokenResult.tokens.map((token) => ({
@@ -360,6 +383,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
             data: {
                 source: 'mobile_engagement_api',
                 kind,
+                notificationId: notificationEventId,
+                notificationType: kind,
                 deepLink: MOBILE_DAILY_DEEP_LINK,
                 sentAt: new Date().toISOString()
             }
@@ -392,6 +417,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
                 errorCount: pushResult.errorCount,
                 skipped: false,
                 targetUserId,
+                notificationRecorded: Boolean(notificationEventId),
+                notificationId: notificationEventId,
                 message: 'Engagement notification sent.'
             }
         },

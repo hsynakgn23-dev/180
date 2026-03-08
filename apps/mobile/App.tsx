@@ -1,5 +1,4 @@
 import { StatusBar } from 'expo-status-bar';
-import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
@@ -124,6 +123,10 @@ import {
   type PushNotificationSnapshot,
 } from './src/lib/mobilePush';
 import {
+  fetchRecentMobileNotificationEvents,
+  subscribeToMobileNotificationEvents,
+} from './src/lib/mobileNotificationEvents';
+import {
   appendPushInboxItem,
   clearPushInbox,
   markPushInboxItemOpened,
@@ -245,12 +248,6 @@ const normalizeExternalUrl = (value: string): string => {
   if (!normalized) return '';
   if (/^https?:\/\//i.test(normalized)) return normalized;
   return `https://${normalized}`;
-};
-
-const createAppleSignInNonce = (): string => {
-  const maybeCrypto = globalThis.crypto as { randomUUID?: () => string } | undefined;
-  if (maybeCrypto?.randomUUID) return maybeCrypto.randomUUID();
-  return `apple-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 };
 
 type PickedImageAsset = {
@@ -919,6 +916,7 @@ export default function App() {
   const lastObservedLeagueIndexRef = useRef<number | null>(null);
   const lastHandledAuthCallbackUrlRef = useRef<string | null>(null);
   const lastHandledPublicProfileIntentRef = useRef<string | null>(null);
+  const lastNotificationEventIdRef = useRef('');
   const lastAutoOpenedAuthRouteRef = useRef<string | null>(null);
   const hasAutoOpenedLaunchAuthRef = useRef(false);
 
@@ -1758,6 +1756,58 @@ export default function App() {
     []
   );
 
+  const syncNotificationEventInbox = useCallback(
+    async (reason: 'initial' | 'poll') => {
+      const snapshots = await fetchRecentMobileNotificationEvents({
+        limit: 24,
+      });
+      if (snapshots.length === 0) return 0;
+
+      const lastSeenNotificationId = lastNotificationEventIdRef.current;
+      const lastSeenIndex = lastSeenNotificationId
+        ? snapshots.findIndex((snapshot) => snapshot.notificationId === lastSeenNotificationId)
+        : -1;
+      const pendingSnapshots =
+        lastSeenIndex >= 0 ? snapshots.slice(lastSeenIndex + 1) : snapshots;
+      if (pendingSnapshots.length === 0) return 0;
+
+      let items: PushInboxItem[] = [];
+      for (const snapshot of pendingSnapshots) {
+        const result = await appendPushInboxItem({
+          notificationId: snapshot.notificationId,
+          title: snapshot.title,
+          body: snapshot.body,
+          deepLink: snapshot.deepLink,
+          kind: snapshot.kind,
+          receivedAt: snapshot.receivedAt,
+          source: 'received',
+        });
+        items = result.items;
+      }
+
+      const latestSnapshot = pendingSnapshots[pendingSnapshots.length - 1];
+      if (latestSnapshot) {
+        lastNotificationEventIdRef.current = latestSnapshot.notificationId;
+        setPushState((prev) => ({
+          ...prev,
+          lastNotification: describePushNotification(latestSnapshot),
+        }));
+      }
+
+      setPushInboxState({
+        status: 'ready',
+        message:
+          reason === 'initial'
+            ? 'Cloud bildirimleri inbox ile senkronlandi.'
+            : 'Cloud bildirimleri guncellendi.',
+        items,
+      });
+
+      return pendingSnapshots.length;
+    },
+    [describePushNotification]
+  );
+
   const handleClearPushInbox = useCallback(async () => {
     setPushInboxState((prev) => ({
       ...prev,
@@ -2521,160 +2571,8 @@ export default function App() {
   }, [handleOAuthSignIn]);
 
   const handleAppleSignIn = useCallback(async () => {
-    if (Platform.OS !== 'ios') {
-      await handleOAuthSignIn('apple');
-      return;
-    }
-
-    if (!isSupabaseConfigured || !supabase) {
-      setAuthState({
-        status: 'error',
-        message: 'Apple girisi icin Supabase ayarlari eksik.',
-      });
-      return;
-    }
-
-    setAuthState({
-      status: 'loading',
-      message: 'Apple girisi icin dogrulama bekleniyor...',
-    });
-    setAuthEntryStage('form');
-    void trackMobileEvent('oauth_start', {
-      provider: 'apple',
-      surface: 'mobile_native',
-    });
-
-    try {
-      const isAvailable = await AppleAuthentication.isAvailableAsync();
-      if (!isAvailable) {
-        setAuthState({
-          status: 'error',
-          message: 'Bu cihazda Apple girisi kullanilamiyor.',
-        });
-        void trackMobileEvent('oauth_failure', {
-          provider: 'apple',
-          reason: 'apple_auth_unavailable',
-        });
-        return;
-      }
-
-      const nonce = createAppleSignInNonce();
-      const credential = await AppleAuthentication.signInAsync({
-        requestedScopes: [
-          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-          AppleAuthentication.AppleAuthenticationScope.EMAIL,
-        ],
-        nonce,
-      });
-
-      const identityToken = String(credential.identityToken || '').trim();
-      const authorizationCode = String(credential.authorizationCode || '').trim();
-      if (!identityToken) {
-        setAuthState({
-          status: 'error',
-          message: 'Apple identity token donmedi.',
-        });
-        void trackMobileEvent('oauth_failure', {
-          provider: 'apple',
-          reason: 'missing_apple_identity_token',
-        });
-        return;
-      }
-      if (!authorizationCode) {
-        setAuthState({
-          status: 'error',
-          message: 'Apple authorization code donmedi.',
-        });
-        void trackMobileEvent('oauth_failure', {
-          provider: 'apple',
-          reason: 'missing_apple_authorization_code',
-        });
-        return;
-      }
-
-      const { data, error } = await supabase.auth.signInWithIdToken({
-        provider: 'apple',
-        token: identityToken,
-        access_token: authorizationCode,
-        nonce,
-      });
-
-      if (error) {
-        setAuthState({
-          status: 'error',
-          message: error.message || 'Apple girisi tamamlanamadi.',
-        });
-        void trackMobileEvent('oauth_failure', {
-          provider: 'apple',
-          reason: error.message || 'apple_id_token_sign_in_failed',
-        });
-        return;
-      }
-
-      const resolvedSessionUser = data.user || data.session?.user || null;
-      if (!String(resolvedSessionUser?.id || '').trim()) {
-        setAuthState({
-          status: 'error',
-          message: 'Apple oturumu olusturulamadi.',
-        });
-        void trackMobileEvent('oauth_failure', {
-          provider: 'apple',
-          reason: 'apple_session_missing',
-        });
-        return;
-      }
-      const resolvedEmail =
-        resolveSupabaseUserEmail(resolvedSessionUser) ||
-        String(credential.email || authEmail || '').trim().toLowerCase() ||
-        resolveSupabaseUserAuthLabel(resolvedSessionUser);
-      const resolvedFullName = [
-        String(credential.fullName?.givenName || '').trim(),
-        String(credential.fullName?.familyName || '').trim(),
-      ]
-        .filter(Boolean)
-        .join(' ') || resolveSupabaseUserDisplayName(resolvedSessionUser);
-
-      if (resolvedFullName) {
-        setSettingsIdentityDraft((prev) => ({
-          ...prev,
-          fullName: prev.fullName || resolvedFullName,
-        }));
-      }
-
-      setAuthFlowMode('login');
-      setAuthEntryStage('form');
-      setAuthState({
-        status: 'signed_in',
-        message: 'Apple girisi tamamlandi.',
-        email: resolvedEmail,
-      });
-      void trackMobileEvent('login_success', {
-        method: 'apple_id_token',
-      });
-    } catch (error) {
-      const errorCode = String((error as { code?: unknown } | null)?.code || '')
-        .trim()
-        .toUpperCase();
-      const message = error instanceof Error ? error.message : 'Apple girisi baslatilamadi.';
-      const normalizedMessage = message.toLowerCase();
-      const cancelled =
-        errorCode.includes('CANCEL') ||
-        normalizedMessage.includes('cancel') ||
-        normalizedMessage.includes('iptal');
-
-      setAuthState({
-        status: cancelled ? 'signed_out' : 'error',
-        message: cancelled ? 'Apple girisi iptal edildi.' : message,
-      });
-
-      if (!cancelled) {
-        void trackMobileEvent('oauth_failure', {
-          provider: 'apple',
-          reason: message,
-        });
-      }
-    }
-  }, [authEmail, handleOAuthSignIn]);
+    await handleOAuthSignIn('apple');
+  }, [handleOAuthSignIn]);
 
   const handleCompletePasswordReset = useCallback(async () => {
     const password = authPassword.trim();
@@ -3211,6 +3109,57 @@ export default function App() {
       unsubscribe();
     };
   }, [appendPushInbox, describePushNotification, handleIncomingUrl]);
+
+  useEffect(() => {
+    if (authState.status !== 'signed_in') {
+      lastNotificationEventIdRef.current = '';
+      return () => undefined;
+    }
+
+    let active = true;
+
+    const syncLatestEvents = async (reason: 'initial' | 'poll') => {
+      const syncedCount = await syncNotificationEventInbox(reason);
+      if (!active || syncedCount === 0) return;
+      void trackMobileEvent('page_view', {
+        reason:
+          reason === 'initial'
+            ? 'mobile_notification_events_synced'
+            : 'mobile_notification_events_polled',
+        count: syncedCount,
+      });
+    };
+
+    void syncLatestEvents('initial');
+
+    const unsubscribe = subscribeToMobileNotificationEvents({
+      onInsert: (snapshot) => {
+        if (!active) return;
+        lastNotificationEventIdRef.current = snapshot.notificationId;
+        setPushState((prev) => ({
+          ...prev,
+          lastNotification: describePushNotification(snapshot),
+        }));
+        void appendPushInbox(snapshot, 'received');
+        void trackMobileEvent('page_view', {
+          reason: 'mobile_notification_event_received',
+          hasDeepLink: Boolean(snapshot.deepLink),
+          notificationType: snapshot.kind,
+          title: snapshot.title || null,
+        });
+      },
+    });
+
+    const pollId = setInterval(() => {
+      void syncLatestEvents('poll');
+    }, 20000);
+
+    return () => {
+      active = false;
+      clearInterval(pollId);
+      unsubscribe();
+    };
+  }, [authState.status, appendPushInbox, describePushNotification, syncNotificationEventInbox]);
 
   useEffect(() => {
     if (!PUSH_FEATURE_ENABLED) return;
@@ -4371,6 +4320,74 @@ export default function App() {
       });
     }
   }, [authState.status, refreshProfileStats, settingsPrivacyDraft]);
+
+  const handleSaveSettingsPassword = useCallback(
+    async (password: string, confirmPassword: string) => {
+      if (authState.status !== 'signed_in') {
+        return {
+          ok: false,
+          message: 'Sifre degistirmek icin once giris yap.',
+        };
+      }
+
+      if (!supabase) {
+        return {
+          ok: false,
+          message: 'Supabase hazir degil.',
+        };
+      }
+
+      const normalizedPassword = password.trim();
+      const normalizedConfirmPassword = confirmPassword.trim();
+
+      if (normalizedPassword.length < 6) {
+        return {
+          ok: false,
+          message: 'Sifre en az 6 karakter olmali.',
+        };
+      }
+
+      if (normalizedPassword !== normalizedConfirmPassword) {
+        return {
+          ok: false,
+          message: 'Sifre tekrar alanlari ayni olmali.',
+        };
+      }
+
+      try {
+        const { error } = await supabase.auth.updateUser({ password: normalizedPassword });
+        if (error) {
+          void trackMobileEvent('auth_failure', {
+            method: 'settings_password_change',
+            reason: error.message || 'password_update_failed',
+          });
+          return {
+            ok: false,
+            message: error.message || 'Sifre guncellenemedi.',
+          };
+        }
+
+        void trackMobileEvent('password_reset_completed', {
+          method: 'settings',
+        });
+        return {
+          ok: true,
+          message: 'Sifren guncellendi. Yeni sifren artik aktif.',
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Sifre guncellenemedi.';
+        void trackMobileEvent('auth_failure', {
+          method: 'settings_password_change',
+          reason: message,
+        });
+        return {
+          ok: false,
+          message,
+        };
+      }
+    },
+    [authState.status]
+  );
 
   const handlePickAvatar = useCallback(async () => {
     if (authState.status !== 'signed_in') {
@@ -6141,6 +6158,7 @@ export default function App() {
             onSaveIdentity={handleSaveSettingsIdentity}
             onChangeTheme={setThemeMode}
             onChangeLanguage={setSettingsLanguage}
+            onSavePassword={handleSaveSettingsPassword}
             privacyDraft={settingsPrivacyDraft}
             onChangePrivacy={handleChangeSettingsPrivacy}
             onSavePrivacy={handleSaveSettingsPrivacy}

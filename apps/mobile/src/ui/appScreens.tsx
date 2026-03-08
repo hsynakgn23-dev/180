@@ -4080,19 +4080,16 @@ const DailyHomeScreen = ({
     [railMovies.length]
   );
 
-  const handleRailScrollEnd = useCallback(
+  const snapRailToNearest = useCallback(
     (offsetX: number) => {
       if (railMovies.length === 0) return;
       const nextIndex = Math.max(
         0,
         Math.min(Math.round(offsetX / DAILY_MOVIE_CARD_STRIDE), railMovies.length - 1)
       );
-      const targetMovie = railMovies[nextIndex];
-      if (targetMovie && targetMovie.id !== selectedMovieId) {
-        onSelectMovie?.(targetMovie.id);
-      }
+      scrollToRailIndex(nextIndex);
     },
-    [onSelectMovie, railMovies, selectedMovieId]
+    [railMovies.length, scrollToRailIndex]
   );
 
   const railResponderHandlers = useMemo(() => {
@@ -4118,15 +4115,14 @@ const DailyHomeScreen = ({
         railRef.current?.scrollToOffset({ offset: nextOffset, animated: false });
       },
       onResponderRelease: () => {
-        handleRailScrollEnd(railScrollOffsetRef.current);
-        scrollToRailIndex(Math.round(railScrollOffsetRef.current / DAILY_MOVIE_CARD_STRIDE));
+        snapRailToNearest(railScrollOffsetRef.current);
       },
       onResponderTerminate: () => {
-        handleRailScrollEnd(railScrollOffsetRef.current);
+        snapRailToNearest(railScrollOffsetRef.current);
       },
       onResponderTerminationRequest: () => false,
     };
-  }, [handleRailScrollEnd, railMovies.length, scrollToRailIndex]);
+  }, [railMovies.length, snapRailToNearest]);
 
   if (state.status === 'loading' || state.status === 'idle') {
     return (
@@ -4288,8 +4284,8 @@ const DailyHomeScreen = ({
             onScroll={(event) => {
               railScrollOffsetRef.current = event.nativeEvent.contentOffset.x;
             }}
-            onMomentumScrollEnd={(event) => handleRailScrollEnd(event.nativeEvent.contentOffset.x)}
-            onScrollEndDrag={(event) => handleRailScrollEnd(event.nativeEvent.contentOffset.x)}
+            onMomentumScrollEnd={(event) => snapRailToNearest(event.nativeEvent.contentOffset.x)}
+            onScrollEndDrag={(event) => snapRailToNearest(event.nativeEvent.contentOffset.x)}
             contentContainerStyle={styles.movieListHorizontal}
           />
         </View>
@@ -4929,6 +4925,7 @@ type MobileSettingsLocaleCopy = {
   tabs: {
     identity: string;
     appearance: string;
+    privacy: string;
     session: string;
   };
   appearance: {
@@ -4951,6 +4948,18 @@ type MobileSettingsLocaleCopy = {
     languageStatusEyebrow: string;
     languageStatusBody: string;
     languageCoverageMeta: string;
+  };
+  password: {
+    title: string;
+    body: string;
+    newPasswordLabel: string;
+    confirmPasswordLabel: string;
+    newPasswordPlaceholder: string;
+    confirmPasswordPlaceholder: string;
+    save: string;
+    saveBusy: string;
+    signedOutTitle: string;
+    signedOutBody: string;
   };
   accountDeletion: {
     title: string;
@@ -4982,6 +4991,7 @@ const MOBILE_SETTINGS_COPY: Record<MobileSettingsLanguage, MobileSettingsLocaleC
     tabs: {
       identity: 'Identity',
       appearance: 'Appearance',
+      privacy: 'Privacy',
       session: 'Session',
     },
     appearance: {
@@ -5005,6 +5015,18 @@ const MOBILE_SETTINGS_COPY: Record<MobileSettingsLanguage, MobileSettingsLocaleC
       languageStatusBody: 'Selected language is shown across supported settings surfaces.',
       languageCoverageMeta: 'Language coverage on mobile is being expanded screen by screen.',
     },
+    password: {
+      title: 'Password',
+      body: 'Set a new password for email login. Social login access stays available.',
+      newPasswordLabel: 'New Password',
+      confirmPasswordLabel: 'Confirm Password',
+      newPasswordPlaceholder: 'new password (minimum 6 characters)',
+      confirmPasswordPlaceholder: 'repeat new password',
+      save: 'Update Password',
+      saveBusy: 'Updating...',
+      signedOutTitle: 'Sign in required',
+      signedOutBody: 'Sign in first to change your password.',
+    },
     accountDeletion: {
       title: 'Account Deletion',
       body: 'Open the published deletion page to review the request path, deleted data, and retained records.',
@@ -5020,6 +5042,7 @@ const MOBILE_SETTINGS_COPY: Record<MobileSettingsLanguage, MobileSettingsLocaleC
     tabs: {
       identity: 'Kimlik',
       appearance: 'Görünüm',
+      privacy: 'Gizlilik',
       session: 'Oturum',
     },
     appearance: {
@@ -5043,6 +5066,18 @@ const MOBILE_SETTINGS_COPY: Record<MobileSettingsLanguage, MobileSettingsLocaleC
       languageStatusBody: 'Seçili dil desteklenen ayar yüzeylerinde gösteriliyor.',
       languageCoverageMeta: 'Mobil yerelleşme kapsamı ekran bazlı olarak genişlemeye devam eder.',
     },
+    password: {
+      title: 'Sifre',
+      body: 'E-posta ile giris icin yeni bir sifre belirle. Sosyal giris yollarin kullanilmaya devam eder.',
+      newPasswordLabel: 'Yeni Sifre',
+      confirmPasswordLabel: 'Yeni Sifre Tekrar',
+      newPasswordPlaceholder: 'yeni sifre (minimum 6 karakter)',
+      confirmPasswordPlaceholder: 'yeni sifreyi tekrar yaz',
+      save: 'Sifreyi Guncelle',
+      saveBusy: 'Guncelleniyor...',
+      signedOutTitle: 'Giris gerekli',
+      signedOutBody: 'Sifre degistirmek icin once giris yap.',
+    },
     accountDeletion: {
       title: 'Hesap Silme',
       body: 'Talep yolu, silinen veriler ve saklanan kayıt notları için yayındaki hesap silme sayfasını aç.',
@@ -5058,6 +5093,7 @@ const MOBILE_SETTINGS_COPY: Record<MobileSettingsLanguage, MobileSettingsLocaleC
     tabs: {
       identity: 'Identidad',
       appearance: 'Apariencia',
+      privacy: 'Privacidad',
       session: 'Sesión',
     },
     appearance: {
@@ -5081,6 +5117,18 @@ const MOBILE_SETTINGS_COPY: Record<MobileSettingsLanguage, MobileSettingsLocaleC
       languageStatusBody: 'El idioma seleccionado se muestra en las superficies de ajustes compatibles.',
       languageCoverageMeta: 'La cobertura de idioma en mobile sigue ampliándose pantalla por pantalla.',
     },
+    password: {
+      title: 'Contrasena',
+      body: 'Define una nueva contrasena para el acceso por correo. El acceso social sigue disponible.',
+      newPasswordLabel: 'Nueva Contrasena',
+      confirmPasswordLabel: 'Confirmar Contrasena',
+      newPasswordPlaceholder: 'nueva contrasena (minimo 6 caracteres)',
+      confirmPasswordPlaceholder: 'repite la nueva contrasena',
+      save: 'Actualizar Contrasena',
+      saveBusy: 'Actualizando...',
+      signedOutTitle: 'Inicia sesion',
+      signedOutBody: 'Inicia sesion primero para cambiar tu contrasena.',
+    },
     accountDeletion: {
       title: 'Eliminación de Cuenta',
       body: 'Abre la página publicada de eliminación para revisar el flujo de solicitud, los datos eliminados y los registros conservados.',
@@ -5096,6 +5144,7 @@ const MOBILE_SETTINGS_COPY: Record<MobileSettingsLanguage, MobileSettingsLocaleC
     tabs: {
       identity: 'Identité',
       appearance: 'Apparence',
+      privacy: 'Confidentialite',
       session: 'Session',
     },
     appearance: {
@@ -5118,6 +5167,18 @@ const MOBILE_SETTINGS_COPY: Record<MobileSettingsLanguage, MobileSettingsLocaleC
       languageStatusEyebrow: 'Langue',
       languageStatusBody: 'La langue choisie est affichée sur les surfaces de réglages prises en charge.',
       languageCoverageMeta: 'La couverture de langue sur mobile continue de progresser écran par écran.',
+    },
+    password: {
+      title: 'Mot de Passe',
+      body: 'Definis un nouveau mot de passe pour la connexion e-mail. Les connexions sociales restent actives.',
+      newPasswordLabel: 'Nouveau Mot de Passe',
+      confirmPasswordLabel: 'Confirmer le Mot de Passe',
+      newPasswordPlaceholder: 'nouveau mot de passe (minimum 6 caracteres)',
+      confirmPasswordPlaceholder: 'repete le nouveau mot de passe',
+      save: 'Mettre a Jour le Mot de Passe',
+      saveBusy: 'Mise a jour...',
+      signedOutTitle: 'Connexion requise',
+      signedOutBody: 'Connecte-toi d abord pour changer ton mot de passe.',
     },
     accountDeletion: {
       title: 'Suppression du Compte',
@@ -5210,6 +5271,7 @@ const MobileSettingsModal = ({
   onChangeTheme,
   onChangeLanguage,
   saveState,
+  onSavePassword,
   onPickAvatar,
   onClearAvatar,
   isPickingAvatar,
@@ -5248,6 +5310,10 @@ const MobileSettingsModal = ({
   onChangeTheme: (mode: MobileThemeMode) => void;
   onChangeLanguage: (language: MobileSettingsLanguage) => void;
   saveState: MobileSettingsSaveState;
+  onSavePassword: (
+    password: string,
+    confirmPassword: string
+  ) => Promise<{ ok: boolean; message: string }>;
   onPickAvatar: () => void;
   onClearAvatar: () => void;
   isPickingAvatar: boolean;
@@ -5276,12 +5342,21 @@ const MobileSettingsModal = ({
   onImportLetterboxd: () => void;
   onOpenShareHub: () => void;
 }) => {
-  const [activeTab, setActiveTab] = useState<'identity' | 'appearance' | 'privacy'>('identity');
+  const [activeTab, setActiveTab] = useState<'identity' | 'appearance' | 'privacy' | 'session'>('identity');
+  const [passwordDraft, setPasswordDraft] = useState('');
+  const [confirmPasswordDraft, setConfirmPasswordDraft] = useState('');
+  const [passwordState, setPasswordState] = useState<MobileSettingsSaveState>({
+    status: 'idle',
+    message: '',
+  });
   useWebModalFocusReset(visible);
 
   useEffect(() => {
     if (!visible) return;
     setActiveTab('identity');
+    setPasswordDraft('');
+    setConfirmPasswordDraft('');
+    setPasswordState({ status: 'idle', message: '' });
   }, [visible]);
 
   if (!visible) return null;
@@ -5312,6 +5387,31 @@ const MobileSettingsModal = ({
   const accountDeletionBody = settingsCopy.accountDeletion.body;
   const accountDeletionMeta = settingsCopy.accountDeletion.meta;
   const accountDeletionButton = settingsCopy.accountDeletion.button;
+  const isPasswordSaving = passwordState.status === 'saving';
+  const passwordTone =
+    passwordState.status === 'error'
+      ? 'clay'
+      : passwordState.status === 'success'
+        ? 'sage'
+        : 'muted';
+
+  const handleSavePasswordPress = async () => {
+    setPasswordState({
+      status: 'saving',
+      message: '',
+    });
+
+    const result = await onSavePassword(passwordDraft, confirmPasswordDraft);
+    setPasswordState({
+      status: result.ok ? 'success' : 'error',
+      message: result.message,
+    });
+
+    if (result.ok) {
+      setPasswordDraft('');
+      setConfirmPasswordDraft('');
+    }
+  };
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -5328,7 +5428,8 @@ const MobileSettingsModal = ({
             {([
               { id: 'identity', label: settingsCopy.tabs.identity },
               { id: 'appearance', label: settingsCopy.tabs.appearance },
-              { id: 'privacy', label: 'Gizlilik' },
+              { id: 'privacy', label: settingsCopy.tabs.privacy },
+              { id: 'session', label: settingsCopy.tabs.session },
             ] as const).map((tab) => (
               <Pressable
                 key={tab.id}
@@ -5858,6 +5959,75 @@ const MobileSettingsModal = ({
                     meta={inviteStatsLabel}
                   />
                 ) : null}
+
+                <CollapsibleSectionCard
+                  accent="clay"
+                  title={settingsCopy.password.title}
+                  meta={isSignedIn ? settingsCopy.tabs.session : settingsCopy.password.signedOutTitle}
+                  defaultExpanded
+                >
+                  {!isSignedIn ? (
+                    <StatePanel
+                      tone="clay"
+                      variant="empty"
+                      eyebrow={settingsCopy.password.title}
+                      title={settingsCopy.password.signedOutTitle}
+                      body={settingsCopy.password.signedOutBody}
+                    />
+                  ) : (
+                    <>
+                      <StatusStrip
+                        tone={passwordTone}
+                        eyebrow={settingsCopy.password.title}
+                        title={settingsCopy.password.title}
+                        body={passwordState.message || settingsCopy.password.body}
+                      />
+
+                      <Text style={styles.subSectionLabel}>
+                        {settingsCopy.password.newPasswordLabel}
+                      </Text>
+                      <TextInput
+                        style={styles.input}
+                        value={passwordDraft}
+                        onChangeText={setPasswordDraft}
+                        placeholder={settingsCopy.password.newPasswordPlaceholder}
+                        placeholderTextColor="#8e8b84"
+                        secureTextEntry
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        accessibilityLabel={settingsCopy.password.newPasswordLabel}
+                      />
+
+                      <Text style={styles.subSectionLabel}>
+                        {settingsCopy.password.confirmPasswordLabel}
+                      </Text>
+                      <TextInput
+                        style={styles.input}
+                        value={confirmPasswordDraft}
+                        onChangeText={setConfirmPasswordDraft}
+                        placeholder={settingsCopy.password.confirmPasswordPlaceholder}
+                        placeholderTextColor="#8e8b84"
+                        secureTextEntry
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        accessibilityLabel={settingsCopy.password.confirmPasswordLabel}
+                      />
+
+                      <UiButton
+                        label={
+                          isPasswordSaving
+                            ? settingsCopy.password.saveBusy
+                            : settingsCopy.password.save
+                        }
+                        tone="brand"
+                        onPress={() => {
+                          void handleSavePasswordPress();
+                        }}
+                        disabled={isPasswordSaving}
+                      />
+                    </>
+                  )}
+                </CollapsibleSectionCard>
 
                 <CollapsibleSectionCard
                   accent="sage"

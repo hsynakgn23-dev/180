@@ -274,6 +274,15 @@ const syncProfileIdentityToCloud = async (
   const nextXpState = buildNextXpState(currentXpState, normalizedDraft);
   const displayName = resolveDisplayName(normalizedDraft, identity.userEmail);
   const nowIso = new Date().toISOString();
+  const { error: metadataError } = await supabase.auth.updateUser({
+    data: {
+      full_name: normalizedDraft.fullName,
+      name: normalizedDraft.fullName || displayName,
+      username: normalizedDraft.username,
+      gender: normalizedDraft.gender,
+      birth_date: normalizedDraft.birthDate,
+    },
+  });
 
   const { error: writeError } = await supabase.from('profiles').upsert(
     {
@@ -300,7 +309,11 @@ const syncProfileIdentityToCloud = async (
   return {
     ok: true,
     identity: normalizedDraft,
-    message: 'Profil ayarlari cloud senkronu tamamlandi.',
+    message: metadataError
+      ? `Profil ayarlari cloud tablosuna yazildi fakat auth metadata senkronu basarisiz: ${
+          normalizeText(metadataError.message, 220) || 'Supabase auth update hatasi.'
+        }`
+      : 'Profil ayarlari cloud senkronu tamamlandi.',
   };
 };
 

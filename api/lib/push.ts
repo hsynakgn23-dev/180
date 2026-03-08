@@ -27,6 +27,19 @@ type ExpoPushMessageInput = {
     data?: Record<string, unknown>;
 };
 
+type NotificationEventKind = 'comment' | 'like' | 'follow' | 'daily_drop' | 'streak' | 'generic';
+
+type NotificationEventInsertInput = {
+    recipientUserId: string;
+    actorUserId?: string | null;
+    ritualId?: string | null;
+    kind: NotificationEventKind;
+    title: string;
+    body: string;
+    deepLink?: string | null;
+    metadata?: Record<string, unknown>;
+};
+
 const EXPO_PUSH_TOKEN_REGEX = /^(ExponentPushToken|ExpoPushToken)\[[^\]]+\]$/;
 const MAX_TOKENS_PER_USER = 25;
 const EXPO_CHUNK_SIZE = 100;
@@ -63,6 +76,20 @@ const extractPushTokens = (mobilePushState: unknown): string[] => {
         .filter((token) => EXPO_PUSH_TOKEN_REGEX.test(token));
 
     return Array.from(new Set(tokens)).slice(0, MAX_TOKENS_PER_USER);
+};
+
+const normalizeNotificationEventKind = (value: unknown): NotificationEventKind => {
+    const normalized = normalizeText(value, 24).toLowerCase();
+    if (
+        normalized === 'comment' ||
+        normalized === 'like' ||
+        normalized === 'follow' ||
+        normalized === 'daily_drop' ||
+        normalized === 'streak'
+    ) {
+        return normalized;
+    }
+    return 'generic';
 };
 
 const chunkArray = <T>(items: T[], chunkSize: number): T[][] => {
@@ -193,6 +220,81 @@ export const readAllPushAudiences = async (
         return {
             ok: false,
             error: normalizeText(error instanceof Error ? error.message : 'Push audience read failed.', 320)
+        };
+    }
+};
+
+export const createNotificationEvent = async (
+    config: SupabasePushConfig,
+    input: NotificationEventInsertInput
+): Promise<{ ok: true; eventId: string } | { ok: false; error: string }> => {
+    const recipientUserId = normalizeText(input.recipientUserId, 120);
+    if (!recipientUserId) {
+        return { ok: false, error: 'Missing recipient user id.' };
+    }
+
+    const endpoint = `${config.url}/rest/v1/notification_events`;
+    const payload = {
+        recipient_user_id: recipientUserId,
+        actor_user_id: normalizeText(input.actorUserId, 120) || null,
+        ritual_id: normalizeText(input.ritualId, 120) || null,
+        kind: normalizeNotificationEventKind(input.kind),
+        title: normalizeText(input.title, 140) || 'Bildirim',
+        body: normalizeText(input.body, 320),
+        deep_link: normalizeText(input.deepLink, 500) || null,
+        metadata:
+            input.metadata && typeof input.metadata === 'object' && !Array.isArray(input.metadata)
+                ? input.metadata
+                : {}
+    };
+
+    try {
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                apikey: config.serviceRoleKey,
+                Authorization: `Bearer ${config.serviceRoleKey}`,
+                'content-type': 'application/json',
+                Prefer: 'return=representation'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const rawPayload = (await response.json().catch(() => null)) as unknown;
+        if (!response.ok) {
+            const payloadObject = toObject(rawPayload);
+            const errorText = Array.isArray(rawPayload)
+                ? normalizeText(JSON.stringify(rawPayload[0] || {}), 320)
+                : normalizeText(
+                      payloadObject?.message || payloadObject?.error || `HTTP ${response.status}`,
+                      320
+                  );
+            return {
+                ok: false,
+                error: errorText || 'Notification event insert failed.'
+            };
+        }
+
+        const row = Array.isArray(rawPayload) ? toObject(rawPayload[0]) : toObject(rawPayload);
+        const eventId = normalizeText(row?.id, 120);
+        if (!eventId) {
+            return {
+                ok: false,
+                error: 'Notification event id missing.'
+            };
+        }
+
+        return {
+            ok: true,
+            eventId
+        };
+    } catch (error) {
+        return {
+            ok: false,
+            error: normalizeText(
+                error instanceof Error ? error.message : 'Notification event request failed.',
+                320
+            )
         };
     }
 };

@@ -68,6 +68,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         user,
         updateIdentity,
         updatePersonalInfo,
+        completePasswordReset,
         logout,
         bio,
         avatarUrl,
@@ -103,6 +104,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     const [inviteCodeDraft, setInviteCodeDraft] = useState('');
     const [inviteStatus, setInviteStatus] = useState('');
     const [privacyDraft, setPrivacyDraft] = useState<ProfileVisibility>(getDefaultProfileVisibility());
+    const [passwordDraft, setPasswordDraft] = useState('');
+    const [passwordConfirmDraft, setPasswordConfirmDraft] = useState('');
+    const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
     const genderOptions: Array<{ value: RegistrationGender; label: string }> = getRegistrationGenderOptions(language);
 
     const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -366,6 +370,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         setPendingImportFileName('');
         setInviteCodeDraft('');
         setInviteStatus('');
+        setPasswordDraft('');
+        setPasswordConfirmDraft('');
+        setIsUpdatingPassword(false);
         const privacyIdentity = user?.id || user?.email || '';
         if (privacyIdentity) {
             try {
@@ -451,6 +458,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         }
         updateIdentity(bioDraft, avatarId);
         setStatusMessage(profileResult.message || text.settings.statusIdentitySaved);
+    };
+
+    const handleChangePassword = async () => {
+        if (!user) {
+            setStatusMessage(text.login.resetPasswordFailed);
+            return;
+        }
+
+        if (passwordDraft !== passwordConfirmDraft) {
+            setStatusMessage(text.login.passwordMismatch);
+            return;
+        }
+
+        setIsUpdatingPassword(true);
+        try {
+            const result = await completePasswordReset(passwordDraft);
+            if (!result.ok) {
+                setStatusMessage(result.message || text.login.resetPasswordFailed);
+                return;
+            }
+
+            setPasswordDraft('');
+            setPasswordConfirmDraft('');
+            setStatusMessage(result.message || text.login.resetPasswordSuccess);
+        } finally {
+            setIsUpdatingPassword(false);
+        }
     };
 
     const handleSavePrivacy = async () => {
@@ -666,7 +700,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                         {([
                             { id: 'identity', label: text.settings.tabIdentity },
                             { id: 'appearance', label: text.settings.tabAppearance },
-                            { id: 'privacy', label: privacyCopy.tab }
+                            { id: 'privacy', label: privacyCopy.tab },
+                            { id: 'session', label: text.settings.tabSession }
                         ] as const).map((tab) => (
                             <button
                                 key={tab.id}
@@ -1011,6 +1046,47 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                 <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-2">{text.settings.activeAccount}</p>
                                 <p className="text-sm font-bold text-[#E5E4E2]">{user?.name || text.profileWidget.observer}</p>
                                 <p className="text-xs text-gray-500 mt-1">{user?.email || text.settings.unknown}</p>
+                            </div>
+
+                            <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+                                <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-2">
+                                    {text.login.resetPasswordForm}
+                                </p>
+                                <p className="text-xs text-gray-500 mb-4">{text.login.resetPasswordInfo}</p>
+
+                                <div className="space-y-3">
+                                    <label className="text-[10px] uppercase tracking-[0.12em] text-gray-500 block">
+                                        {text.login.newPassword}
+                                        <input
+                                            type="password"
+                                            value={passwordDraft}
+                                            onChange={(e) => setPasswordDraft(e.target.value)}
+                                            disabled={!user}
+                                            className="mt-1 w-full bg-[#141414] border border-white/10 rounded px-3 py-2 text-sm normal-case tracking-normal text-[#E5E4E2] placeholder:text-gray-600 focus:border-sage/40 outline-none"
+                                            placeholder={text.login.newPasswordPlaceholder}
+                                        />
+                                    </label>
+                                    <label className="text-[10px] uppercase tracking-[0.12em] text-gray-500 block">
+                                        {text.login.confirmNewPassword}
+                                        <input
+                                            type="password"
+                                            value={passwordConfirmDraft}
+                                            onChange={(e) => setPasswordConfirmDraft(e.target.value)}
+                                            disabled={!user}
+                                            className="mt-1 w-full bg-[#141414] border border-white/10 rounded px-3 py-2 text-sm normal-case tracking-normal text-[#E5E4E2] placeholder:text-gray-600 focus:border-sage/40 outline-none"
+                                            placeholder={text.login.confirmNewPasswordPlaceholder}
+                                        />
+                                    </label>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() => void handleChangePassword()}
+                                    disabled={isUpdatingPassword || !user}
+                                    className="mt-4 w-full bg-sage text-[#121212] rounded py-2.5 text-[10px] uppercase tracking-[0.2em] font-bold hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
+                                >
+                                    {isUpdatingPassword ? text.login.submitLoading : text.login.submitResetPassword}
+                                </button>
                             </div>
 
                             <div className="bg-white/5 border border-white/10 rounded-xl p-5">

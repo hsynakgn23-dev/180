@@ -114,6 +114,9 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
     }, [dateKey, movies]);
 
     const scrollerRef = useRef<HTMLDivElement | null>(null);
+    const touchStartXRef = useRef<number | null>(null);
+    const touchStartScrollLeftRef = useRef(0);
+    const suppressCardClickRef = useRef(false);
     const [canScrollLeft, setCanScrollLeft] = useState(false);
     const [canScrollRight, setCanScrollRight] = useState(true);
 
@@ -139,6 +142,28 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
             behavior: 'smooth'
         });
         window.setTimeout(syncScrollState, 260);
+    };
+
+    const handleScrollerTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+        const touch = event.touches[0];
+        if (!touch) return;
+        suppressCardClickRef.current = false;
+        touchStartXRef.current = touch.clientX;
+        touchStartScrollLeftRef.current = scrollerRef.current?.scrollLeft || 0;
+    };
+
+    const handleScrollerTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+        const touch = event.touches[0];
+        if (!touch || touchStartXRef.current === null) return;
+        const pointerDelta = Math.abs(touch.clientX - touchStartXRef.current);
+        const scrollDelta = Math.abs((scrollerRef.current?.scrollLeft || 0) - touchStartScrollLeftRef.current);
+        if (pointerDelta > 8 || scrollDelta > 8) {
+            suppressCardClickRef.current = true;
+        }
+    };
+
+    const handleScrollerTouchEnd = () => {
+        touchStartXRef.current = null;
     };
 
     useEffect(() => {
@@ -207,6 +232,10 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
             <div
                 ref={scrollerRef}
                 className="flex md:grid md:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6 px-4 sm:px-6 overflow-x-auto md:overflow-visible pb-2 md:pb-0 snap-x snap-mandatory md:snap-none scroll-pl-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                onTouchStart={handleScrollerTouchStart}
+                onTouchMove={handleScrollerTouchMove}
+                onTouchEnd={handleScrollerTouchEnd}
+                onTouchCancel={handleScrollerTouchEnd}
             >
                 {movies.map((movie, index) => {
                     const isMysterySlot = index === 4;
@@ -222,6 +251,10 @@ export const DailyShowcase: React.FC<DailyShowcaseProps> = ({ onMovieSelect }) =
                                     isWatchedToday={isWatchedToday}
                                     onClick={() => {
                                         if (isLocked) return;
+                                        if (suppressCardClickRef.current) {
+                                            suppressCardClickRef.current = false;
+                                            return;
+                                        }
                                         onMovieSelect(movie);
                                     }}
                                 />
