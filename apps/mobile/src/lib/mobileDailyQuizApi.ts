@@ -1,4 +1,4 @@
-import { resolveMobileWebBaseUrl } from './mobileEnv';
+import { resolveMobileDailyApiUrl, resolveMobileReferralApiBase } from './mobileEnv';
 import { readSupabaseSessionSafe } from './supabase';
 
 export type MobileDailyQuizOptionKey = 'a' | 'b' | 'c' | 'd';
@@ -70,11 +70,14 @@ export type MobileDailyQuizAnswerResult =
     };
 
 const buildMobileApiUrl = (path: string): string => {
-  const webBase = resolveMobileWebBaseUrl();
-  if (!webBase) {
+  const referralBase = resolveMobileReferralApiBase();
+  const dailyApiUrl = resolveMobileDailyApiUrl();
+  const dailyBase = dailyApiUrl.replace(/\/api\/daily(?:\/)?$/i, '');
+  const apiBase = referralBase || dailyBase;
+  if (!apiBase) {
     throw new Error('Mobil quiz API base URL bulunamadi.');
   }
-  return `${webBase}${path.startsWith('/') ? path : `/${path}`}`;
+  return `${apiBase}${path.startsWith('/') ? path : `/${path}`}`;
 };
 
 const buildAuthHeaders = async (): Promise<Record<string, string>> => {

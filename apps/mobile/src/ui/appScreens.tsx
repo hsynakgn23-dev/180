@@ -4064,6 +4064,7 @@ const DailyHomeScreen = ({
   const railScrollOffsetRef = useRef(0);
   const railDragStartOffsetRef = useRef(0);
   const railDragStartXRef = useRef(0);
+  const lastRailGestureAtRef = useRef(0);
   const railMovies = state.status === 'success' ? state.movies.slice(0, 5) : [];
 
   const formatAge = (ageSeconds: number | null): string => {
@@ -4072,6 +4073,10 @@ const DailyHomeScreen = ({
     if (ageSeconds < 3600) return `${Math.floor(ageSeconds / 60)} dk`;
     return `${Math.floor(ageSeconds / 3600)} sa`;
   };
+
+  const markRailGesture = useCallback(() => {
+    lastRailGestureAtRef.current = Date.now();
+  }, []);
 
   const scrollToRailIndex = useCallback(
     (requestedIndex: number) => {
@@ -4108,10 +4113,12 @@ const DailyHomeScreen = ({
       onMoveShouldSetResponderCapture: (event: { nativeEvent: { pageX: number } }) =>
         Math.abs(event.nativeEvent.pageX - railDragStartXRef.current) > 6,
       onResponderGrant: (event: { nativeEvent: { pageX: number } }) => {
+        markRailGesture();
         railDragStartXRef.current = event.nativeEvent.pageX;
         railDragStartOffsetRef.current = railScrollOffsetRef.current;
       },
       onResponderMove: (event: { nativeEvent: { pageX: number } }) => {
+        markRailGesture();
         const deltaX = event.nativeEvent.pageX - railDragStartXRef.current;
         const maxOffset = Math.max(0, (railMovies.length - 1) * DAILY_MOVIE_CARD_STRIDE);
         const nextOffset = Math.max(
@@ -4129,7 +4136,7 @@ const DailyHomeScreen = ({
       },
       onResponderTerminationRequest: () => false,
     };
-  }, [railMovies.length, snapRailToNearest]);
+  }, [markRailGesture, railMovies.length, snapRailToNearest]);
 
   if (state.status === 'loading' || state.status === 'idle') {
     return (
@@ -4256,7 +4263,10 @@ const DailyHomeScreen = ({
               return (
                 <Pressable
                   style={[styles.movieCardWrapper, isSelected ? styles.movieCardWrapperSelected : null]}
-                  onPress={() => onSelectMovie?.(movie.id)}
+                  onPress={() => {
+                    if (Date.now() - lastRailGestureAtRef.current < 220) return;
+                    onSelectMovie?.(movie.id);
+                  }}
                   accessibilityRole="button"
                   accessibilityLabel={`${movie.title} filmini detayli goruntule`}
                 >
@@ -4288,11 +4298,21 @@ const DailyHomeScreen = ({
             decelerationRate="fast"
             keyboardShouldPersistTaps="handled"
             scrollEventThrottle={16}
+            onScrollBeginDrag={() => {
+              markRailGesture();
+            }}
             onScroll={(event) => {
+              markRailGesture();
               railScrollOffsetRef.current = event.nativeEvent.contentOffset.x;
             }}
-            onMomentumScrollEnd={(event) => snapRailToNearest(event.nativeEvent.contentOffset.x)}
-            onScrollEndDrag={(event) => snapRailToNearest(event.nativeEvent.contentOffset.x)}
+            onMomentumScrollEnd={(event) => {
+              markRailGesture();
+              snapRailToNearest(event.nativeEvent.contentOffset.x);
+            }}
+            onScrollEndDrag={(event) => {
+              markRailGesture();
+              snapRailToNearest(event.nativeEvent.contentOffset.x);
+            }}
             contentContainerStyle={styles.movieListHorizontal}
           />
         </View>
