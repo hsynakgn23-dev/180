@@ -3,5 +3,11 @@
   "framework": "vite",
   "buildCommand": "vite build",
   "devCommand": "vite --port $PORT",
-  "outputDirectory": "dist"
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://absolute-cinema-api-637426671712.europe-west1.run.app/api/$1"
+    }
+  ]
 }

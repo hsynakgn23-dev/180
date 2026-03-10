@@ -5,6 +5,7 @@ import { supabase, isSupabaseLive } from '../lib/supabase';
 import { moderateComment } from '../lib/commentModeration';
 import { trackEvent } from '../lib/analytics';
 import { MAX_AVATAR_DATA_URL_LENGTH, normalizeAvatarUrl } from '../lib/avatarUpload';
+import { STREAK_MILESTONE_SET } from '../domain/celebrations';
 export { getLeagueKeyByIndex, resolveLeagueInfo, resolveLeagueKey, resolveLeagueKeyFromXp } from '../domain/leagueSystem';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
@@ -151,6 +152,12 @@ interface XPContextType {
     updatePersonalInfo: (profile: RegistrationProfileInput) => Promise<AuthResult>;
     toggleFollowUser: (target: { userId?: string | null; username: string }) => Promise<AuthResult>;
     awardShareXP: (platform: 'instagram' | 'tiktok' | 'x', trigger: ShareRewardTrigger) => AuthResult;
+    applyQuizProgress: (input: {
+        totalXP: number | null;
+        streak: number | null;
+        dateKey: string;
+        streakProtectedNow: boolean;
+    }) => void;
     inviteCode: string;
     inviteLink: string;
     invitedByCode: string | null;
@@ -186,7 +193,6 @@ const MAX_DAILY_DWELL_XP = 20;
 const LEVEL_THRESHOLD = 500;
 const LONG_FORM_RITUAL_THRESHOLD = 160;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const STREAK_MILESTONES = new Set([5, 7, 10, 20, 40, 50, 100, 200, 250, 300, 350]);
 const REGISTRATION_GENDERS: RegistrationGender[] = ['female', 'male', 'non_binary', 'prefer_not_to_say'];
 const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
 const SHARE_REWARD_XP = 18;
@@ -1166,11 +1172,44 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         });
     };
 
+    const applyQuizProgress = (input: {
+        totalXP: number | null;
+        streak: number | null;
+        dateKey: string;
+        streakProtectedNow: boolean;
+    }) => {
+        const normalizedDateKey = String(input.dateKey || '').trim() || getToday();
+        const nextTotalXP =
+            input.totalXP !== null && Number.isFinite(input.totalXP)
+                ? Math.max(state.totalXP, Math.floor(input.totalXP))
+                : state.totalXP;
+        const nextStreak =
+            input.streak !== null && Number.isFinite(input.streak)
+                ? Math.max(state.streak, Math.floor(input.streak))
+                : state.streak;
+        const shouldProtectToday = Boolean(input.streakProtectedNow && normalizedDateKey);
+        const streakAdvanced = shouldProtectToday && nextStreak > state.streak && normalizedDateKey !== state.lastStreakDate;
+        const nextActiveDays = shouldProtectToday
+            ? mergeStringLists(state.activeDays || [], [normalizedDateKey]).sort((left, right) => left.localeCompare(right))
+            : state.activeDays || [];
+
+        updateState({
+            totalXP: nextTotalXP,
+            streak: nextStreak,
+            lastStreakDate: shouldProtectToday ? normalizedDateKey : state.lastStreakDate,
+            activeDays: nextActiveDays
+        });
+
+        if (streakAdvanced) {
+            triggerStreakCelebration(nextStreak);
+        }
+    };
+
     const triggerStreakCelebration = (day: number) => {
         if (!Number.isFinite(day) || day <= 0) return;
         setStreakCelebrationEvent({
             day,
-            isMilestone: STREAK_MILESTONES.has(day)
+            isMilestone: STREAK_MILESTONE_SET.has(day)
         });
     };
 
@@ -2254,6 +2293,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             updatePersonalInfo,
             toggleFollowUser,
             awardShareXP,
+            applyQuizProgress,
             inviteCode,
             inviteLink,
             invitedByCode,
@@ -2295,3 +2335,10 @@ export const useXP = () => {
     }
     return context;
 };
+
+
+
+
+
+
+

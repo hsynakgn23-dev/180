@@ -94,6 +94,11 @@ npm run mobile:devclient:android
 npm run mobile:devclient:start
 npm run mobile:eas:projectid:sync
 ```
+- Android Studio store release flow:
+  - Runbook: `docs/ANDROID_STUDIO_RELEASE.md`
+  - Use the existing Play upload keystore, not a new key.
+  - On March 10, 2026 the next manual Android upload should use `versionCode 23` or higher.
+  - Local Gradle release signing reads Android Studio injected signing values or `apps/mobile/android/keystore.properties` (template: `apps/mobile/keystore.properties.example`).
 - iOS EAS publish flow:
 ```bash
 npm run mobile:phase1:release:check:ios

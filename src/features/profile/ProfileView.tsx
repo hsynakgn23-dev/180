@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useXP, LEAGUES_DATA, LEAGUE_NAMES, resolveLeagueKey } from '../../context/XPContext';
 import { MAJOR_MARKS } from '../../data/marksData';
-import { TMDB_SEEDS } from '../../data/tmdbSeeds';
 import { SettingsModal } from './SettingsModal';
 import { resolvePosterCandidates } from '../../lib/posterCandidates';
 import { PROGRESS_EASING, getProgressFill, getProgressTransitionMs } from '../../lib/progressVisuals';
@@ -14,6 +13,14 @@ import { InfoFooter } from '../../components/InfoFooter';
 import { buildFilmOgImageUrl, buildProfileOgImageUrl } from '../../lib/ogCards';
 import { appendMobileDeepLinkParams } from '../../domain/deepLinks';
 import { readAvatarFileAsDataUrl } from '../../lib/avatarUpload';
+import {
+    buildProfileActivityPulse,
+    buildProfileDnaSegments,
+    buildProfileFilmSummaries,
+    buildProfileGenreDistribution,
+    countProfileExactCommentSignals,
+    countProfileHiddenGemSignals
+} from '../../domain/profileInsights';
 
 interface ProfileViewProps {
     onClose: () => void;
@@ -102,16 +109,6 @@ type FilmReplyEntry = {
 type SharePlatform = 'instagram' | 'tiktok' | 'x';
 type ShareGoal = 'comment' | 'streak';
 
-type DnaSegment = {
-    id: string;
-    label: string;
-    detail: string;
-    unlocked: boolean;
-};
-
-const HIDDEN_GEM_MOVIE_IDS = new Set(
-    TMDB_SEEDS.filter((movie) => typeof movie.voteAverage === 'number' && movie.voteAverage <= 7.9).map((movie) => movie.id)
-);
 
 const buildCommentKey = (movieTitle: string, text: string, date: string): string => {
     return `${movieTitle.trim()}::${text.trim()}::${date.trim()}`;
@@ -240,101 +237,73 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
         }
     };
 
-    // Calculate DNA (Genre Stats)
-    const genreCounts: Record<string, number> = {};
-    let totalGenres = 0;
-    dailyRituals.forEach(r => {
-        if (r.genre) {
-            genreCounts[r.genre] = (genreCounts[r.genre] || 0) + 1;
-            totalGenres++;
-        }
-    });
+    const ritualInsightRecords = useMemo(
+        () =>
+            dailyRituals.map((ritual) => ({
+                movieId: ritual.movieId,
+                movieTitle: ritual.movieTitle,
+                text: ritual.text,
+                genre: ritual.genre,
+                dateKey: ritual.date,
+                posterPath: ritual.posterPath
+            })),
+        [dailyRituals]
+    );
 
-    // Sort by count and take top 3
-    const topGenres = Object.entries(genreCounts)
-        .sort(([, a], [, b]) => b - a)
-        .slice(0, 3);
-
+    const allGenreSignals = useMemo(
+        () => buildProfileGenreDistribution(ritualInsightRecords, 12),
+        [ritualInsightRecords]
+    );
+    const totalGenres = useMemo(
+        () => allGenreSignals.reduce((sum, item) => sum + item.count, 0),
+        [allGenreSignals]
+    );
+    const topGenres = useMemo(() => allGenreSignals.slice(0, 3), [allGenreSignals]);
     const hiddenGemCount = useMemo(
-        () => dailyRituals.filter((ritual) => HIDDEN_GEM_MOVIE_IDS.has(ritual.movieId)).length,
-        [dailyRituals]
+        () => countProfileHiddenGemSignals(ritualInsightRecords),
+        [ritualInsightRecords]
     );
-
     const exact180Count = useMemo(
-        () => dailyRituals.filter((ritual) => (ritual.text || '').trim().length === 180).length,
-        [dailyRituals]
+        () => countProfileExactCommentSignals(ritualInsightRecords),
+        [ritualInsightRecords]
     );
-
-    const dnaSegments = useMemo<DnaSegment[]>(() => {
-        const uniqueGenreCount = Object.keys(genreCounts).length;
-        const dominantGenreEntry = topGenres[0];
-        const dominantGenreLabel = dominantGenreEntry ? `${dominantGenreEntry[0]} x${dominantGenreEntry[1]}` : 'No genre signal yet';
-
-        return [
-            {
-                id: 'hidden-gem',
-                label: 'Hidden Gem Detector',
-                detail: `${hiddenGemCount}/10 low-score gems`,
-                unlocked: hiddenGemCount >= 10
-            },
-            {
-                id: 'genre-nomad',
-                label: 'Genre Nomad',
-                detail: `${uniqueGenreCount}/6 unique genres`,
-                unlocked: uniqueGenreCount >= 6
-            },
-            {
-                id: 'precision-loop',
-                label: 'Precision Loop',
-                detail: `${exact180Count}/5 exact-180 comments`,
-                unlocked: exact180Count >= 5
-            },
-            {
-                id: 'rhythm-engine',
-                label: 'Rhythm Engine',
-                detail: `${streak || 0}/7 active streak`,
-                unlocked: (streak || 0) >= 7
-            },
-            {
-                id: 'dominant-tone',
-                label: 'Dominant Tone',
-                detail: dominantGenreLabel,
-                unlocked: Boolean(dominantGenreEntry && dominantGenreEntry[1] >= 8)
-            }
-        ];
-    }, [exact180Count, genreCounts, hiddenGemCount, streak, topGenres]);
-
-    const commentedFilms = useMemo<FilmCommentSummary[]>(() => {
-        const filmMap = new Map<number, FilmCommentSummary>();
-        for (const ritual of dailyRituals) {
-            const existing = filmMap.get(ritual.movieId);
-            if (!existing) {
-                filmMap.set(ritual.movieId, {
-                    movieId: ritual.movieId,
-                    title: ritual.movieTitle || `Film #${ritual.movieId}`,
-                    count: 1,
-                    lastDate: ritual.date,
-                    lastText: ritual.text,
-                    genre: ritual.genre,
-                    posterPath: ritual.posterPath
-                });
-                continue;
-            }
-            existing.count += 1;
-            if (ritual.date >= existing.lastDate) {
-                existing.lastDate = ritual.date;
-                existing.lastText = ritual.text;
-                existing.genre = ritual.genre || existing.genre;
-                existing.posterPath = ritual.posterPath || existing.posterPath;
-                existing.title = ritual.movieTitle || existing.title;
-            }
-        }
-
-        return Array.from(filmMap.values()).sort((a, b) => {
-            if (b.count !== a.count) return b.count - a.count;
-            return b.lastDate.localeCompare(a.lastDate);
-        });
-    }, [dailyRituals]);
+    const dnaSegments = useMemo(
+        () =>
+            buildProfileDnaSegments({
+                genreItems: topGenres,
+                hiddenGemCount,
+                exactCommentCount: exact180Count,
+                streak: streak || 0,
+                uniqueGenreCount: allGenreSignals.length
+            }),
+        [allGenreSignals.length, exact180Count, hiddenGemCount, streak, topGenres]
+    );
+    const filmSummaries = useMemo(
+        () => buildProfileFilmSummaries(ritualInsightRecords),
+        [ritualInsightRecords]
+    );
+    const commentedFilms = useMemo<FilmCommentSummary[]>(
+        () =>
+            filmSummaries.map((film) => ({
+                movieId: film.movieId || 0,
+                title: film.title,
+                count: film.count,
+                lastDate: film.lastDate,
+                lastText: film.lastText,
+                genre: film.genre || undefined,
+                posterPath: film.posterPath || undefined
+            })),
+        [filmSummaries]
+    );
+    const activityPulse = useMemo(
+        () =>
+            buildProfileActivityPulse({
+                records: ritualInsightRecords,
+                genreItems: topGenres,
+                filmSummaries
+            }),
+        [filmSummaries, ritualInsightRecords, topGenres]
+    );
 
     const mostWrittenFilm = commentedFilms[0];
     const todayDateKey = getTodayDateKey();
@@ -1083,12 +1052,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
 
                             <div className="flex justify-center items-end h-32 gap-4 bg-white/5 border border-white/5 rounded p-4 relative overflow-hidden">
                                 {topGenres.length > 0 ? (
-                                    topGenres.map(([genre, count]) => {
-                                        const percentage = (count / totalGenres);
+                                    topGenres.map((genreEntry) => {
+                                        const percentage = totalGenres > 0 ? genreEntry.count / totalGenres : 0;
                                         const height = Math.max(20, percentage * 100);
 
                                         return (
-                                            <div key={genre} className="flex flex-col items-center gap-2 z-10 flex-1 group/bar">
+                                            <div key={genreEntry.genre} className="flex flex-col items-center gap-2 z-10 flex-1 group/bar">
                                                 <div className="relative w-full flex justify-center items-end h-full">
                                                     <div
                                                         className="w-2 bg-sage shadow-[0_0_10px_rgba(138,154,91,0.5)] transition-all duration-1000 ease-out relative rounded-t-sm group-hover/bar:w-3"
@@ -1099,7 +1068,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                                                 </div>
                                                 <div className="text-center">
                                                     <div className="text-[9px] font-bold text-[#E5E4E2] tracking-wider uppercase">
-                                                        {genre}
+                                                        {genreEntry.genre}
                                                     </div>
                                                     <div className="text-[8px] font-mono text-gray-500">
                                                         {Math.round(percentage * 100)}%
@@ -1191,22 +1160,22 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                 <div className="bg-white/5 border border-white/10 rounded-lg px-3 py-3">
                                     <div className="text-[9px] uppercase tracking-[0.18em] text-gray-500 mb-1">{text.profile.comments}</div>
-                                    <div className="text-2xl font-bold text-sage">{dailyRituals.length}</div>
+                                    <div className="text-2xl font-bold text-sage">{activityPulse.commentsCount}</div>
                                 </div>
                                 <div className="bg-white/5 border border-white/10 rounded-lg px-3 py-3">
                                     <div className="text-[9px] uppercase tracking-[0.18em] text-gray-500 mb-1">{text.profile.films}</div>
-                                    <div className="text-2xl font-bold text-sage">{commentedFilms.length}</div>
+                                    <div className="text-2xl font-bold text-sage">{activityPulse.filmsCount}</div>
                                 </div>
                                 <div className="bg-white/5 border border-white/10 rounded-lg px-3 py-3">
                                     <div className="text-[9px] uppercase tracking-[0.18em] text-gray-500 mb-1">{text.profile.topGenre}</div>
                                     <div className="text-sm font-bold text-[#E5E4E2] uppercase">
-                                        {topGenres[0]?.[0] || text.profile.noRecords}
+                                        {activityPulse.topGenre === 'No records' ? text.profile.noRecords : activityPulse.topGenre}
                                     </div>
                                 </div>
                                 <div className="bg-white/5 border border-white/10 rounded-lg px-3 py-3">
                                     <div className="text-[9px] uppercase tracking-[0.18em] text-gray-500 mb-1">{text.profile.mostCommented}</div>
                                     <div className="text-sm font-bold text-[#E5E4E2] line-clamp-1">
-                                        {mostWrittenFilm?.title || text.profile.noRecords}
+                                        {activityPulse.mostCommented === 'No records' ? text.profile.noRecords : activityPulse.mostCommented}
                                     </div>
                                 </div>
                             </div>
@@ -1547,4 +1516,5 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
         </div>
     );
 };
+
 

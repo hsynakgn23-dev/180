@@ -31,9 +31,12 @@ apps/mobile/.env.release
 
 .vercel
 .gradle-local/
+.expo/
+.gradle-user-home/
+analytics.settings
+.codex-start-test.txt
 
 # Local scratch/debug outputs
-Filtrele
 diff.txt
 eslint_out.txt
 eslint_out_u8.txt

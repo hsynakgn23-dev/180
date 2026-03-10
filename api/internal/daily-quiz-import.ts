@@ -141,7 +141,10 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     const payload = toObject(body?.payload) && Array.isArray((body?.payload as Record<string, unknown>).movies)
         ? body?.payload
         : body;
-    const publish = body?.publish === true || body?.publish === 'true' || body?.publish === 1 || body?.publish === '1';
+    const publish =
+        body?.publish === false || body?.publish === 'false' || body?.publish === 0 || body?.publish === '0'
+            ? false
+            : true;
 
     const result = await importDailyQuizBatch({
         dateKey,

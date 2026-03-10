@@ -1,7 +1,7 @@
-import { Suspense, lazy, useEffect, useMemo, useState, type ComponentType } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
 import './App.css'
 import { XPProvider, useXP } from './context/XPContext'
-import { NotificationProvider } from './context/NotificationContext'
+import { NotificationProvider, useNotifications } from './context/NotificationContext'
 import { ProfileWidget } from './components/ProfileWidget'
 import { NotificationCenter } from './features/notifications/NotificationCenter'
 import { LeagueTransition } from './components/LeagueTransition'
@@ -12,6 +12,7 @@ import type { Movie } from './data/mockMovies'
 import { LanguageProvider, useLanguage } from './context/LanguageContext'
 import type { PublicProfileTarget } from './features/profile/PublicProfileView'
 import { appendMobileDeepLinkParamsToHref } from './domain/deepLinks'
+import { buildLeagueNotificationCopy, buildStreakNotificationCopy } from './domain/celebrations'
 import { readAdminSession } from './lib/adminApi'
 
 const DailyShowcase = lazy(() =>
@@ -88,7 +89,8 @@ const parseAdminHash = (hash: string): boolean => {
 }
 
 const AppContent = () => {
-  const { text } = useLanguage();
+  const { text, language } = useLanguage();
+  const { addNotification } = useNotifications();
   const {
     levelUpEvent,
     closeLevelUp,
@@ -111,6 +113,38 @@ const AppContent = () => {
   const [showAdminPanel, setShowAdminPanel] = useState<boolean>(() => parseAdminHash(window.location.hash));
   const [canOpenAdminPanel, setCanOpenAdminPanel] = useState(false);
   const [DebugPanelComponent, setDebugPanelComponent] = useState<ComponentType | null>(null);
+  const lastLevelUpNotificationKeyRef = useRef('');
+  const lastStreakNotificationKeyRef = useRef('');
+
+  useEffect(() => {
+    if (user?.id) return;
+    lastLevelUpNotificationKeyRef.current = '';
+    lastStreakNotificationKeyRef.current = '';
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!levelUpEvent) return;
+    const notificationKey = `${levelUpEvent.name}-${dailyRitualsCount}-${streak}`;
+    if (lastLevelUpNotificationKeyRef.current === notificationKey) return;
+    lastLevelUpNotificationKeyRef.current = notificationKey;
+    const copy = buildLeagueNotificationCopy(language, levelUpEvent.name);
+    addNotification({
+      type: 'system',
+      message: `${copy.title}: ${copy.body}`,
+    });
+  }, [addNotification, dailyRitualsCount, language, levelUpEvent, streak]);
+
+  useEffect(() => {
+    if (!streakCelebrationEvent) return;
+    const notificationKey = `${streakCelebrationEvent.day}-${dailyRitualsCount}`;
+    if (lastStreakNotificationKeyRef.current === notificationKey) return;
+    lastStreakNotificationKeyRef.current = notificationKey;
+    const copy = buildStreakNotificationCopy(language, streakCelebrationEvent.day);
+    addNotification({
+      type: 'system',
+      message: `${copy.title}: ${copy.body}`,
+    });
+  }, [addNotification, dailyRitualsCount, language, streakCelebrationEvent]);
 
   const [showLanding, setShowLanding] = useState(true);
   const showDebugPanel = import.meta.env.DEV && import.meta.env.VITE_ENABLE_DEBUG_PANEL !== '0';
@@ -460,3 +494,6 @@ function App() {
 }
 
 export default App
+
+
+

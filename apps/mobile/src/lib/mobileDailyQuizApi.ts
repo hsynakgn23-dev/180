@@ -73,7 +73,7 @@ const buildMobileApiUrl = (path: string): string => {
   const referralBase = resolveMobileReferralApiBase();
   const dailyApiUrl = resolveMobileDailyApiUrl();
   const dailyBase = dailyApiUrl.replace(/\/api\/daily(?:\/)?$/i, '');
-  const apiBase = referralBase || dailyBase;
+  const apiBase = dailyBase || referralBase;
   if (!apiBase) {
     throw new Error('Mobil quiz API base URL bulunamadi.');
   }

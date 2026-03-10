@@ -1,5 +1,10 @@
 import { createSupabaseServiceClient } from './supabaseServiceClient.js';
 import { createSupabaseServiceHeaders } from './supabaseServiceHeaders.js';
+import {
+    DAILY_QUIZ_CORRECT_XP,
+    getDailyQuizCompletionXp,
+    getDailyQuizRequiredCorrectCount
+} from '../../src/domain/dailyQuizRewards.js';
 
 export type DailyQuizLanguageCode = 'tr' | 'en' | 'es' | 'fr';
 
@@ -218,10 +223,6 @@ export type SubmitAnswerResult = {
 
 const DAILY_QUIZ_LANGUAGES: DailyQuizLanguageCode[] = ['tr', 'en', 'es', 'fr'];
 const DAILY_QUIZ_QUESTIONS_PER_MOVIE = 5;
-const DAILY_QUIZ_MOVIE_PASS_THRESHOLD = 3;
-const DAILY_QUIZ_XP_PER_CORRECT = 2;
-const DAILY_QUIZ_XP_FIRST_COMPLETION = 8;
-const DAILY_QUIZ_XP_EXTRA_COMPLETION = 4;
 const DEFAULT_DAILY_ROLLOVER_TIMEZONE = 'Europe/Istanbul';
 const OPENAI_DEFAULT_MODEL = (process.env.OPENAI_DAILY_QUIZ_MODEL || 'gpt-4.1-mini').trim() || 'gpt-4.1-mini';
 const UUID_REGEX =
@@ -365,8 +366,7 @@ const DEFAULT_EXPLANATION_TRANSLATIONS = buildStaticLocalizedRecord({
 });
 
 const getRequiredCorrectCount = (questionCount: number): number => {
-    const normalized = Math.max(0, Math.min(DAILY_QUIZ_QUESTIONS_PER_MOVIE, toInteger(questionCount)));
-    return Math.min(DAILY_QUIZ_MOVIE_PASS_THRESHOLD, normalized);
+    return getDailyQuizRequiredCorrectCount(toInteger(questionCount));
 };
 
 const normalizeDuplicateTextKey = (value: string): string =>
@@ -1537,15 +1537,24 @@ const deriveProgressFromAttempts = (
 const computeQuizXpDelta = (
     wasCorrect: boolean,
     previousProgress: StoredDailyQuizProgress,
-    nextProgress: StoredDailyQuizProgress
+    nextProgress: StoredDailyQuizProgress,
+    questions: StoredDailyQuizQuestion[]
 ): number => {
-    let delta = wasCorrect ? DAILY_QUIZ_XP_PER_CORRECT : 0;
+    let delta = wasCorrect ? DAILY_QUIZ_CORRECT_XP : 0;
     const previousCompleted = new Set(previousProgress.completedMovieIds);
-    const newlyCompletedCount = nextProgress.completedMovieIds.filter((movieId) => !previousCompleted.has(movieId)).length;
-    for (let index = 0; index < newlyCompletedCount; index += 1) {
-        delta += previousCompleted.size + index === 0
-            ? DAILY_QUIZ_XP_FIRST_COMPLETION
-            : DAILY_QUIZ_XP_EXTRA_COMPLETION;
+    const questionCountByMovie = new Map<number, number>();
+
+    for (const question of questions) {
+        const movieId = toInteger(question.movieId);
+        if (!movieId) continue;
+        questionCountByMovie.set(movieId, (questionCountByMovie.get(movieId) || 0) + 1);
+    }
+
+    const newlyCompletedMovieIds = nextProgress.completedMovieIds.filter((movieId) => !previousCompleted.has(movieId));
+    for (let index = 0; index < newlyCompletedMovieIds.length; index += 1) {
+        const movieId = newlyCompletedMovieIds[index];
+        const questionCount = questionCountByMovie.get(movieId) || 0;
+        delta += getDailyQuizCompletionXp(questionCount, previousCompleted.size + index === 0);
     }
     return delta;
 };
@@ -1907,6 +1916,8 @@ export const getQuizTargetDateKey = (offsetDays = 0): string => {
     return getDateKeyDaysFrom(current, Math.trunc(offsetDays));
 };
 
+const isLiveDailyQuizBatchStatus = (status: string): boolean => status === 'published';
+
 export const readDailyQuizBundle = async (input: {
     dateKey?: string | null;
     language?: string | null;
@@ -1922,7 +1933,12 @@ export const readDailyQuizBundle = async (input: {
             .map((movie) => normalizeMovie(movie))
             .filter((movie): movie is DailyQuizMovie => Boolean(movie));
 
-        if (!batch.batch || batch.questions.length === 0 || movies.length === 0 || status !== 'published') {
+        if (
+            !batch.batch ||
+            batch.questions.length === 0 ||
+            movies.length === 0 ||
+            !isLiveDailyQuizBatchStatus(status)
+        ) {
             return {
                 ok: false,
                 error: 'Daily quiz bundle is not ready.',
@@ -2113,7 +2129,7 @@ export const submitDailyQuizAnswer = async (input: {
             throw new Error(batchError.message);
         }
         const batchStatus = normalizeText((batchRow as DailyQuizBatchRow | null)?.status, 40);
-        if (batchStatus !== 'published') {
+        if (!isLiveDailyQuizBatchStatus(batchStatus)) {
             return {
                 ok: false,
                 error: 'Daily quiz bundle is not ready.',
@@ -2192,7 +2208,7 @@ export const submitDailyQuizAnswer = async (input: {
         const batchQuestions = readStoredQuestions((batchQuestionRows || []) as DailyQuizQuestionRow[]);
         const nextProgress = deriveProgressFromAttempts(attempts, batchQuestions, previousProgress);
         const streakProtectedNow = nextProgress.completedMovieIds.length > 0 && !previousProgress.streakProtected;
-        const xpDelta = alreadyAnswered ? 0 : computeQuizXpDelta(isCorrect, previousProgress, nextProgress);
+        const xpDelta = alreadyAnswered ? 0 : computeQuizXpDelta(isCorrect, previousProgress, nextProgress, batchQuestions);
         const xpSummary = xpDelta > 0 || streakProtectedNow
             ? await updateProfileXpStateForQuiz({
                   supabase,
@@ -2260,3 +2276,5 @@ export const submitDailyQuizAnswer = async (input: {
         };
     }
 };
+
+

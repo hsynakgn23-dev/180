@@ -39,6 +39,7 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { appendMobileDeepLinkParams, buildMobileDeepLinkFromRouteIntent } from '../../packages/shared/src/mobile';
+import { buildLeagueNotificationCopy, buildStreakNotificationCopy, isStreakMilestone } from '../../src/domain/celebrations';
 import { fetchDailyMovies } from './src/lib/dailyApi';
 import { useMobileRouteIntent } from './src/hooks/useMobileRouteIntent';
 import { usePageEntranceAnimation } from './src/hooks/usePageEntranceAnimation';
@@ -55,8 +56,10 @@ import {
   MOBILE_LEAGUES_DATA,
   MOBILE_LEAGUE_NAMES,
   getLeagueIndexFromXp,
+  resolveMobileLeagueInfo,
   resolveMobileLeagueInfoFromXp,
   resolveMobileLeagueKeyFromXp,
+  resolveMobileNextLeagueKey,
 } from './src/lib/mobileLeagueSystem';
 import { resolveMobileFollowState, toggleMobileFollowState } from './src/lib/mobileFollowState';
 import { fetchMobileProfileStats } from './src/lib/mobileProfileStats';
@@ -70,13 +73,13 @@ import {
   type MobilePublicProfileActivityItem,
 } from './src/lib/mobilePublicProfileActivity';
 import {
-  fetchMobileProfileWatchedMovies,
-  type MobileWatchedMovie,
-} from './src/lib/mobileProfileWatchedMovies';
+  fetchMobileProfileActivity,
+  type MobileProfileActivityItem,
+} from './src/lib/mobileProfileActivity';
+import { type MobileWatchedMovie } from './src/lib/mobileProfileWatchedMovies';
 import {
   formatMobileLetterboxdSummary,
   importMobileLetterboxdCsv,
-  mergeLetterboxdImportIntoWatchedMovies,
   readStoredMobileLetterboxdImport,
   type StoredMobileLetterboxdImport,
 } from './src/lib/mobileLetterboxdImport';
@@ -177,9 +180,12 @@ import {
   DiscoverRoutesCard,
   InviteClaimScreen,
   LeaguePromotionModal,
+  StreakCelebrationModal,
   MobileSettingsModal,
   MovieDetailsModal,
   PlatformRulesCard,
+  ProfileActivityCard,
+  ProfileCinematicCard,
   ProfileMovieArchiveModal,
   ProfileMarksCard,
   ProfileUnifiedCard,
@@ -197,6 +203,7 @@ import {
   type MobileSettingsPrivacyDraft,
   type MobileLeaguePromotionEvent,
   type MobileSettingsSaveState,
+  type MobileStreakCelebrationEvent,
 } from './src/ui/appScreens';
 import { resolveMobileWebBaseUrl } from './src/lib/mobileEnv';
 import {
@@ -371,7 +378,12 @@ const readPickedAssetAsDataUrl = async (asset: PickedImageAsset, mimeType: strin
     throw new Error('Secilen gorsel web uzerinde okunamadi.');
   }
 
-  const base64 = await LegacyFileSystem.readAsStringAsync(asset.uri, {
+  const nativeUri = String(asset.uri || '').trim();
+  if (!nativeUri) {
+    throw new Error('Secilen gorsel cihazdan okunamadi.');
+  }
+
+  const base64 = await LegacyFileSystem.readAsStringAsync(nativeUri, {
     encoding: 'base64',
   });
   return `data:${mimeType};base64,${String(base64 || '').trim()}`;
@@ -710,6 +722,9 @@ export default function App() {
   const [leaguePromotionEvent, setLeaguePromotionEvent] = useState<MobileLeaguePromotionEvent | null>(
     null
   );
+  const [streakCelebrationEvent, setStreakCelebrationEvent] = useState<MobileStreakCelebrationEvent | null>(
+    null
+  );
   const [pushState, setPushState] = useState<PushState>({
     status: PUSH_FEATURE_ENABLED ? 'idle' : 'unsupported',
     message: PUSH_FEATURE_ENABLED
@@ -787,9 +802,15 @@ export default function App() {
     status: 'idle',
     message: 'Paylasim hedefini sec.',
   });
-  const [profileGenreDistribution, setProfileGenreDistribution] = useState<
-    Array<{ genre: string; count: number }>
-  >([]);
+  const [profileActivityState, setProfileActivityState] = useState<{
+    status: 'idle' | 'loading' | 'ready' | 'error';
+    message: string;
+    items: MobileProfileActivityItem[];
+  }>({
+    status: 'idle',
+    message: 'Profil aktivitesi hazir degil.',
+    items: [],
+  });
   const [commentFeedScope, setCommentFeedScope] = useState<CommentFeedScope>('today');
   const [commentFeedSort, setCommentFeedSort] = useState<CommentFeedSort>('latest');
   const [commentFeedQuery, setCommentFeedQuery] = useState('');
@@ -830,15 +851,6 @@ export default function App() {
     source: 'fallback',
     message: 'Arena leaderboard yukleniyor...',
     entries: [],
-  });
-  const [watchedMoviesState, setWatchedMoviesState] = useState<{
-    status: 'idle' | 'loading' | 'ready' | 'error';
-    message: string;
-    items: MobileWatchedMovie[];
-  }>({
-    status: 'idle',
-    message: 'Izlenen filmler yuklenmedi.',
-    items: [],
   });
   const [letterboxdImportState, setLetterboxdImportState] = useState<{
     status: 'idle' | 'loading' | 'ready' | 'error';
@@ -914,11 +926,14 @@ export default function App() {
   const hasCloudIdentityHydratedRef = useRef(false);
   const hasCloudPrivacyHydratedRef = useRef(false);
   const lastObservedLeagueIndexRef = useRef<number | null>(null);
+  const lastObservedStreakRef = useRef<number | null>(null);
+  const lastObservedStreakDateRef = useRef<string | null>(null);
   const lastHandledAuthCallbackUrlRef = useRef<string | null>(null);
   const lastHandledPublicProfileIntentRef = useRef<string | null>(null);
   const lastNotificationEventIdRef = useRef('');
   const lastAutoOpenedAuthRouteRef = useRef<string | null>(null);
   const hasAutoOpenedLaunchAuthRef = useRef(false);
+  const hasAttemptedSignedInPushRegistrationRef = useRef(false);
 
   const primaryDailyMovie =
     dailyState.status === 'success' && dailyState.movies.length > 0 ? dailyState.movies[0] : null;
@@ -1067,6 +1082,58 @@ export default function App() {
       featuredMarksCount: result.stats.featuredMarks.length,
     });
   }, []);
+  const applyQuizProgressToProfile = useCallback(
+    (input: {
+      totalXp: number | null;
+      streak: number | null;
+      dateKey: string;
+      streakProtectedNow: boolean;
+    }) => {
+      if (profileState.status !== 'success') {
+        void refreshProfileStats();
+        return;
+      }
+
+      const normalizedDateKey = String(input.dateKey || '').trim() || getLocalDateKey();
+      const nextTotalXp =
+        input.totalXp !== null && Number.isFinite(input.totalXp)
+          ? Math.max(profileState.totalXp, Math.floor(input.totalXp))
+          : profileState.totalXp;
+      const nextStreak =
+        input.streak !== null && Number.isFinite(input.streak)
+          ? Math.max(profileState.streak, Math.floor(input.streak))
+          : profileState.streak;
+      const nextLeague = resolveMobileLeagueInfoFromXp(nextTotalXp);
+      const nextLeagueKey = nextLeague.leagueKey;
+      const nextLeagueName = nextLeague.leagueInfo.name;
+      const nextLeagueColor = nextLeague.leagueInfo.color;
+      const nextLeagueTargetKey = resolveMobileNextLeagueKey(nextLeagueKey);
+      const nextLeagueTargetName = nextLeagueTargetKey
+        ? resolveMobileLeagueInfo(nextLeagueTargetKey).name
+        : null;
+      const shouldProtectToday = Boolean(input.streakProtectedNow && normalizedDateKey);
+      const isNewActiveDay = shouldProtectToday && profileState.lastRitualDate !== normalizedDateKey;
+
+      setProfileState((prev) =>
+        prev.status !== 'success'
+          ? prev
+          : {
+              ...prev,
+              totalXp: nextTotalXp,
+              leagueKey: nextLeagueKey,
+              leagueName: nextLeagueName,
+              leagueColor: nextLeagueColor,
+              nextLeagueKey: nextLeagueTargetKey,
+              nextLeagueName: nextLeagueTargetName,
+              streak: nextStreak,
+              daysPresent: isNewActiveDay ? prev.daysPresent + 1 : prev.daysPresent,
+              lastRitualDate: shouldProtectToday ? normalizedDateKey : prev.lastRitualDate,
+              source: 'xp_state',
+            }
+      );
+    },
+    [profileState, refreshProfileStats]
+  );
 
   const refreshSettingsIdentityFromCloud = useCallback(async () => {
     const result = await readMobileProfileIdentityFromCloud();
@@ -1146,66 +1213,6 @@ export default function App() {
     });
   }, [authState.status]);
 
-  const refreshProfileGenreDistribution = useCallback(async () => {
-    if (!isSupabaseConfigured || !supabase || authState.status !== 'signed_in') {
-      setProfileGenreDistribution([]);
-      return;
-    }
-
-    try {
-      const sessionResult = await readSupabaseSessionSafe();
-      const userId = String(sessionResult.session?.user?.id || '').trim();
-      if (!userId) {
-        setProfileGenreDistribution([]);
-        return;
-      }
-
-      const variants = ['genre', 'movie_genre', 'primary_genre'] as const;
-      let rows: Array<Record<string, unknown>> = [];
-      let selectedColumn: (typeof variants)[number] | null = null;
-
-      for (const column of variants) {
-        const { data, error } = await supabase
-          .from('rituals')
-          .select(column)
-          .eq('user_id', userId)
-          .not(column, 'is', null)
-          .limit(640);
-
-        if (error) continue;
-        if (!Array.isArray(data) || data.length === 0) continue;
-
-        rows = data as Array<Record<string, unknown>>;
-        selectedColumn = column;
-        break;
-      }
-
-      if (!selectedColumn || rows.length === 0) {
-        setProfileGenreDistribution([]);
-        return;
-      }
-
-      const counts = new Map<string, number>();
-      for (const row of rows) {
-        const rawGenre = String(row[selectedColumn] || '')
-          .trim()
-          .split(/[|/>,]/)[0]
-          .trim()
-          .slice(0, 32);
-        if (!rawGenre) continue;
-        counts.set(rawGenre, (counts.get(rawGenre) || 0) + 1);
-      }
-
-      const sorted = Array.from(counts.entries())
-        .sort((left, right) => right[1] - left[1])
-        .slice(0, 5)
-        .map(([genre, count]) => ({ genre, count }));
-      setProfileGenreDistribution(sorted);
-    } catch {
-      setProfileGenreDistribution([]);
-    }
-  }, [authState.status]);
-
   const readLetterboxdImportIdentity = useCallback(async (): Promise<string> => {
     if (authState.status !== 'signed_in') return '';
     const sessionResult = await readSupabaseSessionSafe();
@@ -1239,40 +1246,25 @@ export default function App() {
     return snapshot;
   }, [authState.status, readLetterboxdSnapshot]);
 
-  const refreshWatchedMovies = useCallback(async () => {
+  const refreshProfileActivity = useCallback(async () => {
     if (authState.status !== 'signed_in') {
-      setWatchedMoviesState({
+      setProfileActivityState({
         status: 'idle',
-        message: 'Izlenen filmler icin giris bekleniyor.',
+        message: 'Profil aktivitesi icin giris bekleniyor.',
         items: [],
       });
       return;
     }
 
-    setWatchedMoviesState({
+    setProfileActivityState({
       status: 'loading',
-      message: 'Izlenen filmler yukleniyor...',
+      message: 'Profil aktivitesi yukleniyor...',
       items: [],
     });
 
-    const [result, letterboxdSnapshot] = await Promise.all([
-      fetchMobileProfileWatchedMovies({ limit: 24 }),
-      readLetterboxdSnapshot(),
-    ]);
-    const mergedItems = mergeLetterboxdImportIntoWatchedMovies(
-      result.items,
-      letterboxdSnapshot,
-      24
-    );
-
-    setLetterboxdImportState({
-      status: letterboxdSnapshot ? 'ready' : 'idle',
-      message: letterboxdSnapshot ? 'Letterboxd import hazir.' : '',
-      snapshot: letterboxdSnapshot,
-    });
-
-    if (!result.ok && mergedItems.length === 0) {
-      setWatchedMoviesState({
+    const result = await fetchMobileProfileActivity({ limit: 120 });
+    if (!result.ok && result.items.length === 0) {
+      setProfileActivityState({
         status: 'error',
         message: result.message,
         items: [],
@@ -1280,19 +1272,12 @@ export default function App() {
       return;
     }
 
-    const message = !result.ok
-      ? `Letterboxd filmleri gosteriliyor. ${result.message}`
-      : letterboxdSnapshot?.items.length
-        ? 'Yorum ve Letterboxd filmleri guncellendi.'
-        : result.message;
-
-    setWatchedMoviesState({
-      status: 'ready',
-      message,
-      items: mergedItems,
+    setProfileActivityState({
+      status: result.ok ? 'ready' : 'error',
+      message: result.message,
+      items: result.items,
     });
-  }, [authState.status, readLetterboxdSnapshot]);
-
+  }, [authState.status]);
   const handleCloseProfileMovieArchive = useCallback(() => {
     setProfileMovieArchiveModalState((prev) => ({
       ...prev,
@@ -1754,6 +1739,79 @@ export default function App() {
       });
     },
     []
+  );
+
+  const notifyLeagueProgress = useCallback(
+    async (input: {
+      leagueKey: string;
+      leagueName: string;
+      leagueColor: string;
+      totalXp: number;
+    }) => {
+      const copy = buildLeagueNotificationCopy(settingsLanguage, input.leagueName || input.leagueKey);
+      const deepLink = buildMobileDeepLinkFromRouteIntent(
+        { target: 'daily' },
+        { base: MOBILE_DEEP_LINK_BASE }
+      );
+      const snapshot: PushNotificationSnapshot = {
+        notificationId: `local-league-${getLocalDateKey()}-${input.leagueKey}-${input.totalXp}`,
+        title: copy.title,
+        body: copy.body,
+        deepLink,
+        kind: 'generic',
+        receivedAt: new Date().toISOString(),
+      };
+
+      setPushState((prev) => ({
+        ...prev,
+        lastNotification: describePushNotification(snapshot),
+      }));
+      await appendPushInbox(snapshot, 'received');
+
+      if (PUSH_FEATURE_ENABLED && pushState.permissionStatus === 'granted') {
+        await sendLocalPushSimulation({
+          title: copy.title,
+          body: copy.body,
+          deepLink,
+          kind: 'generic',
+        });
+      }
+    },
+    [appendPushInbox, describePushNotification, pushState.permissionStatus, settingsLanguage]
+  );
+
+  const notifyStreakProgress = useCallback(
+    async (day: number, ritualDateKey: string | null) => {
+      const copy = buildStreakNotificationCopy(settingsLanguage, day);
+      const deepLink = buildMobileDeepLinkFromRouteIntent(
+        { target: 'share', goal: 'streak' },
+        { base: MOBILE_DEEP_LINK_BASE }
+      );
+      const snapshot: PushNotificationSnapshot = {
+        notificationId: `local-streak-${ritualDateKey || getLocalDateKey()}-${day}`,
+        title: copy.title,
+        body: copy.body,
+        deepLink,
+        kind: 'streak',
+        receivedAt: new Date().toISOString(),
+      };
+
+      setPushState((prev) => ({
+        ...prev,
+        lastNotification: describePushNotification(snapshot),
+      }));
+      await appendPushInbox(snapshot, 'received');
+
+      if (PUSH_FEATURE_ENABLED && pushState.permissionStatus === 'granted') {
+        await sendLocalPushSimulation({
+          title: copy.title,
+          body: copy.body,
+          deepLink,
+          kind: 'streak',
+        });
+      }
+    },
+    [appendPushInbox, describePushNotification, pushState.permissionStatus, settingsLanguage]
   );
 
   const syncNotificationEventInbox = useCallback(
@@ -2780,24 +2838,41 @@ export default function App() {
         leagueColor: profileState.leagueColor,
         previousLeagueKey,
       });
+      void notifyLeagueProgress({
+        leagueKey: profileState.leagueKey,
+        leagueName: profileState.leagueName,
+        leagueColor: profileState.leagueColor,
+        totalXp: profileState.totalXp,
+      });
+    }
+
+    const previousStreak = lastObservedStreakRef.current;
+    const previousStreakDate = lastObservedStreakDateRef.current;
+    const streakDateKey = String(profileState.lastRitualDate || '').trim() || null;
+    const streakAdvanced =
+      previousStreak !== null &&
+      profileState.streak > previousStreak &&
+      streakDateKey === getLocalDateKey() &&
+      streakDateKey !== previousStreakDate;
+
+    if (streakAdvanced) {
+      setStreakCelebrationEvent({
+        day: profileState.streak,
+        isMilestone: isStreakMilestone(profileState.streak),
+      });
+      void notifyStreakProgress(profileState.streak, streakDateKey);
     }
 
     lastObservedLeagueIndexRef.current = currentIndex;
-  }, [profileState]);
+    lastObservedStreakRef.current = profileState.streak;
+    lastObservedStreakDateRef.current = streakDateKey;
+  }, [notifyLeagueProgress, notifyStreakProgress, profileState]);
 
   useEffect(() => {
     if (authState.status !== 'signed_in') {
-      setProfileGenreDistribution([]);
-      return;
-    }
-    void refreshProfileGenreDistribution();
-  }, [authState.status, refreshProfileGenreDistribution]);
-
-  useEffect(() => {
-    if (authState.status !== 'signed_in') {
-      setWatchedMoviesState({
+      setProfileActivityState({
         status: 'idle',
-        message: 'Izlenen filmler icin giris bekleniyor.',
+        message: 'Profil aktivitesi icin giris bekleniyor.',
         items: [],
       });
       setProfileMovieArchiveModalState({
@@ -2809,8 +2884,8 @@ export default function App() {
       });
       return;
     }
-    void refreshWatchedMovies();
-  }, [authState.status, refreshWatchedMovies]);
+    void refreshProfileActivity();
+  }, [authState.status, refreshProfileActivity]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -2969,7 +3044,10 @@ export default function App() {
     }
 
     lastObservedLeagueIndexRef.current = null;
+    lastObservedStreakRef.current = null;
+    lastObservedStreakDateRef.current = null;
     setLeaguePromotionEvent(null);
+    setStreakCelebrationEvent(null);
 
     setProfileState({
       status: 'idle',
@@ -3360,7 +3438,7 @@ export default function App() {
       });
       setRitualComposerVisible(false);
       void refreshProfileStats();
-      void refreshWatchedMovies();
+      void refreshProfileActivity();
       void refreshDailyCommentFeed();
       return;
     }
@@ -3381,7 +3459,7 @@ export default function App() {
     profileState,
     refreshDailyCommentFeed,
     refreshProfileStats,
-    refreshWatchedMovies,
+    refreshProfileActivity,
     ritualDraftText,
     selectedDailyMovie,
   ]);
@@ -3411,12 +3489,12 @@ export default function App() {
 
     if (result.synced > 0) {
       void refreshProfileStats();
-      void refreshWatchedMovies();
+      void refreshProfileActivity();
       void refreshDailyCommentFeed();
     }
 
     await refreshRitualQueue();
-  }, [refreshDailyCommentFeed, refreshProfileStats, refreshRitualQueue, refreshWatchedMovies]);
+  }, [refreshDailyCommentFeed, refreshProfileActivity, refreshProfileStats, refreshRitualQueue]);
 
   useEffect(() => {
     if (dailyState.status === 'idle') {
@@ -3470,10 +3548,17 @@ export default function App() {
   }, [screenPlan.screen]);
 
   useEffect(() => {
-    if (!PUSH_FEATURE_ENABLED) return;
-    if (authState.status !== 'signed_in') return;
-    if (pushState.status === 'ready' && pushState.token) return;
+    if (!PUSH_FEATURE_ENABLED) {
+      hasAttemptedSignedInPushRegistrationRef.current = false;
+      return;
+    }
+    if (authState.status !== 'signed_in') {
+      hasAttemptedSignedInPushRegistrationRef.current = false;
+      return;
+    }
     if (pushState.status === 'loading') return;
+    if (hasAttemptedSignedInPushRegistrationRef.current) return;
+    hasAttemptedSignedInPushRegistrationRef.current = true;
     void refreshPushRegistration();
   }, [authState.status, pushState.status, pushState.token, refreshPushRegistration]);
 
@@ -3987,12 +4072,12 @@ export default function App() {
 
       if (result.ok) {
         void refreshProfileStats();
-        void refreshWatchedMovies();
+        void refreshProfileActivity();
       }
 
       return result;
     },
-    [refreshProfileStats, refreshWatchedMovies]
+    [refreshProfileActivity, refreshProfileStats]
   );
 
   const handleDeleteComment = useCallback(
@@ -4179,7 +4264,7 @@ export default function App() {
         message: importResult.message,
         snapshot: importResult.snapshot,
       });
-      void refreshWatchedMovies();
+      void syncLetterboxdImportState();
       void trackMobileEvent('page_view', {
         reason: 'mobile_letterboxd_imported',
         importedRows: importResult.analysis.parse.importedRows,
@@ -4198,7 +4283,7 @@ export default function App() {
         message,
       });
     }
-  }, [authState.status, readLetterboxdImportIdentity, refreshWatchedMovies]);
+  }, [authState.status, readLetterboxdImportIdentity, syncLetterboxdImportState]);
 
   const handleSaveSettingsIdentity = useCallback(async () => {
     if (authState.status !== 'signed_in') {
@@ -4655,8 +4740,8 @@ export default function App() {
       } else {
         await Promise.all([
           refreshProfileStats(),
-          refreshWatchedMovies(),
-          refreshProfileGenreDistribution(),
+          refreshProfileActivity(),
+          syncLetterboxdImportState(),
         ]);
       }
     } finally {
@@ -4666,9 +4751,9 @@ export default function App() {
     handleRefreshPublicProfileFull,
     profilePullRefreshing,
     publicProfileFullState.visible,
-    refreshProfileGenreDistribution,
     refreshProfileStats,
-    refreshWatchedMovies,
+    refreshProfileActivity,
+    syncLetterboxdImportState,
   ]);
 
   const handleClaimInvite = useCallback(async (rawInviteCode: string) => {
@@ -5326,6 +5411,11 @@ export default function App() {
           language={settingsLanguage}
           onClose={() => setLeaguePromotionEvent(null)}
         />
+        <StreakCelebrationModal
+          event={streakCelebrationEvent}
+          language={settingsLanguage}
+          onClose={() => setStreakCelebrationEvent(null)}
+        />
         <Animated.View
           style={[
             styles.pageMotion,
@@ -5886,21 +5976,32 @@ export default function App() {
                         <ProfileUnifiedCard
                           state={profileState}
                           isSignedIn={isSignedIn}
-                          language={settingsLanguage}
                           isShareHubActive={screenPlan.screen === 'share_hub'}
-                          themeModeLabel={themeModeLabel}
                           displayName={profileShellTitle}
                           avatarUrl={profileAvatarUrl}
                           username={profileUsername}
                           bio={profileShellBody}
                           birthDateLabel={profileBirthDateLabel}
+                          genderLabel={settingsIdentityDraft.gender}
                           profileLink={profileLink}
-                          genreItems={profileGenreDistribution}
-                          watchedMoviesState={watchedMoviesState}
                           onOpenSettings={isSignedIn ? () => setSettingsVisible(true) : undefined}
                           onOpenProfileLink={() => {
                             void handleOpenProfileLink();
                           }}
+                          onOpenShareHub={handleOpenShareHubFromProfile}
+                        />
+                        <ProfileCinematicCard
+                          state={profileState}
+                          isSignedIn={isSignedIn}
+                          activityState={profileActivityState}
+                        />
+                        <ProfileActivityCard
+                          isSignedIn={isSignedIn}
+                          activityState={profileActivityState}
+                          shareCommentPreview={shareCommentPreview}
+                          canShareComment={canShareComment}
+                          canShareStreak={canShareStreak}
+                          streakValue={profileState.status === 'success' ? profileState.streak : 0}
                           onOpenShareHub={handleOpenShareHubFromProfile}
                           onOpenMovieArchive={(movie) => {
                             void handleOpenProfileMovieArchive(movie);
@@ -5939,7 +6040,11 @@ export default function App() {
                             ) : null}
                           </>
                         ) : null}
-
+                        <ProfileMarksCard
+                          state={profileState}
+                          isSignedIn={isSignedIn}
+                          language={settingsLanguage}
+                        />
                     {isDevSurfaceEnabled ? (
                       <>
                         <View style={styles.card}>
@@ -6020,7 +6125,7 @@ export default function App() {
                       <View style={[styles.singleActionRow, { marginTop: 12 }]}>
                         <UiButton
                           label="Giris Yap / Uye Ol"
-                          tone="secondary"
+                          tone="neutral"
                           stretch
                           onPress={() => {
                             openAuthModal('login');
@@ -6094,6 +6199,7 @@ export default function App() {
               setDailyMovieDetailsVisible(false);
               openAuthModal('login');
             }}
+            onApplyQuizProgress={applyQuizProgressToProfile}
             language={settingsLanguage}
             isSignedIn={isSignedIn}
           />
@@ -6295,4 +6401,18 @@ export default function App() {
     </SafeAreaProvider>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

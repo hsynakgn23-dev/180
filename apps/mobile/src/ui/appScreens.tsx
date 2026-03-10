@@ -44,7 +44,18 @@ import {
   type MobileDailyQuizOptionKey,
 } from '../lib/mobileDailyQuizApi';
 import { getProgressHeadColor, getProgressTailColor } from '../../../../src/lib/progressVisuals';
+import { LEAGUE_TRANSITION_COPY, resolveStreakCelebrationCopy, resolveStreakCelebrationTheme, resolveStreakSurfaceCopy } from '../../../../src/domain/celebrations';
+import { MARK_MOTION_DURATION_MS } from '../../../../src/domain/markVisuals';
+import {
+  buildProfileActivityPulse,
+  buildProfileDnaSegments,
+  buildProfileFilmSummaries,
+  buildProfileGenreDistribution,
+  countProfileExactCommentSignals,
+  countProfileHiddenGemSignals,
+} from '../../../../src/domain/profileInsights';
 import { UiButton } from './primitives';
+import { MobileMarkIcon } from './mobileMarkIcons';
 import { styles } from './appStyles';
 import {
   type AuthState,
@@ -64,6 +75,7 @@ import {
 import type { MobileCommentReply } from '../lib/mobileCommentInteractions';
 import type { MobileWatchedMovie } from '../lib/mobileProfileWatchedMovies';
 import type { MobileProfileMovieArchiveEntry } from '../lib/mobileProfileMovieArchive';
+import type { MobileProfileActivityItem } from '../lib/mobileProfileActivity';
 import type { MobilePublicProfileActivityItem } from '../lib/mobilePublicProfileActivity';
 import type { MobileProfileVisibility } from '../lib/mobileProfileVisibility';
 
@@ -72,9 +84,11 @@ const SUPPORTS_NATIVE_DRIVER = Platform.OS !== 'web';
 const KEYBOARD_AVOIDING_BEHAVIOR = Platform.OS === 'ios' ? 'padding' : 'height';
 const KEYBOARD_AVOIDING_OFFSET = Platform.OS === 'ios' ? 12 : 0;
 const DAILY_MOVIE_CARD_STRIDE = 144;
+const DAILY_MOVIE_RAIL_PRESS_GUARD_MS = 280;
 const TMDB_POSTER_BASE_URL = 'https://image.tmdb.org/t/p/w342';
 const STORAGE_PUBLIC_PATH = '/storage/v1/object/public/';
 const STORAGE_OBJECT_PUBLIC_PATH = 'storage/v1/object/public/';
+const DEFAULT_MOBILE_IMAGE_PROXY_BASE = 'https://images.weserv.nl/?url=';
 const MOBILE_SUPABASE_BASE_URL = String(process.env.EXPO_PUBLIC_SUPABASE_URL || '')
   .trim()
   .replace(/\/+$/, '');
@@ -121,6 +135,55 @@ const buildAccentShadowStyle = (accentColor: string): Record<string, unknown> =>
         elevation: 8,
       };
 
+const buildAccentGlowStyle = (accentColor: string): Record<string, unknown> =>
+  Platform.OS === 'web'
+    ? {
+        boxShadow: `0px 0px 24px ${accentColor}38`,
+      }
+    : {
+        shadowColor: accentColor,
+        shadowOpacity: 0.22,
+        shadowRadius: 24,
+        shadowOffset: { width: 0, height: 0 },
+      };
+
+const resolveMobileImageProxyBase = (): string => {
+  const configured = String(process.env.EXPO_PUBLIC_IMAGE_PROXIES || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return configured[0] || DEFAULT_MOBILE_IMAGE_PROXY_BASE;
+};
+
+const maybeWrapWebPosterUrl = (absoluteUrl: string): string => {
+  if (Platform.OS !== 'web') return absoluteUrl;
+  if (!/^https?:\/\/image\.tmdb\.org\/t\/p\//i.test(absoluteUrl)) return absoluteUrl;
+
+  const proxyBase = resolveMobileImageProxyBase();
+  if (!proxyBase) return absoluteUrl;
+  if (absoluteUrl.startsWith(proxyBase)) return absoluteUrl;
+  if (proxyBase.includes('{url}')) {
+    return proxyBase.replace('{url}', encodeURIComponent(absoluteUrl));
+  }
+  return `${proxyBase}${encodeURIComponent(absoluteUrl)}`;
+};
+
+const hexToRgba = (hex: string, alpha: number): string => {
+  const normalized = hex.trim().replace('#', '');
+  const expanded = normalized.length === 3
+    ? normalized.split('').map((ch) => ch + ch).join('')
+    : normalized;
+
+  if (!/^[0-9a-fA-F]{6}$/.test(expanded)) {
+    return `rgba(138,154,91,${alpha})`;
+  }
+
+  const r = parseInt(expanded.slice(0, 2), 16);
+  const g = parseInt(expanded.slice(2, 4), 16);
+  const b = parseInt(expanded.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+};
+
 const Text = ({ style, ...props }: TextProps) => (
   <RNText
     {...props}
@@ -141,34 +204,9 @@ export type MobileLeaguePromotionEvent = {
   previousLeagueKey?: string | null;
 };
 
-const MOBILE_LEAGUE_TRANSITION_COPY: Record<
-  MobileSettingsLanguage,
-  { badge: string; body: string; meta: string; action: string }
-> = {
-  tr: {
-    badge: 'Lig Atlandi',
-    body: 'Tebrikler. Toplam XP seviyen bu lige yukseldi.',
-    meta: 'Lig gecisi tamamlandi',
-    action: 'Tamam',
-  },
-  en: {
-    badge: 'League Advanced',
-    body: 'Congratulations. Your total XP has moved up into this league.',
-    meta: 'League promoted',
-    action: 'Done',
-  },
-  es: {
-    badge: 'Liga Ascendida',
-    body: 'Felicidades. Tu XP total subio a esta liga.',
-    meta: 'Ascenso completado',
-    action: 'Listo',
-  },
-  fr: {
-    badge: 'Ligue Debloquee',
-    body: 'Felicitations. Ton XP total est monte jusqua cette ligue.',
-    meta: 'Promotion confirmee',
-    action: 'Terminer',
-  },
+export type MobileStreakCelebrationEvent = {
+  day: number;
+  isMilestone: boolean;
 };
 
 const LeaguePromotionModal = ({
@@ -184,7 +222,7 @@ const LeaguePromotionModal = ({
   if (!event) return null;
 
   const accentColor = String(event.leagueColor || '#8A9A5B').trim() || '#8A9A5B';
-  const copy = MOBILE_LEAGUE_TRANSITION_COPY[language] || MOBILE_LEAGUE_TRANSITION_COPY.tr;
+  const copy = LEAGUE_TRANSITION_COPY[language] || LEAGUE_TRANSITION_COPY.tr;
 
   return (
     <Modal
@@ -240,6 +278,98 @@ const LeaguePromotionModal = ({
   );
 };
 
+const StreakCelebrationModal = ({
+  event,
+  language = 'tr',
+  onClose,
+}: {
+  event: MobileStreakCelebrationEvent | null;
+  language?: MobileSettingsLanguage;
+  onClose: () => void;
+}) => {
+  useWebModalFocusReset(Boolean(event));
+  if (!event) return null;
+
+  const theme = resolveStreakCelebrationTheme(event.day);
+  const copy = resolveStreakCelebrationCopy(language, event.day);
+  const surfaceCopy = resolveStreakSurfaceCopy(language);
+  const accentColor = theme.accentHex;
+
+  return (
+    <Modal
+      visible
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      accessibilityViewIsModal
+    >
+      <View
+        style={[
+          styles.streakCelebrationOverlay,
+          {
+            backgroundColor: hexToRgba(theme.shellEnd, 0.94),
+          },
+        ]}
+      >
+        <Pressable
+          style={styles.streakCelebrationOverlayTap}
+          onPress={onClose}
+          accessibilityLabel="Streak kutlamasini kapat"
+        />
+
+        <View
+          style={[
+            styles.streakCelebrationCard,
+            {
+              borderColor: hexToRgba(accentColor, 0.42),
+              backgroundColor: hexToRgba(theme.cardStart, 0.94),
+              ...buildAccentShadowStyle(accentColor),
+            },
+          ]}
+        >
+          <View
+            style={[
+              styles.streakCelebrationPulseRing,
+              {
+                borderColor: hexToRgba(accentColor, 0.28),
+                ...buildAccentGlowStyle(accentColor),
+              },
+            ]}
+          />
+          <View
+            style={[
+              styles.streakCelebrationLine,
+              { backgroundColor: hexToRgba(accentColor, 0.92) },
+            ]}
+          />
+          <Text style={styles.streakCelebrationEyebrow}>{copy.badge}</Text>
+          <Text style={styles.streakCelebrationTitle}>{copy.title}</Text>
+
+          <View style={styles.streakCelebrationDayChip}>
+            <Text style={styles.streakCelebrationDayLabel}>{surfaceCopy.dayLabel}</Text>
+            <Text style={[styles.streakCelebrationDayValue, { color: accentColor }]}>
+              {event.day}
+            </Text>
+          </View>
+
+          <Text style={styles.streakCelebrationBody}>{copy.subtitle}</Text>
+          <Text style={styles.streakCelebrationMeta}>{surfaceCopy.completed}</Text>
+
+          <Pressable
+            style={styles.streakCelebrationButton}
+            onPress={onClose}
+            hitSlop={PRESSABLE_HIT_SLOP}
+            accessibilityRole="button"
+            accessibilityLabel="Streak kutlamasini tamamla"
+          >
+            <Text style={styles.streakCelebrationButtonText}>{surfaceCopy.action}</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 const isStoragePosterPath = (value: string): boolean => {
   const normalized = value.replace(/^\/+/, '');
   return (
@@ -272,8 +402,8 @@ const resolveStoragePosterUrl = (value: string): string | null => {
 const resolvePosterUrl = (posterPath: string | null | undefined): string | null => {
   const normalized = String(posterPath || '').trim();
   if (!normalized) return null;
-  if (/^https?:\/\//i.test(normalized)) return normalized;
-  if (/^\/\//.test(normalized)) return `https:${normalized}`;
+  if (/^https?:\/\//i.test(normalized)) return maybeWrapWebPosterUrl(normalized);
+  if (/^\/\//.test(normalized)) return maybeWrapWebPosterUrl(`https:${normalized}`);
 
   const storageResolved = resolveStoragePosterUrl(normalized);
   if (storageResolved) return storageResolved;
@@ -287,7 +417,7 @@ const resolvePosterUrl = (posterPath: string | null | undefined): string | null 
   }
 
   const normalizedPath = normalized.startsWith('/') ? normalized : `/${normalized}`;
-  return `${TMDB_POSTER_BASE_URL}${normalizedPath}`;
+  return maybeWrapWebPosterUrl(`${TMDB_POSTER_BASE_URL}${normalizedPath}`);
 };
 
 const ScreenCard = ({
@@ -2182,42 +2312,108 @@ const WatchedMoviesCard = ({
 };
 
 const markMotionDurationMs = (motion: string): number => {
+  if (motion === 'spin' || motion === 'pulse' || motion === 'float' || motion === 'signal' || motion === 'spark') {
+    return MARK_MOTION_DURATION_MS[motion];
+  }
+  return MARK_MOTION_DURATION_MS.pulse;
+};
+
+const resolveMarkIconAnimatedStyle = (motion: string, progress: Animated.Value) => {
   switch (motion) {
     case 'spin':
-      return 3600;
-    case 'signal':
-      return 1800;
-    case 'spark':
-      return 1500;
+      return {
+        transform: [
+          {
+            rotate: progress.interpolate({
+              inputRange: [0, 1],
+              outputRange: ['0deg', '360deg'],
+            }),
+          },
+        ],
+      };
     case 'float':
-      return 2600;
+      return {
+        transform: [
+          {
+            translateY: progress.interpolate({
+              inputRange: [0, 0.5, 1],
+              outputRange: [0, -1.5, 0],
+            }),
+          },
+        ],
+      };
+    case 'signal':
+      return {
+        opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0.72, 1] }),
+        transform: [
+          {
+            scale: progress.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.98, 1.03],
+            }),
+          },
+        ],
+      };
+    case 'spark':
+      return {
+        opacity: progress.interpolate({
+          inputRange: [0, 0.35, 0.65, 1],
+          outputRange: [0.78, 1, 0.86, 0.78],
+        }),
+        transform: [
+          {
+            rotate: progress.interpolate({
+              inputRange: [0, 0.35, 0.65, 1],
+              outputRange: ['-1deg', '1deg', '0deg', '-1deg'],
+            }),
+          },
+          {
+            scale: progress.interpolate({
+              inputRange: [0, 0.35, 0.65, 1],
+              outputRange: [0.96, 1.08, 1, 0.96],
+            }),
+          },
+        ],
+      };
     case 'pulse':
     default:
-      return 2200;
+      return {
+        opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0.84, 1] }),
+        transform: [
+          {
+            scale: progress.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.96, 1.04],
+            }),
+          },
+        ],
+      };
   }
 };
 
-const MobileMarkPill = ({
-  title,
+const MobileAnimatedMarkGlyph = ({
+  markId,
   motion,
   isUnlocked,
   isFeatured,
-  onPress,
-  accessibilityLabel,
+  size = 18,
+  frameStyle,
+  featuredFrameStyle,
 }: {
-  title: string;
+  markId: string;
   motion: string;
   isUnlocked: boolean;
   isFeatured: boolean;
-  onPress?: () => void;
-  accessibilityLabel?: string;
+  size?: number;
+  frameStyle?: object;
+  featuredFrameStyle?: object;
 }) => {
   const progress = useMemo(() => new Animated.Value(0), []);
 
   useEffect(() => {
     progress.stopAnimation();
     progress.setValue(0);
-    if (!isUnlocked) return;
+    if (!isUnlocked || motion === 'none') return;
 
     const duration = markMotionDurationMs(motion);
     const animation =
@@ -2253,93 +2449,95 @@ const MobileMarkPill = ({
     };
   }, [isUnlocked, motion, progress]);
 
+  const iconColor = !isUnlocked
+    ? 'rgba(142, 139, 132, 0.62)'
+    : isFeatured
+      ? '#d9e2bf'
+      : '#8A9A5B';
+
+  const animatedStyle = !isUnlocked || motion === 'none'
+    ? null
+    : resolveMarkIconAnimatedStyle(motion, progress);
+
+  return (
+    <Animated.View
+      style={[
+        frameStyle,
+        isUnlocked && isFeatured ? featuredFrameStyle || null : null,
+        animatedStyle,
+      ]}
+    >
+      <MobileMarkIcon
+        markId={markId}
+        color={iconColor}
+        size={size}
+        opacity={isUnlocked ? 1 : 0.84}
+      />
+    </Animated.View>
+  );
+};
+
+const MobileMarkPill = ({
+  markId,
+  title,
+  motion,
+  isUnlocked,
+  isFeatured,
+  onPress,
+  accessibilityLabel,
+}: {
+  markId: string;
+  title: string;
+  motion: string;
+  isUnlocked: boolean;
+  isFeatured: boolean;
+  onPress?: () => void;
+  accessibilityLabel?: string;
+}) => {
+  const progress = useMemo(() => new Animated.Value(0), []);
+
+  useEffect(() => {
+    progress.stopAnimation();
+    progress.setValue(0);
+    if (!isUnlocked || motion === 'none') return;
+
+    const duration = markMotionDurationMs(motion);
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(progress, {
+          toValue: 1,
+          duration: Math.round(duration / 2),
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: SUPPORTS_NATIVE_DRIVER,
+        }),
+        Animated.timing(progress, {
+          toValue: 0,
+          duration: Math.round(duration / 2),
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: SUPPORTS_NATIVE_DRIVER,
+        }),
+      ])
+    );
+
+    animation.start();
+    return () => {
+      animation.stop();
+    };
+  }, [isUnlocked, motion, progress]);
+
   const containerAnimatedStyle = isUnlocked
     ? {
-        opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }),
+        opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0.84, 1] }),
         transform: [
           {
             scale: progress.interpolate({
               inputRange: [0, 1],
-              outputRange: [0.985, isFeatured ? 1.05 : 1.03],
+              outputRange: [0.98, isFeatured ? 1.04 : 1.02],
             }),
           },
         ],
       }
     : null;
-
-  const glyphAnimatedStyle = (() => {
-    if (!isUnlocked) return null;
-
-    switch (motion) {
-      case 'spin':
-        return {
-          transform: [
-            {
-              rotate: progress.interpolate({
-                inputRange: [0, 1],
-                outputRange: ['0deg', '360deg'],
-              }),
-            },
-          ],
-        };
-      case 'float':
-        return {
-          transform: [
-            {
-              translateY: progress.interpolate({
-                inputRange: [0, 0.5, 1],
-                outputRange: [0, -2, 0],
-              }),
-            },
-          ],
-        };
-      case 'signal':
-        return {
-          opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }),
-          transform: [
-            {
-              scale: progress.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0.9, 1.18],
-              }),
-            },
-          ],
-        };
-      case 'spark':
-        return {
-          opacity: progress.interpolate({
-            inputRange: [0, 0.35, 0.7, 1],
-            outputRange: [0.74, 1, 0.86, 0.74],
-          }),
-          transform: [
-            {
-              rotate: progress.interpolate({
-                inputRange: [0, 0.35, 0.7, 1],
-                outputRange: ['-8deg', '8deg', '0deg', '-8deg'],
-              }),
-            },
-            {
-              scale: progress.interpolate({
-                inputRange: [0, 0.35, 0.7, 1],
-                outputRange: [0.9, 1.16, 1, 0.9],
-              }),
-            },
-          ],
-        };
-      case 'pulse':
-      default:
-        return {
-          transform: [
-            {
-              scale: progress.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0.9, 1.12],
-              }),
-            },
-          ],
-        };
-    }
-  })();
 
   const content = (
     <Animated.View
@@ -2351,13 +2549,14 @@ const MobileMarkPill = ({
       ]}
     >
       <View style={styles.markPillContentRow}>
-        <Animated.View
-          style={[
-            styles.markPillGlyph,
-            isUnlocked ? styles.markPillGlyphUnlocked : styles.markPillGlyphLocked,
-            isUnlocked && isFeatured ? styles.markPillGlyphFeatured : null,
-            glyphAnimatedStyle,
-          ]}
+        <MobileAnimatedMarkGlyph
+          markId={markId}
+          motion={motion}
+          isUnlocked={isUnlocked}
+          isFeatured={isFeatured}
+          size={18}
+          frameStyle={styles.markPillIconFrame}
+          featuredFrameStyle={styles.markPillIconFrameFeatured}
         />
         <Text
           style={[
@@ -2478,6 +2677,17 @@ const MobileMarkDetailModal = ({
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.modalContentSurface}>
+              <View style={styles.markDetailHero}>
+                <MobileAnimatedMarkGlyph
+                  markId={mark.id}
+                  motion={mark.motion}
+                  isUnlocked={isUnlocked}
+                  isFeatured={isFeatured}
+                  size={54}
+                  frameStyle={styles.markDetailGlyphFrame}
+                  featuredFrameStyle={styles.markDetailGlyphFrameFeatured}
+                />
+              </View>
               <Text style={styles.sectionLeadEyebrow}>{mark.categoryLabel}</Text>
               <Text style={styles.sectionLeadTitle}>{mark.title}</Text>
 
@@ -2520,46 +2730,58 @@ const MobileMarkDetailModal = ({
   );
 };
 
+type ProfileActivitySurfaceState = {
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  message: string;
+  items: MobileProfileActivityItem[];
+};
+
+const buildProfileArchiveMovie = (film: {
+  key: string;
+  title: string;
+  posterPath: string | null;
+  year: number | null;
+  lastDate: string;
+  count: number;
+}): MobileWatchedMovie => ({
+  id: film.key,
+  movieTitle: film.title,
+  posterPath: film.posterPath,
+  year: film.year,
+  watchedAt: film.lastDate || new Date().toISOString(),
+  watchedDayKey: film.lastDate || '-',
+  watchCount: film.count,
+  source: 'ritual',
+});
+
 const ProfileUnifiedCard = ({
   state,
   isSignedIn,
-  language = 'tr',
   isShareHubActive = false,
-  themeModeLabel,
   displayName,
   avatarUrl,
   username,
   bio,
   birthDateLabel,
+  genderLabel,
   profileLink,
-  genreItems,
-  watchedMoviesState,
   onOpenSettings,
   onOpenProfileLink,
   onOpenShareHub,
-  onOpenMovieArchive,
 }: {
   state: ProfileState;
   isSignedIn: boolean;
-  language?: MobileSettingsLanguage;
   isShareHubActive?: boolean;
-  themeModeLabel: string;
   displayName: string;
   avatarUrl?: string;
   username?: string;
   bio?: string;
   birthDateLabel?: string;
+  genderLabel?: string;
   profileLink?: string;
-  genreItems: Array<{ genre: string; count: number }>;
-  watchedMoviesState: {
-    status: 'idle' | 'loading' | 'ready' | 'error';
-    message: string;
-    items: MobileWatchedMovie[];
-  };
   onOpenSettings?: () => void;
   onOpenProfileLink?: () => void;
   onOpenShareHub: () => void;
-  onOpenMovieArchive: (movie: MobileWatchedMovie) => void;
 }) => {
   const normalizedDisplayName = String(displayName || '').trim() || 'Observer';
   const normalizedAvatarUrl = String(avatarUrl || '').trim();
@@ -2567,6 +2789,7 @@ const ProfileUnifiedCard = ({
   const normalizedBio =
     String(bio || '').trim() || 'Profil notunu ayarlardan duzenleyerek sahneni netlestirebilirsin.';
   const normalizedBirthDate = String(birthDateLabel || '').trim();
+  const normalizedGender = String(genderLabel || '').trim();
   const normalizedLink = String(profileLink || '').trim();
   const hasLink = Boolean(normalizedLink);
   const isProfileReady = state.status === 'success';
@@ -2582,19 +2805,14 @@ const ProfileUnifiedCard = ({
   const fillTailColor = getProgressTailColor(progress.progressPercentage);
   const effectiveProgressWidth =
     progress.progressPercentage > 0 ? Math.max(progress.progressPercentage, 3) : 0;
-  const topGenres = genreItems.slice(0, 4);
-  const archivePreview = watchedMoviesState.items.slice(0, 6);
-  const unlockedMarks = isProfileReady ? state.marks : [];
-  const featuredMarks = isProfileReady ? state.featuredMarks : [];
-  const markPreviewIds = (featuredMarks.length > 0 ? featuredMarks : unlockedMarks).slice(0, 8);
-  const [activeMarkId, setActiveMarkId] = useState<string | null>(null);
-  const topFeaturedTitle = featuredMarks[0]
-    ? resolveMobileMarkTitle(featuredMarks[0], language)
-    : '';
-  const activeMark = activeMarkId ? resolveMobileMarkMeta(activeMarkId, language) : null;
+  const identityMeta = [
+    normalizedGender ? `Cinsiyet: ${normalizedGender}` : '',
+    normalizedBirthDate ? `Dogum: ${normalizedBirthDate}` : '',
+  ]
+    .filter(Boolean)
+    .join(' | ');
 
   return (
-    <>
     <ScreenCard accent="sage">
       <View style={styles.profileUnifiedHeaderRow}>
         <View style={styles.profileUnifiedHeaderCopy}>
@@ -2603,7 +2821,7 @@ const ProfileUnifiedCard = ({
           <Text style={styles.sectionLeadBody}>
             {isSignedIn
               ? normalizedBio
-              : 'Profil, arsiv ve marklarin tek merkezden gorunmesi icin oturum ac.'}
+              : 'Profil, lig, streak ve arsiv katmanlarini gorebilmek icin oturum ac.'}
           </Text>
         </View>
         {onOpenSettings ? (
@@ -2639,7 +2857,7 @@ const ProfileUnifiedCard = ({
             {normalizedUsername ? `@${normalizedUsername}` : 'Handle eklenmedi'}
           </Text>
           <Text style={styles.screenMeta}>
-            {normalizedBirthDate ? `Dogum: ${normalizedBirthDate}` : 'Dogum bilgisi opsiyonel.'}
+            {identityMeta || 'Dogum ve cinsiyet alanlari opsiyonel.'}
           </Text>
           {hasLink ? (
             <Pressable
@@ -2660,9 +2878,6 @@ const ProfileUnifiedCard = ({
             {isProfileReady ? state.leagueName : 'Profil sync'}
           </Text>
         </View>
-        <View style={[styles.sectionLeadBadge, styles.sectionLeadBadgeMuted]}>
-          <Text style={styles.sectionLeadBadgeText}>{themeModeLabel}</Text>
-        </View>
         <View
           style={[
             styles.sectionLeadBadge,
@@ -2681,6 +2896,16 @@ const ProfileUnifiedCard = ({
         >
           <Text style={styles.sectionLeadBadgeText}>{hasLink ? 'link hazir' : 'link yok'}</Text>
         </View>
+        <View
+          style={[
+            styles.sectionLeadBadge,
+            isShareHubActive ? styles.sectionLeadBadgeClay : styles.sectionLeadBadgeMuted,
+          ]}
+        >
+          <Text style={styles.sectionLeadBadgeText}>
+            {isShareHubActive ? 'paylasim acik' : 'paylasim beklemede'}
+          </Text>
+        </View>
       </View>
 
       <View style={styles.detailInfoGrid}>
@@ -2692,9 +2917,7 @@ const ProfileUnifiedCard = ({
         </View>
         <View style={styles.detailInfoCard}>
           <Text style={styles.detailInfoLabel}>Streak</Text>
-          <Text style={styles.detailInfoValue}>
-            {isProfileReady ? String(state.streak) : '--'}
-          </Text>
+          <Text style={styles.detailInfoValue}>{isProfileReady ? String(state.streak) : '--'}</Text>
         </View>
         <View style={styles.detailInfoCard}>
           <Text style={styles.detailInfoLabel}>Takip</Text>
@@ -2732,7 +2955,7 @@ const ProfileUnifiedCard = ({
           />
         ) : null}
         <UiButton
-          label={isShareHubActive ? 'Paylasim Acik' : 'Paylas'}
+          label={isShareHubActive ? 'Paylasim Acik' : 'Paylasim Hubi'}
           tone="neutral"
           onPress={onOpenShareHub}
           disabled={!isSignedIn}
@@ -2808,132 +3031,369 @@ const ProfileUnifiedCard = ({
           </View>
         </View>
       </View>
-
-      <View style={styles.profileUnifiedDivider} />
-
-      <View style={styles.profileUnifiedSection}>
-        <Text style={styles.subSectionLabel}>Tat Haritasi</Text>
-        {topGenres.length > 0 ? (
-          <View style={styles.profileGenreList}>
-            {topGenres.map((item) => (
-              <View key={`profile-hub-genre-${item.genre}`} style={styles.profileGenreRow}>
-                <Text style={styles.profileGenreLabel}>{item.genre}</Text>
-                <Text style={styles.profileGenreValue}>x{item.count}</Text>
-              </View>
-            ))}
-          </View>
-        ) : (
-          <Text style={styles.profileUnifiedEmptyText}>
-            {isSignedIn
-              ? 'Tur dagilimi henuz olusmadi. Yeni yorumlar geldikce burada yogunluk gorunecek.'
-              : 'Oturum acinca tur dagilimi burada toplanir.'}
-          </Text>
-        )}
-      </View>
-
-      <View style={styles.profileUnifiedDivider} />
-
-      <View style={styles.profileUnifiedSection}>
-        <Text style={styles.subSectionLabel}>Son Izlenenler</Text>
-        {archivePreview.length > 0 ? (
-          <View style={styles.movieList}>
-            {archivePreview.map((movie) => {
-              const isLetterboxdItem = movie.source === 'letterboxd';
-              const content = (
-                <>
-                  <Text style={styles.movieTitle}>{movie.movieTitle}</Text>
-                  <Text style={styles.movieMeta}>
-                    {movie.year ? `${movie.year} | ` : ''}
-                    Son izleme: {movie.watchedDayKey || '-'}
-                    {movie.watchCount > 1 ? ` | Tekrar: ${movie.watchCount}` : ''}
-                    {isLetterboxdItem ? ' | Letterboxd' : ''}
-                  </Text>
-                  <Text style={styles.movieRowActionHint}>
-                    {isLetterboxdItem ? 'Letterboxd importu' : 'Yorum arsivini ac'}
-                  </Text>
-                </>
-              );
-
-              if (isLetterboxdItem) {
-                return (
-                  <View key={`profile-hub-movie-${movie.id}`} style={styles.movieRow}>
-                    {content}
-                  </View>
-                );
-              }
-
-              return (
-                <Pressable
-                  key={`profile-hub-movie-${movie.id}`}
-                  style={({ pressed }) => [styles.movieRow, pressed ? styles.movieRowPressed : null]}
-                  onPress={() => onOpenMovieArchive(movie)}
-                  hitSlop={PRESSABLE_HIT_SLOP}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${movie.movieTitle} film arsivini ac`}
-                >
-                  {content}
-                </Pressable>
-              );
-            })}
-          </View>
-        ) : (
-          <Text style={styles.profileUnifiedEmptyText}>
-            {watchedMoviesState.status === 'loading'
-              ? 'Film arsivi yukleniyor.'
-              : watchedMoviesState.message || 'Izlenen filmler burada toplanir.'}
-          </Text>
-        )}
-      </View>
-
-      <View style={styles.profileUnifiedDivider} />
-
-      <View style={styles.profileUnifiedSection}>
-        <Text style={styles.subSectionLabel}>Mark Vitrini</Text>
-        <Text style={styles.screenMeta}>
-          {isProfileReady
-            ? featuredMarks.length > 0
-              ? `${featuredMarks.length} vitrin marki secili. Ilk mark: ${topFeaturedTitle || 'hazir'}.`
-              : `${unlockedMarks.length} acik mark var.`
-            : 'Mark koleksiyonu profil verisiyle birlikte acilir.'}
-        </Text>
-        {markPreviewIds.length > 0 ? (
-          <View style={styles.markPillRow}>
-            {markPreviewIds.map((markId) => {
-              const markMeta = resolveMobileMarkMeta(markId, language);
-              const isFeatured = featuredMarks.includes(markId);
-              return (
-                <MobileMarkPill
-                  key={`profile-hub-mark-${markId}`}
-                  title={resolveMobileMarkTitle(markId, language)}
-                  motion={markMeta.motion}
-                  isUnlocked
-                  isFeatured={isFeatured}
-                  onPress={() => setActiveMarkId(markId)}
-                  accessibilityLabel={`${markMeta.title} mark detayini ac`}
-                />
-              );
-            })}
-          </View>
-        ) : (
-          <Text style={styles.profileUnifiedEmptyText}>
-            {isSignedIn
-              ? 'Henuz acik mark yok. Yeni yorumlar ve streak ile vitrin dolacak.'
-              : 'Oturum acinca mark vitrinleri burada gorunur.'}
-          </Text>
-        )}
-      </View>
     </ScreenCard>
-    <MobileMarkDetailModal
-      mark={activeMark}
-      language={language}
-      isUnlocked={Boolean(activeMarkId && unlockedMarks.includes(activeMarkId))}
-      isFeatured={Boolean(activeMarkId && featuredMarks.includes(activeMarkId))}
-      onClose={() => setActiveMarkId(null)}
-    />
+  );
+};
+
+const ProfileCinematicCard = ({
+  state,
+  isSignedIn,
+  activityState,
+}: {
+  state: ProfileState;
+  isSignedIn: boolean;
+  activityState: ProfileActivitySurfaceState;
+}) => {
+  const genreSignals = useMemo(
+    () => buildProfileGenreDistribution(activityState.items, 12),
+    [activityState.items]
+  );
+  const topGenres = useMemo(() => genreSignals.slice(0, 3), [genreSignals]);
+  const totalGenres = useMemo(
+    () => genreSignals.reduce((sum, item) => sum + item.count, 0),
+    [genreSignals]
+  );
+  const hiddenGemCount = useMemo(
+    () => countProfileHiddenGemSignals(activityState.items),
+    [activityState.items]
+  );
+  const exact180Count = useMemo(
+    () => countProfileExactCommentSignals(activityState.items),
+    [activityState.items]
+  );
+  const streakValue = state.status === 'success' ? state.streak : 0;
+  const dnaSegments = useMemo(
+    () =>
+      buildProfileDnaSegments({
+        genreItems: topGenres,
+        hiddenGemCount,
+        exactCommentCount: exact180Count,
+        streak: streakValue,
+        uniqueGenreCount: genreSignals.length,
+      }),
+    [exact180Count, genreSignals.length, hiddenGemCount, streakValue, topGenres]
+  );
+  const unlockedCount = dnaSegments.filter((segment) => segment.unlocked).length;
+
+  if (!isSignedIn) {
+    return (
+      <StatePanel
+        tone="clay"
+        variant="empty"
+        eyebrow="Cinematic DNA"
+        title="DNA katmani icin giris yap"
+        body="Web profilindeki tur ve ritim katmani mobil profilde de ayni hesapla acilir."
+      />
+    );
+  }
+
+  if (activityState.status !== 'ready' && activityState.items.length === 0) {
+    return (
+      <StatePanel
+        tone="sage"
+        variant={activityState.status === 'loading' ? 'loading' : activityState.status === 'error' ? 'error' : 'empty'}
+        eyebrow="Cinematic DNA"
+        title={
+          activityState.status === 'loading'
+            ? 'DNA sinyali yukleniyor'
+            : activityState.status === 'error'
+              ? 'DNA sinyali okunamadi'
+              : 'DNA sinyali beklemede'
+        }
+        body={
+          activityState.status === 'error'
+            ? activityState.message || 'Profil aktivitesi okunurken gecici bir sorun olustu.'
+            : 'Yorumlar geldikce baskin turler ve unlock segmentleri burada cikar.'
+        }
+      />
+    );
+  }
+
+  if (topGenres.length === 0) {
+    return (
+      <StatePanel
+        tone="sage"
+        variant="empty"
+        eyebrow="Cinematic DNA"
+        title="Henuz DNA izi olusmadi"
+        body="Farkli turlerde yorum biraktikca web ile ayni DNA segmentleri burada dolacak."
+        meta="Ilk uc tur ve unlock ilerlemesi otomatik hesaplanir."
+      />
+    );
+  }
+
+  return (
+    <>
+      <SectionLeadCard
+        accent="sage"
+        eyebrow="Cinematic DNA"
+        title={topGenres[0]?.genre || 'DNA sinyali'}
+        body="Web profilindeki baskin tur, gizli cevher ve ritim mantigi mobile da ayni domain kuraliyla hesaplanir."
+        badges={[
+          { label: `${genreSignals.length} tur`, tone: 'sage' },
+          { label: `${hiddenGemCount} hidden gem`, tone: hiddenGemCount > 0 ? 'muted' : 'clay' },
+          { label: `${exact180Count} exact-180`, tone: exact180Count > 0 ? 'clay' : 'muted' },
+        ]}
+        metrics={[
+          { label: 'Streak', value: String(streakValue) },
+          { label: 'Tur', value: String(genreSignals.length) },
+          { label: 'Acilan', value: String(unlockedCount) },
+        ]}
+      />
+
+      <ScreenCard accent="sage">
+        <Text style={styles.subSectionLabel}>Baskin Turler</Text>
+        <View style={styles.profileDnaChart}>
+          {topGenres.map((genreEntry) => {
+            const percentage = totalGenres > 0 ? genreEntry.count / totalGenres : 0;
+            const height = Math.max(22, percentage * 100);
+            return (
+              <View key={`profile-dna-${genreEntry.genre}`} style={styles.profileDnaBarColumn}>
+                <View style={styles.profileDnaBarTrack}>
+                  <View style={[styles.profileDnaBarFill, { height: `${height}%` }]}>
+                    <View style={styles.profileDnaBarGlow} />
+                  </View>
+                </View>
+                <Text style={styles.profileDnaBarLabel}>{genreEntry.genre}</Text>
+                <Text style={styles.profileDnaBarMeta}>{Math.round(percentage * 100)}%</Text>
+              </View>
+            );
+          })}
+        </View>
+
+        <View style={styles.profileDnaSegmentGrid}>
+          {dnaSegments.map((segment) => (
+            <View
+              key={segment.id}
+              style={[
+                styles.profileDnaSegmentCard,
+                segment.unlocked ? styles.profileDnaSegmentCardUnlocked : null,
+              ]}
+            >
+              <View style={styles.profileDnaSegmentHeader}>
+                <Text
+                  style={[
+                    styles.profileDnaSegmentLabel,
+                    segment.unlocked ? styles.profileDnaSegmentLabelUnlocked : null,
+                  ]}
+                >
+                  {segment.label}
+                </Text>
+                <Text
+                  style={[
+                    styles.profileDnaSegmentState,
+                    segment.unlocked ? styles.profileDnaSegmentStateUnlocked : null,
+                  ]}
+                >
+                  {segment.unlocked ? 'Unlocked' : 'Tracking'}
+                </Text>
+              </View>
+              <Text style={styles.profileDnaSegmentDetail}>{segment.detail}</Text>
+            </View>
+          ))}
+        </View>
+      </ScreenCard>
     </>
   );
 };
 
+const ProfileActivityCard = ({
+  isSignedIn,
+  activityState,
+  shareCommentPreview,
+  canShareComment,
+  canShareStreak,
+  streakValue,
+  onOpenShareHub,
+  onOpenMovieArchive,
+}: {
+  isSignedIn: boolean;
+  activityState: ProfileActivitySurfaceState;
+  shareCommentPreview: string;
+  canShareComment: boolean;
+  canShareStreak: boolean;
+  streakValue: number;
+  onOpenShareHub: () => void;
+  onOpenMovieArchive: (movie: MobileWatchedMovie) => void;
+}) => {
+  const genreSignals = useMemo(
+    () => buildProfileGenreDistribution(activityState.items, 12),
+    [activityState.items]
+  );
+  const filmSummaries = useMemo(
+    () => buildProfileFilmSummaries(activityState.items, 8),
+    [activityState.items]
+  );
+  const pulse = useMemo(
+    () =>
+      buildProfileActivityPulse({
+        records: activityState.items,
+        genreItems: genreSignals,
+        filmSummaries,
+      }),
+    [activityState.items, filmSummaries, genreSignals]
+  );
+
+  if (!isSignedIn) {
+    return (
+      <StatePanel
+        tone="clay"
+        variant="empty"
+        eyebrow="Activity Pulse"
+        title="Aktivite katmani icin giris yap"
+        body="Yorum, film gunlugu ve paylasim bonusi web profilindeki gibi hesabina bagli calisir."
+      />
+    );
+  }
+
+  if (activityState.status !== 'ready' && activityState.items.length === 0) {
+    return (
+      <StatePanel
+        tone="clay"
+        variant={activityState.status === 'loading' ? 'loading' : activityState.status === 'error' ? 'error' : 'empty'}
+        eyebrow="Activity Pulse"
+        title={
+          activityState.status === 'loading'
+            ? 'Aktivite nabzi yukleniyor'
+            : activityState.status === 'error'
+              ? 'Aktivite nabzi okunamadi'
+              : 'Aktivite nabzi beklemede'
+        }
+        body={
+          activityState.status === 'error'
+            ? activityState.message || 'Profil aktiviteleri gecici olarak acilamadi.'
+            : 'Yorumlar geldikce yorum, film ve paylasim ozetleri burada toplanir.'
+        }
+      />
+    );
+  }
+
+  return (
+    <>
+      <SectionLeadCard
+        accent="clay"
+        eyebrow="Activity Pulse"
+        title={pulse.mostCommented === 'No records' ? 'Profil Akisi' : pulse.mostCommented}
+        body="Web profilindeki yorum, film, baskin tur ve most-commented ozetleri artik mobile da ayni hesapla ilerliyor."
+        badges={[
+          { label: `${pulse.commentsCount} yorum`, tone: 'sage' },
+          { label: `${pulse.filmsCount} film`, tone: 'muted' },
+          { label: canShareComment ? 'paylasim hazir' : 'paylasim kilitli', tone: canShareComment ? 'clay' : 'muted' },
+        ]}
+        metrics={[
+          { label: 'Yorum', value: String(pulse.commentsCount) },
+          { label: 'Film', value: String(pulse.filmsCount) },
+          { label: 'Tur', value: pulse.topGenre === 'No records' ? '--' : pulse.topGenre },
+          { label: 'Streak', value: String(streakValue) },
+        ]}
+        actions={[
+          {
+            label: canShareComment ? 'Paylasim Bonusu' : 'Paylasim Hubi',
+            tone: 'teal',
+            onPress: onOpenShareHub,
+          },
+        ]}
+      />
+
+      {activityState.status === 'error' ? (
+        <StatusStrip
+          tone="clay"
+          eyebrow="Activity Sync"
+          title="Aktivite verisi kismi geldi"
+          body={activityState.message}
+          meta="Gorunen kartlar eldeki son gecerli veriden uretiliyor."
+        />
+      ) : null}
+
+      <ScreenCard accent="clay">
+        <Text style={styles.subSectionLabel}>Paylasim Bonusu</Text>
+        <Text style={styles.screenMeta}>
+          {canShareComment
+            ? 'Bugunun yorumu web ile ayni bonus mantigi uzerinden paylasima hazir.'
+            : 'Bugunun yorumunu tamamlayinca yorum ve streak paylasimi birlikte acilacak.'}
+        </Text>
+
+        <View style={styles.profileSharePreviewCard}>
+          <Text style={styles.profileSharePreviewEyebrow}>
+            {canShareComment ? 'YORUM MODU' : 'KILITLI'}
+          </Text>
+          <Text style={styles.profileSharePreviewBody}>
+            {canShareComment
+              ? `"${shareCommentPreview}"`
+              : 'Paylasim bonusunu acmak icin bugunun yorumunu tamamla.'}
+          </Text>
+          <Text style={styles.profileSharePreviewMeta}>
+            {canShareStreak
+              ? `Streak paylasimi da hazir: ${streakValue} gun`
+              : 'Streak paylasimi icin once bugunku yorum gerekli.'}
+          </Text>
+        </View>
+
+        <UiButton
+          label={canShareComment ? 'Paylasim Hubini Ac' : 'Paylasim Hazirla'}
+          tone="neutral"
+          stretch
+          onPress={onOpenShareHub}
+        />
+      </ScreenCard>
+
+      {filmSummaries.length > 0 ? (
+        <ScreenCard accent="sage">
+          <Text style={styles.subSectionLabel}>Film Gunlugu</Text>
+          <View style={styles.profileArchiveList}>
+            {filmSummaries.map((film) => {
+              const posterUrl = resolvePosterUrl(film.posterPath);
+              return (
+                <Pressable
+                  key={film.key}
+                  style={({ pressed }) => [
+                    styles.profileArchiveRow,
+                    pressed ? styles.profileArchiveRowPressed : null,
+                  ]}
+                  onPress={() => onOpenMovieArchive(buildProfileArchiveMovie(film))}
+                  hitSlop={PRESSABLE_HIT_SLOP}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${film.title} film gunlugu detayini ac`}
+                >
+                  <View style={styles.profileArchivePosterWrap}>
+                    {posterUrl ? (
+                      <Image
+                        source={{ uri: posterUrl }}
+                        style={styles.profileArchivePosterImage}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <Text style={styles.profileArchivePosterFallback}>
+                        {(film.title.slice(0, 1) || 'F').toUpperCase()}
+                      </Text>
+                    )}
+                  </View>
+
+                  <View style={styles.profileArchiveRowCopy}>
+                    <Text style={styles.profileArchiveTitle}>{film.title}</Text>
+                    <Text style={styles.profileArchiveMeta}>
+                      {film.year ? `${film.year} | ` : ''}
+                      {film.count} yorum | Son: {film.lastDate || '-'}
+                    </Text>
+                    <Text style={styles.profileArchiveHint}>Yorum arsivini ac</Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        </ScreenCard>
+      ) : (
+        <StatePanel
+          tone="sage"
+          variant="empty"
+          eyebrow="Film Gunlugu"
+          title="Henuz film izi yok"
+          body="Yorum yazdikca en cok dondugun filmler ve arsiv baglantilari burada toplanir."
+        />
+      )}
+    </>
+  );
+};
 const ProfileMarksCard = ({
   state,
   isSignedIn,
@@ -3018,6 +3478,7 @@ const ProfileMarksCard = ({
                   return (
                     <MobileMarkPill
                       key={`featured-${markId}`}
+                      markId={markId}
                       title={resolveMobileMarkTitle(markId, language)}
                       motion={markMeta.motion}
                       isUnlocked
@@ -3055,6 +3516,7 @@ const ProfileMarksCard = ({
                         return (
                           <MobileMarkPill
                             key={`mark-${mark.id}`}
+                            markId={mark.id}
                             title={mark.title}
                             motion={mark.motion}
                             isUnlocked={isUnlocked}
@@ -4066,6 +4528,9 @@ const DailyHomeScreen = ({
   const railDragStartOffsetRef = useRef(0);
   const railDragStartXRef = useRef(0);
   const lastRailGestureAtRef = useRef(0);
+  const railPressGuardUntilRef = useRef(0);
+  const railInteractionActiveRef = useRef(false);
+  const railInteractionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const railMovies = state.status === 'success' ? state.movies.slice(0, 5) : [];
 
   const formatAge = (ageSeconds: number | null): string => {
@@ -4078,6 +4543,38 @@ const DailyHomeScreen = ({
   const markRailGesture = useCallback(() => {
     lastRailGestureAtRef.current = Date.now();
   }, []);
+
+  const clearRailInteractionTimeout = useCallback(() => {
+    if (railInteractionTimeoutRef.current !== null) {
+      clearTimeout(railInteractionTimeoutRef.current);
+      railInteractionTimeoutRef.current = null;
+    }
+  }, []);
+
+  const extendRailPressGuard = useCallback((delay = DAILY_MOVIE_RAIL_PRESS_GUARD_MS) => {
+    railPressGuardUntilRef.current = Math.max(railPressGuardUntilRef.current, Date.now() + delay);
+  }, []);
+
+  const beginRailInteraction = useCallback(() => {
+    clearRailInteractionTimeout();
+    railInteractionActiveRef.current = true;
+    markRailGesture();
+    extendRailPressGuard();
+  }, [clearRailInteractionTimeout, extendRailPressGuard, markRailGesture]);
+
+  const endRailInteraction = useCallback(
+    (delay = DAILY_MOVIE_RAIL_PRESS_GUARD_MS) => {
+      extendRailPressGuard(delay);
+      clearRailInteractionTimeout();
+      railInteractionTimeoutRef.current = setTimeout(() => {
+        railInteractionActiveRef.current = false;
+        railInteractionTimeoutRef.current = null;
+      }, delay);
+    },
+    [clearRailInteractionTimeout, extendRailPressGuard]
+  );
+
+  useEffect(() => () => clearRailInteractionTimeout(), [clearRailInteractionTimeout]);
 
   const scrollToRailIndex = useCallback(
     (requestedIndex: number) => {
@@ -4114,12 +4611,12 @@ const DailyHomeScreen = ({
       onMoveShouldSetResponderCapture: (event: { nativeEvent: { pageX: number } }) =>
         Math.abs(event.nativeEvent.pageX - railDragStartXRef.current) > 6,
       onResponderGrant: (event: { nativeEvent: { pageX: number } }) => {
-        markRailGesture();
+        beginRailInteraction();
         railDragStartXRef.current = event.nativeEvent.pageX;
         railDragStartOffsetRef.current = railScrollOffsetRef.current;
       },
       onResponderMove: (event: { nativeEvent: { pageX: number } }) => {
-        markRailGesture();
+        beginRailInteraction();
         const deltaX = event.nativeEvent.pageX - railDragStartXRef.current;
         const maxOffset = Math.max(0, (railMovies.length - 1) * DAILY_MOVIE_CARD_STRIDE);
         const nextOffset = Math.max(
@@ -4131,13 +4628,15 @@ const DailyHomeScreen = ({
       },
       onResponderRelease: () => {
         snapRailToNearest(railScrollOffsetRef.current);
+        endRailInteraction();
       },
       onResponderTerminate: () => {
         snapRailToNearest(railScrollOffsetRef.current);
+        endRailInteraction();
       },
       onResponderTerminationRequest: () => false,
     };
-  }, [isWebSurface, markRailGesture, railMovies.length, snapRailToNearest]);
+  }, [beginRailInteraction, endRailInteraction, isWebSurface, railMovies.length, snapRailToNearest]);
 
   if (state.status === 'loading' || state.status === 'idle') {
     return (
@@ -4265,7 +4764,13 @@ const DailyHomeScreen = ({
                 <Pressable
                   style={[styles.movieCardWrapper, isSelected ? styles.movieCardWrapperSelected : null]}
                   onPress={() => {
-                    if (Date.now() - lastRailGestureAtRef.current < 220) return;
+                    if (
+                      railInteractionActiveRef.current ||
+                      Date.now() < railPressGuardUntilRef.current ||
+                      Date.now() - lastRailGestureAtRef.current < DAILY_MOVIE_RAIL_PRESS_GUARD_MS
+                    ) {
+                      return;
+                    }
                     onSelectMovie?.(movie.id);
                   }}
                   accessibilityRole="button"
@@ -4300,28 +4805,27 @@ const DailyHomeScreen = ({
             keyboardShouldPersistTaps="handled"
             scrollEventThrottle={16}
             onScrollBeginDrag={() => {
-              markRailGesture();
+              beginRailInteraction();
+            }}
+            onMomentumScrollBegin={() => {
+              beginRailInteraction();
             }}
             onScroll={(event) => {
-              markRailGesture();
+              beginRailInteraction();
               railScrollOffsetRef.current = event.nativeEvent.contentOffset.x;
             }}
-            onMomentumScrollEnd={
-              isWebSurface
-                ? (event) => {
-                    markRailGesture();
-                    snapRailToNearest(event.nativeEvent.contentOffset.x);
-                  }
-                : undefined
-            }
-            onScrollEndDrag={
-              isWebSurface
-                ? (event) => {
-                    markRailGesture();
-                    snapRailToNearest(event.nativeEvent.contentOffset.x);
-                  }
-                : undefined
-            }
+            onMomentumScrollEnd={(event) => {
+              if (isWebSurface) {
+                snapRailToNearest(event.nativeEvent.contentOffset.x);
+              }
+              endRailInteraction();
+            }}
+            onScrollEndDrag={(event) => {
+              if (isWebSurface) {
+                snapRailToNearest(event.nativeEvent.contentOffset.x);
+              }
+              endRailInteraction();
+            }}
             contentContainerStyle={styles.movieListHorizontal}
           />
         </View>
@@ -4478,6 +4982,7 @@ const MobileDailyQuizPanel = ({
   isSignedIn,
   onStartComment,
   onRequireAuth,
+  onApplyQuizProgress,
 }: {
   movieId: number;
   dateKey?: string | null;
@@ -4485,6 +4990,12 @@ const MobileDailyQuizPanel = ({
   isSignedIn: boolean;
   onStartComment: () => void;
   onRequireAuth?: () => void;
+  onApplyQuizProgress?: (input: {
+    totalXp: number | null;
+    streak: number | null;
+    dateKey: string;
+    streakProtectedNow: boolean;
+  }) => void;
 }) => {
   const copy = MOBILE_QUIZ_COPY[language];
   const [bundle, setBundle] = useState<MobileDailyQuizBundle | null>(null);
@@ -4564,6 +5075,12 @@ const MobileDailyQuizPanel = ({
       }
 
       setLastXpDelta(result.xp.delta);
+      onApplyQuizProgress?.({
+        totalXp: result.xp.total,
+        streak: result.xp.streak,
+        dateKey: bundle.date,
+        streakProtectedNow: result.xp.streakProtectedNow,
+      });
       setBundle((current) =>
         current
           ? updateMobileQuizBundleAfterAnswer(current, {
@@ -4577,7 +5094,7 @@ const MobileDailyQuizPanel = ({
       );
       setSubmittingQuestionId(null);
     },
-    [bundle, copy.error, isSignedIn, language, submittingQuestionId]
+    [bundle, copy.error, isSignedIn, language, onApplyQuizProgress, submittingQuestionId]
   );
 
   return (
@@ -4706,6 +5223,7 @@ const MovieDetailsModal = ({
   onClose,
   onOpenCommentComposer,
   onRequireAuth,
+  onApplyQuizProgress,
   language,
   isSignedIn,
 }: {
@@ -4725,6 +5243,12 @@ const MovieDetailsModal = ({
   onClose: () => void;
   onOpenCommentComposer?: () => void;
   onRequireAuth?: () => void;
+  onApplyQuizProgress?: (input: {
+    totalXp: number | null;
+    streak: number | null;
+    dateKey: string;
+    streakProtectedNow: boolean;
+  }) => void;
   language: MobileDailyQuizLanguageCode;
   isSignedIn: boolean;
 }) => {
@@ -4799,6 +5323,7 @@ const MovieDetailsModal = ({
                   isSignedIn={isSignedIn}
                   onStartComment={onOpenCommentComposer}
                   onRequireAuth={onRequireAuth}
+                  onApplyQuizProgress={onApplyQuizProgress}
                 />
               ) : null}
             </View>
@@ -7396,6 +7921,8 @@ export {
   ProfileXpCard,
   ProfileIdentityCard,
   ProfileUnifiedCard,
+  ProfileCinematicCard,
+  ProfileActivityCard,
   ProfileGenreDistributionCard,
   ProfileSnapshotCard,
   ProfileMarksCard,
@@ -7407,6 +7934,7 @@ export {
   RitualDraftCard,
   RitualComposerModal,
   LeaguePromotionModal,
+  StreakCelebrationModal,
   InviteClaimScreen,
   ShareHubScreen,
   DiscoverRoutesCard,
@@ -7428,3 +7956,21 @@ export type {
   MobileSettingsPrivacyDraft,
   MobileSettingsSaveState,
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

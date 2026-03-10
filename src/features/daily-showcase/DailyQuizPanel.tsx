@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { Movie } from '../../data/mockMovies';
 import { useLanguage } from '../../context/LanguageContext';
+import { useXP } from '../../context/XPContext';
 import {
     readDailyQuizBundle,
     submitDailyQuizAnswer,
@@ -142,6 +143,7 @@ const updateBundleAfterAnswer = (
 
 export const DailyQuizPanel: React.FC<DailyQuizPanelProps> = ({ movie, onStartComment }) => {
     const { language } = useLanguage();
+    const { applyQuizProgress } = useXP();
     const resolvedLanguage = normalizeLanguage(language);
     const copy = QUIZ_COPY[resolvedLanguage];
     const [bundle, setBundle] = useState<DailyQuizBundle | null>(null);
@@ -217,6 +219,12 @@ export const DailyQuizPanel: React.FC<DailyQuizPanelProps> = ({ movie, onStartCo
         }
 
         setLastXpDelta(result.xp.delta);
+        applyQuizProgress({
+            totalXP: result.xp.total,
+            streak: result.xp.streak,
+            dateKey: bundle.date,
+            streakProtectedNow: result.xp.streakProtectedNow
+        });
         setBundle((current) =>
             current
                 ? updateBundleAfterAnswer(current, {
@@ -331,3 +339,5 @@ export const DailyQuizPanel: React.FC<DailyQuizPanelProps> = ({ movie, onStartCo
         </div>
     );
 };
+
+
