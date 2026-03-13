@@ -146,6 +146,7 @@ import {
   claimMobileShareReward,
   MOBILE_SHARE_REWARD_XP,
 } from './src/lib/mobileShareRewardSync';
+import { deleteMobileAccount } from './src/lib/mobileAccountDeletion';
 import { isSupabaseConfigured, readSupabaseSessionSafe, supabase } from './src/lib/supabase';
 import {
   resolveSupabaseUserAuthLabel,
@@ -778,6 +779,10 @@ export default function App() {
     DEFAULT_SETTINGS_PRIVACY
   );
   const [settingsSaveState, setSettingsSaveState] = useState<MobileSettingsSaveState>({
+    status: 'idle',
+    message: '',
+  });
+  const [accountDeletionState, setAccountDeletionState] = useState<MobileSettingsSaveState>({
     status: 'idle',
     message: '',
   });
@@ -2752,6 +2757,14 @@ export default function App() {
   const tabTheme = useMemo(() => createTabTheme(themeMode), [themeMode]);
 
   useEffect(() => {
+    if (settingsVisible) return;
+    setAccountDeletionState({
+      status: 'idle',
+      message: '',
+    });
+  }, [settingsVisible]);
+
+  useEffect(() => {
     void trackMobileEvent('session_start', {
       platform: Platform.OS,
       appSurface: 'mobile_native',
@@ -4718,18 +4731,128 @@ export default function App() {
     }
   }, [settingsIdentityDraft.profileLink]);
 
-  const handleOpenAccountDeletion = useCallback(async () => {
+  const resetLocalAccountStateAfterDeletion = useCallback(async (message: string) => {
+    await supabase?.auth.signOut({ scope: 'local' }).catch(() => undefined);
+    await clearPushInbox().catch(() => undefined);
+    await AsyncStorage.multiRemove([
+      MOBILE_PROFILE_IDENTITY_STORAGE_KEY,
+      MOBILE_PROFILE_PRIVACY_STORAGE_KEY,
+      MOBILE_AUTH_REMEMBER_ME_STORAGE_KEY,
+    ]).catch(() => undefined);
+
+    setAuthState({
+      status: 'signed_out',
+      message,
+    });
+    setAuthModalVisible(false);
+    setSettingsVisible(false);
+    setAuthEmail('');
+    setAuthFullName('');
+    setAuthUsername('');
+    setAuthBirthDate('');
+    setAuthPassword('');
+    setAuthConfirmPassword('');
+    setAuthFlowMode('login');
+    setAuthEntryStage('intro');
+    setSettingsIdentityDraft(DEFAULT_SETTINGS_IDENTITY);
+    setSettingsPrivacyDraft(DEFAULT_SETTINGS_PRIVACY);
+    setSettingsSaveState({
+      status: 'idle',
+      message: '',
+    });
+    setInviteCodeDraft('');
+    setInviteStatus('');
+    setInviteProgram({
+      code: '',
+      inviteLink: '',
+      claimCount: 0,
+    });
+    setInviteClaimState({ status: 'idle' });
+    setProfileState({
+      status: 'idle',
+      message: 'Profil metrikleri hazir degil.',
+    });
+    setProfileActivityState({
+      status: 'idle',
+      message: 'Profil aktivitesi hazir degil.',
+      items: [],
+    });
+    setPushInboxState({
+      status: 'idle',
+      message: 'Notification inbox yuklenmedi.',
+      items: [],
+    });
+    setPushState({
+      status: PUSH_FEATURE_ENABLED ? 'idle' : 'unsupported',
+      message: PUSH_FEATURE_ENABLED
+        ? 'Push kaydi bekleniyor.'
+        : 'Push modulu gecici olarak devre disi.',
+      permissionStatus: 'unknown',
+      token: '',
+      projectId: null,
+      lastNotification: 'none',
+      cloudStatus: 'idle',
+      cloudMessage: 'Push cloud sync icin token bekleniyor.',
+      deviceKey: '',
+      lastSyncedToken: '',
+    });
+  }, []);
+
+  const handleOpenAccountDeletionInfo = useCallback(async () => {
     try {
       const canOpen = await Linking.canOpenURL(MOBILE_ACCOUNT_DELETION_URL);
       if (!canOpen) return;
       await Linking.openURL(MOBILE_ACCOUNT_DELETION_URL);
       void trackMobileEvent('page_view', {
-        reason: 'mobile_account_deletion_open',
+        reason: 'mobile_account_deletion_info_open',
       });
     } catch {
       // ignore link open failures in account deletion action
     }
   }, []);
+
+  const handleDeleteAccount = useCallback(async () => {
+    if (authState.status !== 'signed_in') {
+      setAccountDeletionState({
+        status: 'error',
+        message: 'Hesap silmek icin once giris yapman gerekiyor.',
+      });
+      return;
+    }
+
+    setAccountDeletionState({
+      status: 'saving',
+      message: 'Hesap siliniyor...',
+    });
+
+    void trackMobileEvent('page_view', {
+      reason: 'mobile_account_deletion_requested',
+    });
+
+    const result = await deleteMobileAccount();
+    if (!result.ok) {
+      const message = result.message || 'Hesap silme istegi basarisiz oldu.';
+      setAccountDeletionState({
+        status: 'error',
+        message,
+      });
+      void trackMobileEvent('page_view', {
+        reason: 'mobile_account_deletion_failed',
+        message,
+      });
+      return;
+    }
+
+    const message = 'Hesabin kalici olarak silindi.';
+    setAccountDeletionState({
+      status: 'success',
+      message,
+    });
+    void trackMobileEvent('page_view', {
+      reason: 'mobile_account_deleted',
+    });
+    await resetLocalAccountStateAfterDeletion(message);
+  }, [authState.status, resetLocalAccountStateAfterDeletion]);
 
   const handlePullRefreshProfile = useCallback(async () => {
     if (profilePullRefreshing) return;
@@ -6299,8 +6422,12 @@ export default function App() {
             isInviteActionBusy={isInviteActionBusy}
             canCopyInviteLink={Boolean(inviteProgram.inviteLink)}
             isSignedIn={isSignedIn}
-            onOpenAccountDeletion={() => {
-              void handleOpenAccountDeletion();
+            accountDeletionState={accountDeletionState}
+            onDeleteAccount={() => {
+              void handleDeleteAccount();
+            }}
+            onOpenAccountDeletionInfo={() => {
+              void handleOpenAccountDeletionInfo();
             }}
             letterboxdSummary={letterboxdSummary}
             letterboxdStatus={letterboxdImportState.message}

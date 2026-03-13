@@ -4997,7 +4997,7 @@ const MobileDailyQuizPanel = ({
     streakProtectedNow: boolean;
   }) => void;
 }) => {
-  const copy = MOBILE_QUIZ_COPY[language];
+  const copy = MOBILE_QUIZ_COPY[language] || MOBILE_QUIZ_COPY.en;
   const [bundle, setBundle] = useState<MobileDailyQuizBundle | null>(null);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
@@ -5044,12 +5044,15 @@ const MobileDailyQuizPanel = ({
   }, [copy.error, dateKey, language, movieId]);
 
   const movieBlock = useMemo(
-    () => bundle?.questionsByMovie.find((entry) => entry.movieId === movieId) || null,
-    [bundle?.questionsByMovie, movieId]
+    () =>
+      Array.isArray(bundle?.questionsByMovie)
+        ? bundle.questionsByMovie.find((entry) => entry.movieId === movieId) || null
+        : null,
+    [bundle, movieId]
   );
-
-  const answeredCount = movieBlock?.questions.filter((question) => question.attempt).length || 0;
-  const correctCount = movieBlock?.questions.filter((question) => question.attempt?.isCorrect).length || 0;
+  const questions = Array.isArray(movieBlock?.questions) ? movieBlock.questions : [];
+  const answeredCount = questions.filter((question) => question.attempt).length;
+  const correctCount = questions.filter((question) => question.attempt?.isCorrect).length;
   const requiredCorrectCount = movieBlock?.requiredCorrectCount || 0;
   const isUnlocked = requiredCorrectCount > 0 && correctCount >= requiredCorrectCount;
   const unlockHint = getMobileUnlockHint(language, requiredCorrectCount);
@@ -5126,7 +5129,7 @@ const MobileDailyQuizPanel = ({
 
           <View style={styles.dailyQuizSummaryCard}>
             <Text style={styles.dailyQuizSummaryText}>
-              {copy.progress}: {answeredCount}/{movieBlock.questions.length}
+              {copy.progress}: {answeredCount}/{questions.length}
             </Text>
             <Text style={styles.dailyQuizSummaryText}>
               {copy.correct}: {correctCount}/{requiredCorrectCount}
@@ -5137,7 +5140,7 @@ const MobileDailyQuizPanel = ({
             {lastXpDelta > 0 ? <Text style={styles.dailyQuizSummaryText}>+{lastXpDelta} XP</Text> : null}
           </View>
 
-          {movieBlock.questions.map((question) => {
+          {questions.map((question) => {
             const isSaving = submittingQuestionId === question.id;
             const selectedOption = question.attempt?.selectedOption || null;
             const isAnswered = Boolean(question.attempt);
@@ -5316,15 +5319,17 @@ const MovieDetailsModal = ({
               <Text style={styles.movieDetailBody}>{movie.overview || 'Konu ozeti bulunamiyor.'}</Text>
 
               {onOpenCommentComposer ? (
-                <MobileDailyQuizPanel
-                  movieId={movie.id}
-                  dateKey={movie.dateKey}
-                  language={language}
-                  isSignedIn={isSignedIn}
-                  onStartComment={onOpenCommentComposer}
-                  onRequireAuth={onRequireAuth}
-                  onApplyQuizProgress={onApplyQuizProgress}
-                />
+                <ScreenErrorBoundary section="Film Quiz">
+                  <MobileDailyQuizPanel
+                    movieId={movie.id}
+                    dateKey={movie.dateKey}
+                    language={language}
+                    isSignedIn={isSignedIn}
+                    onStartComment={onOpenCommentComposer}
+                    onRequireAuth={onRequireAuth}
+                    onApplyQuizProgress={onApplyQuizProgress}
+                  />
+                </ScreenErrorBoundary>
               ) : null}
             </View>
 
@@ -5914,6 +5919,12 @@ type MobileSettingsLocaleCopy = {
     body: string;
     meta: string;
     button: string;
+    infoButton?: string;
+    confirmTitle?: string;
+    confirmBody?: string;
+    confirmButton?: string;
+    cancelButton?: string;
+    signedOutBody?: string;
     sectionMeta: string;
     eyebrow: string;
   };
@@ -6139,6 +6150,76 @@ const MOBILE_SETTINGS_COPY: Record<MobileSettingsLanguage, MobileSettingsLocaleC
   },
 };
 
+const MOBILE_ACCOUNT_DELETION_RUNTIME_COPY: Record<
+  MobileSettingsLanguage,
+  {
+    body: string;
+    meta: string;
+    button: string;
+    infoButton: string;
+    confirmTitle: string;
+    confirmBody: string;
+    confirmButton: string;
+    cancelButton: string;
+    signedOutBody: string;
+    sectionMeta: string;
+    eyebrow: string;
+  }
+> = {
+  en: {
+    body: 'Delete your account and the account-linked data tied to your profile, comments, follows, referrals, and push state.',
+    meta: 'This action is permanent. Limited security and abuse-prevention records may be retained for a short period.',
+    button: 'Delete Account',
+    infoButton: 'Review Deletion Policy',
+    confirmTitle: 'Delete this account permanently?',
+    confirmBody: 'Your profile, comments, replies, follows, referral state, and account-linked push data will be removed after confirmation.',
+    confirmButton: 'Delete Permanently',
+    cancelButton: 'Keep Account',
+    signedOutBody: 'Sign in first to delete your account from inside the app.',
+    sectionMeta: 'Permanent removal',
+    eyebrow: 'Self-Service',
+  },
+  tr: {
+    body: 'Profilin, yorumlarin, takiplerin, davet durumun ve hesaba bagli push verilerinle birlikte hesabini uygulama icinden kalici olarak sil.',
+    meta: 'Bu islem geri alinmaz. Guvenlik ve kotuye kullanim kayitlarinin sinirli bir kismi kisa sure saklanabilir.',
+    button: 'Hesabi Sil',
+    infoButton: 'Silme Politikasini Ac',
+    confirmTitle: 'Bu hesabi kalici olarak silmek istiyor musun?',
+    confirmBody: 'Onaydan sonra profilin, yorumlarin, yanitlarin, takiplerin, davet verin ve hesaba bagli push durumu silinir.',
+    confirmButton: 'Kalici Olarak Sil',
+    cancelButton: 'Hesabi Koru',
+    signedOutBody: 'Uygulama icinden hesap silmek icin once giris yapman gerekiyor.',
+    sectionMeta: 'Kalici silme',
+    eyebrow: 'Self-Service',
+  },
+  es: {
+    body: 'Elimina tu cuenta y los datos ligados a tu perfil, comentarios, seguimientos, referidos y estado push desde la app.',
+    meta: 'Esta accion es permanente. Algunos registros limitados de seguridad y abuso pueden conservarse por poco tiempo.',
+    button: 'Eliminar Cuenta',
+    infoButton: 'Abrir Politica de Eliminacion',
+    confirmTitle: 'Eliminar esta cuenta de forma permanente?',
+    confirmBody: 'Tras confirmar, se eliminaran tu perfil, comentarios, respuestas, seguimientos, referidos y datos push vinculados a la cuenta.',
+    confirmButton: 'Eliminar Permanentemente',
+    cancelButton: 'Conservar Cuenta',
+    signedOutBody: 'Inicia sesion primero para eliminar tu cuenta desde la app.',
+    sectionMeta: 'Eliminacion permanente',
+    eyebrow: 'Self-Service',
+  },
+  fr: {
+    body: 'Supprime ton compte et les donnees liees a ton profil, tes commentaires, tes suivis, tes invitations et ton etat push directement depuis l app.',
+    meta: 'Cette action est definitive. Certains enregistrements limites de securite et de prevention des abus peuvent etre conserves pendant une courte periode.',
+    button: 'Supprimer le Compte',
+    infoButton: 'Ouvrir la Politique',
+    confirmTitle: 'Supprimer ce compte definitivement ?',
+    confirmBody: 'Apres confirmation, ton profil, tes commentaires, tes reponses, tes suivis, tes invitations et tes donnees push liees au compte seront supprimes.',
+    confirmButton: 'Supprimer Definitivement',
+    cancelButton: 'Conserver le Compte',
+    signedOutBody: 'Connecte-toi d abord pour supprimer ton compte depuis l app.',
+    sectionMeta: 'Suppression definitive',
+    eyebrow: 'Self-Service',
+  },
+};
+
 const RitualComposerModal = ({
   visible,
   targetMovie,
@@ -6238,7 +6319,9 @@ const MobileSettingsModal = ({
   isInviteActionBusy,
   canCopyInviteLink,
   isSignedIn,
-  onOpenAccountDeletion,
+  accountDeletionState,
+  onDeleteAccount,
+  onOpenAccountDeletionInfo,
   privacyDraft,
   onChangePrivacy,
   onSavePrivacy,
@@ -6280,7 +6363,9 @@ const MobileSettingsModal = ({
   isInviteActionBusy: boolean;
   canCopyInviteLink: boolean;
   isSignedIn: boolean;
-  onOpenAccountDeletion: () => void;
+  accountDeletionState: MobileSettingsSaveState;
+  onDeleteAccount: () => void;
+  onOpenAccountDeletionInfo: () => void;
   privacyDraft: MobileSettingsPrivacyDraft;
   onChangePrivacy: (patch: Partial<MobileSettingsPrivacyDraft>) => void;
   onSavePrivacy: () => void;
@@ -6293,6 +6378,7 @@ const MobileSettingsModal = ({
   const [activeTab, setActiveTab] = useState<'identity' | 'appearance' | 'privacy' | 'session'>('identity');
   const [passwordDraft, setPasswordDraft] = useState('');
   const [confirmPasswordDraft, setConfirmPasswordDraft] = useState('');
+  const [accountDeletionArmed, setAccountDeletionArmed] = useState(false);
   const [passwordState, setPasswordState] = useState<MobileSettingsSaveState>({
     status: 'idle',
     message: '',
@@ -6304,6 +6390,7 @@ const MobileSettingsModal = ({
     setActiveTab('identity');
     setPasswordDraft('');
     setConfirmPasswordDraft('');
+    setAccountDeletionArmed(false);
     setPasswordState({ status: 'idle', message: '' });
   }, [visible]);
 
@@ -6331,10 +6418,18 @@ const MobileSettingsModal = ({
   const activeGenderLabel =
     SETTINGS_GENDER_OPTIONS.find((option) => option.key === identityDraft.gender)?.label || 'Seç';
   const settingsCopy = MOBILE_SETTINGS_COPY[language] || MOBILE_SETTINGS_COPY.tr;
+  const accountDeletionCopy =
+    MOBILE_ACCOUNT_DELETION_RUNTIME_COPY[language] || MOBILE_ACCOUNT_DELETION_RUNTIME_COPY.tr;
   const accountDeletionTitle = settingsCopy.accountDeletion.title;
-  const accountDeletionBody = settingsCopy.accountDeletion.body;
-  const accountDeletionMeta = settingsCopy.accountDeletion.meta;
-  const accountDeletionButton = settingsCopy.accountDeletion.button;
+  const accountDeletionBody = accountDeletionCopy.body;
+  const accountDeletionMeta = accountDeletionCopy.meta;
+  const accountDeletionButton = accountDeletionCopy.button;
+  const accountDeletionInfoButton = accountDeletionCopy.infoButton;
+  const accountDeletionConfirmTitle = accountDeletionCopy.confirmTitle;
+  const accountDeletionConfirmBody = accountDeletionCopy.confirmBody;
+  const accountDeletionConfirmButton = accountDeletionCopy.confirmButton;
+  const accountDeletionCancelButton = accountDeletionCopy.cancelButton;
+  const accountDeletionSignedOutBody = accountDeletionCopy.signedOutBody;
   const isPasswordSaving = passwordState.status === 'saving';
   const passwordTone =
     passwordState.status === 'error'
@@ -6342,6 +6437,13 @@ const MobileSettingsModal = ({
       : passwordState.status === 'success'
         ? 'sage'
         : 'muted';
+  const accountDeletionTone =
+    accountDeletionState.status === 'error'
+      ? 'clay'
+      : accountDeletionState.status === 'success'
+        ? 'sage'
+        : 'muted';
+  const isAccountDeletionBusy = accountDeletionState.status === 'saving';
 
   const handleSavePasswordPress = async () => {
     setPasswordState({
@@ -7079,22 +7181,69 @@ const MobileSettingsModal = ({
                 <CollapsibleSectionCard
                   accent="clay"
                   title={accountDeletionTitle}
-                  meta={settingsCopy.accountDeletion.sectionMeta}
+                  meta={accountDeletionCopy.sectionMeta}
                   defaultExpanded
                 >
                   <StatusStrip
-                    tone="muted"
-                    eyebrow={settingsCopy.accountDeletion.eyebrow}
+                    tone={accountDeletionTone}
+                    eyebrow={accountDeletionCopy.eyebrow}
                     title={accountDeletionTitle}
-                    body={accountDeletionBody}
+                    body={accountDeletionState.message || accountDeletionBody}
                     meta={accountDeletionMeta}
                   />
 
-                  <UiButton
-                    label={accountDeletionButton}
-                    tone="neutral"
-                    onPress={onOpenAccountDeletion}
-                  />
+                  {!isSignedIn ? (
+                    <StatePanel
+                      tone="clay"
+                      variant="empty"
+                      eyebrow={accountDeletionTitle}
+                      title={accountDeletionTitle}
+                      body={accountDeletionSignedOutBody}
+                    />
+                  ) : null}
+
+                  <View style={{ gap: 10 }}>
+                    {isSignedIn && accountDeletionArmed ? (
+                      <>
+                        <StatusStrip
+                          tone="clay"
+                          eyebrow={accountDeletionCopy.eyebrow}
+                          title={accountDeletionConfirmTitle}
+                          body={accountDeletionConfirmBody}
+                        />
+                        <UiButton
+                          label={
+                            isAccountDeletionBusy
+                              ? `${accountDeletionConfirmButton}...`
+                              : accountDeletionConfirmButton
+                          }
+                          tone="danger"
+                          onPress={onDeleteAccount}
+                          disabled={isAccountDeletionBusy}
+                        />
+                        <UiButton
+                          label={accountDeletionCancelButton}
+                          tone="neutral"
+                          onPress={() => setAccountDeletionArmed(false)}
+                          disabled={isAccountDeletionBusy}
+                        />
+                      </>
+                    ) : isSignedIn ? (
+                      <UiButton
+                        label={accountDeletionButton}
+                        tone="danger"
+                        onPress={() => setAccountDeletionArmed(true)}
+                        disabled={isAccountDeletionBusy}
+                      />
+                    ) : null}
+
+                    <UiButton
+                      label={accountDeletionInfoButton}
+                      tone="neutral"
+                      onPress={onOpenAccountDeletionInfo}
+                      disabled={isAccountDeletionBusy}
+                    />
+                  </View>
                 </CollapsibleSectionCard>
 
                 <CollapsibleSectionCard
