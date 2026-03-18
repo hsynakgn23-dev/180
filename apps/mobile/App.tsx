@@ -1,24 +1,11 @@
-import { StatusBar } from 'expo-status-bar';
-import * as Clipboard from 'expo-clipboard';
-import * as DocumentPicker from 'expo-document-picker';
-import * as ImagePicker from 'expo-image-picker';
-import * as LegacyFileSystem from 'expo-file-system/legacy';
-import * as WebBrowser from 'expo-web-browser';
-import {
-  Inter_400Regular,
-  Inter_500Medium,
-  Inter_600SemiBold,
-  Inter_700Bold,
-  useFonts,
-} from '@expo-google-fonts/inter';
+import type { DocumentPickerAsset } from 'expo-document-picker';
 import {
   NavigationContainer,
   DefaultTheme as NavigationDefaultTheme,
   createNavigationContainerRef,
   type Theme as NavigationTheme,
 } from '@react-navigation/native';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Ionicons } from '@expo/vector-icons';
+import { createBottomTabNavigator, type BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import {
   ActivityIndicator,
@@ -33,6 +20,7 @@ import {
   Share,
   ScrollView,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -41,7 +29,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { appendMobileDeepLinkParams, buildMobileDeepLinkFromRouteIntent } from '../../packages/shared/src/mobile';
 import { buildLeagueNotificationCopy, buildStreakNotificationCopy, isStreakMilestone } from '../../src/domain/celebrations';
 import { fetchDailyMovies } from './src/lib/dailyApi';
-import { useMobileRouteIntent } from './src/hooks/useMobileRouteIntent';
 import { usePageEntranceAnimation } from './src/hooks/usePageEntranceAnimation';
 import { trackMobileEvent } from './src/lib/mobileAnalytics';
 import { fetchMobileArenaSnapshot, type MobileArenaEntry } from './src/lib/mobileArenaSnapshot';
@@ -117,14 +104,7 @@ import {
   submitMobileCommentReply,
   type MobileCommentReply,
 } from './src/lib/mobileCommentInteractions';
-import {
-  configureDefaultNotificationHandler,
-  readStoredPushToken,
-  registerForPushNotifications,
-  sendLocalPushSimulation,
-  subscribeToPushNotifications,
-  type PushNotificationSnapshot,
-} from './src/lib/mobilePush';
+import type { PushNotificationSnapshot } from './src/lib/mobilePush';
 import {
   fetchRecentMobileNotificationEvents,
   subscribeToMobileNotificationEvents,
@@ -140,7 +120,6 @@ import {
   sendEngagementPushNotification,
   sendPushTestNotification,
 } from './src/lib/mobilePushApi';
-import { syncPushTokenToProfileState } from './src/lib/mobilePushProfileSync';
 import { claimInviteCodeViaApi, ensureInviteCodeViaApi } from './src/lib/mobileReferralApi';
 import {
   claimMobileShareReward,
@@ -169,42 +148,14 @@ import {
   type RitualQueueState,
   type RitualSubmitState,
 } from './src/ui/appTypes';
-import {
-  ArenaChallengeCard,
-  ArenaLeaderboardCard,
-  AuthGateScreen,
-  AuthModal,
-  CollapsibleSectionCard,
-  CommentFeedCard,
-  DailyHomeScreen,
-  ScreenErrorBoundary,
-  DiscoverRoutesCard,
-  InviteClaimScreen,
-  LeaguePromotionModal,
-  StreakCelebrationModal,
-  MobileSettingsModal,
-  MovieDetailsModal,
-  PlatformRulesCard,
-  ProfileActivityCard,
-  ProfileCinematicCard,
-  ProfileMovieArchiveModal,
-  ProfileMarksCard,
-  ProfileUnifiedCard,
-  PushInboxCard,
-  PushStatusCard,
-  PublicProfileMovieArchiveModal,
-  RitualComposerModal,
-  SectionLeadCard,
-  ShareHubScreen,
-  StatePanel,
-  setAppScreensThemeMode,
-  type MobileAuthEntryStage,
-  type MobileSettingsIdentityDraft,
-  type MobileSettingsLanguage,
-  type MobileSettingsPrivacyDraft,
-  type MobileLeaguePromotionEvent,
-  type MobileSettingsSaveState,
-  type MobileStreakCelebrationEvent,
+import type {
+  MobileAuthEntryStage,
+  MobileLeaguePromotionEvent,
+  MobileSettingsIdentityDraft,
+  MobileSettingsLanguage,
+  MobileSettingsPrivacyDraft,
+  MobileSettingsSaveState,
+  MobileStreakCelebrationEvent,
 } from './src/ui/appScreens';
 import { resolveMobileWebBaseUrl } from './src/lib/mobileEnv';
 import {
@@ -212,6 +163,162 @@ import {
   writeStoredMobileThemeMode,
   type MobileThemeMode,
 } from './src/lib/mobileThemeMode';
+
+const debugRequireAppDependency = <T,>(label: string, loader: () => T): T => {
+  console.log('APP_IMPORT_STAGE', label);
+  return loader();
+};
+
+const toImportErrorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error ?? 'unknown_error');
+
+const isMissingExpoFontLoaderError = (error: unknown): boolean =>
+  toImportErrorMessage(error).includes("Cannot find native module 'ExpoFontLoader'");
+
+const debugRequireAppDependencyWithFallback = <T,>(
+  label: string,
+  loader: () => T,
+  fallback: (error: unknown) => T
+): T => {
+  console.log('APP_IMPORT_STAGE', label);
+  try {
+    return loader();
+  } catch (error) {
+    if (!isMissingExpoFontLoaderError(error)) {
+      throw error;
+    }
+    console.warn('APP_IMPORT_FALLBACK', label, toImportErrorMessage(error));
+    return fallback(error);
+  }
+};
+
+const FALLBACK_APP_FONT_FAMILY =
+  Platform.select({
+    ios: 'System',
+    android: 'sans-serif',
+    default: 'sans-serif',
+  }) ?? 'sans-serif';
+
+const { StatusBar } = debugRequireAppDependency(
+  'expo-status-bar',
+  () => require('expo-status-bar') as typeof import('expo-status-bar')
+);
+const { Ionicons } = debugRequireAppDependencyWithFallback(
+  '@expo/vector-icons',
+  () => require('@expo/vector-icons') as typeof import('@expo/vector-icons'),
+  () =>
+    ({
+    Ionicons: ({
+      size = 18,
+      color = '#ffffff',
+      style,
+    }: {
+      size?: number;
+      color?: string;
+      style?: ComponentProps<typeof Text>['style'];
+    }) => (
+      <Text
+        style={[
+          {
+            color,
+            fontFamily: FALLBACK_APP_FONT_FAMILY,
+            fontSize: size,
+            lineHeight: size * 1.1,
+            textAlign: 'center',
+          },
+          style,
+        ]}
+      >
+        *
+      </Text>
+    ),
+    }) as unknown as typeof import('@expo/vector-icons')
+);
+const DocumentPicker = debugRequireAppDependency(
+  'expo-document-picker',
+  () => require('expo-document-picker') as typeof import('expo-document-picker')
+);
+const { File: ExpoFile } = debugRequireAppDependency(
+  'expo-file-system',
+  () => require('expo-file-system') as typeof import('expo-file-system')
+);
+const ImagePicker = debugRequireAppDependency(
+  'expo-image-picker',
+  () => require('expo-image-picker') as typeof import('expo-image-picker')
+);
+const WebBrowser = debugRequireAppDependency(
+  'expo-web-browser',
+  () => require('expo-web-browser') as typeof import('expo-web-browser')
+);
+const {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+  useFonts,
+} = debugRequireAppDependencyWithFallback(
+  '@expo-google-fonts/inter',
+  () => require('@expo-google-fonts/inter') as typeof import('@expo-google-fonts/inter'),
+  () =>
+    ({
+      Inter_400Regular: FALLBACK_APP_FONT_FAMILY,
+      Inter_500Medium: FALLBACK_APP_FONT_FAMILY,
+      Inter_600SemiBold: FALLBACK_APP_FONT_FAMILY,
+      Inter_700Bold: FALLBACK_APP_FONT_FAMILY,
+      useFonts: () => [true, null] as const,
+    }) as unknown as typeof import('@expo-google-fonts/inter')
+);
+const { useMobileRouteIntent } = debugRequireAppDependency(
+  './src/hooks/useMobileRouteIntent',
+  () =>
+    require('./src/hooks/useMobileRouteIntent') as typeof import('./src/hooks/useMobileRouteIntent')
+);
+const {
+  configureDefaultNotificationHandler,
+  readStoredPushToken,
+  registerForPushNotifications,
+  sendLocalPushSimulation,
+  subscribeToPushNotifications,
+} = debugRequireAppDependency(
+  './src/lib/mobilePush',
+  () => require('./src/lib/mobilePush') as typeof import('./src/lib/mobilePush')
+);
+const { syncPushTokenToProfileState } = debugRequireAppDependency(
+  './src/lib/mobilePushProfileSync',
+  () =>
+    require('./src/lib/mobilePushProfileSync') as typeof import('./src/lib/mobilePushProfileSync')
+);
+const {
+  ArenaChallengeCard,
+  ArenaLeaderboardCard,
+  AuthGateScreen,
+  AuthModal,
+  CollapsibleSectionCard,
+  CommentFeedCard,
+  DailyHomeScreen,
+  DiscoverRoutesCard,
+  InviteClaimScreen,
+  LeaguePromotionModal,
+  MobileSettingsModal,
+  MovieDetailsModal,
+  PlatformRulesCard,
+  ProfileCinematicCard,
+  ProfileMarksCard,
+  ProfileMovieArchiveModal,
+  ProfileUnifiedCard,
+  PublicProfileMovieArchiveModal,
+  PushInboxCard,
+  PushStatusCard,
+  RitualComposerModal,
+  ScreenErrorBoundary,
+  SectionLeadCard,
+  setAppScreensThemeMode,
+  StatePanel,
+  StreakCelebrationModal,
+} = debugRequireAppDependency(
+  './src/ui/appScreens',
+  () => require('./src/ui/appScreens') as typeof import('./src/ui/appScreens')
+);
 
 const isEnvFlagEnabled = (value: string | undefined, defaultValue = true): boolean => {
   const normalized = String(value ?? '').trim().toLowerCase();
@@ -237,6 +344,16 @@ const MOBILE_WEB_BASE_URL = resolveMobileWebBaseUrl();
 const MOBILE_ACCOUNT_DELETION_URL = MOBILE_WEB_BASE_URL
   ? `${MOBILE_WEB_BASE_URL}/account-deletion/`
   : 'https://180absolutecinema.com/account-deletion/';
+
+const writeClipboardString = async (value: string): Promise<boolean> => {
+  try {
+    const Clipboard = await import('expo-clipboard');
+    await Clipboard.setStringAsync(value);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -318,9 +435,7 @@ const decodeBase64Utf8 = (base64: string): string => {
   }
 };
 
-const readPickedAssetAsText = async (
-  asset: DocumentPicker.DocumentPickerAsset
-): Promise<string> => {
+const readPickedAssetAsText = async (asset: DocumentPickerAsset): Promise<string> => {
   if (Platform.OS === 'web') {
     if (asset.file && typeof asset.file.text === 'function') {
       return await asset.file.text();
@@ -354,7 +469,7 @@ const readPickedAssetAsText = async (
     throw new Error('Secilen dosya web uzerinde okunamadi.');
   }
 
-  return await LegacyFileSystem.readAsStringAsync(asset.uri);
+  return await new ExpoFile(asset.uri).text();
 };
 
 const readPickedAssetAsDataUrl = async (asset: PickedImageAsset, mimeType: string): Promise<string> => {
@@ -384,9 +499,7 @@ const readPickedAssetAsDataUrl = async (asset: PickedImageAsset, mimeType: strin
     throw new Error('Secilen gorsel cihazdan okunamadi.');
   }
 
-  const base64 = await LegacyFileSystem.readAsStringAsync(nativeUri, {
-    encoding: 'base64',
-  });
+  const base64 = await new ExpoFile(nativeUri).base64();
   return `data:${mimeType};base64,${String(base64 || '').trim()}`;
 };
 
@@ -504,19 +617,19 @@ const parseStoredLanguage = (raw: string | null): MobileSettingsLanguage => {
 const DISCOVER_ROUTE_CONFIG = [
   {
     id: 'mood_films',
-    title: 'Mood Films',
+    title: 'Ruh Hali Secimleri',
     description: 'Moda gore hizli secimler ve tematik listeler.',
     path: '/discover/mood-films/',
   },
   {
     id: 'director_deep_dives',
-    title: 'Director Deep Dives',
+    title: 'Yonetmen Dosyalari',
     description: 'Yonetmen odakli arsiv ve derin okuma rotalari.',
     path: '/discover/director-deep-dives/',
   },
   {
     id: 'daily_curated_picks',
-    title: 'Daily Curated Picks',
+    title: 'Gunun Secimleri',
     description: 'Gunun secimi etrafinda kurulan editoryal akis.',
     path: '/discover/daily-curated-picks/',
   },
@@ -527,6 +640,67 @@ const DISCOVER_ROUTES = DISCOVER_ROUTE_CONFIG.map((route) => ({
   href: MOBILE_WEB_BASE_URL ? `${MOBILE_WEB_BASE_URL}${route.path}` : '',
 }));
 
+const MOBILE_DISCOVER_ROUTE_LOCALIZED_COPY: Record<
+  MobileSettingsLanguage,
+  Record<string, { title: string; description: string }>
+> = {
+  tr: {
+    mood_films: {
+      title: 'Ruh Hali Secimleri',
+      description: 'Moda gore hizli secimler ve tematik listeler.',
+    },
+    director_deep_dives: {
+      title: 'Yonetmen Dosyalari',
+      description: 'Yonetmen odakli arsiv ve derin okuma rotalari.',
+    },
+    daily_curated_picks: {
+      title: 'Gunun Secimleri',
+      description: 'Gunun secimi etrafinda kurulan editoryal akis.',
+    },
+  },
+  en: {
+    mood_films: {
+      title: 'Mood Films',
+      description: 'Quick picks by mood and themed lists.',
+    },
+    director_deep_dives: {
+      title: 'Director Deep Dives',
+      description: 'Director-focused archive and deep reading routes.',
+    },
+    daily_curated_picks: {
+      title: 'Daily Curated Picks',
+      description: 'Editorial flow built around the pick of the day.',
+    },
+  },
+  es: {
+    mood_films: {
+      title: 'Peliculas por Estado de Animo',
+      description: 'Selecciones rapidas por estado de animo y listas tematicas.',
+    },
+    director_deep_dives: {
+      title: 'Rutas de Directores',
+      description: 'Archivo centrado en directores y rutas de lectura profunda.',
+    },
+    daily_curated_picks: {
+      title: 'Selecciones Curadas del Dia',
+      description: 'Flujo editorial construido alrededor de la seleccion del dia.',
+    },
+  },
+  fr: {
+    mood_films: {
+      title: 'Films par Humeur',
+      description: 'Selections rapides par humeur et listes thematiques.',
+    },
+    director_deep_dives: {
+      title: 'Parcours Realisateurs',
+      description: 'Archives centrees sur les realisateurs et routes de lecture approfondie.',
+    },
+    daily_curated_picks: {
+      title: 'Selections du Jour',
+      description: 'Flux editorial construit autour de la selection du jour.',
+    },
+  },
+};
 type ArenaEntryView = MobileArenaEntry;
 type SharePlatform = 'instagram' | 'tiktok' | 'x';
 type ShareGoal = 'comment' | 'streak';
@@ -609,6 +783,40 @@ const MAIN_KEY_BY_TAB = {
   'daily' | 'explore' | 'inbox' | 'marks' | 'profile'
 >;
 
+const MOBILE_TAB_LABELS: Record<
+  MobileSettingsLanguage,
+  Record<'daily' | 'explore' | 'inbox' | 'marks' | 'profile', string>
+> = {
+  tr: {
+    daily: 'Gunluk',
+    explore: 'Arena',
+    inbox: 'Gelenler',
+    marks: 'Marklar',
+    profile: 'Profil',
+  },
+  en: {
+    daily: 'Daily',
+    explore: 'Arena',
+    inbox: 'Inbox',
+    marks: 'Marks',
+    profile: 'Profile',
+  },
+  es: {
+    daily: 'Diario',
+    explore: 'Arena',
+    inbox: 'Bandeja',
+    marks: 'Marcas',
+    profile: 'Perfil',
+  },
+  fr: {
+    daily: 'Quotidien',
+    explore: 'Arena',
+    inbox: 'Boite',
+    marks: 'Marques',
+    profile: 'Profil',
+  },
+};
+
 const MAIN_TAB_BY_SCREEN = {
   daily_home: 'Daily',
   invite_claim: 'Profile',
@@ -633,11 +841,11 @@ const createTabTheme = (mode: MobileThemeMode): NavigationTheme => {
     ...NavigationDefaultTheme,
     colors: {
       ...NavigationDefaultTheme.colors,
-      background: isDawn ? '#F4F1EA' : '#121212',
-      card: isDawn ? '#F1ECE1' : '#171717',
-      text: isDawn ? '#1F1D1A' : '#E5E4E2',
-      border: isDawn ? 'rgba(44, 44, 44, 0.16)' : 'rgba(255, 255, 255, 0.12)',
-      primary: isDawn ? '#A57164' : '#8A9A5B',
+      background: isDawn ? '#1B1814' : '#121212',
+      card: isDawn ? '#24201B' : '#171717',
+      text: isDawn ? '#F4EFE7' : '#E5E4E2',
+      border: isDawn ? 'rgba(244, 239, 231, 0.12)' : 'rgba(255, 255, 255, 0.12)',
+      primary: isDawn ? '#B57A68' : '#8A9A5B',
       notification: isDawn ? '#8A9A5B' : '#A57164',
     },
   };
@@ -645,6 +853,107 @@ const createTabTheme = (mode: MobileThemeMode): NavigationTheme => {
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 const tabNavigationRef = createNavigationContainerRef<MainTabParamList>();
+
+const AnimatedTabBar = ({
+  state,
+  navigation,
+  tabLabels,
+  inboxBadge,
+  isDawnTheme,
+}: BottomTabBarProps & {
+  tabLabels: Record<string, string>;
+  inboxBadge?: number | string | null;
+  isDawnTheme: boolean;
+}) => {
+  const accentColor = isDawnTheme ? '#A57164' : '#8A9A5B';
+  const inactiveColor = isDawnTheme ? '#6f665c' : '#8e8b84';
+  const pillBg = isDawnTheme ? 'rgba(165,113,100,0.14)' : 'rgba(138,154,91,0.14)';
+  const tabCount = state.routes.length;
+  const { width: screenWidth } = useWindowDimensions();
+  // 32 = left:16 + right:16 margins of navTabBar
+  const tabWidth = (screenWidth - 32) / tabCount;
+  const pillLeft = useRef(new Animated.Value(state.index * tabWidth)).current;
+  const pressAnims = useRef(state.routes.map(() => new Animated.Value(1))).current;
+
+  useEffect(() => {
+    Animated.spring(pillLeft, {
+      toValue: state.index * tabWidth,
+      useNativeDriver: false,
+      tension: 280,
+      friction: 26,
+    }).start();
+  }, [state.index, pillLeft, tabWidth]);
+
+  return (
+    <View style={[styles.navTabBar, isDawnTheme ? styles.navTabBarDawn : null, { flexDirection: 'row' }]}>
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          top: 8,
+          bottom: 8,
+          width: tabWidth,
+          left: pillLeft,
+          backgroundColor: pillBg,
+          borderRadius: 22,
+        }}
+      />
+      {state.routes.map((route, index) => {
+        const isFocused = state.index === index;
+        const tabKey = MAIN_KEY_BY_TAB[route.name as keyof typeof MAIN_KEY_BY_TAB];
+        const label = tabLabels[tabKey] || tabKey;
+        const iconName = isFocused
+          ? TAB_ICON_BY_ROUTE[route.name as keyof typeof TAB_ICON_BY_ROUTE].active
+          : TAB_ICON_BY_ROUTE[route.name as keyof typeof TAB_ICON_BY_ROUTE].inactive;
+        const pressAnim = pressAnims[index];
+        const hasInboxBadge = route.name === MAIN_TAB_BY_KEY.inbox && inboxBadge != null;
+
+        const onPress = () => {
+          const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true } as Parameters<typeof navigation.emit>[0]);
+          if (!isFocused && !(event as { defaultPrevented?: boolean }).defaultPrevented) {
+            navigation.navigate(route.name, undefined);
+          }
+        };
+
+        return (
+          <Pressable
+            key={route.key}
+            style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 4, paddingBottom: 4 }}
+            onPress={onPress}
+            onPressIn={() => {
+              Animated.spring(pressAnim, { toValue: 0.88, useNativeDriver: true, tension: 400, friction: 18 }).start();
+            }}
+            onPressOut={() => {
+              Animated.spring(pressAnim, { toValue: 1, useNativeDriver: true, tension: 300, friction: 20 }).start();
+            }}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: isFocused }}
+            accessibilityLabel={label}
+          >
+            <Animated.View style={{ alignItems: 'center', transform: [{ scale: pressAnim }] }}>
+              <View style={{ position: 'relative' }}>
+                <Ionicons name={iconName} size={22} color={isFocused ? accentColor : inactiveColor} />
+                {hasInboxBadge ? (
+                  <View
+                    style={[
+                      styles.navTabBadge,
+                      { position: 'absolute', top: -4, right: -8, minWidth: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+                    ]}
+                  >
+                    <Text style={{ color: '#E5E4E2', fontSize: 10, fontWeight: '700' }}>{inboxBadge}</Text>
+                  </View>
+                ) : null}
+              </View>
+              <Text style={[styles.navTabLabel, { color: isFocused ? accentColor : inactiveColor, marginTop: 2 }]} numberOfLines={1}>
+                {label}
+              </Text>
+            </Animated.View>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+};
 
 
 const inviteFailureReasonByCode: Record<string, string> = {
@@ -662,8 +971,8 @@ const inviteMessageByCode: Record<string, string> = {
   UNAUTHORIZED: 'Oturum bulunamadi. Once mobilde giris yapman gerekiyor.',
   INVALID_CODE: 'Davet kodu gecersiz.',
   INVITE_NOT_FOUND: 'Davet kodu bulunamadi.',
-  SELF_INVITE: 'Kendi davet kodunu kullanamazsın.',
-  ALREADY_CLAIMED: 'Bu hesap zaten bir davet kodu kullandı.',
+  SELF_INVITE: 'Kendi davet kodunu kullanamazsin.',
+  ALREADY_CLAIMED: 'Bu hesap zaten bir davet kodu kullandi.',
   DEVICE_DAILY_LIMIT: 'Gunluk cihaz limiti doldu. Daha sonra tekrar dene.',
   DEVICE_CODE_REUSE: 'Bu cihazda bu kod daha once kullanilmis.',
   SERVER_ERROR: 'Sunucuya ulasilamadi. Birazdan tekrar dene.',
@@ -767,6 +1076,124 @@ export default function App() {
   const [themeMode, setThemeMode] = useState<MobileThemeMode>('midnight');
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [settingsLanguage, setSettingsLanguage] = useState<MobileSettingsLanguage>('tr');
+  const isTurkishUi = settingsLanguage === 'tr';
+  const localizedUiCopy = useMemo(
+    () => ({
+      observerLabel: isTurkishUi ? 'Gozlemci' : 'Observer',
+      observerHandle: isTurkishUi ? 'gozlemci' : 'observer',
+      unknownProfileLabel: isTurkishUi ? '@bilinmeyen' : '@unknown',
+      inboxItemsLabel: isTurkishUi ? 'oge' : 'items',
+      inviteStatsPrefix: isTurkishUi ? 'Kod kullanim' : 'Code uses',
+      inviteStatsEmpty: isTurkishUi
+        ? 'Davet kodu olusturulunca burada gorunur.'
+        : 'This will appear here after an invite code is created.',
+      inviteRewardLabel: isTurkishUi
+        ? 'Davetli +180 XP | Davet eden +120 XP'
+        : 'Invitee +180 XP | Inviter +120 XP',
+      themeMode: {
+        dawn: isTurkishUi ? 'Gunduz' : 'Dawn',
+        midnight: isTurkishUi ? 'Gece' : 'Night',
+      },
+      profile: {
+        screenTitle: isTurkishUi ? 'Profil' : 'Profile',
+        bioFallback: isTurkishUi
+          ? 'Profilini ve lig durumunu buradan yonet.'
+          : 'Manage your profile and league status here.',
+        readOnlyBody: isTurkishUi
+          ? 'Profil sekmesi okunur modda acik. Bulut verileri yalnizca oturumla gorunur.'
+          : 'The profile tab is in read-only mode. Cloud data is visible only when signed in.',
+      },
+      explore: {
+        commentReady: (count: number) => (isTurkishUi ? `${count} yorum` : `${count} comments`),
+        commentError: isTurkishUi ? 'hata' : 'error',
+        commentLoading: isTurkishUi ? 'yukleniyor' : 'loading',
+        commentIdle: isTurkishUi ? 'hazir degil' : 'not ready',
+      },
+      publicProfile: {
+        hidden: isTurkishUi ? 'Gizli' : 'Hidden',
+        metrics: {
+          comments: isTurkishUi ? 'Yorum' : 'Comments',
+          streak: isTurkishUi ? 'Seri' : 'Streak',
+          stats: isTurkishUi ? 'Istatistik' : 'Stats',
+          followers: isTurkishUi ? 'Takipci' : 'Followers',
+          following: isTurkishUi ? 'Takip' : 'Following',
+          follow: isTurkishUi ? 'Takip' : 'Follow',
+        },
+      },
+    }),
+    [isTurkishUi]
+  );
+  const resolveInviteMessage = useCallback(
+    (errorCode?: string | null, fallbackMessage?: string) => {
+      const englishInviteMessages: Record<string, string> = {
+        UNAUTHORIZED: 'No active session was found. Please sign in on mobile first.',
+        INVALID_CODE: 'Invite code is invalid.',
+        INVITE_NOT_FOUND: 'Invite code could not be found.',
+        SELF_INVITE: 'You cannot use your own invite code.',
+        ALREADY_CLAIMED: 'This account already used an invite code.',
+        DEVICE_DAILY_LIMIT: 'This device reached the daily invite limit. Try again later.',
+        DEVICE_CODE_REUSE: 'This invite code was already used on this device.',
+        SERVER_ERROR: 'The server could not be reached. Try again shortly.',
+      };
+      const normalizedCode = String(errorCode || '').trim();
+      if (isTurkishUi) {
+        const fallback = String(fallbackMessage || '').trim();
+        return inviteMessageByCode[normalizedCode] || fallback || inviteMessageByCode.SERVER_ERROR;
+      }
+      return englishInviteMessages[normalizedCode] || englishInviteMessages.SERVER_ERROR;
+    },
+    [isTurkishUi]
+  );
+  const formatFollowMessage = useCallback(
+    (result: {
+      ok: boolean;
+      message: string;
+      isFollowing: boolean;
+      isSelf: boolean;
+      followsYou?: boolean;
+    }) => {
+      if (isTurkishUi) return result.message;
+      switch (result.message) {
+        case 'Gecersiz kullanici kimligi.':
+          return 'Invalid user ID.';
+        case 'Supabase baglantisi hazir degil.':
+          return 'Supabase connection is not ready.';
+        case 'Takip icin uye girisi gerekli.':
+          return 'You need to sign in to follow users.';
+        case 'Kendi profilin.':
+          return 'This is your profile.';
+        case 'Kendi profilini takip edemezsin.':
+          return 'You cannot follow your own profile.';
+        case 'Bu kullaniciyi takip ediyorsun.':
+          return 'You are following this user.';
+        case 'Bu kullaniciyi henuz takip etmiyorsun.':
+          return 'You are not following this user yet.';
+        case 'Takipten cikarildi.':
+          return 'Unfollowed.';
+        case 'Kullanici takip edildi.':
+          return 'User followed.';
+        case 'Takip islemi tamamlanamadi.':
+          return 'Follow action could not be completed.';
+        default:
+          return result.ok
+            ? result.isFollowing
+              ? 'You are following this user.'
+              : 'You are not following this user yet.'
+            : 'Follow action could not be completed.';
+      }
+    },
+    [isTurkishUi]
+  );
+  const localizedDiscoverRoutes = useMemo(
+    () =>
+      DISCOVER_ROUTES.map((route) => ({
+        ...route,
+        title: MOBILE_DISCOVER_ROUTE_LOCALIZED_COPY[settingsLanguage]?.[route.id]?.title || route.title,
+        description:
+          MOBILE_DISCOVER_ROUTE_LOCALIZED_COPY[settingsLanguage]?.[route.id]?.description || route.description,
+      })),
+    [settingsLanguage]
+  );
   const [dailyPullRefreshing, setDailyPullRefreshing] = useState(false);
   const [explorePullRefreshing, setExplorePullRefreshing] = useState(false);
   const [inboxPullRefreshing, setInboxPullRefreshing] = useState(false);
@@ -854,7 +1281,7 @@ export default function App() {
   }>({
     status: 'loading',
     source: 'fallback',
-    message: 'Arena leaderboard yukleniyor...',
+    message: 'Arena siralamasi yukleniyor...',
     entries: [],
   });
   const [letterboxdImportState, setLetterboxdImportState] = useState<{
@@ -870,7 +1297,7 @@ export default function App() {
     useState<ProfileMovieArchiveModalState>({
       visible: false,
       status: 'idle',
-      message: 'Film arsivi hazir degil.',
+      message: settingsLanguage === 'tr' ? 'Film arsivi hazir degil.' : 'Movie archive is not ready.',
       movie: null,
       entries: [],
     });
@@ -878,7 +1305,7 @@ export default function App() {
     useState<PublicProfileMovieArchiveModalState>({
       visible: false,
       status: 'idle',
-      message: 'Public film arsivi hazir degil.',
+      message: settingsLanguage === 'tr' ? 'Film arsivi hazir degil.' : 'Movie archive is not ready.',
       displayName: '',
       movie: null,
       items: [],
@@ -968,7 +1395,7 @@ export default function App() {
     if (!isSupabaseConfigured || !supabase) {
       setAuthState({
         status: 'error',
-        message: 'Supabase ayarlari eksik.',
+        message: isTurkishUi ? 'Supabase ayarlari eksik.' : 'Supabase settings are missing.',
       });
       return;
     }
@@ -985,7 +1412,9 @@ export default function App() {
             await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined);
             setAuthState({
               status: 'signed_out',
-              message: 'Beni hatirla kapali oldugu icin onceki oturum temizlendi.',
+              message: isTurkishUi
+                ? 'Beni hatirla kapali oldugu icin onceki oturum temizlendi.'
+                : 'The previous session was cleared because Remember Me is off.',
             });
             return;
           }
@@ -993,7 +1422,7 @@ export default function App() {
 
         setAuthState({
           status: 'signed_in',
-          message: 'Mobil oturum hazir.',
+          message: isTurkishUi ? 'Mobil oturum hazir.' : 'Mobile session is ready.',
           email: authLabel,
         });
         return;
@@ -1010,17 +1439,19 @@ export default function App() {
       setAuthState({
         status: 'signed_out',
         message: sessionResult.clearedInvalidSession
-          ? 'Eski Supabase oturumu temizlendi. Tekrar giris yapabilirsin.'
-          : 'Giris yapilmadi.',
+          ? (isTurkishUi
+              ? 'Eski Supabase oturumu temizlendi. Tekrar giris yapabilirsin.'
+              : 'The previous Supabase session was cleared. You can sign in again.')
+          : (isTurkishUi ? 'Giris yapilmadi.' : 'Not signed in.'),
       });
     } catch (error) {
       setAuthState({
         status: 'error',
-        message: error instanceof Error ? error.message : 'Session okunamadi.',
+        message: error instanceof Error ? error.message : isTurkishUi ? 'Session okunamadi.' : 'The session could not be read.',
       });
     }
     },
-    []
+    [isTurkishUi]
   );
 
   const handleSetAuthRememberMe = useCallback((nextValue: boolean) => {
@@ -1053,7 +1484,7 @@ export default function App() {
   const refreshProfileStats = useCallback(async () => {
     setProfileState({
       status: 'loading',
-      message: 'Profil metrikleri yukleniyor...',
+      message: isTurkishUi ? 'Profil metrikleri yukleniyor...' : 'Loading profile metrics...',
     });
 
     const result = await fetchMobileProfileStats();
@@ -1071,7 +1502,7 @@ export default function App() {
 
     setProfileState({
       status: 'success',
-      message: 'Profil metrikleri guncellendi.',
+      message: isTurkishUi ? 'Profil metrikleri guncellendi.' : 'Profile metrics updated.',
       ...result.stats,
     });
     void trackMobileEvent('page_view', {
@@ -1086,7 +1517,7 @@ export default function App() {
       marksCount: result.stats.marks.length,
       featuredMarksCount: result.stats.featuredMarks.length,
     });
-  }, []);
+  }, [isTurkishUi]);
   const applyQuizProgressToProfile = useCallback(
     (input: {
       totalXp: number | null;
@@ -1245,17 +1676,17 @@ export default function App() {
     const snapshot = await readLetterboxdSnapshot();
     setLetterboxdImportState({
       status: snapshot ? 'ready' : 'idle',
-      message: snapshot ? 'Letterboxd import hazir.' : '',
+      message: snapshot ? (isTurkishUi ? 'Letterboxd import hazir.' : 'Letterboxd import is ready.') : '',
       snapshot,
     });
     return snapshot;
-  }, [authState.status, readLetterboxdSnapshot]);
+  }, [authState.status, isTurkishUi, readLetterboxdSnapshot]);
 
   const refreshProfileActivity = useCallback(async () => {
     if (authState.status !== 'signed_in') {
       setProfileActivityState({
         status: 'idle',
-        message: 'Profil aktivitesi icin giris bekleniyor.',
+        message: isTurkishUi ? 'Profil aktivitesi icin giris bekleniyor.' : 'Sign in to view profile activity.',
         items: [],
       });
       return;
@@ -1263,7 +1694,7 @@ export default function App() {
 
     setProfileActivityState({
       status: 'loading',
-      message: 'Profil aktivitesi yukleniyor...',
+      message: isTurkishUi ? 'Profil aktivitesi yukleniyor...' : 'Loading profile activity...',
       items: [],
     });
 
@@ -1282,7 +1713,7 @@ export default function App() {
       message: result.message,
       items: result.items,
     });
-  }, [authState.status]);
+  }, [authState.status, isTurkishUi]);
   const handleCloseProfileMovieArchive = useCallback(() => {
     setProfileMovieArchiveModalState((prev) => ({
       ...prev,
@@ -1297,7 +1728,7 @@ export default function App() {
     setProfileMovieArchiveModalState({
       visible: true,
       status: 'loading',
-      message: 'Film arsivi yukleniyor...',
+      message: isTurkishUi ? 'Film arsivi yukleniyor...' : 'Loading movie archive...',
       movie,
       entries: [],
     });
@@ -1329,7 +1760,7 @@ export default function App() {
         failureReason: result.message,
       });
     }
-  }, []);
+  }, [isTurkishUi]);
 
   const resolvePublicMovieArchiveItems = useCallback(
     (movie: PublicWatchedMovieSummary, sourceItems: MobilePublicProfileActivityItem[]) => {
@@ -1357,15 +1788,19 @@ export default function App() {
         String(publicProfileModalState.profile?.displayName || '').trim() ||
         publicProfileFullState.displayName ||
         publicProfileModalState.displayNameHint ||
-        '@bilinmeyen';
+        localizedUiCopy.unknownProfileLabel;
       const items = resolvePublicMovieArchiveItems(movie, publicProfileFullState.items);
       const hasEntries = items.length > 0;
       setPublicProfileMovieArchiveModalState({
         visible: true,
         status: hasEntries ? 'ready' : 'error',
         message: hasEntries
-          ? `${displayName} icin ${items.length} yorum kaydi bulundu.`
-          : 'Bu film icin public yorum kaydi bulunamadi.',
+          ? isTurkishUi
+            ? `${displayName} icin ${items.length} yorum kaydi bulundu.`
+            : `${items.length} archive entries found for ${displayName}.`
+          : isTurkishUi
+            ? 'Bu film icin yorum kaydi bulunamadi.'
+            : 'No archive entries were found for this movie.',
         displayName,
         movie,
         items,
@@ -1379,6 +1814,8 @@ export default function App() {
       });
     },
     [
+      isTurkishUi,
+      localizedUiCopy,
       publicProfileFullState.displayName,
       publicProfileFullState.items,
       publicProfileModalState.displayNameHint,
@@ -1408,7 +1845,7 @@ export default function App() {
       setPublicProfileFullState({
         visible: true,
         status: 'loading',
-        message: 'Detayli profil yukleniyor...',
+        message: isTurkishUi ? 'Detayli profil yukleniyor...' : 'Loading detailed profile...',
         displayName,
         items: [],
       });
@@ -1437,7 +1874,7 @@ export default function App() {
         items: result.items,
       }));
     },
-    []
+    [isTurkishUi]
   );
 
   const loadPublicProfileModal = useCallback(
@@ -1453,7 +1890,7 @@ export default function App() {
       setPublicProfileMovieArchiveModalState({
         visible: false,
         status: 'idle',
-        message: 'Public film arsivi hazir degil.',
+        message: isTurkishUi ? 'Film arsivi hazir degil.' : 'Movie archive is not ready.',
         displayName: displayNameHint,
         movie: null,
         items: [],
@@ -1463,7 +1900,7 @@ export default function App() {
         ...prev,
         visible: false,
         status: 'loading',
-        message: 'Profil yukleniyor...',
+        message: isTurkishUi ? 'Profil yukleniyor...' : 'Loading profile...',
         displayNameHint,
         profile: null,
         followStatus: 'idle',
@@ -1510,7 +1947,7 @@ export default function App() {
       setPublicProfileModalState((prev) => ({
         ...prev,
         followStatus: followResult.ok ? 'ready' : 'error',
-        followMessage: followResult.message,
+        followMessage: formatFollowMessage(followResult),
         isFollowing: followResult.isFollowing,
         followsYou: followResult.followsYou,
         isSelfProfile: followResult.isSelf,
@@ -1522,7 +1959,7 @@ export default function App() {
         message: profileResult.message,
       } as const;
     },
-    []
+    [formatFollowMessage, isTurkishUi]
   );
 
   const openPublicProfileInApp = useCallback(
@@ -1539,11 +1976,11 @@ export default function App() {
         setPublicProfileModalState({
           visible: false,
           status: 'error',
-          message: 'Profil bulunamadi.',
+          message: isTurkishUi ? 'Profil bulunamadi.' : 'Profile not found.',
           displayNameHint,
           profile: null,
           followStatus: 'error',
-          followMessage: 'Kullanici kimligi cozulmedi.',
+          followMessage: isTurkishUi ? 'Kullanici kimligi cozulmedi.' : 'User identity could not be resolved.',
           isFollowing: false,
           followsYou: false,
           isSelfProfile: false,
@@ -1552,8 +1989,8 @@ export default function App() {
         setPublicProfileFullState({
           visible: true,
           status: 'error',
-          message: 'Profil bulunamadi.',
-          displayName: displayNameHint || '@bilinmeyen',
+          message: isTurkishUi ? 'Profil bulunamadi.' : 'Profile not found.',
+          displayName: displayNameHint || localizedUiCopy.unknownProfileLabel,
           items: [],
         });
         if (tabNavigationRef.isReady()) {
@@ -1577,7 +2014,7 @@ export default function App() {
           visible: true,
           status: 'error',
           message: loadResult.message,
-          displayName: loadResult.displayName || displayNameHint || '@bilinmeyen',
+          displayName: loadResult.displayName || displayNameHint || localizedUiCopy.unknownProfileLabel,
           items: [],
         });
         return;
@@ -1585,17 +2022,17 @@ export default function App() {
 
       await loadPublicProfileFull({
         userId: resolvedUserId,
-        displayName: loadResult.displayName || displayNameHint || '@bilinmeyen',
+        displayName: loadResult.displayName || displayNameHint || localizedUiCopy.unknownProfileLabel,
       });
     },
-    [loadPublicProfileFull, loadPublicProfileModal, resolvePublicProfileUserId]
+    [isTurkishUi, localizedUiCopy, loadPublicProfileFull, loadPublicProfileModal, resolvePublicProfileUserId]
   );
 
   const refreshArenaLeaderboard = useCallback(async () => {
     setArenaState((prev) => ({
       ...prev,
       status: 'loading',
-      message: 'Arena leaderboard yukleniyor...',
+      message: isTurkishUi ? 'Arena siralamasi yukleniyor...' : 'Loading arena leaderboard...',
     }));
 
     const result = await fetchMobileArenaSnapshot();
@@ -1612,7 +2049,7 @@ export default function App() {
       source: result.source,
       entries: result.entries.length,
     });
-  }, []);
+  }, [isTurkishUi]);
 
   const refreshCommentFeed = useCallback(
     async (scope: CommentFeedScope, query: string, sort: CommentFeedSort) => {
@@ -1620,7 +2057,7 @@ export default function App() {
       setCommentFeedState((prev) => ({
         ...prev,
         status: 'loading',
-        message: 'Genel yorum akisi yukleniyor...',
+        message: isTurkishUi ? 'Genel yorum akisi yukleniyor...' : 'Loading comment feed...',
         scope,
         sort,
         query: normalizedQuery,
@@ -1660,14 +2097,14 @@ export default function App() {
         items: result.items.length,
       });
     },
-    []
+    [isTurkishUi]
   );
 
   const refreshDailyCommentFeed = useCallback(async () => {
     setDailyCommentFeedState((prev) => ({
       ...prev,
       status: 'loading',
-      message: 'Gunluk yorum akisi yukleniyor...',
+      message: isTurkishUi ? 'Gunluk yorum akisi yukleniyor...' : 'Loading daily comment feed...',
       scope: 'today',
       sort: 'latest',
       query: '',
@@ -1703,7 +2140,7 @@ export default function App() {
       source: result.source,
       items: result.items.length,
     });
-  }, []);
+  }, [isTurkishUi]);
 
   const describePushNotification = useCallback((snapshot: PushNotificationSnapshot): string => {
     const title = snapshot.title || '(no-title)';
@@ -1716,15 +2153,17 @@ export default function App() {
     setPushInboxState((prev) => ({
       ...prev,
       status: 'loading',
-      message: 'Notification inbox yukleniyor...',
+      message: isTurkishUi ? 'Notification inbox yukleniyor...' : 'Loading notification inbox...',
     }));
     const items = await readPushInbox();
     setPushInboxState({
       status: 'ready',
-      message: items.length > 0 ? 'Notification inbox guncellendi.' : 'Inbox bos.',
+      message: items.length > 0
+        ? (isTurkishUi ? 'Notification inbox guncellendi.' : 'Notification inbox updated.')
+        : (isTurkishUi ? 'Inbox bos.' : 'Inbox is empty.'),
       items,
     });
-  }, []);
+  }, [isTurkishUi]);
 
   const appendPushInbox = useCallback(
     async (snapshot: PushNotificationSnapshot, source: 'received' | 'opened') => {
@@ -1739,11 +2178,13 @@ export default function App() {
       });
       setPushInboxState({
         status: 'ready',
-        message: `Inbox kaydi eklendi (${source}).`,
+        message: isTurkishUi
+          ? `Inbox kaydi eklendi (${source}).`
+          : `Inbox entry added (${source}).`,
         items: result.items,
       });
     },
-    []
+    [isTurkishUi]
   );
 
   const notifyLeagueProgress = useCallback(
@@ -1861,32 +2302,32 @@ export default function App() {
         status: 'ready',
         message:
           reason === 'initial'
-            ? 'Cloud bildirimleri inbox ile senkronlandi.'
-            : 'Cloud bildirimleri guncellendi.',
+            ? (isTurkishUi ? 'Cloud bildirimleri inbox ile senkronlandi.' : 'Cloud notifications synced with the inbox.')
+            : (isTurkishUi ? 'Cloud bildirimleri guncellendi.' : 'Cloud notifications updated.'),
         items,
       });
 
       return pendingSnapshots.length;
     },
-    [describePushNotification]
+    [describePushNotification, isTurkishUi]
   );
 
   const handleClearPushInbox = useCallback(async () => {
     setPushInboxState((prev) => ({
       ...prev,
       status: 'loading',
-      message: 'Inbox temizleniyor...',
+      message: isTurkishUi ? 'Inbox temizleniyor...' : 'Clearing inbox...',
     }));
     await clearPushInbox();
     setPushInboxState({
       status: 'ready',
-      message: 'Inbox temizlendi.',
+      message: isTurkishUi ? 'Inbox temizlendi.' : 'Inbox cleared.',
       items: [],
     });
     void trackMobileEvent('page_view', {
       reason: 'mobile_push_inbox_cleared',
     });
-  }, []);
+  }, [isTurkishUi]);
 
   const handleOpenInboxDeepLink = useCallback(
     async (item: PushInboxItem) => {
@@ -1896,7 +2337,7 @@ export default function App() {
       setPushInboxState((prev) => ({
         ...prev,
         status: 'ready',
-        message: 'Inbox deep-link acildi.',
+        message: isTurkishUi ? 'Inbox deep-link acildi.' : 'Inbox deep link opened.',
         items: marked.items,
       }));
       void trackMobileEvent('page_view', {
@@ -1904,7 +2345,7 @@ export default function App() {
         hasDeepLink: true,
       });
     },
-    [handleIncomingUrl]
+    [handleIncomingUrl, isTurkishUi]
   );
 
   const handlePressPushInboxItem = useCallback(async (item: PushInboxItem) => {
@@ -1912,10 +2353,12 @@ export default function App() {
     setPushInboxState((prev) => ({
       ...prev,
       status: 'ready',
-      message: marked.updated ? 'Bildirim okundu olarak isaretlendi.' : 'Bildirim zaten okunmustu.',
+      message: marked.updated
+        ? (isTurkishUi ? 'Bildirim okundu olarak isaretlendi.' : 'Notification marked as read.')
+        : (isTurkishUi ? 'Bildirim zaten okunmustu.' : 'Notification was already read.'),
       items: marked.items,
     }));
-  }, []);
+  }, [isTurkishUi]);
 
   const syncPushTokenCloud = useCallback(
     async (token: string, permissionStatus: string, projectId: string | null) => {
@@ -1925,7 +2368,7 @@ export default function App() {
       setPushState((prev) => ({
         ...prev,
         cloudStatus: 'syncing',
-        cloudMessage: 'Push token profile state ile senkronlaniyor...',
+        cloudMessage: isTurkishUi ? 'Push token profile state ile senkronlaniyor...' : 'Syncing push token with profile state...',
       }));
 
       const result = await syncPushTokenToProfileState({
@@ -1950,7 +2393,9 @@ export default function App() {
       setPushState((prev) => ({
         ...prev,
         cloudStatus: 'synced',
-        cloudMessage: `Push token cloud sync ok (${result.deviceCount} device).`,
+        cloudMessage: isTurkishUi
+          ? `Push token cloud sync ok (${result.deviceCount} device).`
+          : `Push token cloud sync ok (${result.deviceCount} devices).`,
         deviceKey: result.deviceKey,
         lastSyncedToken: normalizedToken,
       }));
@@ -1960,7 +2405,7 @@ export default function App() {
         deviceKey: result.deviceKey,
       });
     },
-    []
+    [isTurkishUi]
   );
 
   const refreshPushRegistration = useCallback(async () => {
@@ -1968,7 +2413,7 @@ export default function App() {
       setPushState((prev) => ({
         ...prev,
         status: 'unsupported',
-        message: 'Push modulu gecici olarak devre disi.',
+        message: isTurkishUi ? 'Push modulu gecici olarak devre disi.' : 'The push module is temporarily disabled.',
       }));
       return;
     }
@@ -1976,7 +2421,7 @@ export default function App() {
     setPushState((prev) => ({
       ...prev,
       status: 'loading',
-      message: 'Push izin/token kaydi yapiliyor...',
+      message: isTurkishUi ? 'Push izin/token kaydi yapiliyor...' : 'Registering push permission and token...',
     }));
 
     const result = await registerForPushNotifications();
@@ -1996,7 +2441,7 @@ export default function App() {
         cloudStatus: storedToken ? prev.cloudStatus : 'idle',
         cloudMessage: storedToken
           ? prev.cloudMessage
-          : 'Push cloud sync icin gecerli token yok.',
+          : (isTurkishUi ? 'Push cloud sync icin gecerli token yok.' : 'No valid token is available for push cloud sync.'),
       }));
       void trackMobileEvent('page_view', {
         reason: 'mobile_push_registration_failed',
@@ -2010,7 +2455,7 @@ export default function App() {
     setPushState((prev) => ({
       ...prev,
       status: 'ready',
-      message: 'Push token hazir.',
+      message: isTurkishUi ? 'Push token hazir.' : 'Push token is ready.',
       permissionStatus: result.permissionStatus,
       token: result.token,
       projectId: result.projectId,
@@ -2024,14 +2469,14 @@ export default function App() {
     if (authState.status === 'signed_in') {
       void syncPushTokenCloud(result.token, result.permissionStatus, result.projectId);
     }
-  }, [authState.status, syncPushTokenCloud]);
+  }, [authState.status, isTurkishUi, syncPushTokenCloud]);
 
   const handleSendPushTest = useCallback(async () => {
     if (!PUSH_FEATURE_ENABLED) {
       setPushTestState((prev) => ({
         ...prev,
         status: 'idle',
-        message: 'Push modulu gecici olarak devre disi.',
+        message: isTurkishUi ? 'Push modulu gecici olarak devre disi.' : 'The push module is temporarily disabled.',
       }));
       return;
     }
@@ -2039,7 +2484,7 @@ export default function App() {
     if (authState.status !== 'signed_in') {
       setPushTestState({
         status: 'error',
-        message: 'Test push icin once giris yap.',
+        message: isTurkishUi ? 'Test push icin once giris yap.' : 'Sign in first to send a test push.',
         sentCount: 0,
         ticketCount: 0,
         errorCount: 0,
@@ -2058,7 +2503,7 @@ export default function App() {
     if (pushState.cloudStatus !== 'synced') {
       setPushTestState({
         status: 'error',
-        message: 'Test push icin cloud sync "synced" olmali.',
+        message: isTurkishUi ? 'Test push icin cloud sync "synced" olmali.' : 'Cloud sync must be "synced" before sending a test push.',
         sentCount: 0,
         ticketCount: 0,
         errorCount: 0,
@@ -2077,7 +2522,7 @@ export default function App() {
     if (!String(pushState.token || '').trim()) {
       setPushTestState({
         status: 'error',
-        message: 'Test push icin gecerli token bulunamadi.',
+        message: isTurkishUi ? 'Test push icin gecerli token bulunamadi.' : 'No valid token was found for the test push.',
         sentCount: 0,
         ticketCount: 0,
         errorCount: 0,
@@ -2095,7 +2540,7 @@ export default function App() {
 
     setPushTestState({
       status: 'loading',
-      message: 'Test push gonderiliyor...',
+      message: isTurkishUi ? 'Test push gonderiliyor...' : 'Sending test push...',
       sentCount: 0,
       ticketCount: 0,
       errorCount: 0,
@@ -2116,12 +2561,14 @@ export default function App() {
 
     const result = await sendPushTestNotification({
       title: '180 Absolute Cinema',
-      body: 'Bu test bildirimi push kanalini dogrulamak icin gonderildi.',
+      body: isTurkishUi
+        ? 'Bu test bildirimi push kanalini dogrulamak icin gonderildi.'
+        : 'This test notification was sent to verify the push channel.',
       deepLink: testDeepLink,
     });
 
     if (!result.ok || !result.data) {
-      const message = result.message || 'Test push gonderilemedi.';
+      const message = result.message || (isTurkishUi ? 'Test push gonderilemedi.' : 'Test push could not be sent.');
       setPushTestState({
         status: 'error',
         message,
@@ -2163,8 +2610,8 @@ export default function App() {
       : '';
     const successMessage =
       receiptStatus === 'ok'
-        ? 'Test push gonderildi, receipt kontrolu tamamlandi.'
-        : 'Test push gonderildi; receipt sonucu sinirli alindi.';
+        ? (isTurkishUi ? 'Test push gonderildi, receipt kontrolu tamamlandi.' : 'Test push sent and receipt check completed.')
+        : (isTurkishUi ? 'Test push gonderildi; receipt sonucu sinirli alindi.' : 'Test push sent; receipt details were limited.');
 
     setPushTestState({
       status: 'success',
@@ -2194,20 +2641,20 @@ export default function App() {
       receiptPendingCount,
       hasReceiptError: Boolean(receiptErrorPreview),
     });
-  }, [authState.status, pushState.cloudStatus, pushState.token]);
+  }, [authState.status, isTurkishUi, pushState.cloudStatus, pushState.token]);
 
   const handleSimulateLocalPush = useCallback(async () => {
     if (!PUSH_FEATURE_ENABLED) {
       setLocalPushSimState({
         status: 'idle',
-        message: 'Push modulu gecici olarak devre disi.',
+        message: isTurkishUi ? 'Push modulu gecici olarak devre disi.' : 'The push module is temporarily disabled.',
       });
       return;
     }
 
     setLocalPushSimState({
       status: 'loading',
-      message: 'Local test bildirimi hazirlaniyor...',
+      message: isTurkishUi ? 'Local test bildirimi hazirlaniyor...' : 'Preparing local test notification...',
     });
 
     const deepLink = buildMobileDeepLinkFromRouteIntent(
@@ -2215,8 +2662,8 @@ export default function App() {
       { base: MOBILE_DEEP_LINK_BASE }
     );
     const result = await sendLocalPushSimulation({
-      title: '180 Absolute Cinema (Local Sim)',
-      body: 'Emulator local bildirim testi.',
+      title: isTurkishUi ? '180 Absolute Cinema (Local Sim)' : '180 Absolute Cinema (Local Sim)',
+      body: isTurkishUi ? 'Emulator local bildirim testi.' : 'Emulator local notification test.',
       deepLink,
     });
 
@@ -2234,13 +2681,15 @@ export default function App() {
 
     setLocalPushSimState({
       status: 'success',
-      message: 'Local bildirim gonderildi. Bildirime tiklayarak deep-link akisina bak.',
+      message: isTurkishUi
+        ? 'Local bildirim gonderildi. Bildirime tiklayarak deep-link akisina bak.'
+        : 'Local notification sent. Tap it to inspect the deep-link flow.',
     });
     void trackMobileEvent('page_view', {
       reason: 'mobile_push_local_sim_sent',
       deepLink: result.deepLink,
     });
-  }, []);
+  }, [isTurkishUi]);
 
   const handleSignIn = useCallback(async () => {
     const email = authEmail.trim().toLowerCase();
@@ -2249,7 +2698,7 @@ export default function App() {
     if (!isSupabaseConfigured || !supabase) {
       setAuthState({
         status: 'error',
-        message: 'Supabase ayarlari eksik.',
+        message: isTurkishUi ? 'Supabase ayarlari eksik.' : 'Supabase settings are missing.',
       });
       return;
     }
@@ -2257,20 +2706,20 @@ export default function App() {
     if (!email || !password) {
       setAuthState({
         status: 'error',
-        message: 'Email ve password zorunlu.',
+        message: isTurkishUi ? 'E-posta ve sifre zorunlu.' : 'Email and password are required.',
       });
       return;
     }
 
     setAuthState({
       status: 'loading',
-      message: 'Giris yapiliyor...',
+      message: isTurkishUi ? 'Giris yapiliyor...' : 'Signing in...',
     });
 
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error || !data.session?.access_token) {
-        const message = error?.message || 'Giris basarisiz.';
+        const message = error?.message || (isTurkishUi ? 'Giris basarisiz.' : 'Sign-in failed.');
         setAuthState({
           status: 'error',
           message,
@@ -2284,7 +2733,7 @@ export default function App() {
 
       setAuthState({
         status: 'signed_in',
-        message: 'Giris basarili.',
+        message: isTurkishUi ? 'Giris basarili.' : 'Sign-in successful.',
         email: resolveSupabaseUserAuthLabel(data.user || data.session?.user || null),
       });
       setAuthEntryStage('form');
@@ -2298,7 +2747,7 @@ export default function App() {
         method: 'password',
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Giris basarisiz.';
+      const message = error instanceof Error ? error.message : isTurkishUi ? 'Giris basarisiz.' : 'Sign-in failed.';
       setAuthState({
         status: 'error',
         message,
@@ -2308,7 +2757,7 @@ export default function App() {
         reason: message,
       });
     }
-  }, [authEmail, authPassword]);
+  }, [authEmail, authPassword, isTurkishUi]);
 
   const handleRegister = useCallback(async () => {
     const email = authEmail.trim().toLowerCase();
@@ -2321,7 +2770,7 @@ export default function App() {
     if (!isSupabaseConfigured || !supabase) {
       setAuthState({
         status: 'error',
-        message: 'Supabase ayarlari eksik.',
+        message: isTurkishUi ? 'Supabase ayarlari eksik.' : 'Supabase settings are missing.',
       });
       return;
     }
@@ -2329,7 +2778,9 @@ export default function App() {
     if (!fullName || !username || !birthDate || !email || !password || !confirmPassword) {
       setAuthState({
         status: 'error',
-        message: 'Ad soyad, kullanici adi, dogum tarihi, email ve sifre alanlari zorunlu.',
+        message: isTurkishUi
+          ? 'Ad soyad, kullanici adi, dogum tarihi, email ve sifre alanlari zorunlu.'
+          : 'Full name, username, birth date, email, and password are required.',
       });
       return;
     }
@@ -2337,7 +2788,9 @@ export default function App() {
     if (!/^[a-z0-9_]{3,20}$/.test(username)) {
       setAuthState({
         status: 'error',
-        message: 'Kullanici adi 3-20 karakter olmali; harf, rakam ve alt cizgi kullan.',
+        message: isTurkishUi
+          ? 'Kullanici adi 3-20 karakter olmali; harf, rakam ve alt cizgi kullan.'
+          : 'Username must be 3-20 characters and use letters, numbers, or underscores.',
       });
       return;
     }
@@ -2345,7 +2798,7 @@ export default function App() {
     if (password.length < 6) {
       setAuthState({
         status: 'error',
-        message: 'Sifre en az 6 karakter olmali.',
+        message: isTurkishUi ? 'Sifre en az 6 karakter olmali.' : 'Password must be at least 6 characters.',
       });
       return;
     }
@@ -2353,14 +2806,14 @@ export default function App() {
     if (password !== confirmPassword) {
       setAuthState({
         status: 'error',
-        message: 'Sifre alanlari ayni olmali.',
+        message: isTurkishUi ? 'Sifre alanlari ayni olmali.' : 'Password fields must match.',
       });
       return;
     }
 
     setAuthState({
       status: 'loading',
-      message: 'Hesap olusturuluyor...',
+      message: isTurkishUi ? 'Hesap olusturuluyor...' : 'Creating account...',
     });
 
     try {
@@ -2378,7 +2831,7 @@ export default function App() {
       });
 
       if (error) {
-        const message = error.message || 'Kayit basarisiz.';
+        const message = error.message || (isTurkishUi ? 'Kayit basarisiz.' : 'Registration failed.');
         setAuthState({
           status: 'error',
           message,
@@ -2411,13 +2864,17 @@ export default function App() {
           ? {
               status: 'signed_in',
               message: authRememberMe
-                ? 'Kayit tamamlandi. Oturum acildi.'
-                : 'Kayit tamamlandi. Oturum bu acilis icin aktif; sonraki acilista tekrar giris istenebilir.',
+                ? (isTurkishUi ? 'Kayit tamamlandi. Oturum acildi.' : 'Registration complete. Session opened.')
+                : (isTurkishUi
+                    ? 'Kayit tamamlandi. Oturum bu acilis icin aktif; sonraki acilista tekrar giris istenebilir.'
+                    : 'Registration complete. This session is active for now; you may need to sign in again next time.'),
               email: authLabel,
             }
           : {
               status: 'signed_out',
-              message: 'Kayit tamamlandi. E-posta onayi sonrasi giris yap.',
+              message: isTurkishUi
+                ? 'Kayit tamamlandi. E-posta onayi sonrasi giris yap.'
+                : 'Registration complete. Sign in after email confirmation.',
             }
       );
       setAuthEntryStage('form');
@@ -2427,7 +2884,7 @@ export default function App() {
         rememberMe: authRememberMe ? 'enabled' : 'disabled',
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Kayit basarisiz.';
+      const message = error instanceof Error ? error.message : isTurkishUi ? 'Kayit basarisiz.' : 'Registration failed.';
       setAuthState({
         status: 'error',
         message,
@@ -2445,6 +2902,7 @@ export default function App() {
     authPassword,
     authRememberMe,
     authUsername,
+    isTurkishUi,
   ]);
 
   const handleRequestPasswordReset = useCallback(async () => {
@@ -2453,7 +2911,7 @@ export default function App() {
     if (!isSupabaseConfigured || !supabase) {
       setAuthState({
         status: 'error',
-        message: 'Supabase ayarlari eksik.',
+        message: isTurkishUi ? 'Supabase ayarlari eksik.' : 'Supabase settings are missing.',
       });
       return;
     }
@@ -2461,14 +2919,14 @@ export default function App() {
     if (!email) {
       setAuthState({
         status: 'error',
-        message: 'Sifre yenileme icin e-posta gerekli.',
+        message: isTurkishUi ? 'Sifre yenileme icin e-posta gerekli.' : 'Email is required to reset the password.',
       });
       return;
     }
 
     setAuthState({
       status: 'loading',
-      message: 'Sifre yenileme baglantisi gonderiliyor...',
+      message: isTurkishUi ? 'Sifre yenileme baglantisi gonderiliyor...' : 'Sending password reset link...',
     });
 
     try {
@@ -2478,7 +2936,7 @@ export default function App() {
       if (error) {
         setAuthState({
           status: 'error',
-          message: error.message || 'Sifre yenileme baglantisi gonderilemedi.',
+          message: error.message || (isTurkishUi ? 'Sifre yenileme baglantisi gonderilemedi.' : 'Password reset link could not be sent.'),
         });
         void trackMobileEvent('auth_failure', {
           method: 'password_reset',
@@ -2493,7 +2951,9 @@ export default function App() {
       setAuthEntryStage('form');
       setAuthState({
         status: 'signed_out',
-        message: 'Sifre yenileme baglantisi e-posta adresine gonderildi.',
+        message: isTurkishUi
+          ? 'Sifre yenileme baglantisi e-posta adresine gonderildi.'
+          : 'Password reset link sent to the email address.',
       });
       void trackMobileEvent('password_reset_requested', {
         method: 'email',
@@ -2501,7 +2961,7 @@ export default function App() {
       });
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : 'Sifre yenileme baglantisi gonderilemedi.';
+        error instanceof Error ? error.message : isTurkishUi ? 'Sifre yenileme baglantisi gonderilemedi.' : 'Password reset link could not be sent.';
       setAuthState({
         status: 'error',
         message,
@@ -2511,7 +2971,7 @@ export default function App() {
         reason: message,
       });
     }
-  }, [authEmail]);
+  }, [authEmail, isTurkishUi]);
 
   const handleOAuthSignIn = useCallback(
     async (provider: 'google' | 'apple') => {
@@ -2520,14 +2980,18 @@ export default function App() {
       if (!isSupabaseConfigured || !supabase) {
         setAuthState({
           status: 'error',
-          message: `${providerLabel} girisi icin Supabase ayarlari eksik.`,
+          message: isTurkishUi
+            ? `${providerLabel} girisi icin Supabase ayarlari eksik.`
+            : `Supabase settings are missing for ${providerLabel} sign-in.`,
         });
         return;
       }
 
       setAuthState({
         status: 'loading',
-        message: `${providerLabel} girisi icin yonlendiriliyor...`,
+        message: isTurkishUi
+          ? `${providerLabel} girisi icin yonlendiriliyor...`
+          : `Redirecting to ${providerLabel} sign-in...`,
       });
       setAuthEntryStage('form');
       void trackMobileEvent('oauth_start', {
@@ -2547,7 +3011,7 @@ export default function App() {
         if (error) {
           setAuthState({
             status: 'error',
-            message: error.message || `${providerLabel} girisi baslatilamadi.`,
+            message: error.message || (isTurkishUi ? `${providerLabel} girisi baslatilamadi.` : `${providerLabel} sign-in could not be started.`),
           });
           void trackMobileEvent('oauth_failure', {
             provider,
@@ -2560,7 +3024,9 @@ export default function App() {
         if (!redirectUrl) {
           setAuthState({
             status: 'error',
-            message: `${providerLabel} girisi icin yonlendirme URL olusmadi.`,
+            message: isTurkishUi
+              ? `${providerLabel} girisi icin yonlendirme URL olusmadi.`
+              : `No redirect URL was created for ${providerLabel} sign-in.`,
           });
           void trackMobileEvent('oauth_failure', {
             provider,
@@ -2587,7 +3053,9 @@ export default function App() {
           setAuthFlowMode('login');
           setAuthState({
             status: 'signed_out',
-            message: `${providerLabel} girisini tarayicida tamamla; uygulama callback ile geri donecek.`,
+            message: isTurkishUi
+              ? `${providerLabel} girisini tarayicida tamamla; uygulama callback ile geri donecek.`
+              : `Complete ${providerLabel} sign-in in the browser; the app will return through the callback.`,
           });
           return;
         }
@@ -2600,14 +3068,16 @@ export default function App() {
         if (authSessionResult.type === 'cancel' || authSessionResult.type === 'dismiss') {
           setAuthState({
             status: 'signed_out',
-            message: `${providerLabel} girisi iptal edildi.`,
+            message: isTurkishUi ? `${providerLabel} girisi iptal edildi.` : `${providerLabel} sign-in was cancelled.`,
           });
           return;
         }
 
         setAuthState({
           status: 'error',
-          message: `${providerLabel} callback uygulamaya donmedi.`,
+          message: isTurkishUi
+            ? `${providerLabel} callback uygulamaya donmedi.`
+            : `${providerLabel} callback did not return to the app.`,
         });
         void trackMobileEvent('oauth_failure', {
           provider,
@@ -2615,7 +3085,7 @@ export default function App() {
         });
       } catch (error) {
         const message =
-          error instanceof Error ? error.message : `${providerLabel} girisi baslatilamadi.`;
+          error instanceof Error ? error.message : isTurkishUi ? `${providerLabel} girisi baslatilamadi.` : `${providerLabel} sign-in could not be started.`;
         setAuthState({
           status: 'error',
           message,
@@ -2626,7 +3096,7 @@ export default function App() {
         });
       }
     },
-    [handleIncomingUrl]
+    [handleIncomingUrl, isTurkishUi]
   );
 
   const handleGoogleSignIn = useCallback(async () => {
@@ -2644,7 +3114,7 @@ export default function App() {
     if (!supabase) {
       setAuthState({
         status: 'error',
-        message: 'Supabase hazir degil.',
+        message: isTurkishUi ? 'Supabase hazir degil.' : 'Supabase is not ready.',
       });
       return;
     }
@@ -2652,7 +3122,7 @@ export default function App() {
     if (password.length < 6) {
       setAuthState({
         status: 'error',
-        message: 'Sifre en az 6 karakter olmali.',
+        message: isTurkishUi ? 'Sifre en az 6 karakter olmali.' : 'Password must be at least 6 characters.',
       });
       return;
     }
@@ -2660,14 +3130,14 @@ export default function App() {
     if (password !== confirmPassword) {
       setAuthState({
         status: 'error',
-        message: 'Sifre tekrar alanlari ayni olmali.',
+        message: isTurkishUi ? 'Sifre tekrar alanlari ayni olmali.' : 'Password confirmation fields must match.',
       });
       return;
     }
 
     setAuthState({
       status: 'loading',
-      message: 'Sifre guncelleniyor...',
+      message: isTurkishUi ? 'Sifre guncelleniyor...' : 'Updating password...',
     });
 
     try {
@@ -2675,7 +3145,7 @@ export default function App() {
       if (error) {
         setAuthState({
           status: 'error',
-          message: error.message || 'Sifre guncellenemedi.',
+          message: error.message || (isTurkishUi ? 'Sifre guncellenemedi.' : 'Password could not be updated.'),
         });
         void trackMobileEvent('auth_failure', {
           method: 'password_recovery',
@@ -2694,19 +3164,19 @@ export default function App() {
         email
           ? {
               status: 'signed_in',
-              message: 'Sifre guncellendi. Yeni sifren artik aktif.',
+              message: isTurkishUi ? 'Sifre guncellendi. Yeni sifren artik aktif.' : 'Password updated. Your new password is now active.',
               email,
             }
           : {
               status: 'signed_out',
-              message: 'Sifre guncellendi. Yeni sifrenle tekrar giris yapabilirsin.',
+              message: isTurkishUi ? 'Sifre guncellendi. Yeni sifrenle tekrar giris yapabilirsin.' : 'Password updated. You can sign in again with your new password.',
             }
       );
       void trackMobileEvent('password_reset_completed', {
         method: 'recovery',
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Sifre guncellenemedi.';
+      const message = error instanceof Error ? error.message : isTurkishUi ? 'Sifre guncellenemedi.' : 'Password could not be updated.';
       setAuthState({
         status: 'error',
         message,
@@ -2716,27 +3186,27 @@ export default function App() {
         reason: message,
       });
     }
-  }, [authConfirmPassword, authEmail, authPassword]);
+  }, [authConfirmPassword, authEmail, authPassword, isTurkishUi]);
 
   const handleSignOut = useCallback(async () => {
     if (!supabase) {
       setAuthState({
         status: 'error',
-        message: 'Supabase hazir degil.',
+        message: isTurkishUi ? 'Supabase hazir degil.' : 'Supabase is not ready.',
       });
       return;
     }
 
     setAuthState({
       status: 'loading',
-      message: 'Cikis yapiliyor...',
+      message: isTurkishUi ? 'Cikis yapiliyor...' : 'Signing out...',
     });
 
     try {
       await supabase.auth.signOut();
       setAuthState({
         status: 'signed_out',
-        message: 'Cikis yapildi.',
+        message: isTurkishUi ? 'Cikis yapildi.' : 'Signed out.',
       });
       setAuthFullName('');
       setAuthUsername('');
@@ -2748,10 +3218,10 @@ export default function App() {
     } catch (error) {
       setAuthState({
         status: 'error',
-        message: error instanceof Error ? error.message : 'Cikis basarisiz.',
+        message: error instanceof Error ? error.message : isTurkishUi ? 'Cikis basarisiz.' : 'Sign-out failed.',
       });
     }
-  }, []);
+  }, [isTurkishUi]);
 
   const isDawnTheme = themeMode === 'dawn';
   const tabTheme = useMemo(() => createTabTheme(themeMode), [themeMode]);
@@ -2885,20 +3355,20 @@ export default function App() {
     if (authState.status !== 'signed_in') {
       setProfileActivityState({
         status: 'idle',
-        message: 'Profil aktivitesi icin giris bekleniyor.',
+        message: isTurkishUi ? 'Profil aktivitesi icin giris bekleniyor.' : 'Sign in to view profile activity.',
         items: [],
       });
       setProfileMovieArchiveModalState({
         visible: false,
         status: 'idle',
-        message: 'Film arsivi icin giris bekleniyor.',
+        message: isTurkishUi ? 'Film arsivi icin giris bekleniyor.' : 'Sign in to view the movie archive.',
         movie: null,
         entries: [],
       });
       return;
     }
     void refreshProfileActivity();
-  }, [authState.status, refreshProfileActivity]);
+  }, [authState.status, isTurkishUi, refreshProfileActivity]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -3332,21 +3802,11 @@ export default function App() {
     if (explorePullRefreshing) return;
     setExplorePullRefreshing(true);
     try {
-      await Promise.all([
-        refreshArenaLeaderboard(),
-        refreshCommentFeed(commentFeedScope, debouncedCommentFeedQuery, commentFeedSort),
-      ]);
+      await refreshArenaLeaderboard();
     } finally {
       setExplorePullRefreshing(false);
     }
-  }, [
-    commentFeedScope,
-    commentFeedSort,
-    debouncedCommentFeedQuery,
-    explorePullRefreshing,
-    refreshArenaLeaderboard,
-    refreshCommentFeed,
-  ]);
+  }, [explorePullRefreshing, refreshArenaLeaderboard]);
 
   const handlePullRefreshInbox = useCallback(async () => {
     if (inboxPullRefreshing) return;
@@ -3617,7 +4077,7 @@ export default function App() {
         : dailyState.status === 'loading'
           ? 'loading'
           : 'idle';
-  const inboxSummary = `${pushInboxState.items.length} items`;
+  const inboxSummary = `${pushInboxState.items.length} ${localizedUiCopy.inboxItemsLabel}`;
   const unreadDeepLinkCount = pushInboxState.items.filter(
     (item) => !item.opened && Boolean(item.deepLink)
   ).length;
@@ -3627,32 +4087,243 @@ export default function App() {
     profileState.status === 'success' ? String(profileState.ritualsCount) : '--';
   const commentFeedSummary =
     commentFeedState.status === 'ready'
-      ? `${commentFeedState.items.length} yorum`
+      ? localizedUiCopy.explore.commentReady(commentFeedState.items.length)
       : commentFeedState.status === 'error'
-        ? 'hata'
+        ? localizedUiCopy.explore.commentError
         : commentFeedState.status === 'loading'
-          ? 'yukleniyor'
-          : 'hazir degil';
+          ? localizedUiCopy.explore.commentLoading
+          : localizedUiCopy.explore.commentIdle;
   const inboxTabBadge =
     unreadDeepLinkCount > 0 ? (unreadDeepLinkCount > 9 ? '9+' : unreadDeepLinkCount) : undefined;
-  const themeModeLabel = isDawnTheme ? 'Gündüz' : 'Gece';
+  const themeModeLabel = isDawnTheme ? localizedUiCopy.themeMode.dawn : localizedUiCopy.themeMode.midnight;
+  const tabLabels = useMemo(() => MOBILE_TAB_LABELS[settingsLanguage] || MOBILE_TAB_LABELS.tr, [settingsLanguage]);
+  const renderTabBar = useCallback(
+    (props: BottomTabBarProps) => (
+      <AnimatedTabBar {...props} tabLabels={tabLabels} inboxBadge={inboxTabBadge} isDawnTheme={isDawnTheme} />
+    ),
+    [tabLabels, inboxTabBadge, isDawnTheme]
+  );
+  const mobileDailySectionCopy = useMemo(
+    () =>
+      ({
+        tr: {
+          dailyTitle: 'Gunluk Filmler',
+          dailyMeta: 'Secimler',
+          commentsTitle: 'Yorumlar',
+          commentsMeta: 'Gunluk akis',
+          routesTitle: 'Kesif Rotalari',
+          routesCount: (count: number) => `${count} rota`,
+        },
+        en: {
+          dailyTitle: 'Daily Films',
+          dailyMeta: 'Picks',
+          commentsTitle: 'Comments',
+          commentsMeta: 'Daily feed',
+          routesTitle: 'Discovery Routes',
+          routesCount: (count: number) => `${count} routes`,
+        },
+        es: {
+          dailyTitle: 'Peliculas del Dia',
+          dailyMeta: 'Selecciones',
+          commentsTitle: 'Comentarios',
+          commentsMeta: 'Flujo diario',
+          routesTitle: 'Rutas de Descubrimiento',
+          routesCount: (count: number) => `${count} rutas`,
+        },
+        fr: {
+          dailyTitle: 'Films du Jour',
+          dailyMeta: 'Selections',
+          commentsTitle: 'Commentaires',
+          commentsMeta: 'Flux quotidien',
+          routesTitle: 'Routes de Decouverte',
+          routesCount: (count: number) => `${count} routes`,
+        },
+      })[settingsLanguage] || {
+        dailyTitle: 'Daily Films',
+        dailyMeta: 'Picks',
+        commentsTitle: 'Comments',
+        commentsMeta: 'Daily feed',
+        routesTitle: 'Discovery Routes',
+        routesCount: (count: number) => `${count} routes`,
+      },
+    [settingsLanguage]
+  );
+  const mobileArenaSectionCopy = useMemo(
+    () =>
+      ({
+        tr: {
+          meta: 'Haftalik siralama',
+          leaguesTitle: 'Ligler',
+          leaguesMeta: `Her ${LEVEL_THRESHOLD} XP`,
+        },
+        en: {
+          meta: 'Weekly leaderboard',
+          leaguesTitle: 'Leagues',
+          leaguesMeta: `Every ${LEVEL_THRESHOLD} XP`,
+        },
+        es: {
+          meta: 'Clasificacion semanal',
+          leaguesTitle: 'Ligas',
+          leaguesMeta: `Cada ${LEVEL_THRESHOLD} XP`,
+        },
+        fr: {
+          meta: 'Classement hebdomadaire',
+          leaguesTitle: 'Ligues',
+          leaguesMeta: `Chaque ${LEVEL_THRESHOLD} XP`,
+        },
+      })[settingsLanguage] || {
+        meta: 'Weekly leaderboard',
+        leaguesTitle: 'Leagues',
+        leaguesMeta: `Every ${LEVEL_THRESHOLD} XP`,
+      },
+    [settingsLanguage]
+  );
+  const mobileMarksSectionCopy = useMemo(
+    () =>
+      ({
+        tr: {
+          title: 'Marklar',
+          meta: 'Koleksiyon',
+        },
+        en: {
+          title: 'Marks',
+          meta: 'Collection',
+        },
+        es: {
+          title: 'Marcas',
+          meta: 'Coleccion',
+        },
+        fr: {
+          title: 'Marques',
+          meta: 'Collection',
+        },
+      })[settingsLanguage] || {
+        title: 'Marks',
+        meta: 'Collection',
+      },
+    [settingsLanguage]
+  );
+  const mobileHeroCopy = useMemo(
+    () =>
+      ({
+        tr: {
+          subtitle: 'Gunluk secim, yorum notu ve sosyal akis tek yerde.',
+          sessionReady: 'Oturum: hazir',
+          sessionRequired: 'Oturum: gerekli',
+        },
+        en: {
+          subtitle: 'Daily pick, comment notes, and social feed in one place.',
+          sessionReady: 'Session: ready',
+          sessionRequired: 'Session: required',
+        },
+        es: {
+          subtitle: 'Seleccion diaria, notas de comentarios y flujo social en un solo lugar.',
+          sessionReady: 'Sesion: lista',
+          sessionRequired: 'Sesion: necesaria',
+        },
+        fr: {
+          subtitle: 'Selection du jour, notes de commentaires et flux social au meme endroit.',
+          sessionReady: 'Session: prete',
+          sessionRequired: 'Session: requise',
+        },
+      })[settingsLanguage] || {
+        subtitle: 'Daily pick, comment notes, and social feed in one place.',
+        sessionReady: 'Session: ready',
+        sessionRequired: 'Session: required',
+      },
+    [settingsLanguage]
+  );
+  const mobileDiscoverRouteSurfaceCopy = useMemo(
+    () =>
+      ({
+        tr: {
+          eyebrow: 'Kesif Rotasi',
+          fallbackTitle: 'Rota',
+          openInBrowser: 'Tarayicida Ac',
+          close: 'Kapat',
+          loading: 'Kesif rotasi yukleniyor...',
+          error: 'Rota yuklenemedi.',
+          errorTitle: 'Rota yuklenemedi',
+        },
+        en: {
+          eyebrow: 'Discovery Route',
+          fallbackTitle: 'Route',
+          openInBrowser: 'Open in Browser',
+          close: 'Close',
+          loading: 'Loading discovery route...',
+          error: 'Route could not be loaded.',
+          errorTitle: 'Route could not be loaded',
+        },
+        es: {
+          eyebrow: 'Ruta de Descubrimiento',
+          fallbackTitle: 'Ruta',
+          openInBrowser: 'Abrir en el Navegador',
+          close: 'Cerrar',
+          loading: 'Cargando ruta de descubrimiento...',
+          error: 'No se pudo cargar la ruta.',
+          errorTitle: 'No se pudo cargar la ruta',
+        },
+        fr: {
+          eyebrow: 'Route de Decouverte',
+          fallbackTitle: 'Route',
+          openInBrowser: 'Ouvrir dans le Navigateur',
+          close: 'Fermer',
+          loading: 'Chargement de la route de decouverte...',
+          error: 'La route n a pas pu etre chargee.',
+          errorTitle: 'La route n a pas pu etre chargee',
+        },
+      })[settingsLanguage] || {
+        eyebrow: 'Discovery Route',
+        fallbackTitle: 'Route',
+        openInBrowser: 'Open in Browser',
+        close: 'Close',
+        loading: 'Loading discovery route...',
+        error: 'Route could not be loaded.',
+        errorTitle: 'Route could not be loaded',
+      },
+    [settingsLanguage]
+  );
   const profileDisplayName = String(
     settingsIdentityDraft.fullName ||
       (profileState.status === 'success' ? profileState.displayName : '') ||
-      (authState.status === 'signed_in' ? authState.email.split('@')[0] : 'Observer')
+      (authState.status === 'signed_in' ? authState.email.split('@')[0] : localizedUiCopy.observerLabel)
   ).trim();
   const profileUsername = String(settingsIdentityDraft.username || '')
     .trim()
     .replace(/\s+/g, '')
     .toLowerCase();
-  const profileBio = String(settingsIdentityDraft.bio || '').trim();
+  const rawProfileBio = String(settingsIdentityDraft.bio || '').trim();
+  const profileBio = /^(a silent observer\.?|manage your profile and archive here\.?|manage your profile and league status here\.?)$/i.test(rawProfileBio)
+    ? ''
+    : rawProfileBio;
   const profileAvatarUrl = String(settingsIdentityDraft.avatarUrl || '').trim();
   const profileLink = String(settingsIdentityDraft.profileLink || '').trim();
   const profileBirthDateLabel = normalizeDateLabel(settingsIdentityDraft.birthDate);
-  const profileShellTitle = isSignedIn ? profileDisplayName || 'Observer' : 'Profil';
+  const profileGenderLabel =
+    settingsIdentityDraft.gender === 'female'
+      ? isTurkishUi
+        ? 'Kadin'
+        : 'Female'
+      : settingsIdentityDraft.gender === 'male'
+        ? isTurkishUi
+          ? 'Erkek'
+          : 'Male'
+        : settingsIdentityDraft.gender === 'non_binary'
+          ? isTurkishUi
+            ? 'Ikili olmayan'
+            : 'Non-binary'
+          : settingsIdentityDraft.gender === 'prefer_not_to_say'
+            ? isTurkishUi
+              ? 'Belirtmek istemiyorum'
+              : 'Prefer not to say'
+            : '';
+
+  const profileShellTitle = isSignedIn
+    ? profileDisplayName || localizedUiCopy.observerLabel
+    : localizedUiCopy.profile.screenTitle;
   const profileShellBody = isSignedIn
-    ? profileBio || 'Profilini ve arsivini buradan yonet.'
-    : 'Profil sekmesi okunur modda acik. Bulut verileri yalnizca oturumla gorunur.';
+    ? profileBio || localizedUiCopy.profile.bioFallback
+    : localizedUiCopy.profile.readOnlyBody;
   const fallbackLeague = resolveMobileLeagueInfoFromXp(0);
   const profileStats = profileState.status === 'success'
     ? {
@@ -3675,7 +4346,7 @@ export default function App() {
       };
   const publicSnapshot = publicProfileModalState.profile;
   const publicProfileDisplayName = String(
-    publicSnapshot?.displayName || publicProfileFullState.displayName || '@bilinmeyen'
+    publicSnapshot?.displayName || publicProfileFullState.displayName || localizedUiCopy.unknownProfileLabel
   ).trim();
   const publicProfileAvatarUrl = String(publicSnapshot?.avatarUrl || '').trim();
   const publicProfileVisibility = publicSnapshot?.visibility || DEFAULT_SETTINGS_PRIVACY;
@@ -3702,21 +4373,21 @@ export default function App() {
   const publicProfileLeadMetrics = [
     ...(publicProfileVisibility.showStats
       ? [
-          { label: 'Yorum', value: String(publicProfileStats.rituals) },
-          { label: 'Streak', value: String(publicProfileStats.streak) },
+          { label: localizedUiCopy.publicProfile.metrics.comments, value: String(publicProfileStats.rituals) },
+          { label: localizedUiCopy.publicProfile.metrics.streak, value: String(publicProfileStats.streak) },
         ]
-      : [{ label: 'Istatistik', value: 'Gizli' }]),
+      : [{ label: localizedUiCopy.publicProfile.metrics.stats, value: localizedUiCopy.publicProfile.hidden }]),
     ...(publicProfileVisibility.showFollowCounts
       ? [
-          { label: 'Takipci', value: String(publicProfileStats.followers) },
-          { label: 'Takip', value: String(publicProfileStats.following) },
+          { label: localizedUiCopy.publicProfile.metrics.followers, value: String(publicProfileStats.followers) },
+          { label: localizedUiCopy.publicProfile.metrics.following, value: String(publicProfileStats.following) },
         ]
-      : [{ label: 'Takip', value: 'Gizli' }]),
+      : [{ label: localizedUiCopy.publicProfile.metrics.follow, value: localizedUiCopy.publicProfile.hidden }]),
   ];
   const publicProfileMarksState: ProfileState = publicSnapshot
     ? {
         status: 'success',
-        message: 'Public profil marklari yuklendi.',
+        message: 'Profil marklari yuklendi.',
         displayName: publicSnapshot.displayName,
         totalXp: publicSnapshot.totalXp,
         leagueKey: publicProfileLeague?.leagueKey || fallbackLeague.leagueKey,
@@ -3736,7 +4407,7 @@ export default function App() {
       }
     : {
         status: 'idle',
-        message: 'Public profil verisi hazir degil.',
+        message: 'Profil verisi hazir degil.',
       };
   const publicWatchedMovies = useMemo<PublicWatchedMovieSummary[]>(() => {
     const deduped = new Map<
@@ -3801,14 +4472,14 @@ export default function App() {
       }));
   }, [publicProfileFullState.items]);
   const inviteStatsLabel = inviteProgram.code
-    ? `Kod kullanim: ${inviteProgram.claimCount}`
-    : 'Davet kodu olusturulunca burada gorunur.';
-  const inviteRewardLabel = 'Invitee +180 XP | Inviter +120 XP';
+    ? `${localizedUiCopy.inviteStatsPrefix}: ${inviteProgram.claimCount}`
+    : localizedUiCopy.inviteStatsEmpty;
+  const inviteRewardLabel = localizedUiCopy.inviteRewardLabel;
   const letterboxdSummary = formatMobileLetterboxdSummary(letterboxdImportState.snapshot);
-  const activeAccountLabel = profileDisplayName || 'Observer';
+  const activeAccountLabel = profileDisplayName || localizedUiCopy.observerLabel;
   const activeEmailLabel = authState.status === 'signed_in' ? authState.email : '-';
   const shareHandle = String(
-    profileUsername || (authState.status === 'signed_in' ? authState.email.split('@')[0] : 'observer')
+    profileUsername || (authState.status === 'signed_in' ? authState.email.split('@')[0] : localizedUiCopy.observerHandle)
   )
     .trim()
     .replace(/\s+/g, '')
@@ -4569,16 +5240,28 @@ export default function App() {
   const handleCopyInviteLink = useCallback(async () => {
     const inviteLink = String(inviteProgram.inviteLink || '').trim();
     if (!inviteLink) {
-      setInviteStatus('Kopyalanacak davet linki bulunamadı.');
+      setInviteStatus(
+        isTurkishUi
+          ? 'Kopyalanacak davet linki bulunamadi.'
+          : 'No invite link is available to copy.'
+      );
       return;
     }
+
     try {
-      await Clipboard.setStringAsync(inviteLink);
-      setInviteStatus('Davet linki panoya kopyalandı.');
+      const copied = await writeClipboardString(inviteLink);
+      if (!copied) throw new Error('clipboard_unavailable');
+      setInviteStatus(
+        isTurkishUi ? 'Davet linki panoya kopyalandi.' : 'Invite link copied to clipboard.'
+      );
     } catch {
-      setInviteStatus('Davet linki kopyalanamadı.');
+      setInviteStatus(
+        isTurkishUi
+          ? 'Davet linki kopyalanamadi. Tekrar dene.'
+          : 'Invite link could not be copied. Try again.'
+      );
     }
-  }, [inviteProgram.inviteLink]);
+  }, [inviteProgram.inviteLink, isTurkishUi]);
 
   const handleOpenCommentAuthorProfile = useCallback(
     async (item: CommentFeedState['items'][number]) => {
@@ -4601,7 +5284,7 @@ export default function App() {
     setPublicProfileModalState((prev) => ({
       ...prev,
       followStatus: 'loading',
-      followMessage: 'Takip durumu guncelleniyor...',
+      followMessage: isTurkishUi ? 'Takip durumu guncelleniyor...' : 'Updating follow status...',
     }));
 
     const result = await toggleMobileFollowState(targetUserId);
@@ -4609,7 +5292,7 @@ export default function App() {
       setPublicProfileModalState((prev) => ({
         ...prev,
         followStatus: 'error',
-        followMessage: result.message,
+        followMessage: formatFollowMessage(result),
         isFollowing: result.isFollowing,
         isSelfProfile: result.isSelf,
       }));
@@ -4623,7 +5306,7 @@ export default function App() {
       return {
         ...prev,
         followStatus: 'ready',
-        followMessage: result.message,
+        followMessage: formatFollowMessage(result),
         isFollowing: result.isFollowing,
         isSelfProfile: result.isSelf,
         profile: prev.profile
@@ -4650,6 +5333,8 @@ export default function App() {
       });
     }
   }, [
+    formatFollowMessage,
+    isTurkishUi,
     publicProfileModalState.profile?.userId,
     publicProfileTarget,
     refreshProfileStats,
@@ -4686,7 +5371,7 @@ export default function App() {
     setPublicProfileModalState((prev) => ({
       ...prev,
       followStatus: followResult.ok ? 'ready' : 'error',
-      followMessage: followResult.message,
+      followMessage: formatFollowMessage(followResult),
       isFollowing: followResult.isFollowing,
       followsYou: followResult.followsYou,
       isSelfProfile: followResult.isSelf,
@@ -4700,6 +5385,7 @@ export default function App() {
           : displayName,
     });
   }, [
+    formatFollowMessage,
     loadPublicProfileFull,
     publicProfileModalState.displayNameHint,
     publicProfileModalState.profile?.displayName,
@@ -4770,33 +5456,39 @@ export default function App() {
     setInviteClaimState({ status: 'idle' });
     setProfileState({
       status: 'idle',
-      message: 'Profil metrikleri hazir degil.',
+      message: isTurkishUi ? 'Profil metrikleri hazir degil.' : 'Profile metrics are not ready.',
     });
     setProfileActivityState({
       status: 'idle',
-      message: 'Profil aktivitesi hazir degil.',
+      message: isTurkishUi ? 'Profil aktivitesi hazir degil.' : 'Profile activity is not ready.',
       items: [],
     });
     setPushInboxState({
       status: 'idle',
-      message: 'Notification inbox yuklenmedi.',
+      message: isTurkishUi ? 'Bildirim kutusu yuklenmedi.' : 'Notification inbox has not loaded yet.',
       items: [],
     });
     setPushState({
       status: PUSH_FEATURE_ENABLED ? 'idle' : 'unsupported',
       message: PUSH_FEATURE_ENABLED
-        ? 'Push kaydi bekleniyor.'
-        : 'Push modulu gecici olarak devre disi.',
+        ? isTurkishUi
+          ? 'Push kaydi bekleniyor.'
+          : 'Waiting for push registration.'
+        : isTurkishUi
+          ? 'Push modulu gecici olarak devre disi.'
+          : 'Push module is temporarily disabled.',
       permissionStatus: 'unknown',
       token: '',
       projectId: null,
       lastNotification: 'none',
       cloudStatus: 'idle',
-      cloudMessage: 'Push cloud sync icin token bekleniyor.',
+      cloudMessage: isTurkishUi
+        ? 'Push cloud sync icin token bekleniyor.'
+        : 'Waiting for a token before push cloud sync.',
       deviceKey: '',
       lastSyncedToken: '',
     });
-  }, []);
+  }, [isTurkishUi]);
 
   const handleOpenAccountDeletionInfo = useCallback(async () => {
     try {
@@ -4815,14 +5507,16 @@ export default function App() {
     if (authState.status !== 'signed_in') {
       setAccountDeletionState({
         status: 'error',
-        message: 'Hesap silmek icin once giris yapman gerekiyor.',
+        message: isTurkishUi
+          ? 'Hesap silmek icin once giris yapman gerekiyor.'
+          : 'You need to sign in before deleting the account.',
       });
       return;
     }
 
     setAccountDeletionState({
       status: 'saving',
-      message: 'Hesap siliniyor...',
+      message: isTurkishUi ? 'Hesap siliniyor...' : 'Deleting account...',
     });
 
     void trackMobileEvent('page_view', {
@@ -4831,7 +5525,9 @@ export default function App() {
 
     const result = await deleteMobileAccount();
     if (!result.ok) {
-      const message = result.message || 'Hesap silme istegi basarisiz oldu.';
+      const message = isTurkishUi
+        ? 'Hesap silme istegi basarisiz oldu.'
+        : 'Account deletion request failed.';
       setAccountDeletionState({
         status: 'error',
         message,
@@ -4843,7 +5539,9 @@ export default function App() {
       return;
     }
 
-    const message = 'Hesabin kalici olarak silindi.';
+    const message = isTurkishUi
+      ? 'Hesabin kalici olarak silindi.'
+      : 'Your account was permanently deleted.';
     setAccountDeletionState({
       status: 'success',
       message,
@@ -4852,7 +5550,7 @@ export default function App() {
       reason: 'mobile_account_deleted',
     });
     await resetLocalAccountStateAfterDeletion(message);
-  }, [authState.status, resetLocalAccountStateAfterDeletion]);
+  }, [authState.status, isTurkishUi, resetLocalAccountStateAfterDeletion]);
 
   const handlePullRefreshProfile = useCallback(async () => {
     if (profilePullRefreshing) return;
@@ -4891,7 +5589,7 @@ export default function App() {
         status: 'error',
         inviteCode: '',
         errorCode: 'INVALID_CODE',
-        message: inviteMessageByCode.INVALID_CODE,
+        message: resolveInviteMessage('INVALID_CODE'),
       });
       return;
     }
@@ -4906,15 +5604,16 @@ export default function App() {
       if (result.ok && result.data) {
         const inviteeRewardXp = Math.max(0, Number(result.data.inviteeRewardXp || 0));
         const inviterRewardXp = Math.max(0, Number(result.data.inviterRewardXp || 0));
-        const claimCount = Math.max(0, Number(result.data.claimCount || 0));
 
         setInviteClaimState({
           status: 'success',
           inviteCode: inviteCodeText,
-          message: `Davet kodu uygulandı. +${inviteeRewardXp} XP kazandın.`,
+          message: isTurkishUi
+            ? `Davet kodu uygulandi. +${inviteeRewardXp} XP eklendi.`
+            : `Invite code applied. +${inviteeRewardXp} XP added.`,
           inviteeRewardXp,
           inviterRewardXp,
-          claimCount,
+          claimCount: Math.max(0, Number(result.data.claimCount || 0)),
         });
 
         void trackMobileEvent('invite_accepted', {
@@ -4944,8 +5643,7 @@ export default function App() {
 
       const errorCode = result.errorCode || 'SERVER_ERROR';
       const failureReason = inviteFailureReasonByCode[errorCode] || 'api_claim_rejected';
-      const message =
-        inviteMessageByCode[errorCode] || result.message || inviteMessageByCode.SERVER_ERROR;
+      const message = resolveInviteMessage(errorCode, result.message);
 
       setInviteClaimState({
         status: 'error',
@@ -4966,7 +5664,7 @@ export default function App() {
         status: 'error',
         inviteCode: inviteCodeText,
         errorCode: 'SERVER_ERROR',
-        message: `${inviteMessageByCode.SERVER_ERROR} (${errorMessage})`,
+        message: `${resolveInviteMessage('SERVER_ERROR')} (${errorMessage})`,
       });
       void trackMobileEvent('invite_claim_failed', {
         reason: 'client_exception',
@@ -4975,17 +5673,17 @@ export default function App() {
         apiMessage: errorMessage,
       });
     }
-  }, [authState.status, openAuthModal]);
+  }, [authState.status, isTurkishUi, openAuthModal, resolveInviteMessage]);
 
   const handleApplyInviteCodeFromSettings = useCallback(async () => {
     const inviteCodeText = String(inviteCodeDraft || '').trim().toUpperCase();
     if (!inviteCodeText) {
-      setInviteStatus('Davet kodu gir.');
+      setInviteStatus(isTurkishUi ? 'Davet kodu gir.' : 'Enter an invite code.');
       return;
     }
 
     setIsInviteActionBusy(true);
-    setInviteStatus('Kod uygulaniyor...');
+    setInviteStatus(isTurkishUi ? 'Kod uygulaniyor...' : 'Applying invite code...');
 
     try {
       const result = await claimInviteCodeViaApi(inviteCodeText);
@@ -4993,19 +5691,22 @@ export default function App() {
         const inviteeRewardXp = Math.max(0, Number(result.data.inviteeRewardXp || 0));
         const inviterRewardXp = Math.max(0, Number(result.data.inviterRewardXp || 0));
         const claimCount = Math.max(0, Number(result.data.claimCount || 0));
+        const successMessage = isTurkishUi
+          ? `Davet kodu uygulandi. +${inviteeRewardXp} XP eklendi.`
+          : `Invite code applied. +${inviteeRewardXp} XP added.`;
         setInviteClaimState({
           status: 'success',
           inviteCode: inviteCodeText,
-          message: `Davet kodu uygulandı. +${inviteeRewardXp} XP kazandın.`,
+          message: successMessage,
           inviteeRewardXp,
           inviterRewardXp,
           claimCount,
         });
-        setInviteStatus(`Kod uygulandı. +${inviteeRewardXp} XP`);
+        setInviteStatus(successMessage);
         setInviteCodeDraft('');
         void refreshProfileStats();
       } else {
-        const message = result.message || 'Davet kodu uygulanamadi.';
+        const message = resolveInviteMessage(result.errorCode, result.message);
         setInviteClaimState({
           status: 'error',
           inviteCode: inviteCodeText,
@@ -5014,8 +5715,8 @@ export default function App() {
         });
         setInviteStatus(message);
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Davet kodu uygulanamadi.';
+    } catch {
+      const message = resolveInviteMessage('SERVER_ERROR');
       setInviteClaimState({
         status: 'error',
         inviteCode: inviteCodeText,
@@ -5026,7 +5727,7 @@ export default function App() {
     } finally {
       setIsInviteActionBusy(false);
     }
-  }, [inviteCodeDraft, refreshProfileStats]);
+  }, [inviteCodeDraft, isTurkishUi, refreshProfileStats, resolveInviteMessage]);
 
   const refreshInviteProgram = useCallback(async () => {
     if (authState.status !== 'signed_in') {
@@ -5057,18 +5758,22 @@ export default function App() {
         inviteLink: '',
         claimCount: 0,
       });
-      setInviteStatus(result.message || 'Davet kodu hazirlanamadi.');
+      setInviteStatus(
+        isTurkishUi ? 'Davet kodu hazirlanamadi.' : 'Invite code could not be prepared.'
+      );
     } catch {
       setInviteProgram({
         code: '',
         inviteLink: '',
         claimCount: 0,
       });
-      setInviteStatus('Davet kodu hazirlanamadi.');
+      setInviteStatus(
+        isTurkishUi ? 'Davet kodu hazirlanamadi.' : 'Invite code could not be prepared.'
+      );
     } finally {
       setIsInviteActionBusy(false);
     }
-  }, [authState]);
+  }, [authState, isTurkishUi]);
 
   useEffect(() => {
     if (!settingsVisible) return;
@@ -5084,10 +5789,14 @@ export default function App() {
       status: 'idle',
       message:
         shareGoal === 'streak'
-          ? 'Streak paylasimi hazir. Platform secip devam et.'
-          : 'Yorum paylasimi hazir. Platform secip devam et.',
+          ? isTurkishUi
+            ? 'Seri paylasimi hazir. Platform secip devam et.'
+            : 'Streak share is ready. Pick a platform to continue.'
+          : isTurkishUi
+            ? 'Yorum paylasimi hazir. Platform secip devam et.'
+            : 'Comment share is ready. Pick a platform to continue.',
     });
-  }, [isShareRouteActive, shareGoal]);
+  }, [isShareRouteActive, isTurkishUi, shareGoal]);
 
   useEffect(() => {
     if (!isShareRouteActive) return;
@@ -5103,19 +5812,6 @@ export default function App() {
     refreshInviteProgram,
   ]);
 
-  useEffect(() => {
-    if (screenPlan.screen !== 'share_hub') return;
-    if (publicProfileFullState.visible) return;
-
-    const timeout = setTimeout(() => {
-      profileScrollRef.current?.scrollTo({
-        y: Math.max(profileShareHubOffsetY - 24, 0),
-        animated: true,
-      });
-    }, 80);
-
-    return () => clearTimeout(timeout);
-  }, [profileShareHubOffsetY, publicProfileFullState.visible, screenPlan.screen]);
 
   const handleShareHubShare = useCallback(
     async (platform: SharePlatform) => {
@@ -5135,8 +5831,12 @@ export default function App() {
       if (!isReady) {
         const message =
           goal === 'comment'
-            ? 'Paylasim icin bugun bir yorumun olmali.'
-            : 'Streak paylasimi icin bugunku yorum ve aktif streak gerekiyor.';
+            ? isTurkishUi
+              ? 'Paylasim icin bugun bir yorumun olmali.'
+              : 'You need a comment from today to share it.'
+            : isTurkishUi
+              ? 'Seri paylasimi icin bugunku yorum ve aktif seri gerekiyor.'
+              : "You need today's comment and an active streak to share your streak.";
         setShareHubState({
           status: 'error',
           message,
@@ -5160,14 +5860,14 @@ export default function App() {
         goal === 'streak'
           ? [
               '180 Absolute Cinema',
-              `${profileDisplayName} (@${shareHandle || 'observer'})`,
-              `Bugunku streak tamamlandi: ${profileStats.streak} gun`,
+              `${profileDisplayName} (@${shareHandle || localizedUiCopy.observerHandle})`,
+              `${isTurkishUi ? 'Bugunku seri tamamlandi' : "Today's streak completed"}: ${profileStats.streak} ${isTurkishUi ? 'gun' : 'days'}`,
               `${shareLeagueLabel} - ${Math.floor(shareTotalXp)} XP`,
               `${platformTag} #180AbsoluteCinema`,
             ].join('\n')
           : [
               '180 Absolute Cinema',
-              `${profileDisplayName} (@${shareHandle || 'observer'})`,
+              `${profileDisplayName} (@${shareHandle || localizedUiCopy.observerHandle})`,
               `${shareLeagueLabel} - ${Math.floor(shareTotalXp)} XP`,
               `"${shareCommentPreview}"`,
               `${platformTag} #180AbsoluteCinema`,
@@ -5197,7 +5897,9 @@ export default function App() {
       } catch {
         setShareHubState({
           status: 'error',
-          message: 'Paylasim linki hazirlanamadi.',
+          message: isTurkishUi
+            ? 'Paylasim linki hazirlanamadi.'
+            : 'Share link could not be prepared.',
         });
         void trackMobileEvent('share_failed', {
           platform,
@@ -5212,21 +5914,23 @@ export default function App() {
 
       setShareHubState({
         status: 'loading',
-        message: 'Paylasim paneli hazirlaniyor...',
+        message: isTurkishUi ? 'Paylasim paneli hazirlaniyor...' : 'Preparing the share sheet...',
       });
 
       if (platform !== 'x') {
-        try {
-          await Clipboard.setStringAsync(shareMessage);
-          copiedToClipboard = true;
-        } catch {
-          copiedToClipboard = false;
-        }
+        copiedToClipboard = await writeClipboardString(shareMessage);
       }
 
       try {
         const result = await Share.share({
-          title: goal === 'streak' ? 'Streak Paylasimi' : 'Yorum Paylasimi',
+          title:
+            goal === 'streak'
+              ? isTurkishUi
+                ? 'Seri Paylasimi'
+                : 'Streak Share'
+              : isTurkishUi
+                ? 'Yorum Paylasimi'
+                : 'Comment Share',
           message: shareMessage,
           url: destinationUrl,
         });
@@ -5235,8 +5939,12 @@ export default function App() {
           setShareHubState({
             status: 'idle',
             message: copiedToClipboard
-              ? 'Paylasim iptal edildi. Metin panoda hazir.'
-              : 'Paylasim iptal edildi.',
+              ? isTurkishUi
+                ? 'Paylasim iptal edildi. Metin panoda hazir.'
+                : 'Share canceled. The text is ready in the clipboard.'
+              : isTurkishUi
+                ? 'Paylasim iptal edildi.'
+                : 'Share canceled.',
           });
           void trackMobileEvent('share_failed', {
             platform,
@@ -5250,8 +5958,12 @@ export default function App() {
         setShareHubState({
           status: 'ready',
           message: copiedToClipboard
-            ? 'Paylasim paneli acildi. Metin panoya da kopyalandi.'
-            : 'Paylasim paneli acildi.',
+            ? isTurkishUi
+              ? 'Paylasim paneli acildi. Metin panoya da kopyalandi.'
+              : 'Share sheet opened. The text was also copied to the clipboard.'
+            : isTurkishUi
+              ? 'Paylasim paneli acildi.'
+              : 'Share sheet opened.',
         });
         void trackMobileEvent('share_opened', {
           platform,
@@ -5299,8 +6011,12 @@ export default function App() {
           setShareHubState({
             status: 'ready',
             message: copiedToClipboard
-              ? `Paylasim paneli acildi. Metin panoya kopyalandi. +${MOBILE_SHARE_REWARD_XP} XP eklendi.`
-              : `Paylasim paneli acildi. +${MOBILE_SHARE_REWARD_XP} XP eklendi.`,
+              ? isTurkishUi
+                ? `Paylasim paneli acildi. Metin panoya kopyalandi. +${MOBILE_SHARE_REWARD_XP} XP eklendi.`
+                : `Share sheet opened. The text was copied to the clipboard. +${MOBILE_SHARE_REWARD_XP} XP added.`
+              : isTurkishUi
+                ? `Paylasim paneli acildi. +${MOBILE_SHARE_REWARD_XP} XP eklendi.`
+                : `Share sheet opened. +${MOBILE_SHARE_REWARD_XP} XP added.`,
           });
           void trackMobileEvent('share_reward_claimed', {
             platform,
@@ -5318,11 +6034,19 @@ export default function App() {
           message:
             rewardResult.reason === 'already_claimed'
               ? copiedToClipboard
-                ? 'Paylasim paneli acildi. Metin panoda hazir. Bugunki bonus zaten alinmis.'
-                : 'Paylasim paneli acildi. Bugunki bonus zaten alinmis.'
+                ? isTurkishUi
+                  ? 'Paylasim paneli acildi. Metin panoda hazir. Bugunki bonus zaten alinmis.'
+                  : "Share sheet opened. The text is ready in the clipboard. Today's bonus was already claimed."
+                : isTurkishUi
+                  ? 'Paylasim paneli acildi. Bugunki bonus zaten alinmis.'
+                  : "Share sheet opened. Today's bonus was already claimed."
               : copiedToClipboard
-                ? 'Paylasim acildi ama XP bonusu kaydedilemedi. Metin panoda hazir.'
-                : 'Paylasim acildi ama XP bonusu kaydedilemedi.',
+                ? isTurkishUi
+                  ? 'Paylasim acildi ama XP bonusu kaydedilemedi. Metin panoda hazir.'
+                  : 'Share opened, but the XP bonus could not be saved. The text is ready in the clipboard.'
+                : isTurkishUi
+                  ? 'Paylasim acildi ama XP bonusu kaydedilemedi.'
+                  : 'Share opened, but the XP bonus could not be saved.',
         });
         void trackMobileEvent('share_reward_denied', {
           platform,
@@ -5337,8 +6061,12 @@ export default function App() {
         setShareHubState({
           status: 'error',
           message: copiedToClipboard
-            ? 'Paylasim acilamadi. Metin panoda hazir.'
-            : 'Paylasim acilamadi. Tekrar dene.',
+            ? isTurkishUi
+              ? 'Paylasim acilamadi. Metin panoda hazir.'
+              : 'Share could not be opened. The text is ready in the clipboard.'
+            : isTurkishUi
+              ? 'Paylasim acilamadi. Tekrar dene.'
+              : 'Share could not be opened. Try again.',
         });
         void trackMobileEvent('share_failed', {
           platform,
@@ -5354,6 +6082,9 @@ export default function App() {
       canShareStreak,
       effectiveShareInviteCode,
       effectiveShareInviteLink,
+      isTurkishUi,
+      latestOwnComment,
+      localizedUiCopy.observerHandle,
       profileDisplayName,
       profileState,
       profileStats.streak,
@@ -5364,7 +6095,6 @@ export default function App() {
       shareHandle,
       shareLeagueLabel,
       shareTotalXp,
-      latestOwnComment,
     ]
   );
 
@@ -5378,10 +6108,10 @@ export default function App() {
       </View>
       <Text style={styles.heroEyebrow}>Absolute Cinema</Text>
       <Text style={styles.title}>180 Absolute Cinema</Text>
-      <Text style={styles.subtitle}>Gunluk secim, yorum notu ve sosyal akis tek yerde.</Text>
+      <Text style={styles.subtitle}>{mobileHeroCopy.subtitle}</Text>
       <View style={styles.heroMetaRow}>
         <Text style={styles.heroBadgeMuted}>
-          {isSignedIn ? 'Oturum: hazir' : 'Oturum: gerekli'}
+          {isSignedIn ? mobileHeroCopy.sessionReady : mobileHeroCopy.sessionRequired}
         </Text>
         {isDevSurfaceEnabled ? (
           <>
@@ -5513,7 +6243,7 @@ export default function App() {
     return (
       <SafeAreaProvider>
         <SafeAreaView style={[styles.safeArea, isDawnTheme ? styles.safeAreaDawn : null]}>
-          <StatusBar style={isDawnTheme ? 'dark' : 'light'} />
+          <StatusBar style="light" />
         </SafeAreaView>
       </SafeAreaProvider>
     );
@@ -5556,12 +6286,14 @@ export default function App() {
           >
             <Tab.Navigator
               initialRouteName={MAIN_TAB_BY_KEY.daily}
+              tabBar={renderTabBar}
               screenOptions={({ route }) => ({
                 headerShown: false,
                 sceneStyle: [styles.navScene, isDawnTheme ? styles.navSceneDawn : null],
                 tabBarStyle: [styles.navTabBar, isDawnTheme ? styles.navTabBarDawn : null],
                 tabBarItemStyle: styles.navTabItem,
                 tabBarShowLabel: true,
+                tabBarLabel: tabLabels[MAIN_KEY_BY_TAB[route.name]],
                 tabBarLabelStyle: styles.navTabLabel,
                 tabBarActiveTintColor: isDawnTheme ? '#A57164' : '#8A9A5B',
                 tabBarInactiveTintColor: isDawnTheme ? '#6f665c' : '#8e8b84',
@@ -5604,25 +6336,35 @@ export default function App() {
                       }
                       showsVerticalScrollIndicator={false}
                     >
-                      {renderHeroCard('Daily')}
+                      {renderHeroCard(tabLabels.daily)}
                       <View style={styles.sectionAnchor}>
                         <View style={styles.sectionHeaderRow}>
-                          <Text style={styles.sectionHeader}>Gunluk Akis</Text>
-                          <Text style={styles.sectionHeaderMeta}>Gunluk</Text>
+                          <Text style={styles.sectionHeader}>{mobileDailySectionCopy.dailyTitle}</Text>
+                          <Text style={styles.sectionHeaderMeta}>{mobileDailySectionCopy.dailyMeta}</Text>
                         </View>
                       </View>
 
                       <DailyHomeScreen
                         state={dailyState}
                         showOpsMeta={isDevSurfaceEnabled}
+                        language={settingsLanguage}
                         selectedMovieId={selectedDailyMovieId}
+                        streak={profileState.status === 'success' ? profileState.streak : null}
+                        username={profileDisplayName || null}
                         onSelectMovie={(movieId) => {
                           setSelectedDailyMovieId(movieId);
                           setDailyMovieDetailsVisible(true);
                         }}
                       />
+                      <View style={styles.sectionAnchor}>
+                        <View style={styles.sectionHeaderRow}>
+                          <Text style={styles.sectionHeader}>{mobileDailySectionCopy.commentsTitle}</Text>
+                          <Text style={styles.sectionHeaderMeta}>{mobileDailySectionCopy.commentsMeta}</Text>
+                        </View>
+                      </View>
                       <CommentFeedCard
                         state={dailyCommentFeedState}
+                        language={settingsLanguage}
                         currentUserAvatarUrl={profileAvatarUrl}
                         showFilters={false}
                         onScopeChange={() => undefined}
@@ -5633,6 +6375,21 @@ export default function App() {
                         onSubmitReply={handleSubmitCommentReply}
                         onDeleteItem={handleDeleteComment}
                         onOpenAuthorProfile={handleOpenCommentAuthorProfile}
+                      />
+                      <View style={styles.sectionAnchor}>
+                        <View style={styles.sectionHeaderRow}>
+                          <Text style={styles.sectionHeader}>{mobileDailySectionCopy.routesTitle}</Text>
+                          <Text style={styles.sectionHeaderMeta}>
+                            {mobileDailySectionCopy.routesCount(localizedDiscoverRoutes.length)}
+                          </Text>
+                        </View>
+                      </View>
+                      <DiscoverRoutesCard
+                        routes={localizedDiscoverRoutes}
+                        language={settingsLanguage}
+                        onOpenRoute={(route) => {
+                          void handleOpenDiscoverRoute(route);
+                        }}
                       />
                     </ScrollView>
                   </KeyboardAvoidingView>
@@ -5663,85 +6420,44 @@ export default function App() {
                       }
                       showsVerticalScrollIndicator={false}
                     >
-                      <SectionLeadCard
-                        accent="sage"
-                        eyebrow="Kesif Merkezi"
-                        title="Nereye bakacagini once buradan sec"
-                        body="Rota ac, arena siralamasina bak ve yorum akisindan kullanici profillerine gec."
-                        badges={[
-                          { label: `${DISCOVER_ROUTES.length} rota`, tone: 'sage' },
-                          {
-                            label: commentFeedScope === 'today' ? 'Bugun filtresi' : 'Tum akis',
-                            tone: 'muted',
-                          },
-                          {
-                            label: arenaState.source === 'live' ? 'Arena canli' : 'Arena fallback',
-                            tone: arenaState.source === 'live' ? 'sage' : 'clay',
-                          },
-                        ]}
-                        metrics={[
-                          { label: 'Seri', value: streakSummary },
-                          { label: 'Yorum', value: ritualsCountSummary },
-                          { label: 'Arena', value: String(arenaState.entries.length || 0) },
-                          {
-                            label: 'Yorum',
-                            value:
-                              commentFeedState.status === 'ready'
-                                ? String(commentFeedState.items.length)
-                                : commentFeedState.status === 'loading'
-                                  ? '...'
-                                  : '--',
-                          },
-                        ]}
-                      />
-                      <View style={styles.sectionAnchor}>
-                        <View style={styles.sectionHeaderRow}>
-                          <Text style={styles.sectionHeader}>Kesif</Text>
-                          <Text style={styles.sectionHeaderMeta}>Rotalar</Text>
-                        </View>
-                      </View>
-                      <DiscoverRoutesCard
-                        routes={DISCOVER_ROUTES}
-                        onOpenRoute={(route) => {
-                          void handleOpenDiscoverRoute(route);
-                        }}
-                      />
                       <View style={styles.sectionAnchor}>
                         <View style={styles.sectionHeaderRow}>
                           <Text style={styles.sectionHeader}>Arena</Text>
-                          <Text style={styles.sectionHeaderMeta}>Haftalik siralama</Text>
+                          <Text style={styles.sectionHeaderMeta}>{mobileArenaSectionCopy.meta}</Text>
                         </View>
                       </View>
                       <ArenaChallengeCard
                         streakLabel={streakSummary}
                         ritualsLabel={ritualsCountSummary}
+                        language={settingsLanguage}
                       />
                       <ArenaLeaderboardCard
                         state={arenaState}
+                        language={settingsLanguage}
+                        currentDisplayName={profileDisplayName || null}
                         onOpenProfile={(item) => {
                           void handleOpenArenaProfile(item);
                         }}
                       />
-                      <View style={styles.sectionAnchor}>
-                        <View style={styles.sectionHeaderRow}>
-                          <Text style={styles.sectionHeader}>Sosyal Akis</Text>
-                          <Text style={styles.sectionHeaderMeta}>{commentFeedSummary}</Text>
+                      <CollapsibleSectionCard
+                        accent="clay"
+                        title={mobileArenaSectionCopy.leaguesTitle}
+                        meta={mobileArenaSectionCopy.leaguesMeta}
+                        defaultExpanded={false}
+                      >
+                        <View style={styles.detailInfoGrid}>
+                          {MOBILE_LEAGUE_NAMES.map((leagueKey, index) => {
+                            const leagueInfo = MOBILE_LEAGUES_DATA[leagueKey];
+                            return (
+                              <View key={leagueKey} style={styles.detailInfoCard}>
+                                <Text style={styles.detailInfoLabel}>{leagueKey}</Text>
+                                <Text style={styles.detailInfoValue}>{leagueInfo.name}</Text>
+                                <Text style={styles.screenMeta}>{index * LEVEL_THRESHOLD} XP</Text>
+                              </View>
+                            );
+                          })}
                         </View>
-                      </View>
-                      <CommentFeedCard
-                        state={commentFeedState}
-                        currentUserAvatarUrl={profileAvatarUrl}
-                        showFilters
-                        onScopeChange={handleCommentFeedScopeChange}
-                        onSortChange={handleCommentFeedSortChange}
-                        onQueryChange={handleCommentFeedQueryChange}
-                        onEcho={handleEchoComment}
-                        onLoadReplies={handleLoadCommentReplies}
-                        onSubmitReply={handleSubmitCommentReply}
-                        onDeleteItem={handleDeleteComment}
-                        onOpenAuthorProfile={handleOpenCommentAuthorProfile}
-                      />
-                      {isDevSurfaceEnabled ? <PlatformRulesCard /> : null}
+                      </CollapsibleSectionCard>
                     </ScrollView>
                   </KeyboardAvoidingView>
                 )}
@@ -5767,6 +6483,7 @@ export default function App() {
                     <PushInboxCard
                       state={pushInboxState}
                       showOpsMeta={isDevSurfaceEnabled}
+                      language={settingsLanguage}
                       onClear={() => {
                         void handleClearPushInbox();
                       }}
@@ -5803,15 +6520,15 @@ export default function App() {
                           title: 'Marklar',
                           body: 'Rozet arsivini tek sekmeden takip et.',
                           badges: [
-                            { label: `Seri ${streakSummary}` },
+                            { label: isTurkishUi ? `Seri ${streakSummary}` : `Streak ${streakSummary}` },
                             { label: `Yorum ${ritualsCountSummary}` },
                           ],
                         })
                       : null}
                     <View style={styles.sectionAnchor}>
                       <View style={styles.sectionHeaderRow}>
-                        <Text style={styles.sectionHeader}>Marklar</Text>
-                        <Text style={styles.sectionHeaderMeta}>Koleksiyon</Text>
+                        <Text style={styles.sectionHeader}>{mobileMarksSectionCopy.title}</Text>
+                        <Text style={styles.sectionHeaderMeta}>{mobileMarksSectionCopy.meta}</Text>
                       </View>
                     </View>
                     <ProfileMarksCard
@@ -5820,25 +6537,7 @@ export default function App() {
                       language={settingsLanguage}
                       mode="all"
                     />
-                    <CollapsibleSectionCard
-                      accent="clay"
-                      title="Ligler"
-                      meta={`Her ${LEVEL_THRESHOLD} XP`}
-                      defaultExpanded={false}
-                    >
-                      <View style={styles.detailInfoGrid}>
-                        {MOBILE_LEAGUE_NAMES.map((leagueKey, index) => {
-                          const leagueInfo = MOBILE_LEAGUES_DATA[leagueKey];
-                          return (
-                            <View key={leagueKey} style={styles.detailInfoCard}>
-                              <Text style={styles.detailInfoLabel}>{leagueKey}</Text>
-                              <Text style={styles.detailInfoValue}>{leagueInfo.name}</Text>
-                              <Text style={styles.screenMeta}>{index * LEVEL_THRESHOLD} XP</Text>
-                            </View>
-                          );
-                        })}
-                      </View>
-                    </CollapsibleSectionCard>
+
                   </ScrollView>
                 )}
               </Tab.Screen>
@@ -5895,13 +6594,15 @@ export default function App() {
                       >
                     {isDevSurfaceEnabled
                       ? renderSurfaceIntro({
-                          title: 'Profil ve Hesap',
-                          body: 'Seri, XP metrikleri ile hesap yonetimini tek noktadan yap.',
+                          title: isTurkishUi ? 'Profil ve Hesap' : 'Profile and Account',
+                          body: isTurkishUi
+                            ? 'Seri, XP metrikleri ile hesap yonetimini tek noktadan yap.'
+                            : 'Manage streak, XP metrics, and account controls from one place.',
                           badges: [
-                            { label: `Seri ${streakSummary}` },
+                            { label: isTurkishUi ? `Seri ${streakSummary}` : `Streak ${streakSummary}` },
                             { label: `Tema ${themeModeLabel}` },
                             {
-                              label: isSignedIn ? 'Oturum hazir' : 'Oturum gerekli',
+                              label: isSignedIn ? (isTurkishUi ? 'Oturum hazir' : 'Session ready') : (isTurkishUi ? 'Oturum gerekli' : 'Sign-in required'),
                               muted: !isSignedIn,
                             },
                           ],
@@ -5909,95 +6610,108 @@ export default function App() {
                       : null}
                     {publicProfileFullState.visible ? (
                       <>
-                        <SectionLeadCard
-                          accent="clay"
-                          eyebrow="Public Profil"
-                          title={publicProfileDisplayName}
-                          body={
-                            publicProfileModalState.followMessage ||
-                            publicProfileFullState.message ||
-                            'Film izi ve lig bilgisi.'
-                          }
-                          badges={[
-                            {
-                              label: publicProfileModalState.isSelfProfile ? 'Kendi Profilin' : 'Public Yuzey',
-                              tone: 'muted',
-                            },
-                            ...(!publicProfileVisibility.showStats
-                              ? [{ label: 'Istatistik gizli', tone: 'clay' as const }]
-                              : []),
-                            ...(!publicProfileVisibility.showFollowCounts
-                              ? [{ label: 'Takip sayilari gizli', tone: 'muted' as const }]
-                              : []),
-                            ...(!publicProfileVisibility.showMarks
-                              ? [{ label: 'Marklar gizli', tone: 'muted' as const }]
-                              : []),
-                            ...(publicProfileModalState.followsYou
-                              ? [{ label: 'Seni takip ediyor', tone: 'clay' as const }]
-                              : []),
-                            ...(!publicProfileVisibility.showActivity
-                              ? [{ label: 'Aktivite gizli', tone: 'muted' as const }]
-                              : []),
-                          ]}
-                          metrics={publicProfileLeadMetrics}
-                          actions={[
-                            ...(!publicProfileModalState.isSelfProfile && isSignedIn
-                              ? [
-                                  {
-                                    label: publicProfileModalState.isFollowing ? 'Takipten Cik' : 'Takip Et',
-                                    tone: 'brand' as const,
-                                    onPress: () => {
-                                      void handleTogglePublicProfileFollow();
-                                    },
-                                    disabled: publicProfileModalState.followStatus === 'loading',
-                                  },
-                                ]
-                              : []),
-                            {
-                              label: 'Kapat',
-                              tone: 'neutral' as const,
-                              onPress: handleClosePublicProfileFull,
-                            },
-                          ]}
-                        />
-
-                        <CollapsibleSectionCard
-                          accent="clay"
-                          title="Profil Fotografi"
-                          meta={publicProfileAvatarUrl ? 'Aktif' : 'Eklenmedi'}
-                          defaultExpanded
-                        >
-                          <View style={styles.profileIdentityHeroRow}>
-                            <View style={styles.profileIdentityAvatarWrap}>
-                              {publicProfileAvatarUrl ? (
-                                <Image
-                                  source={{ uri: publicProfileAvatarUrl }}
-                                  style={styles.profileIdentityAvatarImage}
-                                  resizeMode="cover"
-                                />
-                              ) : (
-                                <Text style={styles.profileIdentityAvatarFallback}>
-                                  {(publicProfileDisplayName.slice(0, 1) || 'O').toUpperCase()}
-                                </Text>
-                              )}
+                        {/* ── Public profile hero card (Concept C style) ── */}
+                        {(() => {
+                          const rawColor = publicProfileLeague?.leagueInfo.color ?? null;
+                          const accentColor = rawColor && rawColor !== '#000000' && rawColor !== '#FFFFFF' ? rawColor : '#8A9A5B';
+                          const borderColor = rawColor && rawColor !== '#000000' && rawColor !== '#FFFFFF' ? `${rawColor}CC` : 'rgba(255,255,255,0.12)';
+                          const leagueName = publicProfileLeague?.leagueInfo.name ?? null;
+                          const isFollowBusy = publicProfileModalState.followStatus === 'loading';
+                          return (
+                            <View style={[styles.screenCard, { position: 'relative' }]}>
+                              <View style={[styles.screenCardAccent, styles.screenCardAccentSage]} />
+                              {/* Close button */}
+                              <View style={{ position: 'absolute', top: 16, right: 16, zIndex: 1 }}>
+                                <Pressable
+                                  onPress={handleClosePublicProfileFull}
+                                  hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+                                  accessibilityRole="button"
+                                  accessibilityLabel={isTurkishUi ? 'Kapat' : 'Close'}
+                                  style={({ pressed }) => [
+                                    { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.06)', alignItems: 'center', justifyContent: 'center' },
+                                    pressed && { opacity: 0.55, transform: [{ scale: 0.88 }] },
+                                  ]}
+                                >
+                                  <Ionicons name="close" size={16} color="#E5E4E2" />
+                                </Pressable>
+                              </View>
+                              {/* Hero row */}
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingTop: 4 }}>
+                                <View style={[styles.profileIdentityAvatarWrap, { width: 72, height: 72, borderColor, borderWidth: 2 }]}>
+                                  {publicProfileAvatarUrl ? (
+                                    <Image source={{ uri: publicProfileAvatarUrl }} style={[styles.profileIdentityAvatarImage, { width: 72, height: 72, borderRadius: 36 }]} resizeMode="cover" />
+                                  ) : (
+                                    <Text style={[styles.profileIdentityAvatarFallback, { fontSize: 26, color: accentColor }]}>
+                                      {(publicProfileDisplayName.slice(0, 1) || 'O').toUpperCase()}
+                                    </Text>
+                                  )}
+                                </View>
+                                <View style={{ flex: 1, gap: 4, paddingRight: 40 }}>
+                                  <Text style={styles.sectionLeadTitle} numberOfLines={1}>{publicProfileDisplayName}</Text>
+                                  {leagueName ? (
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', backgroundColor: `${accentColor}22`, borderColor: `${accentColor}55`, borderWidth: 1, borderRadius: 5, paddingHorizontal: 7, paddingVertical: 3 }}>
+                                      <Text style={{ color: accentColor, fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>{'✦ '}{leagueName}</Text>
+                                    </View>
+                                  ) : null}
+                                  {publicProfileModalState.followsYou && !publicProfileModalState.isSelfProfile ? (
+                                    <Text style={{ color: '#8A9A5B', fontSize: 11, fontWeight: '600' }}>
+                                      {isTurkishUi ? 'Seni takip ediyor' : 'Follows you'}
+                                    </Text>
+                                  ) : null}
+                                </View>
+                                {publicProfileVisibility.showStats && publicProfileStats.streak > 0 ? (
+                                  <View style={{ backgroundColor: 'rgba(255,149,0,0.1)', borderColor: 'rgba(255,149,0,0.28)', borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, alignItems: 'center', minWidth: 52 }}>
+                                    <Text style={{ fontSize: 22, fontWeight: '800', color: '#FF9500', lineHeight: 26 }}>{publicProfileStats.streak}</Text>
+                                    <Text style={{ fontSize: 9, color: '#FF9500', fontWeight: '700', letterSpacing: 0.5 }}>{'🔥 '}{isTurkishUi ? 'SERİ' : 'STREAK'}</Text>
+                                  </View>
+                                ) : null}
+                              </View>
+                              {/* Stats row */}
+                              {publicProfileVisibility.showStats || publicProfileVisibility.showFollowCounts ? (
+                                <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
+                                  {publicProfileVisibility.showStats ? (
+                                    <View style={[styles.detailInfoCard, { flex: 1 }]}>
+                                      <Text style={[styles.detailInfoLabel, { textAlign: 'center' }]}>{isTurkishUi ? 'YORUM' : 'COMMENTS'}</Text>
+                                      <Text style={styles.detailInfoValue}>{publicProfileStats.rituals}</Text>
+                                    </View>
+                                  ) : null}
+                                  {publicProfileVisibility.showFollowCounts ? (
+                                    <>
+                                      <View style={[styles.detailInfoCard, { flex: 1 }]}>
+                                        <Text style={[styles.detailInfoLabel, { textAlign: 'center' }]}>{isTurkishUi ? 'TAKİP' : 'FOLLOWING'}</Text>
+                                        <Text style={styles.detailInfoValue}>{publicProfileStats.following}</Text>
+                                      </View>
+                                      <View style={[styles.detailInfoCard, { flex: 1 }]}>
+                                        <Text style={[styles.detailInfoLabel, { textAlign: 'center' }]}>{isTurkishUi ? 'TAKİPÇİ' : 'FOLLOWERS'}</Text>
+                                        <Text style={styles.detailInfoValue}>{publicProfileStats.followers}</Text>
+                                      </View>
+                                    </>
+                                  ) : null}
+                                </View>
+                              ) : null}
+                              {/* Actions */}
+                              {!publicProfileModalState.isSelfProfile && isSignedIn ? (
+                                <View style={{ marginTop: 14 }}>
+                                  <UiButton
+                                    label={isFollowBusy ? (isTurkishUi ? 'Isleniyor...' : 'Processing...') : publicProfileModalState.isFollowing ? (isTurkishUi ? 'Takipten Cik' : 'Unfollow') : (isTurkishUi ? 'Takip Et' : 'Follow')}
+                                    tone={publicProfileModalState.isFollowing ? 'danger' : 'brand'}
+                                    onPress={() => { void handleTogglePublicProfileFollow(); }}
+                                    disabled={isFollowBusy}
+                                  />
+                                </View>
+                              ) : null}
+                              {publicProfileModalState.followMessage ? (
+                                <Text style={{ color: '#8e8b84', fontSize: 11, marginTop: 8, textAlign: 'center' }}>{publicProfileModalState.followMessage}</Text>
+                              ) : null}
                             </View>
-                            <View style={styles.profileIdentityHeroCopy}>
-                              <Text style={styles.detailInfoLabel}>Avatar Durumu</Text>
-                              <Text style={styles.detailInfoValue}>
-                                {publicProfileAvatarUrl ? 'Profil fotografi aktif' : 'Avatar eklenmedi'}
-                              </Text>
-                              <Text style={styles.screenMeta}>
-                                Fotograf yoksa isim bas harfi fallback olarak kullanilir.
-                              </Text>
-                            </View>
-                          </View>
-                        </CollapsibleSectionCard>
+                          );
+                        })()}
 
                         {publicProfileVisibility.showActivity ? (
                           <CollapsibleSectionCard
                             accent="sage"
-                            title="Film Arsivi"
-                            meta={`${publicWatchedMovies.length} film`}
+                            title={isTurkishUi ? 'Film Arsivi' : 'Movie Archive'}
+                            meta={`${publicWatchedMovies.length} ${isTurkishUi ? 'film' : 'movies'}`}
                             defaultExpanded
                           >
                             {publicWatchedMovies.length > 0 ? (
@@ -6013,15 +6727,15 @@ export default function App() {
                                       void handleOpenPublicProfileMovieArchive(movie);
                                     }}
                                     accessibilityRole="button"
-                                    accessibilityLabel={`${movie.movieTitle} film izi detayini ac`}
+                                    accessibilityLabel={isTurkishUi ? `${movie.movieTitle} film izi detayini ac` : `Open archive details for ${movie.movieTitle}`}
                                   >
                                     <Text style={styles.movieTitle}>{movie.movieTitle}</Text>
                                     <Text style={styles.movieMeta}>
                                       {movie.year ? `${movie.year} | ` : ''}
-                                      Son izleme: {movie.watchedDayKey || '-'}
-                                      {movie.watchCount > 1 ? ` | Tekrar: ${movie.watchCount}` : ''}
+                                      {isTurkishUi ? 'Son izleme' : 'Last watched'}: {movie.watchedDayKey || '-'}
+                                      {movie.watchCount > 1 ? ` | ${isTurkishUi ? 'Tekrar' : 'Rewatch'}: ${movie.watchCount}` : ''}
                                     </Text>
-                                    <Text style={styles.movieRowActionHint}>Film Izi</Text>
+                                    <Text style={styles.movieRowActionHint}>{isTurkishUi ? 'Film Izi' : 'Archive'}</Text>
                                   </Pressable>
                                 ))}
                               </View>
@@ -6035,21 +6749,21 @@ export default function App() {
                                       ? 'error'
                                       : 'empty'
                                 }
-                                eyebrow="Public Film Arsivi"
+                                eyebrow={isTurkishUi ? 'Film Arsivi' : 'Movie Archive'}
                                 title={
                                   publicProfileFullState.status === 'loading'
-                                    ? 'Film izi taraniyor'
+                                    ? (isTurkishUi ? 'Film izi taraniyor' : 'Scanning movie archive')
                                     : publicProfileFullState.status === 'error'
-                                      ? 'Film arsivi okunamadi'
-                                      : 'Bu profilde henuz film izi yok'
+                                      ? (isTurkishUi ? 'Film arsivi okunamadi' : 'Movie archive could not be loaded')
+                                      : (isTurkishUi ? 'Bu profilde henuz film izi yok' : 'No movie archive entries on this profile yet')
                                 }
                                 body={
                                   publicProfileFullState.status === 'error'
                                     ? publicProfileFullState.message ||
-                                      'Public film arsivi okunurken gecici bir sorun olustu.'
-                                    : 'Izlenen filmler burada listelenir.'
+                                      isTurkishUi ? 'Film arsivi okunurken gecici bir sorun olustu.' : 'A temporary issue occurred while loading the movie archive.'
+                                    : (isTurkishUi ? 'Izlenen filmler burada listelenir.' : 'Watched movies appear here.')
                                 }
-                                meta="Yorumlar bu profilde gosterilmez."
+                                meta={isTurkishUi ? 'Yorumlar bu profilde gosterilmez.' : 'Comments are not shown on this profile.'}
                               />
                             )}
                           </CollapsibleSectionCard>
@@ -6057,20 +6771,20 @@ export default function App() {
                           <StatePanel
                             tone="sage"
                             variant="empty"
-                            eyebrow="Public Aktivite"
-                            title="Bu kullanici aktivite alanini gizledi"
-                            body="Film arsivi ve yorum akisi bu profilde gosterilmiyor."
-                            meta="Takip iliskisi etkilenmez."
+                            eyebrow={isTurkishUi ? 'Aktivite' : 'Activity'}
+                            title={isTurkishUi ? 'Bu kullanici aktivite alanini gizledi' : 'This user hid their activity section'}
+                            body={isTurkishUi ? 'Film arsivi ve yorum akisi bu profilde gosterilmiyor.' : 'The movie archive and comment feed are hidden on this profile.'}
+                            meta={isTurkishUi ? 'Takip iliskisi etkilenmez.' : 'The follow relationship is not affected.'}
                           />
                         )}
 
                         <View style={styles.sectionAnchor}>
                           <View style={styles.sectionHeaderRow}>
-                            <Text style={styles.sectionHeader}>Marklar</Text>
+                            <Text style={styles.sectionHeader}>{isTurkishUi ? 'Marklar' : 'Marks'}</Text>
                             <Text style={styles.sectionHeaderMeta}>
                               {publicProfileVisibility.showMarks
-                                ? `${publicProfileStats.marks} acik mark`
-                                : 'Gizli'}
+                                ? `${publicProfileStats.marks} ${isTurkishUi ? 'acik mark' : 'visible marks'}`
+                                : isTurkishUi ? 'Gizli' : 'Hidden'}
                             </Text>
                           </View>
                         </View>
@@ -6085,12 +6799,35 @@ export default function App() {
                           <StatePanel
                             tone="sage"
                             variant="empty"
-                            eyebrow="Public Marklar"
-                            title="Bu kullanici mark koleksiyonunu gizledi"
-                            body="Rozetler ve acik marklar public profil detayinda gosterilmiyor."
-                            meta="Takip iliskisi devam eder; sadece mark alani kapali."
+                            eyebrow={isTurkishUi ? 'Marklar' : 'Marks'}
+                            title={isTurkishUi ? 'Bu kullanici mark koleksiyonunu gizledi' : 'This user hid the marks collection'}
+                            body={isTurkishUi ? 'Rozetler ve acik marklar profil detayinda gosterilmiyor.' : 'Badges and visible marks are hidden in profile details.'}
+                            meta={isTurkishUi ? 'Takip iliskisi devam eder; sadece mark alani kapali.' : 'The follow relationship continues; only the marks area is hidden.'}
                           />
                         )}
+
+                        {publicProfileVisibility.showActivity ? (
+                          <ProfileCinematicCard
+                            state={publicProfileMarksState}
+                            isSignedIn={isSignedIn || Boolean(publicSnapshot)}
+                            activityState={{
+                              status: publicProfileFullState.status,
+                              message: publicProfileFullState.message,
+                              items: publicProfileFullState.items.map((item) => ({
+                                id: item.id,
+                                movieId: null,
+                                movieTitle: item.movieTitle,
+                                text: item.text,
+                                genre: (item as { genre?: string | null }).genre ?? null,
+                                posterPath: item.posterPath,
+                                year: item.year,
+                                rawTimestamp: item.rawTimestamp,
+                                timestampLabel: item.timestampLabel,
+                                dayKey: item.rawTimestamp.slice(0, 10),
+                              })),
+                            }}
+                          />
+                        ) : null}
 
                       </>
                     ) : null}
@@ -6099,37 +6836,25 @@ export default function App() {
                         <ProfileUnifiedCard
                           state={profileState}
                           isSignedIn={isSignedIn}
-                          isShareHubActive={screenPlan.screen === 'share_hub'}
+                          language={settingsLanguage}
                           displayName={profileShellTitle}
                           avatarUrl={profileAvatarUrl}
                           username={profileUsername}
                           bio={profileShellBody}
                           birthDateLabel={profileBirthDateLabel}
-                          genderLabel={settingsIdentityDraft.gender}
+                          genderLabel={profileGenderLabel}
                           profileLink={profileLink}
                           onOpenSettings={isSignedIn ? () => setSettingsVisible(true) : undefined}
                           onOpenProfileLink={() => {
                             void handleOpenProfileLink();
                           }}
-                          onOpenShareHub={handleOpenShareHubFromProfile}
                         />
                         <ProfileCinematicCard
                           state={profileState}
                           isSignedIn={isSignedIn}
                           activityState={profileActivityState}
                         />
-                        <ProfileActivityCard
-                          isSignedIn={isSignedIn}
-                          activityState={profileActivityState}
-                          shareCommentPreview={shareCommentPreview}
-                          canShareComment={canShareComment}
-                          canShareStreak={canShareStreak}
-                          streakValue={profileState.status === 'success' ? profileState.streak : 0}
-                          onOpenShareHub={handleOpenShareHubFromProfile}
-                          onOpenMovieArchive={(movie) => {
-                            void handleOpenProfileMovieArchive(movie);
-                          }}
-                        />
+
                         {isSignedIn ? (
                           <>
                             {screenPlan.screen === 'invite_claim' ? (
@@ -6137,44 +6862,19 @@ export default function App() {
                                 inviteCode={inviteCode}
                                 claimState={inviteClaimState}
                                 onClaim={handleClaimInvite}
+                                language={settingsLanguage}
                               />
                             ) : null}
-                            {screenPlan.screen === 'share_hub' ? (
-                              <View
-                                onLayout={(event) => {
-                                  setProfileShareHubOffsetY(event.nativeEvent.layout.y);
-                                }}
-                              >
-                                <ShareHubScreen
-                                  inviteCode={inviteCode}
-                                  inviteLink={effectiveShareInviteLink}
-                                  platform={sharePlatform}
-                                  goal={selectedShareGoal}
-                                  streakValue={profileState.status === 'success' ? profileState.streak : 0}
-                                  commentPreview={shareCommentPreview}
-                                  canShareComment={canShareComment}
-                                  canShareStreak={canShareStreak}
-                                  shareStatus={shareHubState.message}
-                                  shareStatusTone={shareHubState.status}
-                                  onSetGoal={setSelectedShareGoal}
-                                  onShare={handleShareHubShare}
-                                />
-                              </View>
-                            ) : null}
+
                           </>
                         ) : null}
-                        <ProfileMarksCard
-                          state={profileState}
-                          isSignedIn={isSignedIn}
-                          language={settingsLanguage}
-                        />
                     {isDevSurfaceEnabled ? (
                       <>
                         <View style={styles.card}>
-                          <Text style={styles.cardTitle}>Release Snapshot</Text>
-                          <Text style={styles.screenMeta}>Push permission: {pushState.permissionStatus}</Text>
-                          <Text style={styles.screenMeta}>Push cloud: {pushState.cloudStatus}</Text>
-                          <Text style={styles.screenMeta}>Pending queue: {pendingQueueCount}</Text>
+                          <Text style={styles.cardTitle}>{isTurkishUi ? 'Surum Ozeti' : 'Release Snapshot'}</Text>
+                          <Text style={styles.screenMeta}>{isTurkishUi ? 'Push izni' : 'Push permission'}: {pushState.permissionStatus}</Text>
+                          <Text style={styles.screenMeta}>{isTurkishUi ? 'Push bulut' : 'Push cloud'}: {pushState.cloudStatus}</Text>
+                          <Text style={styles.screenMeta}>{isTurkishUi ? 'Bekleyen kuyruk' : 'Pending queue'}: {pendingQueueCount}</Text>
                         </View>
                         <PushStatusCard
                           pushEnabled={PUSH_FEATURE_ENABLED}
@@ -6194,7 +6894,7 @@ export default function App() {
                         />
                         <View style={styles.singleActionRow}>
                           <UiButton
-                            label={debugExpanded ? 'Debug Detaylarini Gizle' : 'Debug Detaylarini Goster'}
+                            label={debugExpanded ? (isTurkishUi ? 'Gelistirici Detaylarini Gizle' : 'Hide Developer Details') : (isTurkishUi ? 'Gelistirici Detaylarini Goster' : 'Show Developer Details')}
                             tone="neutral"
                             stretch
                             onPress={() => setDebugExpanded((prev) => !prev)}
@@ -6203,30 +6903,30 @@ export default function App() {
                         {debugExpanded ? (
                           <>
                             <View style={styles.card}>
-                              <Text style={styles.cardTitle}>Active Screen Plan</Text>
+                              <Text style={styles.cardTitle}>{isTurkishUi ? 'Aktif Ekran Plani' : 'Active Screen Plan'}</Text>
                               <Text style={styles.code}>{JSON.stringify(screenPlan, null, 2)}</Text>
                             </View>
 
                             <View style={styles.card}>
-                              <Text style={styles.cardTitle}>Generated Deep Link</Text>
+                              <Text style={styles.cardTitle}>{isTurkishUi ? 'Uretilen Deep Link' : 'Generated Deep Link'}</Text>
                               <Text selectable style={styles.code}>
                                 {deepLink}
                               </Text>
                             </View>
 
                             <View style={styles.card}>
-                              <Text style={styles.cardTitle}>Last Incoming URL</Text>
+                              <Text style={styles.cardTitle}>{isTurkishUi ? 'Son Gelen URL' : 'Last Incoming URL'}</Text>
                               <Text selectable style={styles.code}>
-                                {lastIncomingUrl || '(none yet)'}
+                                {lastIncomingUrl || (isTurkishUi ? '(henuz yok)' : '(none yet)')}
                               </Text>
                             </View>
 
                             <View style={styles.card}>
-                              <Text style={styles.cardTitle}>Last Incoming Intent</Text>
+                              <Text style={styles.cardTitle}>{isTurkishUi ? 'Son Gelen Intent' : 'Last Incoming Intent'}</Text>
                               <Text style={styles.code}>
                                 {lastIncomingIntent
                                   ? JSON.stringify(lastIncomingIntent, null, 2)
-                                  : '(none yet)'}
+                                  : isTurkishUi ? '(henuz yok)' : '(none yet)'}
                               </Text>
                             </View>
                           </>
@@ -6236,7 +6936,7 @@ export default function App() {
                     {isSignedIn ? (
                       <View style={[styles.singleActionRow, { marginTop: 12 }]}>
                         <UiButton
-                          label="Cikis Yap"
+                          label={isTurkishUi ? 'Cikis Yap' : 'Sign Out'}
                           tone="danger"
                           stretch
                           onPress={() => {
@@ -6247,7 +6947,7 @@ export default function App() {
                     ) : (
                       <View style={[styles.singleActionRow, { marginTop: 12 }]}>
                         <UiButton
-                          label="Giris Yap / Uye Ol"
+                          label={isTurkishUi ? 'Giris Yap / Uye Ol' : 'Sign In / Register'}
                           tone="neutral"
                           stretch
                           onPress={() => {
@@ -6360,6 +7060,7 @@ export default function App() {
             queueState={ritualQueueState}
             canSubmit={canSubmitRitualDraft}
             isSignedIn={isSignedIn}
+            language={settingsLanguage}
             onSubmit={handleSubmitRitualDraft}
             onFlushQueue={handleFlushRitualQueue}
             onClose={() => setRitualComposerVisible(false)}
@@ -6377,6 +7078,7 @@ export default function App() {
 
           <PublicProfileMovieArchiveModal
             visible={publicProfileMovieArchiveModalState.visible}
+            language={settingsLanguage}
             status={publicProfileMovieArchiveModalState.status}
             message={publicProfileMovieArchiveModalState.message}
             displayName={publicProfileMovieArchiveModalState.displayName}
@@ -6450,14 +7152,16 @@ export default function App() {
             <SafeAreaView style={styles.discoverRouteSurfaceModal} edges={['top', 'bottom']}>
               <View style={styles.discoverRouteSurfaceHeader}>
                 <View style={styles.discoverRouteSurfaceHeaderCopy}>
-                  <Text style={styles.discoverRouteSurfaceEyebrow}>Discover Route</Text>
+                  <Text style={styles.discoverRouteSurfaceEyebrow}>
+                    {mobileDiscoverRouteSurfaceCopy.eyebrow}
+                  </Text>
                   <Text style={styles.discoverRouteSurfaceTitle}>
-                    {discoverRouteSurfaceState.title || 'Route'}
+                    {discoverRouteSurfaceState.title || mobileDiscoverRouteSurfaceCopy.fallbackTitle}
                   </Text>
                 </View>
                 <View style={styles.discoverRouteSurfaceActions}>
                   <UiButton
-                    label="Safari"
+                    label={mobileDiscoverRouteSurfaceCopy.openInBrowser}
                     tone="neutral"
                     onPress={() => {
                       const targetUrl = String(discoverRouteSurfaceState.url || '').trim();
@@ -6466,7 +7170,7 @@ export default function App() {
                     }}
                   />
                   <UiButton
-                    label="Kapat"
+                    label={mobileDiscoverRouteSurfaceCopy.close}
                     tone="brand"
                     onPress={handleCloseDiscoverRouteSurface}
                   />
@@ -6498,14 +7202,14 @@ export default function App() {
                       loading: false,
                       error:
                         String(event.nativeEvent.description || '').trim() ||
-                        'Route yuklenemedi.',
+                        mobileDiscoverRouteSurfaceCopy.error,
                     }))
                   }
                   renderLoading={() => (
                     <View style={styles.discoverRouteSurfaceLoading}>
                       <ActivityIndicator size="small" color="#c7bcb2" />
                       <Text style={styles.discoverRouteSurfaceLoadingText}>
-                        Discover rotasi yukleniyor...
+                        {mobileDiscoverRouteSurfaceCopy.loading}
                       </Text>
                     </View>
                   )}
@@ -6513,7 +7217,9 @@ export default function App() {
 
                 {discoverRouteSurfaceState.error ? (
                   <View style={styles.discoverRouteSurfaceErrorCard}>
-                    <Text style={styles.discoverRouteSurfaceErrorTitle}>Rota yuklenemedi</Text>
+                    <Text style={styles.discoverRouteSurfaceErrorTitle}>
+                      {mobileDiscoverRouteSurfaceCopy.errorTitle}
+                    </Text>
                     <Text style={styles.discoverRouteSurfaceErrorBody}>
                       {discoverRouteSurfaceState.error}
                     </Text>
@@ -6523,11 +7229,14 @@ export default function App() {
             </SafeAreaView>
           </Modal>
         </Animated.View>
-        <StatusBar style={isDawnTheme ? 'dark' : 'light'} />
+        <StatusBar style="light" />
       </SafeAreaView>
     </SafeAreaProvider>
   );
 }
+
+
+
 
 
 

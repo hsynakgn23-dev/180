@@ -111,7 +111,7 @@ export const styles = StyleSheet.create({
   },
   container: {
     paddingHorizontal: 18,
-    paddingTop: 24,
+    paddingTop: 32,
     paddingBottom: 32,
     gap: 16,
   },
@@ -1919,18 +1919,18 @@ export const styles = StyleSheet.create({
     lineHeight: 18,
   },
   /* Theme Mode Classes (Dawn support & Glassmorphic Toggle) */
-  safeAreaDawn: {
-    backgroundColor: '#171717',
+    safeAreaDawn: {
+    backgroundColor: '#1B1814',
   },
   backdropLayerDawn: {
-    backgroundColor: '#e5e4e2',
+    backgroundColor: '#1B1814',
   },
   navSceneDawn: {
-    backgroundColor: '#e5e4e2',
+    backgroundColor: '#1B1814',
   },
   navTabBarDawn: {
-    backgroundColor: 'rgba(250, 249, 246, 0.95)',
-    borderColor: 'rgba(0, 0, 0, 0.08)',
+    backgroundColor: 'rgba(34, 29, 24, 0.96)',
+    borderColor: 'rgba(244, 239, 231, 0.08)',
   },
   themeModeSegmentContainer: {
     marginTop: 8,
@@ -2517,21 +2517,21 @@ export const styles = StyleSheet.create({
     backgroundColor: 'rgba(18, 18, 18, 0.94)',
     justifyContent: 'flex-end',
   },
-  modalSheetSurface: {
+    modalSheetSurface: {
     maxHeight: '92%',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderTopWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.12)',
     backgroundColor: '#171717',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 20,
-    gap: 10,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 24,
+    gap: 12,
   },
   modalSheetScroll: {
-    gap: 10,
-    paddingBottom: 8,
+    gap: 12,
+    paddingBottom: 24,
   },
   modalNavRow: {
     flexDirection: 'row',
@@ -2878,8 +2878,9 @@ export const styles = StyleSheet.create({
     lineHeight: 20,
     fontFamily: 'Inter_400Regular',
   },
-  settingsTabRow: {
+    settingsTabRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
   settingsTabChip: {
@@ -2957,7 +2958,7 @@ export const styles = StyleSheet.create({
     color: '#E5E4E2',
     fontFamily: 'Inter_600SemiBold',
   },
-  settingsPrivacyRow: {
+    settingsPrivacyRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
@@ -2965,8 +2966,8 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.08)',
     backgroundColor: 'rgba(255, 255, 255, 0.03)',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
   },
   settingsPrivacyRowPressed: {
     opacity: 0.9,
@@ -3004,9 +3005,13 @@ export const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: '#E5E4E2',
   },
-  settingsPrivacyKnobActive: {
+    settingsPrivacyKnobActive: {
     backgroundColor: '#121212',
     transform: [{ translateX: 18 }],
+  },
+  settingsPrimaryAction: {
+    marginTop: 8,
+    marginBottom: 12,
   },
   arenaLeaderboardAvatarWrap: {
     width: 30,

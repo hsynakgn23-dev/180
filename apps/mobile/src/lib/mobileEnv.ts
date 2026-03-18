@@ -63,9 +63,10 @@ const adaptBaseUrlForBrowser = (value: unknown): string => {
     return normalizeUrl(parsed);
   }
 
-  parsed.protocol = browserLocation.protocol;
-  parsed.hostname = browserLocation.hostname;
-  return normalizeUrl(parsed);
+  const portSegment = parsed.port ? `:${parsed.port}` : '';
+  const normalizedPath = stripTrailingSlashes(parsed.pathname || '/');
+  const pathSegment = normalizedPath === '/' ? '' : normalizedPath;
+  return `${browserLocation.protocol}//${browserLocation.hostname}${portSegment}${pathSegment}`;
 };
 
 const resolveBrowserDevApiBase = (env: MobileEnvRecord): string => {
