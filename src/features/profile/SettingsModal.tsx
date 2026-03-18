@@ -144,50 +144,50 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         if (language === 'es') {
             return {
                 title: 'Importar Letterboxd',
-                subtitle: 'Sube tu CSV de Letterboxd para transferir historial al motor de personalización.',
+                subtitle: 'Sube tu CSV de Letterboxd para transferir historial al motor de personalizaciÃ³n.',
                 cta: 'Subir CSV',
                 inProgress: 'Importando...',
-                noIdentity: 'No hay una cuenta activa. Vuelve a iniciar sesión.',
+                noIdentity: 'No hay una cuenta activa. Vuelve a iniciar sesiÃ³n.',
                 parseFailed: 'No se pudo leer el CSV. Intenta de nuevo con el export de Letterboxd.',
-                emptyFile: 'No se encontraron filas válidas. Revisa los encabezados del CSV.',
+                emptyFile: 'No se encontraron filas vÃ¡lidas. Revisa los encabezados del CSV.',
                 importSuccess: 'Datos de Letterboxd agregados.',
                 statsPrefix: 'Importado total',
-                previewReady: 'Vista previa lista. Puedes confirmar la importación.',
+                previewReady: 'Vista previa lista. Puedes confirmar la importaciÃ³n.',
                 previewTitle: 'Vista Previa CSV',
                 mappingTitle: 'Asignaciones Detectadas',
                 sampleTitle: 'Filas de Muestra',
-                confirmImport: 'Confirmar Importación',
+                confirmImport: 'Confirmar ImportaciÃ³n',
                 clearPreview: 'Limpiar',
-                colTitle: 'Película',
-                colYear: 'Año',
+                colTitle: 'PelÃ­cula',
+                colYear: 'AÃ±o',
                 colTmdb: 'TMDB',
                 colImdb: 'IMDb',
                 colWatched: 'Visto',
-                colRating: 'Puntuación',
+                colRating: 'PuntuaciÃ³n',
                 rowsLabel: 'filas',
                 idsLabel: 'ids',
-                titleKeysLabel: 'claves de título'
+                titleKeysLabel: 'claves de tÃ­tulo'
             };
         }
         if (language === 'fr') {
             return {
                 title: 'Import Letterboxd',
-                subtitle: 'Ajoute ton CSV Letterboxd pour transférer l’historique vers la personnalisation.',
+                subtitle: 'Ajoute ton CSV Letterboxd pour transfÃ©rer lâ€™historique vers la personnalisation.',
                 cta: 'Importer CSV',
                 inProgress: 'Import en cours...',
                 noIdentity: 'Aucun compte actif. Reconnecte-toi.',
-                parseFailed: 'CSV illisible. Réessaie avec l’export Letterboxd.',
-                emptyFile: 'Aucune ligne valide détectée. Vérifie les en-têtes CSV.',
+                parseFailed: 'CSV illisible. RÃ©essaie avec lâ€™export Letterboxd.',
+                emptyFile: 'Aucune ligne valide dÃ©tectÃ©e. VÃ©rifie les en-tÃªtes CSV.',
                 importSuccess: 'Donnees Letterboxd ajoutees.',
-                statsPrefix: 'Total importé',
-                previewReady: 'Aperçu prêt. Tu peux confirmer l’import.',
-                previewTitle: 'Aperçu CSV',
-                mappingTitle: 'Correspondances Détectées',
+                statsPrefix: 'Total importÃ©',
+                previewReady: 'AperÃ§u prÃªt. Tu peux confirmer lâ€™import.',
+                previewTitle: 'AperÃ§u CSV',
+                mappingTitle: 'Correspondances DÃ©tectÃ©es',
                 sampleTitle: 'Lignes Exemple',
                 confirmImport: 'Confirmer Import',
                 clearPreview: 'Effacer',
                 colTitle: 'Film',
-                colYear: 'Année',
+                colYear: 'AnnÃ©e',
                 colTmdb: 'TMDB',
                 colImdb: 'IMDb',
                 colWatched: 'Vu le',
@@ -234,41 +234,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 copyLink: 'Linki Kopyala',
                 pasteCode: 'Davet Kodu Gir',
                 applyCode: 'Kodu Uygula',
-                alreadyClaimed: 'Bu hesap zaten bir davet kodu kullandı.',
-                claimSuccess: `Kod uygulandı. +${inviteRewardConfig.inviteeXp} XP`,
-                copied: 'Davet linki kopyalandı.',
-                stats: `Kazandırılan: ${inviteClaimsCount} davet / ${inviteRewardsEarned} XP`,
+                alreadyClaimed: 'Bu hesap zaten bir davet kodu kullandÄ±.',
+                claimSuccess: `Kod uygulandÄ±. +${inviteRewardConfig.inviteeXp} XP`,
+                copied: 'Davet linki kopyalandÄ±.',
+                stats: `KazandÄ±rÄ±lan: ${inviteClaimsCount} davet / ${inviteRewardsEarned} XP`,
                 rewardSummary: `Davet Eden: +${inviteRewardConfig.inviterXp} XP | Davet Alan: +${inviteRewardConfig.inviteeXp} XP`
             };
         }
         if (language === 'es') {
             return {
-                title: 'Programa de Invitación',
+                title: 'Programa de InvitaciÃ³n',
                 subtitle: 'Comparte tu enlace y, cuando llegue un nuevo usuario, ambos ganan XP.',
-                yourCode: 'Tu Código',
+                yourCode: 'Tu CÃ³digo',
                 copyLink: 'Copiar Enlace',
-                pasteCode: 'Ingresar Código',
-                applyCode: 'Aplicar Código',
-                alreadyClaimed: 'Esta cuenta ya usó un código de invitación.',
-                claimSuccess: `Código aplicado. +${inviteRewardConfig.inviteeXp} XP`,
-                copied: 'Enlace de invitación copiado.',
+                pasteCode: 'Ingresar CÃ³digo',
+                applyCode: 'Aplicar CÃ³digo',
+                alreadyClaimed: 'Esta cuenta ya usÃ³ un cÃ³digo de invitaciÃ³n.',
+                claimSuccess: `CÃ³digo aplicado. +${inviteRewardConfig.inviteeXp} XP`,
+                copied: 'Enlace de invitaciÃ³n copiado.',
                 stats: `Ganado: ${inviteClaimsCount} invitaciones / ${inviteRewardsEarned} XP`,
                 rewardSummary: `Invitador: +${inviteRewardConfig.inviterXp} XP | Invitado: +${inviteRewardConfig.inviteeXp} XP`
             };
         }
         if (language === 'fr') {
             return {
-                title: 'Programme d’Invitation',
-                subtitle: 'Partage ton lien. Si un nouveau compte rejoint, vous gagnez tous les deux de l’XP.',
+                title: 'Programme dâ€™Invitation',
+                subtitle: 'Partage ton lien. Si un nouveau compte rejoint, vous gagnez tous les deux de lâ€™XP.',
                 yourCode: 'Ton Code',
                 copyLink: 'Copier le Lien',
                 pasteCode: 'Entrer un Code',
                 applyCode: 'Appliquer le Code',
-                alreadyClaimed: 'Ce compte a déjà utilisé un code d’invitation.',
-                claimSuccess: `Code appliqué. +${inviteRewardConfig.inviteeXp} XP`,
-                copied: 'Lien d’invitation copié.',
-                stats: `Gagné: ${inviteClaimsCount} invitations / ${inviteRewardsEarned} XP`,
-                rewardSummary: `Inviteur: +${inviteRewardConfig.inviterXp} XP | Invité: +${inviteRewardConfig.inviteeXp} XP`
+                alreadyClaimed: 'Ce compte a dÃ©jÃ  utilisÃ© un code dâ€™invitation.',
+                claimSuccess: `Code appliquÃ©. +${inviteRewardConfig.inviteeXp} XP`,
+                copied: 'Lien dâ€™invitation copiÃ©.',
+                stats: `GagnÃ©: ${inviteClaimsCount} invitations / ${inviteRewardsEarned} XP`,
+                rewardSummary: `Inviteur: +${inviteRewardConfig.inviterXp} XP | InvitÃ©: +${inviteRewardConfig.inviteeXp} XP`
             };
         }
         return {
@@ -352,6 +352,51 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             saved: 'Privacy settings saved.',
             failed: 'Privacy settings could not be saved.',
             signInRequired: 'Sign in to save privacy settings.'
+        };
+    }, [language]);
+
+    const settingsUiCopy = React.useMemo(() => {
+        if (language === 'tr') {
+            return {
+                avatarFileFailed: 'Avatar dosyasi islenemedi.',
+                clipboardUnavailable: 'Pano kullanilamiyor.',
+                clipboardFailed: 'Pano kopyalanamadi.',
+                inviteCodeFailed: 'Davet kodu uygulanamadi.',
+                claimedCodeLabel: 'Kullanilan kod',
+                toggleOn: 'Acik',
+                toggleOff: 'Kapali'
+            };
+        }
+        if (language === 'es') {
+            return {
+                avatarFileFailed: 'No se pudo procesar el archivo del avatar.',
+                clipboardUnavailable: 'Portapapeles no disponible.',
+                clipboardFailed: 'No se pudo copiar al portapapeles.',
+                inviteCodeFailed: 'No se pudo aplicar el codigo.',
+                claimedCodeLabel: 'Codigo usado',
+                toggleOn: 'Activo',
+                toggleOff: 'Inactivo'
+            };
+        }
+        if (language === 'fr') {
+            return {
+                avatarFileFailed: 'Le fichier avatar n a pas pu etre traite.',
+                clipboardUnavailable: 'Presse-papiers indisponible.',
+                clipboardFailed: 'La copie dans le presse-papiers a echoue.',
+                inviteCodeFailed: 'Le code n a pas pu etre applique.',
+                claimedCodeLabel: 'Code utilise',
+                toggleOn: 'Actif',
+                toggleOff: 'Inactif'
+            };
+        }
+        return {
+            avatarFileFailed: 'Avatar file could not be processed.',
+            clipboardUnavailable: 'Clipboard unavailable.',
+            clipboardFailed: 'Clipboard copy failed.',
+            inviteCodeFailed: 'Invite code could not be applied.',
+            claimedCodeLabel: 'Claimed code',
+            toggleOn: 'On',
+            toggleOff: 'Off'
         };
     }, [language]);
 
@@ -554,7 +599,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             updateAvatar(dataUrl);
             setStatusMessage(text.settings.statusAvatarUpdated);
         } catch (error) {
-            setStatusMessage(error instanceof Error ? error.message : 'Avatar file could not be processed.');
+            setStatusMessage(error instanceof Error ? error.message : settingsUiCopy.avatarFileFailed);
         } finally {
             e.target.value = '';
         }
@@ -622,7 +667,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         if (!inviteLink) return;
         try {
             if (!navigator.clipboard?.writeText) {
-                setInviteStatus('Clipboard unavailable.');
+                setInviteStatus(settingsUiCopy.clipboardUnavailable);
                 return;
             }
             await navigator.clipboard.writeText(inviteLink);
@@ -634,7 +679,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             });
             setInviteStatus(inviteCopy.copied);
         } catch {
-            setInviteStatus('Clipboard failed.');
+            setInviteStatus(settingsUiCopy.clipboardFailed);
         }
     };
 
@@ -648,7 +693,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             setInviteCodeDraft('');
             setInviteStatus(inviteCopy.claimSuccess);
         } else {
-            setInviteStatus(result.message || 'Invite code failed.');
+            setInviteStatus(result.message || settingsUiCopy.inviteCodeFailed);
         }
     };
 
@@ -678,8 +723,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 onClick={onClose}
             />
 
-            <div className="fixed inset-y-0 right-0 w-full max-w-lg bg-[#121212] border-l border-white/10 z-[80] animate-slide-in-right overflow-y-auto">
-                <div className="sticky top-0 bg-[#121212]/95 backdrop-blur-xl border-b border-white/10 p-6 z-10">
+            <div className="settings-modal-shell fixed inset-y-0 right-0 w-full max-w-xl border-l z-[80] animate-slide-in-right overflow-y-auto">
+                <div className="settings-modal-header sticky top-0 backdrop-blur-xl border-b p-6 sm:p-7 z-10">
                     <div className="flex items-start justify-between gap-4">
                         <div>
                             <h2 className="text-lg tracking-[0.22em] uppercase font-bold text-sage">{text.settings.title}</h2>
@@ -696,7 +741,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                         </button>
                     </div>
 
-                    <div className="flex gap-2 mt-5">
+                    <div className="flex flex-wrap gap-2 mt-5">
                         {([
                             { id: 'identity', label: text.settings.tabIdentity },
                             { id: 'appearance', label: text.settings.tabAppearance },
@@ -709,8 +754,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                 onClick={() => setActiveTab(tab.id)}
                                 className={`px-3 py-2 text-[10px] uppercase tracking-[0.2em] rounded border transition-colors ${
                                     activeTab === tab.id
-                                        ? 'bg-sage text-[#121212] border-sage'
-                                        : 'bg-white/5 text-gray-400 border-white/10 hover:text-sage hover:border-sage/30'
+                                        ? 'settings-tab-button bg-sage text-[#121212] border-sage'
+                                        : 'settings-tab-button settings-tab-button-inactive bg-white/5 text-gray-400 border-white/10 hover:text-sage hover:border-sage/30'
                                 }`}
                             >
                                 {tab.label}
@@ -719,7 +764,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     </div>
                 </div>
 
-                <div className="p-6">
+                <div className="settings-modal-body p-6 pb-10 sm:p-7 sm:pb-12">
                     {statusMessage && (
                         <div className="mb-5 text-[10px] uppercase tracking-[0.16em] text-sage/90 border border-sage/20 bg-sage/10 rounded px-3 py-2">
                             {statusMessage}
@@ -728,7 +773,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
                     {activeTab === 'identity' && (
                         <div className="space-y-5 animate-fade-in">
-                            <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+                            <div className="settings-panel rounded-xl p-5 sm:p-6">
                                 <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-3">{text.settings.avatar}</p>
                                 <div className="flex items-center gap-4">
                                     <div className="w-16 h-16 rounded-lg overflow-hidden border border-white/10 bg-[#0f0f0f]">
@@ -760,7 +805,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                 />
                             </div>
 
-                            <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+                            <div className="settings-panel rounded-xl p-5 sm:p-6">
                                 <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-3">{text.settings.personalInfo}</p>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <label className="text-[10px] uppercase tracking-[0.12em] text-gray-500">
@@ -768,7 +813,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                         <input
                                             value={fullNameDraft}
                                             onChange={(e) => setFullNameDraft(e.target.value)}
-                                            className="mt-1 w-full bg-[#141414] border border-white/10 rounded px-3 py-2 text-sm normal-case tracking-normal text-[#E5E4E2] placeholder:text-gray-600 focus:border-sage/40 outline-none"
+                                            className="settings-field mt-1 w-full rounded px-3 py-2.5 text-sm normal-case tracking-normal focus:border-sage/40 outline-none"
                                             placeholder={text.login.fullNamePlaceholder}
                                         />
                                     </label>
@@ -777,7 +822,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                         <input
                                             value={usernameDraft}
                                             onChange={(e) => setUsernameDraft(e.target.value.trim())}
-                                            className="mt-1 w-full bg-[#141414] border border-white/10 rounded px-3 py-2 text-sm normal-case tracking-normal text-[#E5E4E2] placeholder:text-gray-600 focus:border-sage/40 outline-none"
+                                            className="settings-field mt-1 w-full rounded px-3 py-2.5 text-sm normal-case tracking-normal focus:border-sage/40 outline-none"
                                             placeholder={text.login.usernamePlaceholder}
                                         />
                                     </label>
@@ -786,7 +831,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                         <select
                                             value={genderDraft}
                                             onChange={(e) => setGenderDraft(e.target.value as RegistrationGender | '')}
-                                            className="mt-1 w-full bg-[#141414] border border-white/10 rounded px-3 py-2 text-sm normal-case tracking-normal text-[#E5E4E2] focus:border-sage/40 outline-none"
+                                            className="settings-field mt-1 w-full rounded px-3 py-2.5 text-sm normal-case tracking-normal focus:border-sage/40 outline-none"
                                         >
                                             <option value="">{text.settings.select}</option>
                                             {genderOptions.map((option) => (
@@ -802,14 +847,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                             type="date"
                                             value={birthDateDraft}
                                             onChange={(e) => setBirthDateDraft(e.target.value)}
-                                            className="mt-1 w-full bg-[#141414] border border-white/10 rounded px-3 py-2 text-sm normal-case tracking-normal text-[#E5E4E2] focus:border-sage/40 outline-none"
+                                            className="settings-field mt-1 w-full rounded px-3 py-2.5 text-sm normal-case tracking-normal focus:border-sage/40 outline-none"
                                         />
                                     </label>
                                 </div>
                                 <p className="mt-3 text-[10px] text-gray-500">{text.settings.usernameHint}</p>
                             </div>
 
-                            <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+                            <div className="settings-panel rounded-xl p-5 sm:p-6">
                                 <label className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-2 block">
                                     {text.settings.bio} ({bioDraft.length}/180)
                                 </label>
@@ -817,19 +862,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                     value={bioDraft}
                                     onChange={(e) => setBioDraft(e.target.value.slice(0, 180))}
                                     rows={4}
-                                    className="w-full bg-[#141414] border border-white/10 rounded px-3 py-2 text-sm text-[#E5E4E2] placeholder:text-gray-600 focus:border-sage/40 outline-none resize-none"
+                                    className="settings-field w-full rounded px-3 py-2.5 text-sm focus:border-sage/40 outline-none resize-none"
                                     placeholder={text.settings.bioPlaceholder}
                                 />
                                 <button
                                     type="button"
                                     onClick={handleSaveIdentity}
-                                    className="mt-4 w-full bg-sage text-[#121212] rounded py-2.5 text-[10px] uppercase tracking-[0.2em] font-bold hover:opacity-90 transition-opacity"
+                                    className="settings-primary-action mt-4 w-full bg-sage text-[#121212] rounded py-2.5 text-[10px] uppercase tracking-[0.2em] font-bold hover:opacity-90 transition-opacity"
                                 >
                                     {text.settings.saveIdentity}
                                 </button>
                             </div>
 
-                            <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+                            <div className="settings-panel rounded-xl p-5 sm:p-6">
                                 <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-2">{importCopy.title}</p>
                                 <p className="text-xs text-gray-500 mb-4">{importCopy.subtitle}</p>
 
@@ -863,7 +908,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                             <div>
                                                 <p className="text-[10px] uppercase tracking-[0.16em] text-sage/85">{importCopy.previewTitle}</p>
                                                 <p className="mt-1 text-[10px] text-gray-500">
-                                                    {pendingImportFileName || 'letterboxd.csv'} · {pendingLetterboxdImport.parse.totalRows} {importCopy.rowsLabel}
+                                                    {pendingImportFileName || 'letterboxd.csv'} Â· {pendingLetterboxdImport.parse.totalRows} {importCopy.rowsLabel}
                                                 </p>
                                             </div>
                                             <button
@@ -905,7 +950,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                                 {pendingLetterboxdImport.previewRows.map((entry, index) => (
                                                     <div key={`${entry.title}-${index}`} className="rounded border border-white/10 bg-white/[0.03] px-2 py-1 text-[10px] text-gray-300">
                                                         <span className="text-[#E5E4E2]">{entry.title || '-'}</span>
-                                                        <span className="text-gray-500"> · {entry.year || '-'} · {importCopy.colTmdb}: {entry.tmdbId || '-'} · {importCopy.colWatched}: {entry.watchedDate || '-'}</span>
+                                                        <span className="text-gray-500"> Â· {entry.year || '-'} Â· {importCopy.colTmdb}: {entry.tmdbId || '-'} Â· {importCopy.colWatched}: {entry.watchedDate || '-'}</span>
                                                     </div>
                                                 ))}
                                             </div>
@@ -914,7 +959,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                         <button
                                             type="button"
                                             onClick={confirmPendingLetterboxdImport}
-                                            className="mt-4 w-full bg-sage text-[#121212] rounded py-2 text-[10px] uppercase tracking-[0.18em] font-bold hover:opacity-90 transition-opacity"
+                                            className="settings-primary-action mt-4 w-full bg-sage text-[#121212] rounded py-2 text-[10px] uppercase tracking-[0.18em] font-bold hover:opacity-90 transition-opacity"
                                         >
                                             {importCopy.confirmImport}
                                         </button>
@@ -930,7 +975,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
                     {activeTab === 'appearance' && (
                         <div className="space-y-5 animate-fade-in">
-                            <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+                            <div className="settings-panel rounded-xl p-5 sm:p-6">
                                 <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-3">{text.settings.theme}</p>
                                 <div className="grid grid-cols-2 gap-3">
                                     <button
@@ -960,7 +1005,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                 </div>
                             </div>
 
-                            <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+                            <div className="settings-panel rounded-xl p-5 sm:p-6">
                                 <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-3">{text.settings.language}</p>
                                 <div className="grid grid-cols-2 gap-3">
                                     {SUPPORTED_LANGUAGE_OPTIONS.map((option) => (
@@ -984,7 +1029,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
                     {activeTab === 'privacy' && (
                         <div className="space-y-5 animate-fade-in">
-                            <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+                            <div className="settings-panel rounded-xl p-5 sm:p-6">
                                 <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-2">{privacyCopy.title}</p>
                                 <p className="text-xs text-gray-500">{privacyCopy.subtitle}</p>
                             </div>
@@ -1005,7 +1050,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                                 [item.key]: !enabled
                                             }))
                                         }
-                                        className={`w-full rounded-xl border p-4 text-left transition-colors ${
+                                        className={`settings-privacy-row w-full rounded-xl border p-4 sm:p-5 text-left transition-colors ${
                                             enabled
                                                 ? 'border-sage/35 bg-sage/10'
                                                 : 'border-white/10 bg-white/5 hover:border-sage/25'
@@ -1017,13 +1062,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                                 <p className="mt-2 text-xs text-gray-500">{item.body}</p>
                                             </div>
                                             <span
-                                                className={`mt-0.5 inline-flex min-w-[58px] justify-center rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] ${
+                                                className={`settings-status-chip mt-0.5 inline-flex min-w-[70px] justify-center rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] ${
                                                     enabled
                                                         ? 'border-sage/40 text-sage bg-sage/10'
                                                         : 'border-white/10 text-gray-500'
                                                 }`}
                                             >
-                                                {enabled ? 'On' : 'Off'}
+                                                {enabled ? settingsUiCopy.toggleOn : settingsUiCopy.toggleOff}
                                             </span>
                                         </div>
                                     </button>
@@ -1033,7 +1078,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                             <button
                                 type="button"
                                 onClick={() => void handleSavePrivacy()}
-                                className="w-full bg-sage text-[#121212] rounded py-2.5 text-[10px] uppercase tracking-[0.2em] font-bold hover:opacity-90 transition-opacity"
+                                className="settings-primary-action mt-2 w-full bg-sage text-[#121212] rounded py-2.5 text-[10px] uppercase tracking-[0.2em] font-bold hover:opacity-90 transition-opacity"
                             >
                                 {privacyCopy.save}
                             </button>
@@ -1042,13 +1087,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
                     {activeTab === 'session' && (
                         <div className="space-y-5 animate-fade-in">
-                            <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+                            <div className="settings-panel rounded-xl p-5 sm:p-6">
                                 <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-2">{text.settings.activeAccount}</p>
                                 <p className="text-sm font-bold text-[#E5E4E2]">{user?.name || text.profileWidget.observer}</p>
                                 <p className="text-xs text-gray-500 mt-1">{user?.email || text.settings.unknown}</p>
                             </div>
 
-                            <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+                            <div className="settings-panel rounded-xl p-5 sm:p-6">
                                 <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-2">
                                     {text.login.resetPasswordForm}
                                 </p>
@@ -1062,7 +1107,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                             value={passwordDraft}
                                             onChange={(e) => setPasswordDraft(e.target.value)}
                                             disabled={!user}
-                                            className="mt-1 w-full bg-[#141414] border border-white/10 rounded px-3 py-2 text-sm normal-case tracking-normal text-[#E5E4E2] placeholder:text-gray-600 focus:border-sage/40 outline-none"
+                                            className="settings-field mt-1 w-full rounded px-3 py-2.5 text-sm normal-case tracking-normal focus:border-sage/40 outline-none"
                                             placeholder={text.login.newPasswordPlaceholder}
                                         />
                                     </label>
@@ -1073,7 +1118,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                             value={passwordConfirmDraft}
                                             onChange={(e) => setPasswordConfirmDraft(e.target.value)}
                                             disabled={!user}
-                                            className="mt-1 w-full bg-[#141414] border border-white/10 rounded px-3 py-2 text-sm normal-case tracking-normal text-[#E5E4E2] placeholder:text-gray-600 focus:border-sage/40 outline-none"
+                                            className="settings-field mt-1 w-full rounded px-3 py-2.5 text-sm normal-case tracking-normal focus:border-sage/40 outline-none"
                                             placeholder={text.login.confirmNewPasswordPlaceholder}
                                         />
                                     </label>
@@ -1083,13 +1128,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                     type="button"
                                     onClick={() => void handleChangePassword()}
                                     disabled={isUpdatingPassword || !user}
-                                    className="mt-4 w-full bg-sage text-[#121212] rounded py-2.5 text-[10px] uppercase tracking-[0.2em] font-bold hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
+                                    className="settings-primary-action mt-4 w-full bg-sage text-[#121212] rounded py-2.5 text-[10px] uppercase tracking-[0.2em] font-bold hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
                                 >
                                     {isUpdatingPassword ? text.login.submitLoading : text.login.submitResetPassword}
                                 </button>
                             </div>
 
-                            <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+                            <div className="settings-panel rounded-xl p-5 sm:p-6">
                                 <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-2">{inviteCopy.title}</p>
                                 <p className="text-xs text-gray-500 mb-4">{inviteCopy.subtitle}</p>
 
@@ -1115,7 +1160,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
                                 {invitedByCode ? (
                                     <p className="mt-3 text-[10px] uppercase tracking-[0.12em] text-sage/80">
-                                        Claimed code: {invitedByCode}
+                                        {settingsUiCopy.claimedCodeLabel}: {invitedByCode}
                                     </p>
                                 ) : (
                                     <div className="mt-4 space-y-2">
@@ -1127,7 +1172,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                                 value={inviteCodeDraft}
                                                 onChange={(e) => setInviteCodeDraft(e.target.value.toUpperCase())}
                                                 placeholder="ABCD1234"
-                                                className="flex-1 bg-[#141414] border border-white/10 rounded px-3 py-2 text-sm tracking-[0.14em] text-[#E5E4E2] placeholder:text-gray-600 focus:border-sage/40 outline-none"
+                                                className="settings-field flex-1 rounded px-3 py-2.5 text-sm tracking-[0.14em] focus:border-sage/40 outline-none"
                                             />
                                             <button
                                                 type="button"
@@ -1145,7 +1190,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                 )}
                             </div>
 
-                            <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+                            <div className="settings-panel rounded-xl p-5 sm:p-6">
                                 <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-2">
                                     {text.settings.accountDeletion}
                                 </p>
@@ -1169,7 +1214,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                 </button>
                             </div>
 
-                            <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-5">
+                            <div className="settings-danger-panel rounded-xl p-5 sm:p-6">
                                 <p className="text-[10px] uppercase tracking-[0.18em] text-red-400/80 mb-3">
                                     {text.settings.sessionControl}
                                 </p>

@@ -13,6 +13,7 @@ type WebToAppPromptProps = {
 const DISMISS_STORAGE_KEY = '180_web_to_app_prompt_dismiss_until_v1';
 const DISMISS_WINDOW_HOURS = 48;
 const APP_OPEN_FALLBACK_DELAY_MS = 1400;
+const DEFAULT_IOS_APP_STORE_URL = 'https://apps.apple.com/us/app/180-absolute-cinema/id6738339351';
 const IOS_USER_AGENT_REGEX = /(iphone|ipad|ipod)/i;
 const ANDROID_USER_AGENT_REGEX = /android/i;
 
@@ -38,10 +39,12 @@ const getWaitlistUrl = (): string => {
     return String(import.meta.env.VITE_MOBILE_WAITLIST_URL || '').trim();
 };
 
-const getStoreUrls = (): { ios: string; android: string } => ({
-    ios: String(import.meta.env.VITE_MOBILE_APP_STORE_IOS_URL || '').trim(),
-    android: String(import.meta.env.VITE_MOBILE_APP_STORE_ANDROID_URL || '').trim()
-});
+const getStoreUrls = (): { ios: string; android: string } => {
+    const ios = String(import.meta.env.VITE_MOBILE_APP_STORE_IOS_URL || '').trim() || DEFAULT_IOS_APP_STORE_URL;
+    const android = String(import.meta.env.VITE_MOBILE_APP_STORE_ANDROID_URL || '').trim();
+
+    return { ios, android };
+};
 
 const resolveOpenAppFallback = (
     waitlistUrl: string
