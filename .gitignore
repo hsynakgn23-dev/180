@@ -47,3 +47,4 @@ apps/mobile/expo_out.txt
 apps/mobile/tmp.json
 apps/mobile/tsc-errors.txt
 apps/mobile/tsc.txt
+.claude/
