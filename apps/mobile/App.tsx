@@ -1376,6 +1376,7 @@ export default function App() {
   const lastObservedLeagueIndexRef = useRef<number | null>(null);
   const lastObservedStreakRef = useRef<number | null>(null);
   const lastObservedStreakDateRef = useRef<string | null>(null);
+  const streakObservedInitRef = useRef(false);
   const lastHandledAuthCallbackUrlRef = useRef<string | null>(null);
   const lastHandledPublicProfileIntentRef = useRef<string | null>(null);
   const lastNotificationEventIdRef = useRef('');
@@ -3346,12 +3347,21 @@ export default function App() {
       });
     }
 
-    const previousStreak = lastObservedStreakRef.current;
     const previousStreakDate = lastObservedStreakDateRef.current;
     const streakDateKey = String(profileState.lastRitualDate || '').trim() || null;
+
+    // On first observation, just initialize refs without triggering celebration
+    if (!streakObservedInitRef.current) {
+      streakObservedInitRef.current = true;
+      lastObservedLeagueIndexRef.current = currentIndex;
+      lastObservedStreakRef.current = profileState.streak;
+      lastObservedStreakDateRef.current = streakDateKey;
+      return;
+    }
+
+    // Streak celebration: fires when today's ritual date becomes set during this session
     const streakAdvanced =
-      previousStreak !== null &&
-      profileState.streak > previousStreak &&
+      profileState.streak > 0 &&
       streakDateKey === getLocalDateKey() &&
       streakDateKey !== previousStreakDate;
 
@@ -3546,6 +3556,7 @@ export default function App() {
     lastObservedLeagueIndexRef.current = null;
     lastObservedStreakRef.current = null;
     lastObservedStreakDateRef.current = null;
+    streakObservedInitRef.current = false;
     setLeaguePromotionEvent(null);
     setStreakCelebrationEvent(null);
 
