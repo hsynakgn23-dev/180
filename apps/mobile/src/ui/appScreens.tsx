@@ -2949,6 +2949,7 @@ const ProfileUnifiedCard = ({
       ? `${rawLeagueColor}CC`
       : 'rgba(255,255,255,0.12)';
   // XP bar entrance animation
+  // eslint-disable-next-line react-hooks/refs
   const xpBarOpacity = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.timing(xpBarOpacity, {
@@ -2957,7 +2958,6 @@ const ProfileUnifiedCard = ({
       delay: 150,
       useNativeDriver: SUPPORTS_NATIVE_DRIVER,
     }).start();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const identityMeta = [
     normalizedGender ? `${copy.gender}: ${normalizedGender}` : '',
