@@ -112,10 +112,13 @@ const mapReplyRow = (row: ReplyRow): MobileCommentReply | null => {
   const createdAt = normalizeText(row.created_at, 80);
   return {
     id,
+    userId: null,
     author: normalizeText(row.author, 80) || 'gozlemci',
     text,
     timestampLabel: createdAt ? toRelativeTimestamp(createdAt) : 'simdi',
     createdAtMs: createdAt ? Date.parse(createdAt) : null,
+    echoCount: 0,
+    isEchoedByMe: false,
   };
 };
 

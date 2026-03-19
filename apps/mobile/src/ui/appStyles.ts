@@ -2253,6 +2253,33 @@ export const styles = StyleSheet.create({
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
+  commentFeedReplyEchoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginTop: 4,
+  },
+  commentFeedReplyEchoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  commentFeedReplyEchoButtonActive: {
+    backgroundColor: 'rgba(138,154,91,0.15)',
+  },
+  commentFeedReplyEchoText: {
+    color: '#8e8b84',
+    fontSize: 11,
+    fontFamily: 'Inter_600SemiBold',
+    fontWeight: '600',
+  },
+  commentFeedReplyEchoTextActive: {
+    color: '#8a9a5b',
+  },
   commentFeedActionText: {
     color: '#8A9A5B',
     fontSize: 11,

@@ -100,6 +100,7 @@ import {
 import {
   deleteMobileCommentRitual,
   echoMobileCommentRitual,
+  echoMobileCommentReply,
   fetchMobileCommentReplies,
   submitMobileCommentReply,
   type MobileCommentReply,
@@ -4696,6 +4697,15 @@ export default function App() {
     []
   );
 
+  const handleEchoReply = useCallback(async (reply: MobileCommentReply) => {
+    const result = await echoMobileCommentReply(reply.id);
+    void trackMobileEvent('page_view', {
+      reason: result.ok ? 'mobile_reply_echo_sent' : 'mobile_reply_echo_failed',
+      replyId: reply.id,
+    });
+    return result;
+  }, []);
+
   const handleSubmitCommentReply = useCallback(
     async (item: CommentFeedState['items'][number], text: string) => {
       const result = await submitMobileCommentReply({
@@ -6408,6 +6418,7 @@ export default function App() {
                         onEcho={handleEchoComment}
                         onLoadReplies={handleLoadCommentReplies}
                         onSubmitReply={handleSubmitCommentReply}
+                        onEchoReply={handleEchoReply}
                         onDeleteItem={handleDeleteComment}
                         onOpenAuthorProfile={handleOpenCommentAuthorProfile}
                       />

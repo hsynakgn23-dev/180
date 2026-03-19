@@ -4444,6 +4444,7 @@ const CommentFeedCard = ({
   onEcho,
   onLoadReplies,
   onSubmitReply,
+  onEchoReply,
   onDeleteItem,
   onOpenAuthorProfile,
   selectedMovieTitle,
@@ -4467,6 +4468,9 @@ const CommentFeedCard = ({
     item: CommentFeedState['items'][number],
     text: string
   ) => Promise<{ ok: boolean; message: string; reply?: MobileCommentReply }>;
+  onEchoReply?: (
+    reply: MobileCommentReply
+  ) => Promise<{ ok: boolean; message: string }>;
   onDeleteItem?: (
     item: CommentFeedState['items'][number]
   ) => Promise<{ ok: boolean; message: string }>;
@@ -4481,6 +4485,7 @@ const CommentFeedCard = ({
   const [replyLoading, setReplyLoading] = useState<Record<string, boolean>>({});
   const [replySubmitting, setReplySubmitting] = useState<Record<string, boolean>>({});
   const [echoSubmitting, setEchoSubmitting] = useState<Record<string, boolean>>({});
+  const [replyEchoSubmitting, setReplyEchoSubmitting] = useState<Record<string, boolean>>({});
   const [deleteSubmitting, setDeleteSubmitting] = useState<Record<string, boolean>>({});
   const [repliesByItemId, setRepliesByItemId] = useState<Record<string, MobileCommentReply[]>>({});
   const normalizedSelectedMovieTitle = String(selectedMovieTitle || '').trim();
@@ -4507,6 +4512,7 @@ const CommentFeedCard = ({
     setReplyLoading((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => visibleIds.has(key))));
     setReplySubmitting((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => visibleIds.has(key))));
     setEchoSubmitting((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => visibleIds.has(key))));
+    setReplyEchoSubmitting((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => visibleIds.has(key))));
     setDeleteSubmitting((prev) =>
       Object.fromEntries(Object.entries(prev).filter(([key]) => visibleIds.has(key)))
     );
@@ -4598,6 +4604,27 @@ const CommentFeedCard = ({
       }));
     },
     [onSubmitReply, replyDrafts, replySubmitting]
+  );
+
+  const handleReplyEchoPress = useCallback(
+    async (item: CommentFeedState['items'][number], reply: MobileCommentReply) => {
+      if (!onEchoReply || replyEchoSubmitting[reply.id] || reply.isEchoedByMe) return;
+
+      setReplyEchoSubmitting((prev) => ({ ...prev, [reply.id]: true }));
+      const result = await onEchoReply(reply);
+      if (result.ok) {
+        setRepliesByItemId((prev) => ({
+          ...prev,
+          [item.id]: (prev[item.id] || []).map((r) =>
+            r.id === reply.id
+              ? { ...r, echoCount: r.echoCount + 1, isEchoedByMe: true }
+              : r
+          ),
+        }));
+      }
+      setReplyEchoSubmitting((prev) => ({ ...prev, [reply.id]: false }));
+    },
+    [onEchoReply, replyEchoSubmitting, setRepliesByItemId]
   );
 
   const handleDeletePress = useCallback(
@@ -4905,6 +4932,29 @@ const CommentFeedCard = ({
                               <Text style={styles.commentFeedMeta}>{reply.timestampLabel}</Text>
                             </View>
                             <Text style={styles.commentFeedReplyText}>{reply.text}</Text>
+                            {onEchoReply ? (
+                              <View style={styles.commentFeedReplyEchoRow}>
+                                <Pressable
+                                  style={[
+                                    styles.commentFeedReplyEchoButton,
+                                    reply.isEchoedByMe ? styles.commentFeedReplyEchoButtonActive : null,
+                                  ]}
+                                  onPress={() => { void handleReplyEchoPress(item, reply); }}
+                                  disabled={reply.isEchoedByMe || replyEchoSubmitting[reply.id]}
+                                  accessibilityRole="button"
+                                  accessibilityLabel={`Echo ${reply.author} yaniti`}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.commentFeedReplyEchoText,
+                                      reply.isEchoedByMe ? styles.commentFeedReplyEchoTextActive : null,
+                                    ]}
+                                  >
+                                    {reply.isEchoedByMe ? '✦' : '✧'}{reply.echoCount > 0 ? ` ${reply.echoCount}` : ''}
+                                  </Text>
+                                </Pressable>
+                              </View>
+                            ) : null}
                           </View>
                         ))}
                       </View>

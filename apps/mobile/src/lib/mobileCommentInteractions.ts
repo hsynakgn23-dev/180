@@ -13,17 +13,25 @@ type ProfileRow = {
 
 type ReplyRow = {
   id?: string | null;
+  user_id?: string | null;
   author?: string | null;
   text?: string | null;
   created_at?: string | null;
 };
 
+type ReplyEchoRow = {
+  reply_id?: string | null;
+};
+
 export type MobileCommentReply = {
   id: string;
+  userId: string | null;
   author: string;
   text: string;
   timestampLabel: string;
   createdAtMs: number | null;
+  echoCount: number;
+  isEchoedByMe: boolean;
 };
 
 export type MobileCommentRepliesResult =
@@ -90,10 +98,13 @@ const toRelativeTimestamp = (value: unknown): string => {
 
 const mapReplyRow = (row: ReplyRow, fallbackText = '', fallbackAuthor = 'Sen'): MobileCommentReply => ({
   id: normalizeText(row.id, 120) || `reply-${Date.now().toString(36)}`,
+  userId: normalizeText(row.user_id, 120) || null,
   author: normalizeText(row.author, 80) || fallbackAuthor,
   text: normalizeText(row.text, MAX_REPLY_CHARS) || fallbackText,
   timestampLabel: row.created_at ? toRelativeTimestamp(row.created_at) : 'simdi',
   createdAtMs: parseTimestampToMs(row.created_at),
+  echoCount: 0,
+  isEchoedByMe: false,
 });
 
 const readSessionIdentity = async (): Promise<
@@ -213,7 +224,7 @@ export const fetchMobileCommentReplies = async (
 
   const { data, error } = await supabase
     .from('ritual_replies')
-    .select('id,author,text,created_at')
+    .select('id,user_id,author,text,created_at')
     .eq('ritual_id', normalizedRitualId)
     .order('created_at', { ascending: true })
     .limit(40);
@@ -230,10 +241,52 @@ export const fetchMobileCommentReplies = async (
     ? (data as ReplyRow[]).map((row) => mapReplyRow(row)).filter((row) => Boolean(row.text))
     : [];
 
+  if (replies.length === 0) {
+    return { ok: true, replies, message: 'Bu yorum icin henuz yanit yok.' };
+  }
+
+  // Hydrate echo counts and current-user echo state
+  const replyIds = replies.map((r) => r.id);
+  const sessionResult = await readSupabaseSessionSafe();
+  const currentUserId = normalizeText(sessionResult.session?.user?.id, 120);
+
+  const [allEchoesResult, userEchoesResult] = await Promise.all([
+    supabase.from('ritual_reply_echoes').select('reply_id').in('reply_id', replyIds),
+    currentUserId
+      ? supabase
+          .from('ritual_reply_echoes')
+          .select('reply_id')
+          .eq('user_id', currentUserId)
+          .in('reply_id', replyIds)
+      : Promise.resolve({ data: [] as ReplyEchoRow[], error: null }),
+  ]);
+
+  const echoCountMap = new Map<string, number>();
+  if (Array.isArray(allEchoesResult.data)) {
+    for (const row of allEchoesResult.data as ReplyEchoRow[]) {
+      const id = normalizeText(row.reply_id, 120);
+      if (id) echoCountMap.set(id, (echoCountMap.get(id) ?? 0) + 1);
+    }
+  }
+  const userEchoedSet = new Set<string>();
+  const userEchoData = 'data' in userEchoesResult ? userEchoesResult.data : [];
+  if (Array.isArray(userEchoData)) {
+    for (const row of userEchoData as ReplyEchoRow[]) {
+      const id = normalizeText(row.reply_id, 120);
+      if (id) userEchoedSet.add(id);
+    }
+  }
+
+  const hydratedReplies = replies.map((reply) => ({
+    ...reply,
+    echoCount: echoCountMap.get(reply.id) ?? 0,
+    isEchoedByMe: userEchoedSet.has(reply.id),
+  }));
+
   return {
     ok: true,
-    replies,
-    message: replies.length > 0 ? 'Yanitlar guncellendi.' : 'Bu yorum icin henuz yanit yok.',
+    replies: hydratedReplies,
+    message: 'Yanitlar guncellendi.',
   };
 };
 
@@ -276,6 +329,33 @@ export const deleteMobileCommentRitual = async (
     ok: true,
     message: 'Yorum silindi.',
   };
+};
+
+export const echoMobileCommentReply = async (replyId: string): Promise<MobileCommentEchoResult> => {
+  const normalizedReplyId = normalizeText(replyId, 120);
+  if (!normalizedReplyId) {
+    return { ok: false, reason: 'unknown', message: 'Yanit aksiyon icin kayit bulunamadi.' };
+  }
+
+  const identity = await readSessionIdentity();
+  if (!identity.ok) {
+    return { ok: false, reason: identity.reason, message: identity.message };
+  }
+
+  const { error } = await supabase!.from('ritual_reply_echoes').upsert(
+    [{ reply_id: normalizedReplyId, user_id: identity.userId }],
+    { onConflict: 'reply_id,user_id', ignoreDuplicates: true }
+  );
+
+  if (error) {
+    return {
+      ok: false,
+      reason: 'unknown',
+      message: normalizeText(error.message, 220) || 'Echo senkronize edilemedi.',
+    };
+  }
+
+  return { ok: true, message: 'Echo kaydedildi.' };
 };
 
 export const submitMobileCommentReply = async (input: {

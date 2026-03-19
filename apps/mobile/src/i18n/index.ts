@@ -29,7 +29,7 @@ export const getDeviceLanguage = (): AppLanguage => {
 
 /** Returns the translation object for a given language. Falls back to Turkish. */
 export const getTranslations = (language: AppLanguage): typeof tr => {
-  if (language === 'en') return translations.en;
+  if (language === 'en') return translations.en as unknown as typeof tr;
   // es/fr not fully translated yet — fall back to TR copy
   return translations.tr;
 };
