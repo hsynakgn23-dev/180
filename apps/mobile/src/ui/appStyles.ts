@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native';
-
 import { Platform } from 'react-native';
+import { spacing } from '../theme/spacing';
 
 const toRgba = (color: string, opacity: number): string => {
   const normalized = String(color || '').trim();
@@ -110,10 +110,10 @@ export const styles = StyleSheet.create({
     flex: 1,
   },
   container: {
-    paddingHorizontal: 18,
-    paddingTop: 24,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
     paddingBottom: 32,
-    gap: 16,
+    gap: spacing.lg,
   },
   containerWithTabs: {
     paddingBottom: 138,
@@ -124,9 +124,9 @@ export const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.1)',
     borderWidth: 1,
     borderRadius: 32,
-    paddingHorizontal: 24,
-    paddingVertical: 24,
-    gap: 8,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xl,
+    gap: spacing.sm,
     overflow: 'hidden',
     ...buildViewShadow({ color: '#121212', opacity: 0.6, radius: 24, offsetY: 12, elevation: 8 }),
   },
@@ -196,9 +196,9 @@ export const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.08)',
     borderWidth: 1,
     borderRadius: 24,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    gap: 10,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
+    gap: spacing.sm + 2,
   },
   surfaceIntroAccent: {
     width: 34,
@@ -2524,10 +2524,10 @@ export const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.12)',
     backgroundColor: '#171717',
-    paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
     paddingBottom: 20,
-    gap: 10,
+    gap: spacing.sm + 2,
   },
   modalSheetScroll: {
     gap: 10,
@@ -2904,6 +2904,22 @@ export const styles = StyleSheet.create({
   settingsTabChipTextActive: {
     color: '#E5E4E2',
   },
+  settingsAvatarPreviewContainer: {
+    width: 64,
+    height: 64,
+    position: 'relative',
+  },
+  settingsAvatarEditBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 24,
+    height: 24,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   settingsAvatarPickerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3007,6 +3023,10 @@ export const styles = StyleSheet.create({
   settingsPrivacyKnobActive: {
     backgroundColor: '#121212',
     transform: [{ translateX: 18 }],
+  },
+  settingsPrimaryAction: {
+    marginTop: 8,
+    marginBottom: 12,
   },
   arenaLeaderboardAvatarWrap: {
     width: 30,

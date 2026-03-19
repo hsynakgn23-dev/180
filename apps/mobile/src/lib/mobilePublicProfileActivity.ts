@@ -12,6 +12,7 @@ type RitualRow = {
   text?: string | null;
   poster_path?: string | null;
   year?: number | string | null;
+  genre?: string | null;
   timestamp?: string | null;
   created_at?: string | null;
 };
@@ -22,6 +23,7 @@ export type MobilePublicProfileActivityItem = {
   text: string;
   posterPath: string | null;
   year: number | null;
+  genre: string | null;
   rawTimestamp: string;
   timestampLabel: string;
 };
@@ -99,6 +101,7 @@ const normalizeRows = (rows: RitualRow[]): MobilePublicProfileActivityItem[] =>
         text,
         posterPath: normalizeText(row.poster_path, 600) || null,
         year: toSafeYear(row.year),
+        genre: normalizeText(row.genre, 80) || null,
         rawTimestamp,
         timestampLabel: toRelativeTimestamp(rawTimestamp),
       };
@@ -156,8 +159,8 @@ export const fetchMobilePublicProfileActivity = async ({
 
   const queryLimit = Math.max(20, Math.min(180, Math.floor(Number(limit) || 80)));
   const variants: Array<{ select: string; orderBy: 'timestamp' | 'created_at' }> = [
-    { select: 'id,movie_title,text,poster_path,year,timestamp', orderBy: 'timestamp' },
-    { select: 'id,movie_title,text,poster_path,year,created_at', orderBy: 'created_at' },
+    { select: 'id,movie_title,text,poster_path,year,genre,timestamp', orderBy: 'timestamp' },
+    { select: 'id,movie_title,text,poster_path,year,genre,created_at', orderBy: 'created_at' },
     { select: 'id,movie_title,text,year,timestamp', orderBy: 'timestamp' },
     { select: 'id,movie_title,text,year,created_at', orderBy: 'created_at' },
   ];

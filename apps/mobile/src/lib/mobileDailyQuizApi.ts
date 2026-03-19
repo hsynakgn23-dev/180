@@ -69,6 +69,198 @@ export type MobileDailyQuizAnswerResult =
       status?: number;
     };
 
+const normalizeText = (value: unknown, maxLength = 320): string => {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  return text.length > maxLength ? text.slice(0, maxLength) : text;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+const toNonNegativeInteger = (value: unknown, fallback = 0): number => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, Math.floor(parsed));
+};
+
+const toNullableInteger = (value: unknown): number | null => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.floor(parsed);
+};
+
+const toBoolean = (value: unknown): boolean =>
+  value === true || value === 'true' || value === 1 || value === '1';
+
+const normalizeLanguage = (value: unknown): MobileDailyQuizLanguageCode => {
+  const text = normalizeText(value, 16).toLowerCase();
+  if (text === 'tr' || text === 'en' || text === 'es' || text === 'fr') return text;
+  return 'en';
+};
+
+const normalizeOptionKey = (value: unknown): MobileDailyQuizOptionKey | null => {
+  const text = normalizeText(value, 4).toLowerCase();
+  if (text === 'a' || text === 'b' || text === 'c' || text === 'd') return text;
+  return null;
+};
+
+const normalizeBundleProgress = (
+  value: unknown
+): NonNullable<MobileDailyQuizBundle['progress']> | null => {
+  if (!isRecord(value)) return null;
+
+  return {
+    answeredCount: toNonNegativeInteger(value.answeredCount),
+    correctCount: toNonNegativeInteger(value.correctCount),
+    completedMovieIds: Array.isArray(value.completedMovieIds)
+      ? value.completedMovieIds
+          .map((entry) => toNullableInteger(entry))
+          .filter((entry): entry is number => entry !== null && entry > 0)
+      : [],
+    streakProtected: toBoolean(value.streakProtected),
+    streakProtectedAt: normalizeText(value.streakProtectedAt, 80) || null,
+    xpAwarded: toNonNegativeInteger(value.xpAwarded),
+    lastAnsweredAt: normalizeText(value.lastAnsweredAt, 80) || null,
+    metadata: isRecord(value.metadata) ? value.metadata : {},
+  };
+};
+
+const normalizeBundle = (value: unknown): MobileDailyQuizBundle | null => {
+  if (!isRecord(value) || value.ok !== true) return null;
+
+  const questionsByMovie = Array.isArray(value.questionsByMovie)
+    ? value.questionsByMovie
+        .map((movieBlock, movieIndex) => {
+          if (!isRecord(movieBlock)) return null;
+
+          const movieId = toNullableInteger(movieBlock.movieId);
+          const questions = Array.isArray(movieBlock.questions)
+            ? movieBlock.questions
+                .map((question, questionIndex) => {
+                  if (!isRecord(question)) return null;
+
+                  const questionId = normalizeText(question.id, 120);
+                  const options = Array.isArray(question.options)
+                    ? question.options
+                        .map((option) => {
+                          if (!isRecord(option)) return null;
+                          const key = normalizeOptionKey(option.key);
+                          const label = normalizeText(option.label, 240);
+                          if (!key || !label) return null;
+                          return { key, label };
+                        })
+                        .filter(
+                          (
+                            option
+                          ): option is { key: MobileDailyQuizOptionKey; label: string } => Boolean(option)
+                        )
+                    : [];
+
+                  if (!questionId || options.length === 0) return null;
+
+                  const attempt = isRecord(question.attempt)
+                    ? (() => {
+                        const selectedOption = normalizeOptionKey(question.attempt.selectedOption);
+                        if (!selectedOption) return null;
+                        return {
+                          selectedOption,
+                          isCorrect: toBoolean(question.attempt.isCorrect),
+                          answeredAt:
+                            normalizeText(question.attempt.answeredAt, 80) || new Date().toISOString(),
+                          explanation: normalizeText(question.attempt.explanation, 400),
+                        };
+                      })()
+                    : null;
+
+                  return {
+                    id: questionId,
+                    questionKey:
+                      normalizeText(question.questionKey, 120) || `question-${movieIndex}-${questionIndex}`,
+                    questionOrder: toNonNegativeInteger(question.questionOrder, questionIndex + 1),
+                    question:
+                      normalizeText(question.question, 400) ||
+                      `Question ${String(questionIndex + 1).padStart(2, '0')}`,
+                    options,
+                    attempt,
+                  };
+                })
+                .filter(
+                  (
+                    question
+                  ): question is MobileDailyQuizBundle['questionsByMovie'][number]['questions'][number] =>
+                    Boolean(question)
+                )
+            : [];
+
+          if (!movieId || questions.length === 0) return null;
+
+          return {
+            movieId,
+            movieTitle: normalizeText(movieBlock.movieTitle, 180) || `Movie ${movieId}`,
+            movieOrder: toNonNegativeInteger(movieBlock.movieOrder, movieIndex),
+            requiredCorrectCount: Math.min(
+              questions.length,
+              Math.max(0, toNonNegativeInteger(movieBlock.requiredCorrectCount, 0))
+            ),
+            questions,
+          };
+        })
+        .filter(
+          (
+            movieBlock
+          ): movieBlock is MobileDailyQuizBundle['questionsByMovie'][number] => Boolean(movieBlock)
+        )
+    : [];
+
+  const date = normalizeText(value.date, 40);
+  if (!date) return null;
+
+  return {
+    ok: true,
+    date,
+    status: normalizeText(value.status, 40) || 'published',
+    language: normalizeLanguage(value.language),
+    questionCount: toNonNegativeInteger(
+      value.questionCount,
+      questionsByMovie.reduce((sum, movieBlock) => sum + movieBlock.questions.length, 0)
+    ),
+    questionsByMovie,
+    progress: normalizeBundleProgress(value.progress),
+  };
+};
+
+const normalizeAnswerResult = (
+  value: unknown
+): Extract<MobileDailyQuizAnswerResult, { ok: true }> | null => {
+  if (!isRecord(value) || value.ok !== true) return null;
+
+  const questionId = normalizeText(value.questionId, 120);
+  const selectedOption = normalizeOptionKey(value.selectedOption);
+  const progress = normalizeBundleProgress(value.progress);
+  const xp = isRecord(value.xp)
+    ? {
+        delta: toNonNegativeInteger(value.xp.delta),
+        total: toNullableInteger(value.xp.total),
+        streak: toNullableInteger(value.xp.streak),
+        streakProtectedNow: toBoolean(value.xp.streakProtectedNow),
+      }
+    : null;
+
+  if (!questionId || !selectedOption || !progress || !xp) return null;
+
+  return {
+    ok: true,
+    questionId,
+    selectedOption,
+    isCorrect: toBoolean(value.isCorrect),
+    alreadyAnswered: toBoolean(value.alreadyAnswered),
+    explanation: normalizeText(value.explanation, 400),
+    progress,
+    xp,
+  };
+};
+
 const buildMobileApiUrl = (path: string): string => {
   const referralBase = resolveMobileReferralApiBase();
   const dailyApiUrl = resolveMobileDailyApiUrl();
@@ -109,20 +301,29 @@ export const readMobileDailyQuizBundle = async (input: {
       cache: 'no-store',
     });
 
-    const payload = (await response.json().catch(() => ({}))) as
-      | MobileDailyQuizBundle
-      | MobileDailyQuizBundleError;
+    const payload = (await response.json().catch(() => null)) as unknown;
 
     if (!response.ok) {
-      const errorPayload = payload as Partial<MobileDailyQuizBundleError>;
+      const errorPayload = isRecord(payload) ? payload : null;
       return {
         ok: false,
-        error: typeof errorPayload.error === 'string' ? errorPayload.error : `HTTP ${response.status}`,
+        error:
+          normalizeText(errorPayload?.error, 240) ||
+          normalizeText(errorPayload?.message, 240) ||
+          `HTTP ${response.status}`,
         status: response.status,
       };
     }
 
-    return payload;
+    const normalizedPayload = normalizeBundle(payload);
+    if (!normalizedPayload) {
+      return {
+        ok: false,
+        error: 'Gunluk quiz verisi gecersiz.',
+      };
+    }
+
+    return normalizedPayload;
   } catch (error) {
     return {
       ok: false,
@@ -152,17 +353,28 @@ export const submitMobileDailyQuizAnswer = async (input: {
       }),
     });
 
-    const payload = (await response.json().catch(() => ({}))) as MobileDailyQuizAnswerResult;
+    const payload = (await response.json().catch(() => null)) as unknown;
     if (!response.ok) {
-      const errorPayload = payload as Partial<Extract<MobileDailyQuizAnswerResult, { ok: false }>>;
+      const errorPayload = isRecord(payload) ? payload : null;
       return {
         ok: false,
-        error: typeof errorPayload.error === 'string' ? errorPayload.error : `HTTP ${response.status}`,
+        error:
+          normalizeText(errorPayload?.error, 240) ||
+          normalizeText(errorPayload?.message, 240) ||
+          `HTTP ${response.status}`,
         status: response.status,
       };
     }
 
-    return payload;
+    const normalizedPayload = normalizeAnswerResult(payload);
+    if (!normalizedPayload) {
+      return {
+        ok: false,
+        error: 'Gunluk quiz cevabi gecersiz.',
+      };
+    }
+
+    return normalizedPayload;
   } catch (error) {
     return {
       ok: false,
