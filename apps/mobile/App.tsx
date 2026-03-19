@@ -4665,7 +4665,7 @@ export default function App() {
       reason: 'mobile_comment_echoed',
       ritualId: item.id,
     });
-    if (item.userId && !item.isMine) {
+    if (!item.isMine) {
       void sendEngagementPushNotification({
         kind: 'like',
         ritualId: item.id,
@@ -4733,7 +4733,7 @@ export default function App() {
           reason: 'mobile_comment_reply_submitted',
           ritualId: item.id,
         });
-        if (item.userId && !item.isMine) {
+        if (!item.isMine) {
           void sendEngagementPushNotification({
             kind: 'comment',
             ritualId: item.id,
