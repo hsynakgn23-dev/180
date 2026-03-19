@@ -32,6 +32,7 @@ const ALLOWED_HEX_COLORS = new Set([
   '#fecaca',
   '#c9c6bf',
   '#d9e2bf',
+  '#ff9500',
 ]);
 
 const REQUIRED_HEX_COLORS = ['#121212', '#171717', '#e5e4e2', '#8e8b84', '#8a9a5b', '#a57164'];

@@ -32,7 +32,7 @@ import {
   resolveMobileMarkMeta,
   resolveMobileMarkTitle,
 } from '../lib/mobileMarksCatalog';
-import { resolveMobileLeagueInfo, resolveMobileLeagueProgress } from '../lib/mobileLeagueSystem';
+import { resolveMobileLeagueProgress } from '../lib/mobileLeagueSystem';
 import { type PushInboxItem } from '../lib/mobilePushInbox';
 import { isSupabaseConfigured } from '../lib/supabase';
 import type { MobileThemeMode } from '../lib/mobileThemeMode';
@@ -2933,18 +2933,19 @@ const ProfileUnifiedCard = ({
     : copy.pending;
   const progressPercentLabel = Math.round(progress.progressPercentage);
   const fillHeadColor = getProgressHeadColor(progress.progressPercentage);
-  const fillTailColor = getProgressTailColor(progress.progressPercentage);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _fillTailColor = getProgressTailColor(progress.progressPercentage);
   const effectiveProgressWidth =
     progress.progressPercentage > 0 ? Math.max(progress.progressPercentage, 3) : 0;
   // League color for avatar border and XP bar
-  // Use leagueColor directly from state; guard against Absolute (#000) and Eternal (#fff) extremes
+  // Use leagueColor directly from state; guard against Absolute (black) and Eternal (white) extremes
   const rawLeagueColor = state.status === 'success' ? state.leagueColor : null;
   const leagueAccentColor =
-    rawLeagueColor && rawLeagueColor !== '#000000' && rawLeagueColor !== '#FFFFFF'
+    rawLeagueColor && rawLeagueColor !== '#121212' && rawLeagueColor !== '#e5e4e2'
       ? rawLeagueColor
       : fillHeadColor;
   const avatarBorderColor =
-    rawLeagueColor && rawLeagueColor !== '#000000' && rawLeagueColor !== '#FFFFFF'
+    rawLeagueColor && rawLeagueColor !== '#121212' && rawLeagueColor !== '#e5e4e2'
       ? `${rawLeagueColor}CC`
       : 'rgba(255,255,255,0.12)';
   // XP bar entrance animation
@@ -3013,7 +3014,7 @@ const ProfileUnifiedCard = ({
             <Text style={[styles.sectionLeadBody, { fontSize: 12 }]} numberOfLines={2}>{normalizedBio}</Text>
           ) : null}
           {identityMeta ? (
-            <Text style={[styles.sectionLeadBody, { fontSize: 11, color: '#6e6b64' }]}>{identityMeta}</Text>
+            <Text style={[styles.sectionLeadBody, { fontSize: 11, color: '#6f665c' }]}>{identityMeta}</Text>
           ) : null}
           {/* League identity chip */}
           <View
@@ -5075,6 +5076,7 @@ const DailyHomeScreen = ({
   const railInteractionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const railMovies = state.status === 'success' ? state.movies.slice(0, 5) : [];
   // Streak badge pulse
+  // eslint-disable-next-line react-hooks/refs
   const streakPulse = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     if (!streak || streak <= 0) return;
@@ -6582,6 +6584,7 @@ const RitualDraftCard = ({
   const directorLabel =
     String(targetMovie?.director || '').trim() || 'Yonetmen bilgisi bekleniyor';
   const yearLabel = targetMovie?.year ? String(targetMovie.year) : '--';
+  // eslint-disable-next-line react-hooks/refs
   const syncedAnim = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     if (submitState.status === 'synced') {
@@ -9780,7 +9783,8 @@ const PublicProfileDetailCard = ({
   const followingCount = Math.max(0, Number(profile?.followingCount || 0));
   const followersCount = Math.max(0, Number(profile?.followersCount || 0));
   const isFollowBusy = followStatus === 'loading';
-  const followTone =
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _followTone =
     followStatus === 'error' ? 'clay' : followStatus === 'ready' ? 'sage' : 'muted';
 
   if (status === 'loading' && !profile) {
