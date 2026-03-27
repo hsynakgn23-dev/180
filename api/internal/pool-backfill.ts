@@ -1,0 +1,116 @@
+import { syncDailyQuestionsToPool } from '../lib/questionPool.js';
+import { createSupabaseServiceClient } from '../lib/supabaseServiceClient.js';
+
+export const config = { runtime: 'nodejs' };
+
+type ApiRequest = {
+    method?: string;
+    headers?: Record<string, string | undefined> | Headers;
+    query?: Record<string, string | string[] | undefined>;
+};
+
+type ApiResponse = {
+    status?: (statusCode: number) => { json: (payload: Record<string, unknown>) => unknown };
+};
+
+const sendJson = (res: ApiResponse, status: number, payload: Record<string, unknown>) => {
+    if (res && typeof res.status === 'function') {
+        return res.status(status).json(payload);
+    }
+    return new Response(JSON.stringify(payload), {
+        status,
+        headers: { 'content-type': 'application/json; charset=utf-8' },
+    });
+};
+
+const resolveSecret = (): string =>
+    String(
+        process.env.DAILY_QUIZ_IMPORT_SECRET ||
+            process.env.DAILY_SOURCE_SECRET ||
+            process.env.CRON_SECRET ||
+            ''
+    ).trim();
+
+const getHeader = (req: ApiRequest, key: string): string => {
+    const headers = req.headers;
+    if (!headers) return '';
+    if (typeof (headers as Headers).get === 'function') {
+        return ((headers as Headers).get(key) || '').trim();
+    }
+    const obj = headers as Record<string, string | undefined>;
+    return (obj[key.toLowerCase()] || obj[key] || '').trim();
+};
+
+const getBearerToken = (req: ApiRequest): string | null => {
+    const authHeader = getHeader(req, 'authorization');
+    const match = authHeader.match(/^Bearer\s+(.+)$/i);
+    return match ? match[1].trim() || null : null;
+};
+
+const getQueryParam = (req: ApiRequest, key: string): string | null => {
+    const raw = req?.query?.[key];
+    if (typeof raw === 'string') return raw;
+    if (Array.isArray(raw) && typeof raw[0] === 'string') return raw[0];
+    return null;
+};
+
+/**
+ * Backfill the question pool from existing daily_movie_questions.
+ * No TMDB calls needed — purely Supabase to Supabase.
+ */
+export default async function handler(req: ApiRequest, res: ApiResponse) {
+    if (req.method !== 'POST') {
+        return sendJson(res, 405, { ok: false, error: 'Method not allowed.' });
+    }
+
+    const expectedSecret = resolveSecret();
+    const providedSecret = getBearerToken(req) || getQueryParam(req, 'secret') || '';
+    if (!expectedSecret || providedSecret !== expectedSecret) {
+        return sendJson(res, 401, { ok: false, error: 'Unauthorized.' });
+    }
+
+    try {
+        const url = String(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
+        const key = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+        if (!url || !key) {
+            return sendJson(res, 500, { ok: false, error: 'Missing Supabase config.' });
+        }
+        const supabase = createSupabaseServiceClient(url, key);
+
+        // Get all distinct batch_dates from daily_movie_questions
+        const { data: dates } = await supabase
+            .from('daily_movie_questions')
+            .select('batch_date')
+            .order('batch_date', { ascending: true });
+
+        if (!dates || dates.length === 0) {
+            return sendJson(res, 200, { ok: true, message: 'No daily questions found.', synced: 0 });
+        }
+
+        const uniqueDates = [...new Set(dates.map((d: { batch_date: string }) => d.batch_date))];
+
+        let totalSynced = 0;
+        const errors: string[] = [];
+
+        for (const dateKey of uniqueDates) {
+            try {
+                const result = await syncDailyQuestionsToPool(dateKey);
+                totalSynced += result.synced;
+            } catch (e) {
+                errors.push(`${dateKey}: ${e instanceof Error ? e.message : String(e)}`);
+            }
+        }
+
+        return sendJson(res, 200, {
+            ok: true,
+            datesProcessed: uniqueDates.length,
+            totalSynced,
+            errors: errors.length > 0 ? errors : undefined,
+        });
+    } catch (e) {
+        return sendJson(res, 500, {
+            ok: false,
+            error: e instanceof Error ? e.message : String(e),
+        });
+    }
+}

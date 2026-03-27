@@ -142,7 +142,7 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 // ============================================================
 
 const fetchTmdbGenreMap = async (apiKey: string): Promise<Map<number, string>> => {
-    const response = await fetch(`${TMDB_API_BASE}/genre/movie/list?api_key=${apiKey}&language=en-US`);
+    const response = await fetch(`${TMDB_API_BASE}/genre/movie/list?api_key=${apiKey}&language=en-US`, { signal: AbortSignal.timeout(15000) });
     if (!response.ok) throw new Error(`TMDB genre fetch failed: ${response.status}`);
     const payload = (await response.json()) as { genres?: Array<{ id: number; name: string }> };
     const map = new Map<number, string>();
@@ -189,7 +189,7 @@ export const fetchTmdbPopularMovies = async (targetCount: number): Promise<TmdbM
             page: String(page)
         });
 
-        const response = await fetch(`${TMDB_API_BASE}/discover/movie?${params.toString()}`);
+        const response = await fetch(`${TMDB_API_BASE}/discover/movie?${params.toString()}`, { signal: AbortSignal.timeout(15000) });
         if (!response.ok) continue;
 
         const payload = (await response.json()) as { results?: TmdbDiscoverResult[] };
@@ -246,7 +246,8 @@ export const enrichMoviesWithCredits = async (
 
         try {
             const response = await fetch(
-                `${TMDB_API_BASE}/movie/${movieId}/credits?api_key=${apiKey}&language=en-US`
+                `${TMDB_API_BASE}/movie/${movieId}/credits?api_key=${apiKey}&language=en-US`,
+                { signal: AbortSignal.timeout(15000) }
             );
             if (!response.ok) {
                 enriched.push({ ...movie, director: '', castNames: [] });
