@@ -16,6 +16,18 @@ import ogProfileHandler from '../api/og/profile.js';
 import pushEngagementHandler from '../api/push/engagement.js';
 import pushTestHandler from '../api/push/test.js';
 import referralHandler from '../api/referral.js';
+import poolMoviesHandler from '../api/pool-movies.js';
+import poolSwipeHandler from '../api/pool-swipe.js';
+import poolQuizHandler from '../api/pool-quiz.js';
+import poolAnswerHandler from '../api/pool-answer.js';
+import rushStartHandler from '../api/rush-start.js';
+import rushAnswerHandler from '../api/rush-answer.js';
+import rushCompleteHandler from '../api/rush-complete.js';
+import subscriptionStatusHandler from '../api/subscription-status.js';
+import subscriptionVerifyHandler from '../api/subscription-verify.js';
+import adImpressionHandler from '../api/ad-impression.js';
+import poolBatchGenerateHandler from '../api/internal/pool-batch-generate.js';
+import poolBatchStatusHandler from '../api/internal/pool-batch-status.js';
 
 type QueryValue = string | string[] | undefined;
 
@@ -59,7 +71,19 @@ const ROUTES: RouteEntry[] = [
     { path: '/api/push/test', handler: pushTestHandler as ApiRouteHandler },
     { path: '/api/referral', handler: referralHandler as ApiRouteHandler },
     { path: '/api/referral/create', handler: referralHandler as ApiRouteHandler },
-    { path: '/api/referral/claim', handler: referralHandler as ApiRouteHandler }
+    { path: '/api/referral/claim', handler: referralHandler as ApiRouteHandler },
+    { path: '/api/pool-movies', handler: poolMoviesHandler as ApiRouteHandler },
+    { path: '/api/pool-swipe', handler: poolSwipeHandler as ApiRouteHandler },
+    { path: '/api/pool-quiz', handler: poolQuizHandler as ApiRouteHandler },
+    { path: '/api/pool-answer', handler: poolAnswerHandler as ApiRouteHandler },
+    { path: '/api/rush-start', handler: rushStartHandler as ApiRouteHandler },
+    { path: '/api/rush-answer', handler: rushAnswerHandler as ApiRouteHandler },
+    { path: '/api/rush-complete', handler: rushCompleteHandler as ApiRouteHandler },
+    { path: '/api/subscription-status', handler: subscriptionStatusHandler as ApiRouteHandler },
+    { path: '/api/subscription-verify', handler: subscriptionVerifyHandler as ApiRouteHandler },
+    { path: '/api/ad-impression', handler: adImpressionHandler as ApiRouteHandler },
+    { path: '/api/internal/pool-batch-generate', handler: poolBatchGenerateHandler as ApiRouteHandler },
+    { path: '/api/internal/pool-batch-status', handler: poolBatchStatusHandler as ApiRouteHandler }
 ];
 
 const trimTrailingSlash = (value: string): string => {

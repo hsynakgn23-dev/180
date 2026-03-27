@@ -927,6 +927,94 @@ const sleep = async (milliseconds: number): Promise<void> => {
     await new Promise((resolve) => setTimeout(resolve, milliseconds));
 };
 
+const tryBuildQuestionsFromPool = async (
+    dateKey: string,
+    movies: DailyQuizMovie[],
+    supabase: ReturnType<typeof createServiceClient>
+): Promise<StoredDailyQuizQuestion[] | null> => {
+    try {
+        const tmdbIds = movies.map((m) => m.id).filter(Boolean);
+        if (tmdbIds.length === 0) return null;
+
+        const { data: poolRows } = await supabase
+            .from('question_pool_questions')
+            .select('tmdb_movie_id, question_order, question_translations, options_translations, correct_option, explanation_translations')
+            .in('tmdb_movie_id', tmdbIds)
+            .order('tmdb_movie_id')
+            .order('question_order');
+
+        if (!poolRows || poolRows.length === 0) return null;
+
+        // Group by tmdb_movie_id
+        const byMovie = new Map<number, typeof poolRows>();
+        for (const row of poolRows) {
+            const id = Number(row.tmdb_movie_id);
+            if (!byMovie.has(id)) byMovie.set(id, []);
+            byMovie.get(id)!.push(row);
+        }
+
+        // All movies must have at least DAILY_QUIZ_QUESTIONS_PER_MOVIE questions
+        for (const movie of movies) {
+            const rows = byMovie.get(movie.id) || [];
+            if (rows.length < DAILY_QUIZ_QUESTIONS_PER_MOVIE) return null;
+        }
+
+        // Build StoredDailyQuizQuestion array
+        const questions: StoredDailyQuizQuestion[] = [];
+
+        for (let movieOrder = 0; movieOrder < movies.length; movieOrder++) {
+            const movie = movies[movieOrder];
+            const rows = (byMovie.get(movie.id) || []).slice(0, DAILY_QUIZ_QUESTIONS_PER_MOVIE);
+
+            for (let qi = 0; qi < rows.length; qi++) {
+                const row = rows[qi];
+                const correctOption = normalizeSelectedOption(row.correct_option);
+                if (!correctOption) continue;
+
+                const explanations = (row.explanation_translations && typeof row.explanation_translations === 'object')
+                    ? row.explanation_translations as Record<string, string>
+                    : {};
+                const filledExplanations: LocalizedRecord = {
+                    tr: explanations.tr || '-',
+                    en: explanations.en || '-',
+                    es: explanations.es || '-',
+                    fr: explanations.fr || '-'
+                };
+
+                const rawOpts = (row.options_translations && typeof row.options_translations === 'object')
+                    ? row.options_translations as Record<string, Record<string, string>>
+                    : {};
+                const optionsTranslations: Record<'a' | 'b' | 'c' | 'd', LocalizedRecord> = {
+                    a: { tr: rawOpts.a?.tr || '-', en: rawOpts.a?.en || '-', es: rawOpts.a?.es || '-', fr: rawOpts.a?.fr || '-' },
+                    b: { tr: rawOpts.b?.tr || '-', en: rawOpts.b?.en || '-', es: rawOpts.b?.es || '-', fr: rawOpts.b?.fr || '-' },
+                    c: { tr: rawOpts.c?.tr || '-', en: rawOpts.c?.en || '-', es: rawOpts.c?.es || '-', fr: rawOpts.c?.fr || '-' },
+                    d: { tr: rawOpts.d?.tr || '-', en: rawOpts.d?.en || '-', es: rawOpts.d?.es || '-', fr: rawOpts.d?.fr || '-' }
+                };
+
+                questions.push({
+                    id: crypto.randomUUID(),
+                    movieId: movie.id,
+                    movieTitle: movie.title,
+                    movieOrder,
+                    questionOrder: qi,
+                    questionKey: `pool:${movie.id}:${qi}`,
+                    questionTranslations: normalizeLocalizedRecord(row.question_translations),
+                    optionsTranslations,
+                    correctOption,
+                    explanationTranslations: filledExplanations,
+                    metadata: { source: 'question_pool', dateKey }
+                });
+            }
+        }
+
+        if (questions.length < movies.length * DAILY_QUIZ_QUESTIONS_PER_MOVIE) return null;
+
+        return questions;
+    } catch {
+        return null;
+    }
+};
+
 const requestPreferredQuizPayload = async (dateKey: string, movies: DailyQuizMovie[]): Promise<RequestedQuizPayload> => {
     const anthropicApiKey = getAnthropicApiKey();
     const externalQuizApiUrl = getDailyQuizApiUrl();
@@ -1732,6 +1820,23 @@ export const prepareDailyQuizBatch = async (input: {
             );
         if (markPreparingError) {
             throw new Error(markPreparingError.message);
+        }
+
+        // Try to reuse questions from the pool before calling Claude
+        const poolQuestions = await tryBuildQuestionsFromPool(input.dateKey, input.movies, supabase);
+        if (poolQuestions) {
+            await storePreparedBatch(supabase, input.dateKey, input.movies, poolQuestions, {
+                source: 'question_pool',
+                sourceModel: 'pool',
+                metadata: { provider: 'question_pool' }
+            });
+            return {
+                ok: true,
+                reused: false,
+                date: input.dateKey,
+                questionCount: poolQuestions.length,
+                sourceModel: 'pool'
+            };
         }
 
         const requestedQuiz = await requestPreferredQuizPayload(input.dateKey, input.movies);

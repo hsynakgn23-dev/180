@@ -15,6 +15,7 @@ import {
     readAllPushAudiences,
     sendExpoPushMessages
 } from '../lib/push.js';
+import { syncDailyQuestionsToPool } from '../lib/questionPool.js';
 
 export const config = {
     runtime: 'nodejs'
@@ -1525,6 +1526,14 @@ export default async function handler(req: any, res: any) {
                     cooldownPolicy
                 }
             });
+
+            // Sync daily quiz questions to the question pool
+            try {
+                const poolSync = await syncDailyQuestionsToPool(targetDateKey);
+                console.log(`[daily-cron] pool sync (rest path): ${poolSync.synced} questions`);
+            } catch (poolSyncError) {
+                console.warn('[daily-cron] pool sync failed (rest path)', poolSyncError);
+            }
         } else {
             movies = await Promise.all(movies.map((movie) => ensurePosters(supabase, bucket, movie, diagnostics)));
 
@@ -1618,6 +1627,14 @@ export default async function handler(req: any, res: any) {
                 status: publishResult.batchStatus,
                 questionCount: publishResult.questionCount
             };
+
+            // Sync daily quiz questions to the question pool
+            try {
+                const poolSync = await syncDailyQuestionsToPool(targetDateKey);
+                console.log(`[daily-cron] pool sync: ${poolSync.synced} questions`);
+            } catch (poolSyncError) {
+                console.warn('[daily-cron] pool sync failed', poolSyncError);
+            }
         }
 
         let dailyPushSummary: {

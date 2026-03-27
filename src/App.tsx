@@ -18,6 +18,12 @@ import { readAdminSession } from './lib/adminApi'
 const DailyShowcase = lazy(() =>
   import('./features/daily-showcase/DailyShowcase').then((mod) => ({ default: mod.DailyShowcase }))
 )
+const PoolDiscoveryPanel = lazy(() =>
+  import('./features/pool-quiz/PoolDiscoveryPanel').then((mod) => ({ default: mod.PoolDiscoveryPanel }))
+)
+const QuizRushPanel = lazy(() =>
+  import('./features/pool-quiz/QuizRushPanel').then((mod) => ({ default: mod.QuizRushPanel }))
+)
 const MovieDetailModal = lazy(() =>
   import('./features/daily-showcase/MovieDetailModal').then((mod) => ({ default: mod.MovieDetailModal }))
 )
@@ -439,22 +445,6 @@ const AppContent = () => {
             />
           </Suspense>
 
-          <section className="mb-6 sm:mb-8 rounded-xl border border-white/5 bg-gradient-to-br from-[#121212]/80 to-[#161616]/80 backdrop-blur-md px-4 sm:px-5 py-4 shadow-[0_4px_24px_rgba(0,0,0,0.2)]">
-            <p className="text-[10px] sm:text-[11px] uppercase tracking-[0.2em] text-sage/70 mb-4 font-semibold drop-shadow-sm">
-              {text.app.discoverSectionTitle}
-            </p>
-            <div className="flex flex-wrap gap-2 sm:gap-3">
-              {discoverLinks.map((link) => (
-                <a
-                  key={link.href}
-                  href={link.href}
-                  className="inline-flex items-center rounded-lg border border-white/10 px-4 py-2.5 text-[10px] uppercase tracking-[0.18em] text-white/70 hover:text-sage hover:border-sage/40 hover:bg-sage/5 hover:scale-[1.02] hover:-translate-y-0.5 transition-all duration-300 shadow-sm"
-                >
-                  {link.label}
-                </a>
-              ))}
-            </div>
-          </section>
 
           <Suspense fallback={<section className="rounded-2xl border border-white/10 bg-white/5 px-4 py-6 text-sm text-white/60">{text.app.loadingDailyShowcase}</section>}>
             <SectionErrorBoundary
@@ -462,6 +452,18 @@ const AppContent = () => {
               fallbackMessage={text.app.dailyUnavailable}
             >
               <DailyShowcase onMovieSelect={setDetailMovie} />
+            </SectionErrorBoundary>
+          </Suspense>
+
+          <Suspense fallback={null}>
+            <SectionErrorBoundary title="Quiz" fallbackMessage="">
+              <PoolDiscoveryPanel />
+            </SectionErrorBoundary>
+          </Suspense>
+
+          <Suspense fallback={null}>
+            <SectionErrorBoundary title="Quiz Rush" fallbackMessage="">
+              <QuizRushPanel />
             </SectionErrorBoundary>
           </Suspense>
 

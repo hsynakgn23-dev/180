@@ -5,7 +5,8 @@ export type MarkCategory =
   | 'Discovery'
   | 'Ritual'
   | 'Social'
-  | 'Legacy';
+  | 'Legacy'
+  | 'Knowledge';
 
 export type MarkMotion = 'pulse' | 'spin' | 'float' | 'signal' | 'spark';
 
@@ -55,4 +56,18 @@ export const MARK_CATALOG: MarkCatalogEntry[] = [
   { id: 'eternal_mark', title: 'Eternal', description: 'Reach the Eternal League.', category: 'Legacy', whisper: 'Still here.', motion: 'float' },
   { id: 'legacy', title: 'The Pillar', description: 'Active for 30+ days.', category: 'Legacy', whisper: 'A pillar in time.', motion: 'float' },
   { id: 'archive_keeper', title: 'Archive Keeper', description: 'Submit 50 comments.', category: 'Legacy', whisper: 'The archive remembers.', motion: 'float' },
+
+  // Knowledge — Quiz & Rush marks
+  { id: 'first_answer', title: 'First Answer', description: 'Answer your first pool question.', category: 'Knowledge', whisper: 'A spark of knowing.', motion: 'pulse' },
+  { id: 'quiz_curious', title: 'Curious Mind', description: 'Answer 25 pool questions.', category: 'Knowledge', whisper: 'Questions breed wisdom.', motion: 'pulse' },
+  { id: 'quiz_scholar', title: 'Scholar', description: 'Answer 100 pool questions.', category: 'Knowledge', whisper: 'The archive deepens.', motion: 'spin' },
+  { id: 'quiz_master', title: 'Quiz Master', description: 'Answer 500 pool questions correctly.', category: 'Knowledge', whisper: 'Mastery earned.', motion: 'signal' },
+  { id: 'perfect_film', title: 'Perfect Recall', description: 'Get all 5 questions right on a single film.', category: 'Knowledge', whisper: 'Total recall.', motion: 'spin' },
+  { id: 'perfect_streak', title: 'Flawless Run', description: 'Get all 5 right on 3 films in a row.', category: 'Knowledge', whisper: 'Precision sustained.', motion: 'spark' },
+  { id: 'rush_survivor', title: 'Rush Survivor', description: 'Complete a Rush 10 session.', category: 'Knowledge', whisper: 'You survived the rush.', motion: 'pulse' },
+  { id: 'rush_ace', title: 'Rush Ace', description: 'Score 7+ correct in Rush 10.', category: 'Knowledge', whisper: 'Under pressure, clarity.', motion: 'spin' },
+  { id: 'rush_legend', title: 'Rush Legend', description: 'Score 14+ correct in Rush 20.', category: 'Knowledge', whisper: 'Legend forged in fire.', motion: 'signal' },
+  { id: 'rush_endless_10', title: 'Unstoppable', description: 'Reach 10 correct in Endless mode.', category: 'Knowledge', whisper: 'No end in sight.', motion: 'float' },
+  { id: 'swipe_explorer', title: 'Film Explorer', description: 'Swipe right on 20 films.', category: 'Knowledge', whisper: 'Always seeking.', motion: 'pulse' },
+  { id: 'genre_brain', title: 'Genre Brain', description: 'Answer correctly across 5 different genres.', category: 'Knowledge', whisper: 'A mind without borders.', motion: 'spin' },
 ];

@@ -1028,7 +1028,20 @@ export const MARK_DICTIONARY: Record<LanguageCode, Record<string, MarkCopy>> = {
 
         eternal_mark: { title: 'Eternal', description: 'Eternal ligine ulas.', whisper: 'Hala buradasin.' },
         legacy: { title: 'Sutun', description: '30+ gun aktif kal.', whisper: 'Zamanda bir sutun.' },
-        archive_keeper: { title: 'Arsiv Bekcisi', description: '50 rituel gonder.', whisper: 'Arsiv hatirlar.' }
+        archive_keeper: { title: 'Arsiv Bekcisi', description: '50 rituel gonder.', whisper: 'Arsiv hatirlar.' },
+
+        first_answer: { title: 'Ilk Cevap', description: 'Ilk havuz sorusunu cevapla.', whisper: 'Bir bilgi kivilcimi.' },
+        quiz_curious: { title: 'Merakli Zihin', description: '25 havuz sorusu cevapla.', whisper: 'Sorular bilgelik dogurir.' },
+        quiz_scholar: { title: 'Bilgin', description: '100 havuz sorusu cevapla.', whisper: 'Arsiv derinlesiyor.' },
+        quiz_master: { title: 'Quiz Ustasi', description: '500 havuz sorusunu dogru cevapla.', whisper: 'Ustalik kazanildi.' },
+        perfect_film: { title: 'Kusursuz Hafiza', description: 'Tek bir filmde 5 soruyu dogru cevapla.', whisper: 'Tam hatırlama.' },
+        perfect_streak: { title: 'Kusursuz Seri', description: 'Art arda 3 filmde 5/5 dogru yap.', whisper: 'Hassasiyet surduruldu.' },
+        rush_survivor: { title: 'Rush Hayatta Kalan', description: 'Bir Rush 10 oturumunu tamamla.', whisper: 'Rushtan sag ciktin.' },
+        rush_ace: { title: 'Rush Asi', description: 'Rush 10da 7+ dogru yap.', whisper: 'Baski altinda berraklik.' },
+        rush_legend: { title: 'Rush Efsanesi', description: 'Rush 20de 14+ dogru yap.', whisper: 'Ateste dovulmus efsane.' },
+        rush_endless_10: { title: 'Durdurulamaz', description: 'Sinirsiz modda 10 dogru cevaba ulas.', whisper: 'Son gorunmede degil.' },
+        swipe_explorer: { title: 'Film Kasifi', description: '20 filme saga kaydir.', whisper: 'Hep arayan.' },
+        genre_brain: { title: 'Tur Beyni', description: '5 farkli turde dogru cevap ver.', whisper: 'Sinir tanimayan zihin.' }
     },
     en: {
         first_mark: { title: 'First Mark', description: 'Complete your first ritual.', whisper: 'It begins.' },
@@ -1066,7 +1079,20 @@ export const MARK_DICTIONARY: Record<LanguageCode, Record<string, MarkCopy>> = {
 
         eternal_mark: { title: 'Eternal', description: 'Reach the Eternal League.', whisper: 'Still here.' },
         legacy: { title: 'The Pillar', description: 'Active for 30+ days.', whisper: 'A pillar in time.' },
-        archive_keeper: { title: 'Archive Keeper', description: 'Submit 50 rituals.', whisper: 'The archive remembers.' }
+        archive_keeper: { title: 'Archive Keeper', description: 'Submit 50 rituals.', whisper: 'The archive remembers.' },
+
+        first_answer: { title: 'First Answer', description: 'Answer your first pool question.', whisper: 'A spark of knowing.' },
+        quiz_curious: { title: 'Curious Mind', description: 'Answer 25 pool questions.', whisper: 'Questions breed wisdom.' },
+        quiz_scholar: { title: 'Scholar', description: 'Answer 100 pool questions.', whisper: 'The archive deepens.' },
+        quiz_master: { title: 'Quiz Master', description: 'Answer 500 pool questions correctly.', whisper: 'Mastery earned.' },
+        perfect_film: { title: 'Perfect Recall', description: 'Get all 5 questions right on a single film.', whisper: 'Total recall.' },
+        perfect_streak: { title: 'Flawless Run', description: 'Get all 5 right on 3 films in a row.', whisper: 'Precision sustained.' },
+        rush_survivor: { title: 'Rush Survivor', description: 'Complete a Rush 10 session.', whisper: 'You survived the rush.' },
+        rush_ace: { title: 'Rush Ace', description: 'Score 7+ correct in Rush 10.', whisper: 'Under pressure, clarity.' },
+        rush_legend: { title: 'Rush Legend', description: 'Score 14+ correct in Rush 20.', whisper: 'Legend forged in fire.' },
+        rush_endless_10: { title: 'Unstoppable', description: 'Reach 10 correct in Endless mode.', whisper: 'No end in sight.' },
+        swipe_explorer: { title: 'Film Explorer', description: 'Swipe right on 20 films.', whisper: 'Always seeking.' },
+        genre_brain: { title: 'Genre Brain', description: 'Answer correctly across 5 different genres.', whisper: 'A mind without borders.' }
     },
     es: {},
     fr: {}
@@ -1105,10 +1131,10 @@ MARK_DICTIONARY.es = cloneMarkSection(MARK_DICTIONARY.en);
 MARK_DICTIONARY.fr = cloneMarkSection(MARK_DICTIONARY.en);
 
 export const MARK_CATEGORY_DICTIONARY: Record<LanguageCode, Record<string, string>> = {
-    tr: { Presence: 'Katilim', Writing: 'Yazim', Rhythm: 'Ritim', Discovery: 'Kesif', Ritual: 'Yorum', Social: 'Sosyal', Legacy: 'Miras' },
-    en: { Presence: 'Presence', Writing: 'Writing', Rhythm: 'Rhythm', Discovery: 'Discovery', Ritual: 'Comment', Social: 'Social', Legacy: 'Legacy' },
-    es: { Presence: 'Presencia', Writing: 'Escritura', Rhythm: 'Ritmo', Discovery: 'Descubrimiento', Ritual: 'Comentario', Social: 'Social', Legacy: 'Legado' },
-    fr: { Presence: 'Presence', Writing: 'Ecriture', Rhythm: 'Rythme', Discovery: 'Decouverte', Ritual: 'Commentaire', Social: 'Social', Legacy: 'Heritage' }
+    tr: { Presence: 'Katilim', Writing: 'Yazim', Rhythm: 'Ritim', Discovery: 'Kesif', Ritual: 'Yorum', Social: 'Sosyal', Legacy: 'Miras', Knowledge: 'Bilgi' },
+    en: { Presence: 'Presence', Writing: 'Writing', Rhythm: 'Rhythm', Discovery: 'Discovery', Ritual: 'Comment', Social: 'Social', Legacy: 'Legacy', Knowledge: 'Knowledge' },
+    es: { Presence: 'Presencia', Writing: 'Escritura', Rhythm: 'Ritmo', Discovery: 'Descubrimiento', Ritual: 'Comentario', Social: 'Social', Legacy: 'Legado', Knowledge: 'Conocimiento' },
+    fr: { Presence: 'Presence', Writing: 'Ecriture', Rhythm: 'Rythme', Discovery: 'Decouverte', Ritual: 'Commentaire', Social: 'Social', Legacy: 'Heritage', Knowledge: 'Connaissance' }
 };
 
 export const LEAGUE_DICTIONARY: Record<LanguageCode, Record<string, LeagueCopy>> = {

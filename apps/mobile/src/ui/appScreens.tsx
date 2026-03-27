@@ -2778,6 +2778,9 @@ const ProfileUnifiedCard = ({
   onOpenSettings,
   onOpenProfileLink,
   onOpenShareHub,
+  onOpenComments,
+  onOpenFollowing,
+  onOpenMarks,
   language = 'tr',
 }: {
   state: ProfileState;
@@ -2794,6 +2797,9 @@ const ProfileUnifiedCard = ({
   onOpenSettings?: () => void;
   onOpenProfileLink?: () => void;
   onOpenShareHub?: () => void;
+  onOpenComments?: () => void;
+  onOpenFollowing?: () => void;
+  onOpenMarks?: () => void;
 }) => {
   const copy = language === 'tr'
     ? {
@@ -3087,18 +3093,17 @@ const ProfileUnifiedCard = ({
         </View>
       </View>
 
-      {/* ── Stats — 4 items in one row (streak lives in hero) ── */}
+      {/* ── Stats — 3 interactive items ── */}
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
         {[
-          { label: copy.comments, value: isProfileReady ? String(state.ritualsCount) : '--' },
-          { label: copy.following, value: isProfileReady ? String(state.followingCount) : '--' },
-          { label: copy.marks, value: isProfileReady ? String(state.marks.length) : '--' },
-          { label: copy.activeDays, value: isProfileReady ? String(state.daysPresent) : '--' },
+          { label: copy.comments, value: isProfileReady ? String(state.ritualsCount) : '--', onPress: onOpenComments },
+          { label: copy.following, value: isProfileReady ? String(state.followingCount) : '--', onPress: onOpenFollowing },
+          { label: copy.marks, value: isProfileReady ? String(state.marks.length) : '--', onPress: onOpenMarks },
         ].map((stat) => (
-          <View key={stat.label} style={[styles.detailInfoCard, { flex: 1, minWidth: 0 }]}>
+          <Pressable key={stat.label} style={[styles.detailInfoCard, { flex: 1, minWidth: 0 }]} onPress={stat.onPress} accessibilityRole="button">
             <Text style={[styles.detailInfoLabel, { textAlign: 'center' }]} numberOfLines={2}>{stat.label}</Text>
             <Text style={styles.detailInfoValue}>{stat.value}</Text>
-          </View>
+          </Pressable>
         ))}
       </View>
 
@@ -3282,37 +3287,7 @@ const ProfileCinematicCard = ({
           })}
         </View>
 
-        <View style={styles.profileDnaSegmentGrid}>
-          {dnaSegments.map((segment) => (
-            <View
-              key={segment.id}
-              style={[
-                styles.profileDnaSegmentCard,
-                segment.unlocked ? styles.profileDnaSegmentCardUnlocked : null,
-              ]}
-            >
-              <View style={styles.profileDnaSegmentHeader}>
-                <Text
-                  style={[
-                    styles.profileDnaSegmentLabel,
-                    segment.unlocked ? styles.profileDnaSegmentLabelUnlocked : null,
-                  ]}
-                >
-                  {segment.label}
-                </Text>
-                <Text
-                  style={[
-                    styles.profileDnaSegmentState,
-                    segment.unlocked ? styles.profileDnaSegmentStateUnlocked : null,
-                  ]}
-                >
-                  {segment.unlocked ? 'Unlocked' : 'Tracking'}
-                </Text>
-              </View>
-              <Text style={styles.profileDnaSegmentDetail}>{segment.detail}</Text>
-            </View>
-          ))}
-        </View>
+        {/* DNA segments removed — only top genres shown */}
       </ScreenCard>
     </>
   );

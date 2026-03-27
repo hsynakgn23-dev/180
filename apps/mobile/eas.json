@@ -34,7 +34,8 @@
         "EXPO_PUBLIC_PUSH_ENABLED": "1",
         "EXPO_PUBLIC_PUSH_API_BASE": "https://absolute-cinema-api-637426671712.europe-west1.run.app",
         "EXPO_PUBLIC_EXPO_PROJECT_ID": "0b479a86-b942-482a-a616-297317401220",
-        "EXPO_PUBLIC_MOBILE_INTERNAL_SURFACES": "0"
+        "EXPO_PUBLIC_MOBILE_INTERNAL_SURFACES": "0",
+        "EXPO_PUBLIC_IMAGE_PROXIES": "https://images.weserv.nl/?url="
       },
       "android": {
         "buildType": "app-bundle",

@@ -131,18 +131,36 @@ export const buildProfileDnaSegments = ({
   exactCommentCount,
   streak,
   uniqueGenreCount,
+  quizStats,
 }: {
   genreItems: ProfileGenreDistributionItem[];
   hiddenGemCount: number;
   exactCommentCount: number;
   streak: number;
   uniqueGenreCount?: number;
+  quizStats?: {
+    perfectFilmCount?: number;
+    totalCorrect?: number;
+    totalAnswered?: number;
+    quizGenreCount?: number;
+    preMillenniumCorrect?: number;
+    deepKnowledgeFilms?: number;
+  };
 }): ProfileDnaSegment[] => {
   const resolvedUniqueGenreCount = Math.max(0, Math.floor(uniqueGenreCount ?? genreItems.length));
   const dominantGenreEntry = genreItems[0];
   const dominantGenreLabel = dominantGenreEntry
     ? `${dominantGenreEntry.genre} x${dominantGenreEntry.count}`
     : 'No genre signal yet';
+
+  const q = quizStats ?? {};
+  const perfectFilms = Math.max(0, Math.floor(q.perfectFilmCount ?? 0));
+  const totalCorrect = Math.max(0, Math.floor(q.totalCorrect ?? 0));
+  const totalAnswered = Math.max(0, Math.floor(q.totalAnswered ?? 0));
+  const quizAccuracy = totalAnswered > 0 ? Math.round((totalCorrect / totalAnswered) * 100) : 0;
+  const quizGenres = Math.max(0, Math.floor(q.quizGenreCount ?? 0));
+  const preMillennium = Math.max(0, Math.floor(q.preMillenniumCorrect ?? 0));
+  const deepKnowledge = Math.max(0, Math.floor(q.deepKnowledgeFilms ?? 0));
 
   return [
     {
@@ -174,6 +192,36 @@ export const buildProfileDnaSegments = ({
       label: 'Dominant Tone',
       detail: dominantGenreLabel,
       unlocked: Boolean(dominantGenreEntry && dominantGenreEntry.count >= 8),
+    },
+    {
+      id: 'film-memory',
+      label: 'Film Memory',
+      detail: `${perfectFilms}/5 perfect films`,
+      unlocked: perfectFilms >= 5,
+    },
+    {
+      id: 'quiz-accuracy',
+      label: 'Quiz Accuracy',
+      detail: `${quizAccuracy}% accuracy (${totalCorrect}/${totalAnswered})`,
+      unlocked: totalAnswered >= 50 && quizAccuracy >= 80,
+    },
+    {
+      id: 'genre-knowledge',
+      label: 'Genre Knowledge',
+      detail: `${quizGenres}/8 quiz genres`,
+      unlocked: quizGenres >= 8,
+    },
+    {
+      id: 'era-expert',
+      label: 'Era Expert',
+      detail: `${preMillennium}/15 pre-2000 correct`,
+      unlocked: preMillennium >= 15,
+    },
+    {
+      id: 'deep-knowledge',
+      label: 'Deep Knowledge',
+      detail: `${deepKnowledge}/10 films mastered`,
+      unlocked: deepKnowledge >= 10,
     },
   ];
 };

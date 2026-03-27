@@ -64,6 +64,9 @@ import {
   type MobileProfileActivityItem,
 } from './src/lib/mobileProfileActivity';
 import { type MobileWatchedMovie } from './src/lib/mobileProfileWatchedMovies';
+import { QuizHomeScreen } from './src/ui/quizScreens';
+import { PaywallModal } from './src/ui/paywallScreen';
+import { useSubscription } from './src/lib/useSubscription';
 import {
   formatMobileLetterboxdSummary,
   importMobileLetterboxdCsv,
@@ -309,7 +312,6 @@ const {
   CollapsibleSectionCard,
   CommentFeedCard,
   DailyHomeScreen,
-  DiscoverRoutesCard,
   InviteClaimScreen,
   LeaguePromotionModal,
   MobileSettingsModal,
@@ -626,93 +628,7 @@ const parseStoredLanguage = (raw: string | null): MobileSettingsLanguage => {
   return 'en';
 };
 
-const DISCOVER_ROUTE_CONFIG = [
-  {
-    id: 'mood_films',
-    title: 'Ruh Hali Secimleri',
-    description: 'Moda gore hizli secimler ve tematik listeler.',
-    path: '/discover/mood-films/',
-  },
-  {
-    id: 'director_deep_dives',
-    title: 'Yonetmen Dosyalari',
-    description: 'Yonetmen odakli arsiv ve derin okuma rotalari.',
-    path: '/discover/director-deep-dives/',
-  },
-  {
-    id: 'daily_curated_picks',
-    title: 'Gunun Secimleri',
-    description: 'Gunun secimi etrafinda kurulan editoryal akis.',
-    path: '/discover/daily-curated-picks/',
-  },
-] as const;
-
-const DISCOVER_ROUTES = DISCOVER_ROUTE_CONFIG.map((route) => ({
-  ...route,
-  href: MOBILE_WEB_BASE_URL ? `${MOBILE_WEB_BASE_URL}${route.path}` : '',
-}));
-
-const MOBILE_DISCOVER_ROUTE_LOCALIZED_COPY: Record<
-  MobileSettingsLanguage,
-  Record<string, { title: string; description: string }>
-> = {
-  tr: {
-    mood_films: {
-      title: 'Ruh Hali Secimleri',
-      description: 'Moda gore hizli secimler ve tematik listeler.',
-    },
-    director_deep_dives: {
-      title: 'Yonetmen Dosyalari',
-      description: 'Yonetmen odakli arsiv ve derin okuma rotalari.',
-    },
-    daily_curated_picks: {
-      title: 'Gunun Secimleri',
-      description: 'Gunun secimi etrafinda kurulan editoryal akis.',
-    },
-  },
-  en: {
-    mood_films: {
-      title: 'Mood Films',
-      description: 'Quick picks by mood and themed lists.',
-    },
-    director_deep_dives: {
-      title: 'Director Deep Dives',
-      description: 'Director-focused archive and deep reading routes.',
-    },
-    daily_curated_picks: {
-      title: 'Daily Curated Picks',
-      description: 'Editorial flow built around the pick of the day.',
-    },
-  },
-  es: {
-    mood_films: {
-      title: 'Peliculas por Estado de Animo',
-      description: 'Selecciones rapidas por estado de animo y listas tematicas.',
-    },
-    director_deep_dives: {
-      title: 'Rutas de Directores',
-      description: 'Archivo centrado en directores y rutas de lectura profunda.',
-    },
-    daily_curated_picks: {
-      title: 'Selecciones Curadas del Dia',
-      description: 'Flujo editorial construido alrededor de la seleccion del dia.',
-    },
-  },
-  fr: {
-    mood_films: {
-      title: 'Films par Humeur',
-      description: 'Selections rapides par humeur et listes thematiques.',
-    },
-    director_deep_dives: {
-      title: 'Parcours Realisateurs',
-      description: 'Archives centrees sur les realisateurs et routes de lecture approfondie.',
-    },
-    daily_curated_picks: {
-      title: 'Selections du Jour',
-      description: 'Flux editorial construit autour de la selection du jour.',
-    },
-  },
-};
+// Discovery routes removed — replaced by Quiz tab
 type ArenaEntryView = MobileArenaEntry;
 type SharePlatform = 'instagram' | 'tiktok' | 'x';
 type ShareGoal = 'comment' | 'streak';
@@ -769,62 +685,62 @@ type DiscoverRouteSurfaceState = {
 
 type MainTabParamList = {
   Daily: undefined;
-  Explore: undefined;
+  Quiz: undefined;
   Inbox: undefined;
-  Marks: undefined;
+  Arena: undefined;
   Profile: undefined;
 };
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
 const MAIN_TAB_BY_KEY = {
   daily: 'Daily',
-  explore: 'Explore',
+  quiz: 'Quiz',
   inbox: 'Inbox',
-  marks: 'Marks',
+  arena: 'Arena',
   profile: 'Profile',
-} as const satisfies Record<'daily' | 'explore' | 'inbox' | 'marks' | 'profile', keyof MainTabParamList>;
+} as const satisfies Record<'daily' | 'quiz' | 'inbox' | 'arena' | 'profile', keyof MainTabParamList>;
 
 const MAIN_KEY_BY_TAB = {
   Daily: 'daily',
-  Explore: 'explore',
+  Quiz: 'quiz',
   Inbox: 'inbox',
-  Marks: 'marks',
+  Arena: 'arena',
   Profile: 'profile',
 } as const satisfies Record<
   keyof MainTabParamList,
-  'daily' | 'explore' | 'inbox' | 'marks' | 'profile'
+  'daily' | 'quiz' | 'inbox' | 'arena' | 'profile'
 >;
 
 const MOBILE_TAB_LABELS: Record<
   MobileSettingsLanguage,
-  Record<'daily' | 'explore' | 'inbox' | 'marks' | 'profile', string>
+  Record<'daily' | 'quiz' | 'inbox' | 'arena' | 'profile', string>
 > = {
   tr: {
     daily: 'Gunluk',
-    explore: 'Arena',
+    quiz: 'Quiz',
     inbox: 'Gelenler',
-    marks: 'Marklar',
+    arena: 'Arena',
     profile: 'Profil',
   },
   en: {
     daily: 'Daily',
-    explore: 'Arena',
+    quiz: 'Quiz',
     inbox: 'Inbox',
-    marks: 'Marks',
+    arena: 'Arena',
     profile: 'Profile',
   },
   es: {
     daily: 'Diario',
-    explore: 'Arena',
+    quiz: 'Prueba',
     inbox: 'Bandeja',
-    marks: 'Marcas',
+    arena: 'Arena',
     profile: 'Perfil',
   },
   fr: {
     daily: 'Quotidien',
-    explore: 'Arena',
+    quiz: 'Quiz',
     inbox: 'Boite',
-    marks: 'Marques',
+    arena: 'Arena',
     profile: 'Profil',
   },
 };
@@ -834,16 +750,16 @@ const MAIN_TAB_BY_SCREEN = {
   invite_claim: 'Profile',
   share_hub: 'Profile',
   public_profile: 'Profile',
-  discover_home: 'Explore',
+  quiz_home: 'Quiz',
 } as const satisfies Record<
-  'daily_home' | 'invite_claim' | 'share_hub' | 'public_profile' | 'discover_home',
+  'daily_home' | 'invite_claim' | 'share_hub' | 'public_profile' | 'quiz_home',
   keyof MainTabParamList
 >;
 const TAB_ICON_BY_ROUTE = {
   Daily: { active: 'today', inactive: 'today-outline' },
-  Explore: { active: 'compass', inactive: 'compass-outline' },
+  Quiz: { active: 'flash', inactive: 'flash-outline' },
   Inbox: { active: 'notifications', inactive: 'notifications-outline' },
-  Marks: { active: 'ribbon', inactive: 'ribbon-outline' },
+  Arena: { active: 'trophy', inactive: 'trophy-outline' },
   Profile: { active: 'person-circle', inactive: 'person-circle-outline' },
 } as const satisfies Record<keyof MainTabParamList, { active: IoniconName; inactive: IoniconName }>;
 
@@ -1043,6 +959,7 @@ export default function App() {
     status: 'idle',
     message: 'Profil metrikleri hazir degil.',
   });
+  const [profileMarksExpanded, setProfileMarksExpanded] = useState(false);
   const [leaguePromotionEvent, setLeaguePromotionEvent] = useState<MobileLeaguePromotionEvent | null>(
     null
   );
@@ -1198,16 +1115,7 @@ export default function App() {
     },
     [isTurkishUi]
   );
-  const localizedDiscoverRoutes = useMemo(
-    () =>
-      DISCOVER_ROUTES.map((route) => ({
-        ...route,
-        title: MOBILE_DISCOVER_ROUTE_LOCALIZED_COPY[settingsLanguage]?.[route.id]?.title || route.title,
-        description:
-          MOBILE_DISCOVER_ROUTE_LOCALIZED_COPY[settingsLanguage]?.[route.id]?.description || route.description,
-      })),
-    [settingsLanguage]
-  );
+  // Discovery routes removed — replaced by Quiz tab
   const [dailyPullRefreshing, setDailyPullRefreshing] = useState(false);
   const [explorePullRefreshing, setExplorePullRefreshing] = useState(false);
   const [inboxPullRefreshing, setInboxPullRefreshing] = useState(false);
@@ -1393,6 +1301,16 @@ export default function App() {
       : null;
 
   const isSignedIn = authState.status === 'signed_in';
+
+  // ── Subscription ────────────────────────────────────────
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [paywallVisible, setPaywallVisible] = useState(false);
+  useEffect(() => {
+    if (!isSignedIn) { setAccessToken(null); return; }
+    readSupabaseSessionSafe().then((r) => setAccessToken(r.session?.access_token || null));
+  }, [isSignedIn]);
+  const subscription = useSubscription(accessToken);
+
   const resolveNotificationActorLabel = useCallback(() => {
     const profileName =
       profileState.status === 'success' ? String(profileState.displayName || '').trim() : '';
@@ -3261,6 +3179,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    void import('./src/lib/mobileAds').then((m) => m.initAds());
+  }, []);
+
+  useEffect(() => {
     let active = true;
     void readStoredMobileThemeMode().then((storedMode) => {
       if (!active) return;
@@ -4841,48 +4763,7 @@ export default function App() {
     setInviteClaimState({ status: 'idle' });
   }, [screenPlan.screen, inviteCode]);
 
-  const handleOpenDiscoverRoute = useCallback(
-    async (route: { id: string; title: string; href: string }) => {
-      if (!route.href) {
-        void trackMobileEvent('page_view', {
-          reason: 'mobile_discover_route_missing_base',
-          route: route.id,
-        });
-        return;
-      }
-
-      if (Platform.OS !== 'web') {
-        setDiscoverRouteSurfaceState({
-          visible: true,
-          title: route.title,
-          url: route.href,
-          loading: true,
-          error: '',
-        });
-        void trackMobileEvent('page_view', {
-          reason: 'mobile_discover_route_surface_opened',
-          route: route.id,
-        });
-        return;
-      }
-
-      try {
-        await Linking.openURL(route.href);
-        void trackMobileEvent('page_view', {
-          reason: 'mobile_discover_route_opened',
-          route: route.id,
-          result: 'external_link',
-        });
-      } catch (error) {
-        void trackMobileEvent('page_view', {
-          reason: 'mobile_discover_route_open_failed',
-          route: route.id,
-          message: error instanceof Error ? error.message : 'unknown',
-        });
-      }
-    },
-    []
-  );
+  // handleOpenDiscoverRoute removed — discovery routes replaced by Quiz tab
 
   const handleOpenArenaProfile = useCallback(
     async (entry: { userId?: string | null; rank: number; displayName: string }) => {
@@ -6422,27 +6303,68 @@ export default function App() {
                         onDeleteItem={handleDeleteComment}
                         onOpenAuthorProfile={handleOpenCommentAuthorProfile}
                       />
-                      <View style={styles.sectionAnchor}>
-                        <View style={styles.sectionHeaderRow}>
-                          <Text style={styles.sectionHeader}>{mobileDailySectionCopy.routesTitle}</Text>
-                          <Text style={styles.sectionHeaderMeta}>
-                            {mobileDailySectionCopy.routesCount(localizedDiscoverRoutes.length)}
-                          </Text>
-                        </View>
-                      </View>
-                      <DiscoverRoutesCard
-                        routes={localizedDiscoverRoutes}
-                        language={settingsLanguage}
-                        onOpenRoute={(route) => {
-                          void handleOpenDiscoverRoute(route);
-                        }}
-                      />
+                      {/* Discovery routes removed — replaced by Quiz tab */}
                     </ScrollView>
                   </KeyboardAvoidingView>
                 )}
               </Tab.Screen>
 
-              <Tab.Screen name={MAIN_TAB_BY_KEY.explore}>
+              <Tab.Screen name={MAIN_TAB_BY_KEY.quiz}>
+                {() => (
+                  <ScrollView
+                    contentContainerStyle={[styles.container, styles.containerWithTabs]}
+                    keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode="on-drag"
+                    showsVerticalScrollIndicator={false}
+                  >
+                    <QuizHomeScreen
+                      language={settingsLanguage}
+                      isDawn={isDawnTheme}
+                      isSignedIn={isSignedIn}
+                      isPremium={subscription.isPremium}
+                      onRequireAuth={() => setAuthModalVisible(true)}
+                      onRequirePaywall={() => setPaywallVisible(true)}
+                    />
+                  </ScrollView>
+                )}
+              </Tab.Screen>
+
+              <Tab.Screen name={MAIN_TAB_BY_KEY.inbox}>
+                {() => (
+                  <ScrollView
+                    contentContainerStyle={[styles.container, styles.containerWithTabs]}
+                    keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode="on-drag"
+                    refreshControl={
+                      <RefreshControl
+                        refreshing={inboxPullRefreshing}
+                        onRefresh={() => {
+                          void handlePullRefreshInbox();
+                        }}
+                        tintColor={isDawnTheme ? '#A57164' : '#8A9A5B'}
+                      />
+                    }
+                    showsVerticalScrollIndicator={false}
+                  >
+                    <PushInboxCard
+                      state={pushInboxState}
+                      showOpsMeta={isDevSurfaceEnabled}
+                      language={settingsLanguage}
+                      onClear={() => {
+                        void handleClearPushInbox();
+                      }}
+                      onPressItem={(item) => {
+                        void handlePressPushInboxItem(item);
+                      }}
+                      onOpenDeepLink={(item) => {
+                        void handleOpenInboxDeepLink(item);
+                      }}
+                    />
+                  </ScrollView>
+                )}
+              </Tab.Screen>
+
+              <Tab.Screen name={MAIN_TAB_BY_KEY.arena}>
                 {() => (
                   <KeyboardAvoidingView
                     style={{ flex: 1 }}
@@ -6506,85 +6428,6 @@ export default function App() {
                       </CollapsibleSectionCard>
                     </ScrollView>
                   </KeyboardAvoidingView>
-                )}
-              </Tab.Screen>
-
-              <Tab.Screen name={MAIN_TAB_BY_KEY.inbox}>
-                {() => (
-                  <ScrollView
-                    contentContainerStyle={[styles.container, styles.containerWithTabs]}
-                    keyboardShouldPersistTaps="handled"
-                    keyboardDismissMode="on-drag"
-                    refreshControl={
-                      <RefreshControl
-                        refreshing={inboxPullRefreshing}
-                        onRefresh={() => {
-                          void handlePullRefreshInbox();
-                        }}
-                        tintColor={isDawnTheme ? '#A57164' : '#8A9A5B'}
-                      />
-                    }
-                    showsVerticalScrollIndicator={false}
-                  >
-                    <PushInboxCard
-                      state={pushInboxState}
-                      showOpsMeta={isDevSurfaceEnabled}
-                      language={settingsLanguage}
-                      onClear={() => {
-                        void handleClearPushInbox();
-                      }}
-                      onPressItem={(item) => {
-                        void handlePressPushInboxItem(item);
-                      }}
-                      onOpenDeepLink={(item) => {
-                        void handleOpenInboxDeepLink(item);
-                      }}
-                    />
-                  </ScrollView>
-                )}
-              </Tab.Screen>
-
-              <Tab.Screen name={MAIN_TAB_BY_KEY.marks}>
-                {() => (
-                  <ScrollView
-                    contentContainerStyle={[styles.container, styles.containerWithTabs]}
-                    keyboardShouldPersistTaps="handled"
-                    keyboardDismissMode="on-drag"
-                    refreshControl={
-                      <RefreshControl
-                        refreshing={marksPullRefreshing}
-                        onRefresh={() => {
-                          void handlePullRefreshMarks();
-                        }}
-                        tintColor={isDawnTheme ? '#A57164' : '#8A9A5B'}
-                      />
-                    }
-                    showsVerticalScrollIndicator={false}
-                  >
-                    {isDevSurfaceEnabled
-                      ? renderSurfaceIntro({
-                          title: 'Marklar',
-                          body: 'Rozet arsivini tek sekmeden takip et.',
-                          badges: [
-                            { label: isTurkishUi ? `Seri ${streakSummary}` : `Streak ${streakSummary}` },
-                            { label: `Yorum ${ritualsCountSummary}` },
-                          ],
-                        })
-                      : null}
-                    <View style={styles.sectionAnchor}>
-                      <View style={styles.sectionHeaderRow}>
-                        <Text style={styles.sectionHeader}>{mobileMarksSectionCopy.title}</Text>
-                        <Text style={styles.sectionHeaderMeta}>{mobileMarksSectionCopy.meta}</Text>
-                      </View>
-                    </View>
-                    <ProfileMarksCard
-                      state={profileState}
-                      isSignedIn={isSignedIn}
-                      language={settingsLanguage}
-                      mode="all"
-                    />
-
-                  </ScrollView>
                 )}
               </Tab.Screen>
 
@@ -6894,12 +6737,31 @@ export default function App() {
                           onOpenProfileLink={() => {
                             void handleOpenProfileLink();
                           }}
+                          onOpenMarks={() => setProfileMarksExpanded((v) => !v)}
                         />
                         <ProfileCinematicCard
                           state={profileState}
                           isSignedIn={isSignedIn}
                           activityState={profileActivityState}
                         />
+
+                        {/* Marks section — collapsed by default, toggle via Marks stat button */}
+                        {profileMarksExpanded && (
+                          <>
+                            <View style={styles.sectionAnchor}>
+                              <View style={styles.sectionHeaderRow}>
+                                <Text style={styles.sectionHeader}>{mobileMarksSectionCopy.title}</Text>
+                                <Text style={styles.sectionHeaderMeta}>{mobileMarksSectionCopy.meta}</Text>
+                              </View>
+                            </View>
+                            <ProfileMarksCard
+                              state={profileState}
+                              isSignedIn={isSignedIn}
+                              language={settingsLanguage}
+                              mode="all"
+                            />
+                          </>
+                        )}
 
                         {isSignedIn ? (
                           <>
@@ -7011,6 +6873,15 @@ export default function App() {
               </Tab.Screen>
             </Tab.Navigator>
           </NavigationContainer>
+
+          <PaywallModal
+            visible={paywallVisible}
+            onClose={() => setPaywallVisible(false)}
+            onPurchase={(plan) => void subscription.purchase(plan).then((ok) => { if (ok) setPaywallVisible(false); })}
+            onRestore={() => void subscription.restore()}
+            purchasing={subscription.purchasing}
+            error={subscription.error}
+          />
 
           <AuthModal
             visible={authModalVisible}

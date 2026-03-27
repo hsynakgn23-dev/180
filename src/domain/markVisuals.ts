@@ -50,6 +50,20 @@ export const MARK_ICON_KEY_BY_ID: Record<string, MarkIconKey> = {
   eternal_mark: 'monument',
   legacy: 'monument',
   archive_keeper: 'monument',
+
+  // Knowledge marks
+  first_answer: 'spark',
+  quiz_curious: 'eye',
+  quiz_scholar: 'grid',
+  quiz_master: 'shield',
+  perfect_film: 'hexagon',
+  perfect_streak: 'diamond',
+  rush_survivor: 'pentagon',
+  rush_ace: 'atom',
+  rush_legend: 'signal',
+  rush_endless_10: 'infinity',
+  swipe_explorer: 'orbit',
+  genre_brain: 'triangle',
 };
 
 export const MARK_MOTION_DURATION_MS: Record<MarkMotion, number> = {

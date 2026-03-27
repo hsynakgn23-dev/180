@@ -115,6 +115,7 @@ export const groupMobileMarksByCategory = (
     'Ritual',
     'Social',
     'Legacy',
+    'Knowledge',
     'Unknown',
   ];
 
