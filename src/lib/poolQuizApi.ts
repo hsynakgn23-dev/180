@@ -39,6 +39,7 @@ export type RushSession = {
 };
 
 const getAuthHeaders = async (): Promise<Record<string, string>> => {
+    if (!supabase) return {};
     const { data } = await supabase.auth.getSession();
     const token = data?.session?.access_token;
     if (!token) return {};
