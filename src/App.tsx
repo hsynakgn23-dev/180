@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
+import { Suspense, lazy, useEffect, useRef, useState, type ComponentType } from 'react'
 import './App.css'
 import { XPProvider, useXP } from './context/XPContext'
 import { NotificationProvider, useNotifications } from './context/NotificationContext'
@@ -11,7 +11,6 @@ import { SectionErrorBoundary } from './components/SectionErrorBoundary'
 import type { Movie } from './data/mockMovies'
 import { LanguageProvider, useLanguage } from './context/LanguageContext'
 import type { PublicProfileTarget } from './features/profile/PublicProfileView'
-import { appendMobileDeepLinkParamsToHref } from './domain/deepLinks'
 import { buildLeagueNotificationCopy, buildStreakNotificationCopy } from './domain/celebrations'
 import { readAdminSession } from './lib/adminApi'
 

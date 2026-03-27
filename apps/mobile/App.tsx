@@ -1119,7 +1119,6 @@ export default function App() {
   const [dailyPullRefreshing, setDailyPullRefreshing] = useState(false);
   const [explorePullRefreshing, setExplorePullRefreshing] = useState(false);
   const [inboxPullRefreshing, setInboxPullRefreshing] = useState(false);
-  const [marksPullRefreshing, setMarksPullRefreshing] = useState(false);
   const [profilePullRefreshing, setProfilePullRefreshing] = useState(false);
   const [settingsIdentityDraft, setSettingsIdentityDraft] = useState<MobileSettingsIdentityDraft>(
     DEFAULT_SETTINGS_IDENTITY
@@ -3769,15 +3768,6 @@ export default function App() {
     }
   }, [inboxPullRefreshing, refreshPushInbox]);
 
-  const handlePullRefreshMarks = useCallback(async () => {
-    if (marksPullRefreshing) return;
-    setMarksPullRefreshing(true);
-    try {
-      await refreshProfileStats();
-    } finally {
-      setMarksPullRefreshing(false);
-    }
-  }, [marksPullRefreshing, refreshProfileStats]);
 
   const handleSubmitRitualDraft = useCallback(async () => {
     if (authState.status !== 'signed_in') {
