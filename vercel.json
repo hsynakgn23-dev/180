@@ -6,6 +6,30 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/api/internal/(.*)",
+      "destination": "/api/internal/$1"
+    },
+    {
+      "source": "/api/cron/(.*)",
+      "destination": "/api/cron/$1"
+    },
+    {
+      "source": "/api/pool-(.*)",
+      "destination": "/api/pool-$1"
+    },
+    {
+      "source": "/api/rush-(.*)",
+      "destination": "/api/rush-$1"
+    },
+    {
+      "source": "/api/subscription-(.*)",
+      "destination": "/api/subscription-$1"
+    },
+    {
+      "source": "/api/ad-impression",
+      "destination": "/api/ad-impression"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "https://absolute-cinema-api-637426671712.europe-west1.run.app/api/$1"
     }
