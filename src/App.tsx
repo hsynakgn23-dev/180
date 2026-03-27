@@ -154,32 +154,6 @@ const AppContent = () => {
 
   const [showLanding, setShowLanding] = useState(true);
   const showDebugPanel = import.meta.env.DEV && import.meta.env.VITE_ENABLE_DEBUG_PANEL !== '0';
-  const discoverLinks = useMemo(
-    () => [
-      {
-        href: appendMobileDeepLinkParamsToHref('/discover/mood-films/', {
-          type: 'discover',
-          route: 'mood_films',
-        }),
-        label: text.app.discoverMoodLink,
-      },
-      {
-        href: appendMobileDeepLinkParamsToHref('/discover/director-deep-dives/', {
-          type: 'discover',
-          route: 'director_deep_dives',
-        }),
-        label: text.app.discoverDirectorLink,
-      },
-      {
-        href: appendMobileDeepLinkParamsToHref('/discover/daily-curated-picks/', {
-          type: 'discover',
-          route: 'daily_curated_picks',
-        }),
-        label: text.app.discoverDailyLink,
-      },
-    ],
-    [text.app.discoverDailyLink, text.app.discoverDirectorLink, text.app.discoverMoodLink]
-  );
 
   useEffect(() => {
     const syncFromHash = () => {

@@ -340,7 +340,7 @@ export const PoolDiscoveryPanel: React.FC = () => {
 
     // Per-question timer
     useEffect(() => {
-        if (quiz.phase !== 'active' || revealed) { timerRef.current && clearInterval(timerRef.current); return; }
+        if (quiz.phase !== 'active' || revealed) { if (timerRef.current) clearInterval(timerRef.current); return; }
         setTimeLeft(QUESTION_TIME);
         timerRef.current = setInterval(() => {
             setTimeLeft((t) => {
@@ -360,8 +360,8 @@ export const PoolDiscoveryPanel: React.FC = () => {
                 return t - 1;
             });
         }, 1000);
-        return () => { timerRef.current && clearInterval(timerRef.current); };
-    }, [quiz.phase, quiz.phase === 'active' ? (quiz as any).current : -1, revealed]);
+        return () => { if (timerRef.current) clearInterval(timerRef.current); };
+    }, [quiz.phase, quiz.phase === 'active' ? quiz.current : -1, revealed]);
 
     const current = movies[idx] ?? null;
 
@@ -385,7 +385,7 @@ export const PoolDiscoveryPanel: React.FC = () => {
 
     const handleAnswer = useCallback(async (questionId: string, selected: PoolOptionKey) => {
         if (quiz.phase !== 'active' || quiz.submitting || quiz.answers.has(questionId) || revealed) return;
-        timerRef.current && clearInterval(timerRef.current);
+        if (timerRef.current) clearInterval(timerRef.current);
         setQuiz((q) => q.phase === 'active' ? { ...q, submitting: true } : q);
 
         const res = await submitPoolAnswer({ movie_id: quiz.movieId, question_id: questionId, selected_option: selected, language: lang });
@@ -410,7 +410,6 @@ export const PoolDiscoveryPanel: React.FC = () => {
         revealTimeout.current = setTimeout(() => {
             setRevealed(null);
             setFlashType(null);
-            const newAnswers = new Map<string, { selected: PoolOptionKey; correct: boolean; explanation: string; correctOption: PoolOptionKey }>();
             setQuiz((q) => {
                 if (q.phase !== 'active') return q;
                 const m = new Map(q.answers);
@@ -427,8 +426,8 @@ export const PoolDiscoveryPanel: React.FC = () => {
 
     const handleFinish = useCallback(() => {
         if (quiz.phase !== 'active') return;
-        timerRef.current && clearInterval(timerRef.current);
-        revealTimeout.current && clearTimeout(revealTimeout.current);
+        if (timerRef.current) clearInterval(timerRef.current);
+        if (revealTimeout.current) clearTimeout(revealTimeout.current);
         const correctCount = Array.from(quiz.answers.values()).filter((a) => a.correct).length;
         const totalXp = correctCount * 10 + (quiz.questions.length - correctCount) * 2;
         setQuiz({ phase: 'result', title: quiz.title, total: quiz.questions.length, correct: correctCount, xp: totalXp });

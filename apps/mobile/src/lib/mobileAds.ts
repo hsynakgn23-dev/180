@@ -21,7 +21,7 @@ export async function initAds(): Promise<void> {
   try {
     await mobileAds().initialize();
     adsInitialized = true;
-  } catch (e) {
+  } catch {
     // Ads not available (web/simulator)
   }
 }
@@ -57,7 +57,7 @@ export function showInterstitialAd(): Promise<void> {
       });
 
       ad.load();
-    } catch (e) {
+    } catch {
       resolve(); // fail silently
     }
   });

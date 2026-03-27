@@ -144,8 +144,8 @@ export function useSubscription(accessToken: string | null) {
       }
       setState(s => ({ ...s, purchasing: false, error: 'Satın alma doğrulanamadı.' }));
       return false;
-    } catch (e: any) {
-      const msg = e?.code === 'E_USER_CANCELLED' ? null : 'Satın alma başarısız.';
+    } catch (e: unknown) {
+      const msg = (e as { code?: string })?.code === 'E_USER_CANCELLED' ? null : 'Satın alma başarısız.';
       setState(s => ({ ...s, purchasing: false, error: msg }));
       return false;
     }

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   Image,
   Modal,
@@ -35,19 +34,19 @@ import {
 // Sound effects — Web Audio API on web, expo-av on native
 // ────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const SND_CORRECT = require('../../assets/sounds/correct.wav');
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const SND_WRONG = require('../../assets/sounds/wrong.wav');
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const SND_TIMEUP = require('../../assets/sounds/timeup.wav');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const SND_CORRECT = require('../../assets/sounds/correct.wav') as number;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const SND_WRONG = require('../../assets/sounds/wrong.wav') as number;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const SND_TIMEUP = require('../../assets/sounds/timeup.wav') as number;
 
 // Web: use Web Audio API for instant playback
 let _audioCtx: AudioContext | null = null;
 const getAudioCtx = (): AudioContext | null => {
   if (Platform.OS !== 'web') return null;
   if (!_audioCtx) {
-    try { _audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)(); } catch { return null; }
+    try { _audioCtx = new (window.AudioContext || (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)(); } catch { return null; }
   }
   return _audioCtx;
 };
@@ -257,7 +256,7 @@ const PoolQuizModal = ({
   const [timeLeft, setTimeLeft] = useState(QUESTION_TIME_LIMIT);
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const timerPulse = useRef(new Animated.Value(1)).current;
+  const timerPulseRef = useRef(new Animated.Value(1));
   const copy = getCopy(language);
   const accent = isDawn ? '#A57164' : '#8A9A5B';
 
@@ -265,16 +264,16 @@ const PoolQuizModal = ({
   const demoAnswersRef = useRef<Map<string, PoolOptionKey>>(new Map());
   // Refs for timer callback access
   const stateRef = useRef(state);
-  stateRef.current = state;
   const submittingRef = useRef(submitting);
-  submittingRef.current = submitting;
+  useEffect(() => { stateRef.current = state; });
+  useEffect(() => { submittingRef.current = submitting; });
 
   // Clear timer helper
   const clearTimer = useCallback(() => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-    timerPulse.stopAnimation();
-    timerPulse.setValue(1);
-  }, [timerPulse]);
+    timerPulseRef.current.stopAnimation();
+    timerPulseRef.current.setValue(1);
+  }, []);
 
   // Start timer for current question
   const startTimer = useCallback(() => {
@@ -296,15 +295,15 @@ const PoolQuizModal = ({
     if (timeLeft <= 5 && timeLeft > 0 && state.phase === 'active' && !state.answers.has(state.questions[state.current]?.id)) {
       Animated.loop(
         Animated.sequence([
-          Animated.timing(timerPulse, { toValue: 1.15, duration: 300, useNativeDriver: true }),
-          Animated.timing(timerPulse, { toValue: 1, duration: 300, useNativeDriver: true }),
+          Animated.timing(timerPulseRef.current, { toValue: 1.15, duration: 300, useNativeDriver: true }),
+          Animated.timing(timerPulseRef.current, { toValue: 1, duration: 300, useNativeDriver: true }),
         ]),
       ).start();
     } else {
-      timerPulse.stopAnimation();
-      timerPulse.setValue(1);
+      timerPulseRef.current.stopAnimation();
+      timerPulseRef.current.setValue(1);
     }
-  }, [timeLeft, state, timerPulse]);
+  }, [timeLeft, state]);
 
   // Auto-fail when timer reaches 0
   useEffect(() => {
@@ -453,7 +452,6 @@ const PoolQuizModal = ({
     return (
       <Modal visible animationType="fade" transparent={false}>
         <RushResultScreen
-          mode="rush_15"
           total={state.total}
           correct={state.correct}
           xp={state.xpEarned}
@@ -509,8 +507,9 @@ const PoolQuizModal = ({
 
                 {/* Timer bar */}
                 {!isAnswered && !revealed && (
-                  <Animated.View style={{ transform: [{ scale: timerPulse }], marginBottom: 14 }}>
+                  <Animated.View style={{ transform: [{ scale: timerPulseRef.current }], marginBottom: 14 }}>
                     <View style={qs.timerBarBg}>
+                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                       <View style={[qs.timerBarFill, { width: `${timerPct * 100}%` as any, backgroundColor: timerColor }]} />
                     </View>
                     <Text style={[qs.timerCountdown, { color: timerColor }]}>{timeLeft}s</Text>
@@ -816,17 +815,20 @@ const ConfettiBlast = ({ trigger }: { trigger: number }) => {
   const particles = useRef<ConfettiParticle[]>([]);
   const prevTrigger = useRef(0);
 
-  if (particles.current.length === 0) {
-    particles.current = Array.from({ length: CONFETTI_COUNT }, (_, i) => ({
-      x: new Animated.Value(0),
-      y: new Animated.Value(0),
-      rotate: new Animated.Value(0),
-      opacity: new Animated.Value(0),
-      color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
-      size: 6 + Math.random() * 8,
-      isCircle: Math.random() > 0.5,
-    }));
-  }
+  useEffect(() => {
+    if (particles.current.length === 0) {
+      particles.current = Array.from({ length: CONFETTI_COUNT }, (_, i) => ({
+        x: new Animated.Value(0),
+        y: new Animated.Value(0),
+        rotate: new Animated.Value(0),
+        opacity: new Animated.Value(0),
+        color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+        size: 6 + Math.random() * 8,
+        isCircle: Math.random() > 0.5,
+      }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (trigger === 0 || trigger === prevTrigger.current) return;
@@ -893,9 +895,9 @@ const ConfettiBlast = ({ trigger }: { trigger: number }) => {
 // ────────────────────────────────────────────
 
 const RushResultScreen = ({
-  mode, total, correct, xp, accent, onRetry, copy,
+  total, correct, xp, accent, onRetry, copy,
 }: {
-  mode: RushMode; total: number; correct: number; xp: number;
+  total: number; correct: number; xp: number;
   accent: string; onRetry: () => void; copy: ReturnType<typeof getCopy>;
 }) => {
   const pct = total > 0 ? Math.round((correct / total) * 100) : 0;
@@ -1232,7 +1234,8 @@ export const QuizHomeScreen = ({
   const mouseDownRef = useRef(false);
 
   // Unified pointer handler — works for both touch and mouse on web
-  const getPointerXY = (e: any): { x: number; y: number } | null => {
+  type PointerEvent = { nativeEvent?: { touches?: Array<{ pageX: number; pageY: number }>; pageX?: number; pageY?: number }; pageX?: number; pageY?: number };
+  const getPointerXY = (e: PointerEvent): { x: number; y: number } | null => {
     // Touch event
     if (e.nativeEvent?.touches?.[0]) {
       const t = e.nativeEvent.touches[0];
@@ -1248,7 +1251,7 @@ export const QuizHomeScreen = ({
     return null;
   };
 
-  const onPointerDown = useCallback((e: any) => {
+  const onPointerDown = useCallback((e: PointerEvent) => {
     if (flyingOut.current) return;
     const pt = getPointerXY(e);
     if (!pt) return;
@@ -1259,7 +1262,7 @@ export const QuizHomeScreen = ({
     mouseDownRef.current = true;
   }, []);
 
-  const onPointerMove = useCallback((e: any) => {
+  const onPointerMove = useCallback((e: PointerEvent) => {
     if (flyingOut.current || !mouseDownRef.current) return;
     const pt = getPointerXY(e);
     if (!pt) return;
@@ -1440,7 +1443,6 @@ export const QuizHomeScreen = ({
       const wrongCount = rush.answered - rush.correct;
       const posterPath = q ? RUSH_POSTER_MAP[q.movie_title] : null;
       const thumbUri = posterPath ? buildPosterUri(posterPath) : null;
-      const optionLetterColors = ['#8e8b84', '#8e8b84', '#8e8b84', '#8e8b84']; // neutral gray for all
       return (
         <Modal visible animationType="fade" transparent={false}>
           <View style={qs.modalBg}>
@@ -1472,7 +1474,7 @@ export const QuizHomeScreen = ({
                   {/* Film header with poster thumbnail */}
                   <View style={qs.rushFilmHeader}>
                     {thumbUri && Platform.OS === 'web' ? (
-                      <View style={[qs.rushFilmThumb, { backgroundImage: `url(${thumbUri})`, backgroundSize: 'cover', backgroundPosition: 'center' } as any]} />
+                      <View style={[qs.rushFilmThumb, { backgroundImage: `url(${thumbUri})`, backgroundSize: 'cover', backgroundPosition: 'center' } as object]} />
                     ) : thumbUri ? (
                       <Image source={{ uri: thumbUri }} style={qs.rushFilmThumb} resizeMode="cover" />
                     ) : (
@@ -1529,7 +1531,6 @@ export const QuizHomeScreen = ({
       return (
         <Modal visible animationType="fade" transparent={false}>
           <RushResultScreen
-            mode={rush.mode}
             total={rush.total}
             correct={rush.correct}
             xp={rush.xp}
@@ -1571,7 +1572,7 @@ export const QuizHomeScreen = ({
           >
             {posterUri ? (
               Platform.OS === 'web' ? (
-                <View style={[qs.swipePoster, { backgroundImage: `url(${posterUri})`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center' } as any]} />
+                <View style={[qs.swipePoster, { backgroundImage: `url(${posterUri})`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center' } as object]} />
               ) : (
                 <Image source={{ uri: posterUri }} style={qs.swipePoster} resizeMode="contain" />
               )
