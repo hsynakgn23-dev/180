@@ -100,11 +100,11 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         return sendJson(res, 401, { ok: false, error: 'Invalid token.' }, cors);
     }
 
-    const movieId = getQueryParam(req, 'movieId') || '';
+    const movieId = getQueryParam(req, 'movie_id') || getQueryParam(req, 'movieId') || '';
     const lang = getQueryParam(req, 'lang') || 'tr';
 
     if (!movieId) {
-        return sendJson(res, 400, { ok: false, error: 'Missing movieId.' }, cors);
+        return sendJson(res, 400, { ok: false, error: 'Missing movie_id.' }, cors);
     }
 
     // Get movie info
@@ -157,17 +157,19 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
     return sendJson(res, 200, {
         ok: true,
+        movie_id: movie.id,
+        title: movie.title,
         movie: {
             id: movie.id,
-            tmdbId: movie.tmdb_id,
+            tmdb_id: movie.tmdb_id,
             title: movie.title,
-            posterPath: movie.poster_path,
+            poster_path: movie.poster_path,
             genre: movie.genre,
             era: movie.era,
             director: movie.director
         },
         questions: formattedQuestions,
-        questionCount: formattedQuestions.length,
+        question_count: formattedQuestions.length,
         progress: progress || null
     }, cors);
 }

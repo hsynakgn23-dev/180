@@ -168,6 +168,63 @@ const parseYear = (dateStr: unknown): number | null => {
     return Number.isFinite(year) && year > 1850 ? year : null;
 };
 
+export type TmdbPageResult = { movies: TmdbMovieDetail[]; totalPages: number };
+
+// Fetch exactly one TMDB discover page (up to 20 results after filtering)
+export const fetchTmdbSinglePage = async (page: number): Promise<TmdbPageResult> => {
+    const apiKey = getTmdbApiKey();
+    if (!apiKey) throw new Error('Missing TMDB_API_KEY');
+
+    const genreMap = await fetchTmdbGenreMap(apiKey);
+
+    const params = new URLSearchParams({
+        api_key: apiKey,
+        language: 'en-US',
+        sort_by: 'vote_count.desc',
+        include_adult: 'false',
+        'vote_average.gte': String(TMDB_MIN_VOTE_AVERAGE),
+        'vote_count.gte': String(TMDB_MIN_VOTE_COUNT),
+        page: String(page)
+    });
+
+    const response = await fetch(`${TMDB_API_BASE}/discover/movie?${params.toString()}`, { signal: AbortSignal.timeout(15000) });
+    if (!response.ok) throw new Error(`TMDB discover page ${page} failed: ${response.status}`);
+
+    const payload = (await response.json()) as { results?: TmdbDiscoverResult[]; total_pages?: number };
+    const totalPages = Number(payload.total_pages || 500);
+    const movies: TmdbMovieDetail[] = [];
+
+    for (const result of payload.results || []) {
+        const id = Number(result.id);
+        if (!Number.isInteger(id) || id <= 0) continue;
+        if ((result.vote_average || 0) < TMDB_MIN_VOTE_AVERAGE) continue;
+        if ((result.vote_count || 0) < TMDB_MIN_VOTE_COUNT) continue;
+        if ((result.popularity || 0) < TMDB_MIN_POPULARITY) continue;
+
+        const genreIds = (result.genre_ids || []).filter((gid) => typeof gid === 'number');
+        if (genreIds.some((gid) => TMDB_EXCLUDED_GENRE_IDS.has(gid))) continue;
+        if (!result.poster_path) continue;
+
+        const genres = genreIds
+            .map((gid) => genreMap.get(gid) || '')
+            .filter(Boolean)
+            .slice(0, 2);
+
+        movies.push({
+            id,
+            title: (result.title || '').trim(),
+            poster_path: result.poster_path,
+            release_date: result.release_date,
+            vote_average: result.vote_average,
+            overview: result.overview,
+            original_language: result.original_language,
+            genres: genres.map((name, i) => ({ id: genreIds[i] || 0, name })),
+        });
+    }
+
+    return { movies, totalPages };
+};
+
 export const fetchTmdbPopularMovies = async (targetCount: number): Promise<TmdbMovieDetail[]> => {
     const apiKey = getTmdbApiKey();
     if (!apiKey) throw new Error('Missing TMDB_API_KEY');

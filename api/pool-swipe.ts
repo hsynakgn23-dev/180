@@ -105,11 +105,11 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
     const body = await parseBody(req);
     const bodyObj = (body && typeof body === 'object' && !Array.isArray(body)) ? body as Record<string, unknown> : {};
-    const movieId = String(bodyObj.movieId || '').trim();
+    const movieId = String(bodyObj.movie_id || bodyObj.movieId || '').trim();
     const direction = String(bodyObj.direction || '').trim();
 
     if (!movieId) {
-        return sendJson(res, 400, { ok: false, error: 'Missing movieId.' }, cors);
+        return sendJson(res, 400, { ok: false, error: 'Missing movie_id.' }, cors);
     }
     if (direction !== 'left' && direction !== 'right') {
         return sendJson(res, 400, { ok: false, error: 'Invalid direction. Must be "left" or "right".' }, cors);

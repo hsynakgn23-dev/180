@@ -29,6 +29,7 @@ import adImpressionHandler from '../api/ad-impression.js';
 import poolBatchGenerateHandler from '../api/internal/pool-batch-generate.js';
 import poolBatchStatusHandler from '../api/internal/pool-batch-status.js';
 import poolBackfillHandler from '../api/internal/pool-backfill.js';
+import poolFetchChunkHandler from '../api/internal/pool-fetch-chunk.js';
 
 type QueryValue = string | string[] | undefined;
 
@@ -85,7 +86,8 @@ const ROUTES: RouteEntry[] = [
     { path: '/api/ad-impression', handler: adImpressionHandler as ApiRouteHandler },
     { path: '/api/internal/pool-batch-generate', handler: poolBatchGenerateHandler as ApiRouteHandler },
     { path: '/api/internal/pool-batch-status', handler: poolBatchStatusHandler as ApiRouteHandler },
-    { path: '/api/internal/pool-backfill', handler: poolBackfillHandler as ApiRouteHandler }
+    { path: '/api/internal/pool-backfill', handler: poolBackfillHandler as ApiRouteHandler },
+    { path: '/api/internal/pool-fetch-chunk', handler: poolFetchChunkHandler as ApiRouteHandler }
 ];
 
 const trimTrailingSlash = (value: string): string => {

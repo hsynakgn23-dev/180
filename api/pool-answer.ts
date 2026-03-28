@@ -111,15 +111,15 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
     const body = await parseBody(req);
     const bodyObj = (body && typeof body === 'object' && !Array.isArray(body)) ? body as Record<string, unknown> : {};
-    const questionId = String(bodyObj.questionId || '').trim();
-    const selectedOption = String(bodyObj.selectedOption || '').trim().toLowerCase();
-    const lang = String(bodyObj.lang || 'tr').trim();
+    const questionId = String(bodyObj.question_id || bodyObj.questionId || '').trim();
+    const selectedOption = String(bodyObj.selected_option || bodyObj.selectedOption || '').trim().toLowerCase();
+    const lang = String(bodyObj.language || bodyObj.lang || 'tr').trim();
 
     if (!questionId) {
-        return sendJson(res, 400, { ok: false, error: 'Missing questionId.' }, cors);
+        return sendJson(res, 400, { ok: false, error: 'Missing question_id.' }, cors);
     }
     if (!['a', 'b', 'c', 'd'].includes(selectedOption)) {
-        return sendJson(res, 400, { ok: false, error: 'Invalid selectedOption.' }, cors);
+        return sendJson(res, 400, { ok: false, error: 'Invalid selected_option.' }, cors);
     }
 
     // Get question with correct answer
@@ -217,22 +217,25 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     const isFreeUser = !profile?.subscription_tier || profile.subscription_tier === 'free';
     const shouldShowAd = isFreeUser && isCompleted;
 
+    const xpEarned = isPerfect ? (xpDelta + POOL_PERFECT_BONUS_XP) : xpDelta;
+    const bonusXp = isPerfect ? POOL_PERFECT_BONUS_XP : 0;
+
     return sendJson(res, 200, {
         ok: true,
-        questionId,
-        selectedOption,
-        correctOption: question.correct_option,
-        isCorrect,
+        question_id: questionId,
+        selected_option: selectedOption,
+        correct_option: question.correct_option,
+        is_correct: isCorrect,
         explanation,
-        xpDelta: isPerfect ? (xpDelta + POOL_PERFECT_BONUS_XP) : xpDelta,
+        xp_earned: xpEarned,
+        bonus_xp: bonusXp,
         progress: {
-            questionsAnswered: newAnswered,
-            correctCount: newCorrect,
-            xpEarned: totalXp,
+            answered: newAnswered,
+            correct: newCorrect,
+            total: totalQuestions || 5,
             completed: isCompleted,
-            isPerfect,
-            totalQuestions: totalQuestions || 5
+            is_perfect: isPerfect
         },
-        shouldShowAd
+        should_show_ad: shouldShowAd
     }, cors);
 }
