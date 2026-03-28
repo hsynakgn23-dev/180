@@ -42,7 +42,7 @@ const sendJson = (res: ApiResponse, status: number, payload: Record<string, unkn
 };
 
 const resolveSecret = () =>
-    String(process.env.DAILY_QUIZ_IMPORT_SECRET || process.env.DAILY_SOURCE_SECRET || process.env.CRON_SECRET || '').trim();
+    String(process.env.CRON_SECRET || process.env.DAILY_QUIZ_IMPORT_SECRET || '').trim();
 
 const getHeader = (req: ApiRequest, key: string): string => {
     const h = req.headers;
