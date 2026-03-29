@@ -109,7 +109,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     let query = supabase
         .from('question_pool_movies')
         .select('id, tmdb_id, title, poster_path, release_year, genre, era, overview, vote_average, director, question_count')
-        .gt('question_count', 0);
+        .gte('question_count', 5);
 
     if (genre) query = query.eq('genre', genre);
     if (era) query = query.eq('era', era);
