@@ -97,6 +97,10 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, isWatchedTod
     return (
         <div
             onClick={onClick}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick?.(); } }}
+            role="button"
+            tabIndex={0}
+            aria-label={movie.title}
             className="group relative aspect-[2/3] rounded-xl overflow-hidden cursor-pointer transition-all duration-700 ease-[cubic-bezier(0.25,1,0.5,1)] hover:scale-[1.03] hover:-translate-y-1 hover:shadow-[0_20px_40px_-10px_rgba(0,0,0,0.5),0_0_20px_rgba(138,154,91,0.15)] bg-[#121212] border border-white/5 hover:border-sage/30 z-10 hover:z-20"
         >
             {/* Background / Poster */}

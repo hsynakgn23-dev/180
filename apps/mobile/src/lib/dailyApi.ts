@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { resolveMobileDailyApiUrl, resolveMobileWebBaseUrl } from './mobileEnv';
-import { fetchWithTimeout } from './network';
+import { fetchWithTimeout, runWithAbortTimeout } from './network';
 import { isSupabaseLive, supabase } from './supabase';
 
 type DailyMovie = {
@@ -41,6 +41,7 @@ type DailyShowcaseRow = {
 const DAILY_CACHE_KEY = '180_mobile_daily_cache_v3';
 const DAILY_CACHE_MAX_AGE_MS = 18 * 60 * 60 * 1000;
 const DAILY_ROLLOVER_TIMEZONE = 'Europe/Istanbul';
+const DAILY_SUPABASE_TIMEOUT_MS = 10000;
 const PUBLIC_SUPABASE_URL = String(process.env.EXPO_PUBLIC_SUPABASE_URL || '')
   .trim()
   .replace(/\/+$/, '');
@@ -366,48 +367,63 @@ const readDailyFromSupabase = async (
     };
   }
 
-  try {
-    const { data: byDateData } = await supabase
-      .from('daily_showcase')
-      .select('date,movies')
-      .eq('date', targetDate)
-      .maybeSingle();
-    const parsed = parseRow((byDateData || null) as DailyShowcaseRow | null);
-    if (parsed) {
-      return {
-        ok: true,
-        date: parsed.date,
-        source: parsed.source,
-        movies: parsed.movies,
-        warning: null,
-      };
+  const supabaseClient = isSupabaseLive() ? supabase : null;
+  if (supabaseClient) {
+    try {
+      const byDateResult = await runWithAbortTimeout({
+        timeoutMs: DAILY_SUPABASE_TIMEOUT_MS,
+        timeoutMessage: 'Daily Supabase timeout',
+        task: async (signal) =>
+          await supabaseClient
+            .from('daily_showcase')
+            .select('date,movies')
+            .abortSignal(signal)
+            .eq('date', targetDate)
+            .maybeSingle(),
+      });
+      const parsed = parseRow((byDateResult.data || null) as DailyShowcaseRow | null);
+      if (parsed) {
+        return {
+          ok: true,
+          date: parsed.date,
+          source: parsed.source,
+          movies: parsed.movies,
+          warning: null,
+        };
+      }
+    } catch {
+      // continue to latest fallback
     }
-  } catch {
-    // continue to latest fallback
-  }
 
-  try {
-    const { data: latestRows } = await supabase
-      .from('daily_showcase')
-      .select('date,movies')
-      .order('date', { ascending: false })
-      .limit(1);
-    const latestRow =
-      Array.isArray(latestRows) && latestRows.length > 0
-        ? ((latestRows[0] || null) as DailyShowcaseRow | null)
-        : null;
-    const latest = parseRow(latestRow);
-    if (latest) {
-      return {
-        ok: true,
-        date: latest.date,
-        source: latest.source,
-        movies: latest.movies,
-        warning: latest.date && latest.date !== targetDate ? 'Supabase latest daily used.' : null,
-      };
+    try {
+      const latestResult = await runWithAbortTimeout({
+        timeoutMs: DAILY_SUPABASE_TIMEOUT_MS,
+        timeoutMessage: 'Daily Supabase timeout',
+        task: async (signal) =>
+          await supabaseClient
+            .from('daily_showcase')
+            .select('date,movies')
+            .abortSignal(signal)
+            .order('date', { ascending: false })
+            .limit(1),
+      });
+      const latestRow =
+        Array.isArray(latestResult.data) && latestResult.data.length > 0
+          ? ((latestResult.data[0] || null) as DailyShowcaseRow | null)
+          : null;
+      const latest = parseRow(latestRow);
+      if (latest) {
+        return {
+          ok: true,
+          date: latest.date,
+          source: latest.source,
+          movies: latest.movies,
+          warning: latest.date && latest.date !== targetDate ? 'Supabase latest daily used.' : null,
+        };
+      }
+    } catch {
+      // no-op
     }
-  } catch {
-    // no-op
   }
 
   return {

@@ -22,8 +22,23 @@ Cloud Run servisinde su degiskenler olmali:
 - `CRON_SECRET`
 - `DAILY_SOURCE_SECRET` (opsiyonel, internal film kaynak endpoint'i icin)
 
+Mobil uygulama içi satın alma (wallet ticket topup) için gerekli:
+
+- `MOBILE_IAP_APPLE_ISSUER_ID` — App Store Connect Issuer ID
+- `MOBILE_IAP_APPLE_KEY_ID` — App Store Connect Key ID
+- `MOBILE_IAP_APPLE_PRIVATE_KEY` — `.p8` dosyasının tam içeriği (başlık/bitiş satırları dahil)
+- `MOBILE_IAP_GOOGLE_SERVICE_ACCOUNT_JSON` — Google Play servis hesabı JSON'u
+
+> App Store Connect: Users & Access → Integrations → In-App Purchase
+> Google Play Console: Setup → API access → Service accounts
+
 Opsiyonel:
 
+- `MOBILE_IAP_APPLE_BUNDLE_ID` — default: `com.absolutecinema`
+- `MOBILE_IAP_APPLE_ENVIRONMENT` — `production` / `sandbox` / `both` (default: `both`)
+- `MOBILE_IAP_GOOGLE_PACKAGE_NAME` — default: `com.hsyna.absolutecinema`
+- `EXPO_PUBLIC_ADMOB_REWARDED_IOS_ID` — AdMob iOS rewarded ad unit (opsiyonel, fallback mevcut)
+- `EXPO_PUBLIC_ADMOB_REWARDED_ANDROID_ID` — AdMob Android rewarded ad unit (opsiyonel)
 - `VITE_PUBLIC_APP_URL`
 - `EXPO_PUBLIC_WEB_APP_URL`
 - `EXPO_PUBLIC_WEB_BASE_URL`

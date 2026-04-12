@@ -2,6 +2,7 @@ import type { MobileRouteIntent } from './mobileRouteContract';
 
 export const MOBILE_SCREEN_IDS = [
     'daily_home',
+    'profile_home',
     'invite_claim',
     'share_hub',
     'public_profile',
@@ -40,6 +41,13 @@ export const resolveMobileScreenPlan = (intent: MobileRouteIntent): MobileScreen
     if (intent.target === 'daily') {
         return {
             screen: 'daily_home',
+            params: {}
+        };
+    }
+
+    if (intent.target === 'profile') {
+        return {
+            screen: 'profile_home',
             params: {}
         };
     }

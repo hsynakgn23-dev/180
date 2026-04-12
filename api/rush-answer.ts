@@ -16,6 +16,14 @@ type ApiResponse = {
 };
 
 const ENDLESS_PER_QUESTION_SECONDS = 10;
+const CORRECT_TIME_BONUS_SECONDS = 3;
+const ANSWER_SETTLE_GRACE_SECONDS = 1;
+
+type SupabaseErrorLike = {
+    code?: string | null;
+    message?: string | null;
+    details?: string | null;
+};
 
 const sendJson = (
     res: ApiResponse,
@@ -67,6 +75,21 @@ const getSupabaseUrl = (): string =>
 const getSupabaseServiceRoleKey = (): string =>
     String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 
+const sanitizeServerErrorMessage = (fallback: string): string => fallback;
+
+const isRushAttemptDuplicateError = (error: SupabaseErrorLike | null | undefined): boolean => {
+    if (!error) return false;
+    const code = String(error.code || '').trim();
+    const message = String(error.message || '').toLowerCase();
+    const details = String(error.details || '').toLowerCase();
+    return (
+        code === '23505' ||
+        message.includes('duplicate key') ||
+        message.includes('unique constraint') ||
+        details.includes('(session_id, question_id)')
+    );
+};
+
 export default async function handler(req: ApiRequest, res: ApiResponse) {
     const cors = createCorsHeaders(req, {
         headers: 'authorization, content-type, apikey, x-client-info',
@@ -103,7 +126,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     // Get session
     const { data: session, error: sessionError } = await supabase
         .from('quiz_rush_sessions')
-        .select('id, user_id, mode, status, expires_at, correct_count, wrong_count')
+        .select('id, user_id, mode, status, expires_at, correct_count, wrong_count, time_limit_seconds')
         .eq('id', sessionId)
         .eq('user_id', user.id)
         .single();
@@ -176,20 +199,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
     const isCorrect = selectedOption === question.correct_option;
 
-    // Check if already answered
-    const { data: existingAttempt } = await supabase
-        .from('quiz_rush_attempts')
-        .select('id')
-        .eq('session_id', sessionId)
-        .eq('question_id', questionId)
-        .single();
-
-    if (existingAttempt) {
-        return sendJson(res, 409, { ok: false, error: 'Question already answered in this session.' }, cors);
-    }
-
-    // Record attempt
-    await supabase
+    // Record attempt atomically. A unique DB constraint on (session_id, question_id)
+    // ensures only the first concurrent request wins.
+    const { error: attemptInsertError } = await supabase
         .from('quiz_rush_attempts')
         .insert({
             session_id: sessionId,
@@ -199,17 +211,48 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
             answered_at: now.toISOString()
         });
 
+    if (attemptInsertError) {
+        if (isRushAttemptDuplicateError(attemptInsertError)) {
+            return sendJson(res, 409, { ok: false, error: 'Question already answered in this session.' }, cors);
+        }
+        console.error('rush-answer attempt insert failed', {
+            code: attemptInsertError.code || null,
+            details: attemptInsertError.details || null,
+        });
+        return sendJson(
+            res,
+            500,
+            { ok: false, error: sanitizeServerErrorMessage('Failed to record rush answer.') },
+            cors
+        );
+    }
+
     // Update session counts
     const newCorrect = (session.correct_count || 0) + (isCorrect ? 1 : 0);
     const newWrong = (session.wrong_count || 0) + (isCorrect ? 0 : 1);
+    const answerBonusSeconds = (isCorrect ? CORRECT_TIME_BONUS_SECONDS : 0) + ANSWER_SETTLE_GRACE_SECONDS;
+    const nextExpiresAt =
+        session.expires_at
+            ? new Date(new Date(session.expires_at).getTime() + answerBonusSeconds * 1000).toISOString()
+            : null;
+    const totalTimeSeconds = Number(session.time_limit_seconds) > 0
+        ? Number(session.time_limit_seconds) +
+            newCorrect * CORRECT_TIME_BONUS_SECONDS +
+            (newCorrect + newWrong) * ANSWER_SETTLE_GRACE_SECONDS
+        : null;
 
-    await supabase
+    const { error: sessionUpdateError } = await supabase
         .from('quiz_rush_sessions')
         .update({
             correct_count: newCorrect,
-            wrong_count: newWrong
+            wrong_count: newWrong,
+            expires_at: nextExpiresAt
         })
         .eq('id', sessionId);
+    if (sessionUpdateError) {
+        console.error('rush-answer: session update failed', { code: sessionUpdateError.code });
+        return sendJson(res, 500, { ok: false, error: 'Failed to update session.' }, cors);
+    }
 
     const lang = String(bodyObj.lang || 'tr').trim();
     const validLang = ['tr', 'en', 'es', 'fr'].includes(lang) ? lang : 'tr';
@@ -222,6 +265,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         correctOption: question.correct_option,
         isCorrect,
         explanation: explanations[validLang] || explanations.tr || explanations.en || '',
+        expires_at: nextExpiresAt,
+        bonus_seconds: isCorrect && session.expires_at ? CORRECT_TIME_BONUS_SECONDS : 0,
+        total_time_seconds: totalTimeSeconds,
         sessionProgress: {
             correctCount: newCorrect,
             wrongCount: newWrong,

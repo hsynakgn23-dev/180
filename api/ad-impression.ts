@@ -1,4 +1,5 @@
 import { createCorsHeaders } from './lib/cors.js';
+import { isPremiumTier } from './lib/subscriptionAccess.js';
 import { createSupabaseServiceClient } from './lib/supabaseServiceClient.js';
 
 export const config = { runtime: 'nodejs' };
@@ -92,7 +93,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         .eq('user_id', user.id)
         .single();
 
-    if (profile?.subscription_tier === 'premium') {
+    if (isPremiumTier(profile?.subscription_tier)) {
         return sendJson(res, 200, { ok: true, recorded: false, reason: 'Premium user, no ads.' }, cors);
     }
 

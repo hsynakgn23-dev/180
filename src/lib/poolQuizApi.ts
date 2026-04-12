@@ -27,6 +27,7 @@ export type RushSessionQuestion = {
     id: string;
     question_id: string;
     movie_title: string;
+    movie_poster_path: string | null;
     question: string;
     options: Array<{ key: PoolOptionKey; label: string }>;
 };
@@ -125,7 +126,11 @@ export const submitPoolAnswer = async (input: {
 export const startRushSession = async (
     mode: RushMode,
     language: PoolLanguageCode
-): Promise<{ ok: true; session: RushSession } | { ok: false; error: string }> => {
+): Promise<{
+    ok: true; session: RushSession;
+} | {
+    ok: false; error: string; requires_subscription?: boolean; limit_reached?: boolean; rewarded_ad_available?: boolean;
+}> => {
     try {
         const res = await fetch(buildApiUrl('/api/rush-start'), {
             method: 'POST',
@@ -133,11 +138,35 @@ export const startRushSession = async (
             body: JSON.stringify({ mode, language }),
         });
         const json = await res.json();
-        if (!res.ok || !json?.ok) return { ok: false, error: json?.error || `HTTP ${res.status}` };
+        if (!res.ok || !json?.ok) {
+            return {
+                ok: false,
+                error: json?.error || `HTTP ${res.status}`,
+                requires_subscription: json?.requiresSubscription === true,
+                limit_reached: res.status === 429 || json?.limitReached === true,
+                rewarded_ad_available: res.status === 429 ? json?.rewardedAdAvailable !== false : false,
+            };
+        }
         const s = json.session ?? json;
+        const questions = Array.isArray(s.questions)
+            ? s.questions.map((q: Record<string, unknown>) => ({
+                id: String(q.id || ''),
+                question_id: String(q.question_id || q.id || ''),
+                movie_title: String(q.movie_title || q.movieTitle || ''),
+                movie_poster_path: String(q.movie_poster_path || q.moviePosterPath || q.poster_path || '') || null,
+                question: String(q.question || ''),
+                options: Array.isArray(q.options) ? q.options as Array<{ key: PoolOptionKey; label: string }> : [],
+            }))
+            : [];
+        const nextMode = (s.mode ?? json.mode ?? mode) as RushMode;
         return {
             ok: true,
-            session: { id: s.id, mode, expires_at: s.expires_at ?? null, questions: s.questions ?? [] },
+            session: {
+                id: s.id ?? json.sessionId,
+                mode: nextMode,
+                expires_at: s.expires_at ?? s.expiresAt ?? json.expiresAt ?? null,
+                questions,
+            },
         };
     } catch (e) {
         return { ok: false, error: e instanceof Error ? e.message : 'Request failed' };
@@ -155,14 +184,27 @@ export const submitRushAnswer = async (input: {
         const res = await fetch(buildApiUrl('/api/rush-answer'), {
             method: 'POST',
             headers: { 'content-type': 'application/json', ...(await getAuthHeaders()) },
-            body: JSON.stringify(input),
+            body: JSON.stringify({
+                session_id: input.session_id,
+                sessionId: input.session_id,
+                attempt_id: input.attempt_id,
+                questionId: input.attempt_id,
+                selected_option: input.selected_option,
+                selectedOption: input.selected_option,
+            }),
         });
         const json = await res.json();
-        if (!res.ok || !json?.ok) return { ok: false, error: json?.error || `HTTP ${res.status}`, expired: json?.expired };
+        if (!res.ok || !json?.ok) {
+            return {
+                ok: false,
+                error: json?.error || `HTTP ${res.status}`,
+                expired: json?.expired === true || String(json?.status || '').trim() === 'expired',
+            };
+        }
         return {
             ok: true,
-            is_correct: json.is_correct,
-            correct_option: json.correct_option,
+            is_correct: json.is_correct === true || json?.isCorrect === true,
+            correct_option: (json.correct_option ?? json.correctOption) as PoolOptionKey,
             explanation: json.explanation ?? '',
             streak: json.streak ?? 0,
         };
@@ -178,15 +220,20 @@ export const completeRushSession = async (
         const res = await fetch(buildApiUrl('/api/rush-complete'), {
             method: 'POST',
             headers: { 'content-type': 'application/json', ...(await getAuthHeaders()) },
-            body: JSON.stringify({ session_id: sessionId }),
+            body: JSON.stringify({ session_id: sessionId, sessionId }),
         });
         const json = await res.json();
         if (!res.ok || !json?.ok) return { ok: false, error: json?.error || `HTTP ${res.status}` };
+        const totalCorrect = Number(json.total_correct ?? json.correctCount) || 0;
+        const totalAnswered =
+            Number(json.total_answered) ||
+            Number(json.totalAnswered) ||
+            totalCorrect + (Number(json.wrongCount) || 0);
         return {
             ok: true,
-            total_answered: json.total_answered ?? 0,
-            total_correct: json.total_correct ?? 0,
-            xp_earned: json.xp_earned ?? 0,
+            total_answered: totalAnswered,
+            total_correct: totalCorrect,
+            xp_earned: json.xp_earned ?? json.xpEarned ?? 0,
             mode: json.mode,
         };
     } catch (e) {
@@ -196,7 +243,7 @@ export const completeRushSession = async (
 
 export const fetchSubscriptionStatus = async (): Promise<{
     tier: 'free' | 'premium';
-    daily_rush_limit: number;
+    daily_rush_limit: number | null;
     daily_rush_used: number;
     show_ads: boolean;
 }> => {
@@ -206,11 +253,13 @@ export const fetchSubscriptionStatus = async (): Promise<{
         });
         const json = await res.json();
         if (res.ok && json) {
+            const limits = json.limits ?? {};
+            const tier = json.tier === 'premium' ? 'premium' : 'free';
             return {
-                tier: json.tier === 'premium' ? 'premium' : 'free',
-                daily_rush_limit: json.daily_rush_limit ?? 3,
-                daily_rush_used: json.daily_rush_used ?? 0,
-                show_ads: json.show_ads !== false,
+                tier,
+                daily_rush_limit: json.daily_rush_limit ?? limits.dailyRushLimit ?? 3,
+                daily_rush_used: json.daily_rush_used ?? limits.dailyRushUsed ?? 0,
+                show_ads: json.show_ads === false ? false : limits.adsEnabled === false ? false : tier !== 'premium',
             };
         }
     } catch { /* fallback */ }

@@ -11,6 +11,7 @@ import {
     getMarkCategoryLabel,
     getMarkCopy,
     isLanguageCode,
+    normalizeActiveLanguageCode,
     type LanguageCode
 } from '../i18n/localization';
 
@@ -29,7 +30,7 @@ const LanguageContext = createContext<LanguageContextType | undefined>(undefined
 const getInitialLanguage = (): LanguageCode => {
     if (typeof window === 'undefined') return PRIMARY_LANGUAGE;
     const storedLanguage = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
-    return isLanguageCode(storedLanguage) ? storedLanguage : PRIMARY_LANGUAGE;
+    return isLanguageCode(storedLanguage) ? normalizeActiveLanguageCode(storedLanguage) : PRIMARY_LANGUAGE;
 };
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -40,10 +41,11 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }, [language]);
 
     const setLanguage = useCallback((nextLanguage: LanguageCode) => {
+        const normalizedLanguage = normalizeActiveLanguageCode(nextLanguage);
         setLanguageState((currentLanguage) => {
-            if (nextLanguage === currentLanguage) return currentLanguage;
-            window.dispatchEvent(new CustomEvent(LANGUAGE_CHANGE_EVENT, { detail: nextLanguage }));
-            return nextLanguage;
+            if (normalizedLanguage === currentLanguage) return currentLanguage;
+            window.dispatchEvent(new CustomEvent(LANGUAGE_CHANGE_EVENT, { detail: normalizedLanguage }));
+            return normalizedLanguage;
         });
     }, []);
 
@@ -55,13 +57,13 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const handleStorage = (event: StorageEvent) => {
             if (event.key !== LANGUAGE_STORAGE_KEY) return;
             if (!isLanguageCode(event.newValue)) return;
-            setLanguageState(event.newValue);
+            setLanguageState(normalizeActiveLanguageCode(event.newValue));
         };
 
         const handleLanguageEvent = (event: Event) => {
             const customEvent = event as CustomEvent;
             if (!isLanguageCode(customEvent.detail)) return;
-            setLanguageState(customEvent.detail);
+            setLanguageState(normalizeActiveLanguageCode(customEvent.detail));
         };
 
         window.addEventListener('storage', handleStorage);

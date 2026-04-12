@@ -1,4 +1,5 @@
-import { resolveMobileDailyApiUrl, resolveMobileReferralApiBase } from './mobileEnv';
+import { MOBILE_API_BASE_URL_ERROR, resolveMobileApiUrl } from './mobileEnv';
+import { fetchWithTimeout } from './network';
 import { readSupabaseSessionSafe } from './supabase';
 
 export type MobileDailyQuizOptionKey = 'a' | 'b' | 'c' | 'd';
@@ -61,6 +62,8 @@ export type MobileDailyQuizAnswerResult =
         total: number | null;
         streak: number | null;
         streakProtectedNow: boolean;
+        tickets: number;
+        arenaScore: number;
       };
     }
   | {
@@ -244,6 +247,8 @@ const normalizeAnswerResult = (
         total: toNullableInteger(value.xp.total),
         streak: toNullableInteger(value.xp.streak),
         streakProtectedNow: toBoolean(value.xp.streakProtectedNow),
+        tickets: toNonNegativeInteger(value.xp.tickets),
+        arenaScore: toNonNegativeInteger(value.xp.arenaScore),
       }
     : null;
 
@@ -261,17 +266,6 @@ const normalizeAnswerResult = (
   };
 };
 
-const buildMobileApiUrl = (path: string): string => {
-  const referralBase = resolveMobileReferralApiBase();
-  const dailyApiUrl = resolveMobileDailyApiUrl();
-  const dailyBase = dailyApiUrl.replace(/\/api\/daily(?:\/)?$/i, '');
-  const apiBase = dailyBase || referralBase;
-  if (!apiBase) {
-    throw new Error('Mobil quiz API base URL bulunamadi.');
-  }
-  return `${apiBase}${path.startsWith('/') ? path : `/${path}`}`;
-};
-
 const buildAuthHeaders = async (): Promise<Record<string, string>> => {
   const sessionResult = await readSupabaseSessionSafe();
   const accessToken = String(sessionResult.session?.access_token || '').trim();
@@ -279,6 +273,29 @@ const buildAuthHeaders = async (): Promise<Record<string, string>> => {
   return {
     Authorization: `Bearer ${accessToken}`,
   };
+};
+
+const MOBILE_DAILY_QUIZ_REQUEST_TIMEOUT_MS = 10000;
+
+const requestMobileDailyQuizApi = async (
+  path: string,
+  init: RequestInit,
+  timeoutMessage: string,
+): Promise<Response> => {
+  const url = resolveMobileApiUrl(path);
+  if (!url) {
+    return new Response(JSON.stringify({ ok: false, error: MOBILE_API_BASE_URL_ERROR }), {
+      status: 503,
+      headers: { 'content-type': 'application/json' },
+    });
+  }
+
+  return fetchWithTimeout({
+    url,
+    init,
+    timeoutMs: MOBILE_DAILY_QUIZ_REQUEST_TIMEOUT_MS,
+    timeoutMessage,
+  });
 };
 
 export const readMobileDailyQuizBundle = async (input: {
@@ -293,13 +310,17 @@ export const readMobileDailyQuizBundle = async (input: {
       params.set('date', input.dateKey);
     }
 
-    const response = await fetch(buildMobileApiUrl(`/api/daily-bundle?${params.toString()}`), {
-      headers: {
-        Accept: 'application/json',
-        ...(await buildAuthHeaders()),
+    const response = await requestMobileDailyQuizApi(
+      `/api/daily-bundle?${params.toString()}`,
+      {
+        headers: {
+          Accept: 'application/json',
+          ...(await buildAuthHeaders()),
+        },
+        cache: 'no-store',
       },
-      cache: 'no-store',
-    });
+      'Gunluk quiz istegi zaman asimina ugradi.',
+    );
 
     const payload = (await response.json().catch(() => null)) as unknown;
 
@@ -339,19 +360,23 @@ export const submitMobileDailyQuizAnswer = async (input: {
   language: MobileDailyQuizLanguageCode;
 }): Promise<MobileDailyQuizAnswerResult> => {
   try {
-    const response = await fetch(buildMobileApiUrl('/api/daily-quiz-answer'), {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        ...(await buildAuthHeaders()),
+    const response = await requestMobileDailyQuizApi(
+      '/api/daily-quiz-answer',
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(await buildAuthHeaders()),
+        },
+        body: JSON.stringify({
+          dateKey: input.dateKey,
+          questionId: input.questionId,
+          selectedOption: input.selectedOption,
+          language: input.language,
+        }),
       },
-      body: JSON.stringify({
-        dateKey: input.dateKey,
-        questionId: input.questionId,
-        selectedOption: input.selectedOption,
-        language: input.language,
-      }),
-    });
+      'Gunluk quiz cevabi zaman asimina ugradi.',
+    );
 
     const payload = (await response.json().catch(() => null)) as unknown;
     if (!response.ok) {

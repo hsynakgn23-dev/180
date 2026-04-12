@@ -1,4 +1,5 @@
 import { isSupabaseLive, readSupabaseSessionSafe, supabase } from './supabase';
+import { TMDB_SEEDS } from '../../../../src/data/tmdbSeeds';
 
 type SupabaseErrorLike = {
   code?: string | null;
@@ -19,6 +20,14 @@ type RitualRow = {
 
 type ProfileRow = {
   xp_state?: Record<string, unknown> | null;
+};
+
+type PoolMovieMetadataRow = {
+  title?: string | null;
+  tmdb_id?: number | string | null;
+  poster_path?: string | null;
+  genre?: string | null;
+  release_year?: number | string | null;
 };
 
 export type MobileProfileActivityItem = {
@@ -113,6 +122,33 @@ const isSupabaseCapabilityError = (error: SupabaseErrorLike | null | undefined):
   );
 };
 
+const MOVIE_BY_TITLE = new Map(
+  TMDB_SEEDS.map((movie) => [normalizeText(movie.title, 180).toLowerCase(), movie] as const).filter(
+    ([title]) => Boolean(title)
+  )
+);
+
+const inferPosterPathFromTitle = (movieTitle: string): string | null => {
+  const seed = MOVIE_BY_TITLE.get(normalizeText(movieTitle, 180).toLowerCase());
+  const posterPath = normalizeText((seed as { posterPath?: string | null } | undefined)?.posterPath, 600);
+  return posterPath || null;
+};
+
+const inferYearFromTitle = (movieTitle: string): number | null => {
+  const seed = MOVIE_BY_TITLE.get(normalizeText(movieTitle, 180).toLowerCase());
+  return seed ? toSafeYear((seed as { year?: unknown }).year) : null;
+};
+
+const inferGenreFromTitle = (movieTitle: string): string | null => {
+  const seed = MOVIE_BY_TITLE.get(normalizeText(movieTitle, 180).toLowerCase());
+  return normalizeText((seed as { genre?: unknown } | undefined)?.genre, 80) || null;
+};
+
+const inferMovieIdFromTitle = (movieTitle: string): number | null => {
+  const seed = MOVIE_BY_TITLE.get(normalizeText(movieTitle, 180).toLowerCase());
+  return seed ? toSafeInt((seed as { id?: unknown }).id) : null;
+};
+
 const normalizeRows = (rows: RitualRow[]): MobileProfileActivityItem[] =>
   rows
     .map((row, index) => {
@@ -127,12 +163,12 @@ const normalizeRows = (rows: RitualRow[]): MobileProfileActivityItem[] =>
 
       return {
         id: normalizeText(row.id, 120) || `ritual-${index}`,
-        movieId: toSafeInt(row.movie_id),
+        movieId: toSafeInt(row.movie_id) ?? inferMovieIdFromTitle(movieTitle),
         movieTitle,
         text,
-        genre: normalizeText(row.genre, 80) || null,
-        posterPath: normalizeText(row.poster_path, 600) || null,
-        year: toSafeYear(row.year),
+        genre: normalizeText(row.genre, 80) || inferGenreFromTitle(movieTitle),
+        posterPath: normalizeText(row.poster_path, 600) || inferPosterPathFromTitle(movieTitle),
+        year: toSafeYear(row.year) ?? inferYearFromTitle(movieTitle),
         rawTimestamp,
         timestampLabel: toRelativeTimestamp(rawTimestamp),
         dayKey: toDayKey(rawTimestamp),
@@ -146,21 +182,27 @@ const normalizeXpStateRows = (rows: unknown[]): MobileProfileActivityItem[] =>
     .map((entry, index) => {
       if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
       const row = entry as Record<string, unknown>;
-      const movieTitle = normalizeText(row.movieTitle, 180);
-      const text = normalizeText(row.text, 400);
+      const movieTitle = normalizeText(row.movieTitle ?? row.movie_title ?? row.title, 180);
+      const text = normalizeText(row.text ?? row.comment ?? row.note ?? row.body, 400);
       if (!movieTitle || !text) return null;
 
-      const rawTimestamp = toRawTimestamp(row.timestamp || row.createdAt || row.date);
-      const explicitDayKey = normalizeText(row.date, 40);
+      const rawTimestamp = toRawTimestamp(
+        row.timestamp ?? row.createdAt ?? row.created_at ?? row.date ?? row.dayKey ?? row.day_key
+      );
+      const explicitDayKey = normalizeText(row.date ?? row.dayKey ?? row.day_key, 40);
 
       return {
         id: normalizeText(row.id, 120) || `xp-ritual-${index}`,
-        movieId: toSafeInt(row.movieId),
+        movieId: toSafeInt(row.movieId ?? row.movie_id) ?? inferMovieIdFromTitle(movieTitle),
         movieTitle,
         text,
-        genre: normalizeText(row.genre, 80) || null,
-        posterPath: normalizeText(row.posterPath, 600) || null,
-        year: toSafeYear(row.year),
+        genre:
+          normalizeText(row.genre ?? row.movieGenre ?? row.movie_genre, 80) ||
+          inferGenreFromTitle(movieTitle),
+        posterPath:
+          normalizeText(row.posterPath ?? row.poster_path, 600) || inferPosterPathFromTitle(movieTitle),
+        year:
+          toSafeYear(row.year ?? row.releaseYear ?? row.release_year) ?? inferYearFromTitle(movieTitle),
         rawTimestamp,
         timestampLabel: toRelativeTimestamp(rawTimestamp),
         dayKey: explicitDayKey || toDayKey(rawTimestamp),
@@ -168,6 +210,81 @@ const normalizeXpStateRows = (rows: unknown[]): MobileProfileActivityItem[] =>
     })
     .filter((item): item is MobileProfileActivityItem => Boolean(item))
     .sort((left, right) => Date.parse(right.rawTimestamp) - Date.parse(left.rawTimestamp));
+
+const enrichItemsWithPoolMetadata = async (
+  items: MobileProfileActivityItem[]
+): Promise<MobileProfileActivityItem[]> => {
+  if (items.length === 0) return items;
+
+  const withSeedFallback = items.map((item) => ({
+    ...item,
+    movieId: item.movieId ?? inferMovieIdFromTitle(item.movieTitle),
+    genre: item.genre || inferGenreFromTitle(item.movieTitle),
+    posterPath: item.posterPath || inferPosterPathFromTitle(item.movieTitle),
+    year: item.year ?? inferYearFromTitle(item.movieTitle),
+  }));
+
+  if (!supabase) return withSeedFallback;
+
+  const unresolvedTitles = Array.from(
+    new Set(
+      withSeedFallback
+        .filter((item) => !item.genre || !item.movieId || !item.posterPath || !item.year)
+        .map((item) => normalizeText(item.movieTitle, 180))
+        .filter(Boolean)
+    )
+  );
+  if (unresolvedTitles.length === 0) return withSeedFallback;
+
+  const metadataByTitle = new Map<string, PoolMovieMetadataRow>();
+  const selectVariants = [
+    'title,tmdb_id,poster_path,genre,release_year',
+    'title,poster_path,genre,release_year',
+    'title,genre,release_year',
+    'title,genre',
+  ];
+
+  for (let index = 0; index < unresolvedTitles.length; index += 24) {
+    const titleBatch = unresolvedTitles.slice(index, index + 24);
+    let batchRows: PoolMovieMetadataRow[] = [];
+
+    for (const select of selectVariants) {
+      const { data, error } = await supabase
+        .from('question_pool_movies')
+        .select(select)
+        .in('title', titleBatch)
+        .limit(titleBatch.length);
+
+      if (error) {
+        if (isSupabaseCapabilityError(error)) continue;
+        return withSeedFallback;
+      }
+
+      batchRows = Array.isArray(data) ? (data as PoolMovieMetadataRow[]) : [];
+      break;
+    }
+
+    for (const row of batchRows) {
+      const titleKey = normalizeText(row.title, 180).toLowerCase();
+      if (!titleKey || metadataByTitle.has(titleKey)) continue;
+      metadataByTitle.set(titleKey, row);
+    }
+  }
+
+  if (metadataByTitle.size === 0) return withSeedFallback;
+
+  return withSeedFallback.map((item) => {
+    const metadata = metadataByTitle.get(normalizeText(item.movieTitle, 180).toLowerCase());
+    if (!metadata) return item;
+    return {
+      ...item,
+      movieId: item.movieId ?? toSafeInt(metadata.tmdb_id),
+      genre: item.genre || normalizeText(metadata.genre, 80) || null,
+      posterPath: item.posterPath || normalizeText(metadata.poster_path, 600) || null,
+      year: item.year ?? toSafeYear(metadata.release_year),
+    };
+  });
+};
 
 export const fetchMobileProfileActivity = async ({
   limit = 80,
@@ -213,18 +330,28 @@ export const fetchMobileProfileActivity = async ({
       ? profileRow.xp_state
       : null;
   if (profileXpState) {
-    const xpStateItems = normalizeXpStateRows(
-      Array.isArray(profileXpState.dailyRituals) ? profileXpState.dailyRituals : []
-    ).slice(0, queryLimit);
+    const xpStateItems = await enrichItemsWithPoolMetadata(
+      normalizeXpStateRows(Array.isArray(profileXpState.dailyRituals) ? profileXpState.dailyRituals : [])
+    );
 
     return {
       ok: true,
       message: xpStateItems.length > 0 ? 'Profil aktivitesi guncellendi.' : 'Henuz yorum aktivitesi yok.',
-      items: xpStateItems,
+      items: xpStateItems.slice(0, queryLimit),
     };
   }
 
   const variants: Array<{ select: string; orderBy: 'timestamp' | 'created_at' }> = [
+    { select: 'id,movie_id,movie_title,text,poster_path,year,genre,timestamp', orderBy: 'timestamp' },
+    {
+      select: 'id,movie_id,movie_title,text,poster_path,year,genre,timestamp:created_at',
+      orderBy: 'created_at',
+    },
+    { select: 'id,movie_title,text,poster_path,year,genre,timestamp', orderBy: 'timestamp' },
+    {
+      select: 'id,movie_title,text,poster_path,year,genre,timestamp:created_at',
+      orderBy: 'created_at',
+    },
     { select: 'id,movie_title,text,timestamp', orderBy: 'timestamp' },
     { select: 'id,movie_title,text,timestamp:created_at', orderBy: 'created_at' },
   ];
@@ -253,7 +380,7 @@ export const fetchMobileProfileActivity = async ({
     break;
   }
 
-  const items = normalizeRows(rows);
+  const items = await enrichItemsWithPoolMetadata(normalizeRows(rows));
   if (items.length === 0) {
     return {
       ok: true,

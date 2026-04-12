@@ -21,11 +21,12 @@ export type FormatParams = Record<string, string | number | null | undefined>;
 export const isLanguageCode = (value: unknown): value is LanguageCode =>
     value === 'tr' || value === 'en' || value === 'es' || value === 'fr';
 
+export const normalizeActiveLanguageCode = (value: unknown): LanguageCode =>
+    value === 'tr' ? 'tr' : PRIMARY_LANGUAGE;
+
 export const SUPPORTED_LANGUAGE_OPTIONS: ReadonlyArray<{ code: LanguageCode; label: string }> = [
     { code: 'en', label: 'English' },
-    { code: 'tr', label: 'Türkçe' },
-    { code: 'es', label: 'Español' },
-    { code: 'fr', label: 'Français' }
+    { code: 'tr', label: 'Türkçe' }
 ];
 
 type RegistrationGenderOptionValue = 'female' | 'male' | 'non_binary' | 'prefer_not_to_say';
@@ -85,7 +86,8 @@ export const formatTemplate = (template: string, params?: FormatParams): string 
     });
 };
 
-export const getDictionaryForLanguage = (language: LanguageCode) => UI_DICTIONARY[language] || UI_DICTIONARY[PRIMARY_LANGUAGE];
+export const getDictionaryForLanguage = (language: LanguageCode) =>
+    UI_DICTIONARY[language] || UI_DICTIONARY[PRIMARY_LANGUAGE];
 
 export const getMarkCopy = (language: LanguageCode, markId: string): MarkCopy => {
     const section = MARK_DICTIONARY[language] || MARK_DICTIONARY[PRIMARY_LANGUAGE];
@@ -93,7 +95,9 @@ export const getMarkCopy = (language: LanguageCode, markId: string): MarkCopy =>
         section[markId] || {
             title: markId,
             description: '',
-            whisper: UI_DICTIONARY[language]?.xp.markUnlockedFallback || UI_DICTIONARY[PRIMARY_LANGUAGE].xp.markUnlockedFallback
+            whisper:
+                UI_DICTIONARY[language]?.xp.markUnlockedFallback ||
+                UI_DICTIONARY[PRIMARY_LANGUAGE].xp.markUnlockedFallback
         }
     );
 };

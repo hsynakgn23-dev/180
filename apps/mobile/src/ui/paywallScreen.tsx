@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { Product } from 'expo-iap';
 import {
+  ActivityIndicator,
   Animated,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,9 +12,9 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import type { IapPlan } from '../lib/useSubscription';
+import { IAP_PRODUCTS, type IapPlan, type SubscriptionTier } from '../lib/useSubscription';
+import { MOBILE_THEME } from './theme';
 
-// ── Types ────────────────────────────────────────────────
 type Plan = {
   key: IapPlan;
   label: string;
@@ -19,385 +22,993 @@ type Plan = {
   period: string;
   badge?: string;
   accent: string;
+  summary: string;
+  detail: string;
+  meta: string;
 };
 
-const PLANS: Plan[] = [
+type Benefit = {
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  title: string;
+  body: string;
+};
+
+type HeroStat = {
+  value: string;
+  label: string;
+};
+
+const SAGE = MOBILE_THEME.color.buttonBrandBg;
+const CLAY = MOBILE_THEME.color.buttonTealBg;
+const TEXT_PRIMARY = MOBILE_THEME.color.textPrimary;
+const TEXT_MUTED = MOBILE_THEME.color.textMuted;
+const SURFACE = 'rgba(23, 23, 23, 0.88)';
+const SURFACE_ELEVATED = 'rgba(31, 31, 31, 0.72)';
+const BORDER = 'rgba(255, 255, 255, 0.1)';
+const BORDER_SOFT = 'rgba(255, 255, 255, 0.08)';
+
+const PLAN_FALLBACKS: Plan[] = [
   {
     key: 'monthly',
-    label: 'Aylık',
+    label: 'Aylik',
     price: '$0.99',
-    period: 'ay',
-    accent: '#8A9A5B',
+    period: 'aylik yenilenir',
+    accent: SAGE,
+    summary: 'Esnek baslangic',
+    detail: 'Istedigin zaman cik.',
+    meta: 'Reklamsiz + limitsiz',
   },
   {
     key: 'annual',
-    label: 'Yıllık',
+    label: 'Yillik',
     price: '$9.99',
-    period: 'yıl',
-    badge: '2 AY BEDAVA',
-    accent: '#A57164',
+    period: '12 ay',
+    badge: 'EN IYI',
+    accent: CLAY,
+    summary: 'En iyi fiyat',
+    detail: 'En dengeli secim.',
+    meta: 'Yaklasik $0.83 / ay',
   },
   {
     key: 'supporter',
-    label: 'Destekçi',
+    label: 'Destekci',
     price: '$19.99',
     period: 'tek seferlik',
-    badge: '❤️ DESTEK',
-    accent: '#B8860B',
+    badge: 'DESTEK',
+    accent: TEXT_MUTED,
+    summary: 'Destek paketi',
+    detail: 'Tek odeme ile projeyi destekle.',
+    meta: 'Kalici destek paketi',
   },
 ];
 
-const BENEFITS = [
-  { icon: 'ban-outline' as const,        text: 'Reklam yok' },
-  { icon: 'infinite-outline' as const,   text: 'Sınırsız soru cevaplama' },
-  { icon: 'shield-checkmark' as const,   text: '2× haftalık streak koruma' },
-  { icon: 'star' as const,               text: 'Profilde premium rozet' },
-  { icon: 'sparkles-outline' as const,   text: 'Özel görsel animasyonlar' },
-  { icon: 'film-outline' as const,       text: 'Daha fazla marka erişimi' },
+const BENEFITS: Benefit[] = [
+  {
+    icon: 'sparkles-outline',
+    title: 'Reklamsiz akis',
+    body: 'Daha temiz kullanim.',
+  },
+  {
+    icon: 'infinite-outline',
+    title: 'Limitsiz quiz',
+    body: 'Gunluk sinir kalkar.',
+  },
+  {
+    icon: 'ribbon-outline',
+    title: 'Rozet ve koruma',
+    body: 'Profil rozeti ve ekstra koruma.',
+  },
 ];
 
-// ── Animated benefit row ─────────────────────────────────
-const BenefitRow = ({ icon, text, delay }: { icon: React.ComponentProps<typeof Ionicons>['name']; text: string; delay: number }) => {
+const HERO_STATS: HeroStat[] = [
+  { value: 'INF', label: 'Quiz' },
+  { value: '0', label: 'Reklam' },
+  { value: '2X', label: 'Streak' },
+];
+
+const HeroStatChip = ({ item }: { item: HeroStat }) => (
+  <View style={pw.heroStatChip}>
+    <Text style={pw.heroStatValue}>{item.value}</Text>
+    <Text style={pw.heroStatLabel}>{item.label}</Text>
+  </View>
+);
+
+const BenefitRow = ({
+  item,
+  delay,
+}: {
+  item: Benefit;
+  delay: number;
+}) => {
   const opacity = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(12)).current;
+  const translateY = useRef(new Animated.Value(10)).current;
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(opacity, { toValue: 1, duration: 350, delay, useNativeDriver: true }),
-      Animated.timing(translateY, { toValue: 0, duration: 350, delay, useNativeDriver: true }),
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 260,
+        delay,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 260,
+        delay,
+        useNativeDriver: true,
+      }),
     ]).start();
-  }, [opacity, translateY, delay]);
+  }, [delay, opacity, translateY]);
 
   return (
-    <Animated.View style={[pw.benefitRow, { opacity, transform: [{ translateY }] }]}>
+    <Animated.View
+      style={[
+        pw.benefitRow,
+        {
+          opacity,
+          transform: [{ translateY }],
+        },
+      ]}
+    >
       <View style={pw.benefitIconWrap}>
-        <Ionicons name={icon} size={16} color="#8A9A5B" />
+        <Ionicons name={item.icon} size={18} color={SAGE} />
       </View>
-      <Text style={pw.benefitText}>{text}</Text>
+      <View style={pw.benefitCopy}>
+        <Text style={pw.benefitTitle}>{item.title}</Text>
+        <Text style={pw.benefitBody}>{item.body}</Text>
+      </View>
     </Animated.View>
   );
 };
 
-// ── Plan card ────────────────────────────────────────────
 const PlanCard = ({
   plan,
   selected,
+  active,
   onSelect,
 }: {
   plan: Plan;
   selected: boolean;
+  active: boolean;
   onSelect: () => void;
 }) => {
   const scale = useRef(new Animated.Value(1)).current;
 
-  const onPressIn = () => Animated.spring(scale, { toValue: 0.97, useNativeDriver: true, speed: 50, bounciness: 0 }).start();
-  const onPressOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 30, bounciness: 4 }).start();
+  const handlePressIn = () => {
+    Animated.spring(scale, {
+      toValue: 0.985,
+      useNativeDriver: true,
+      speed: 32,
+      bounciness: 0,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scale, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 28,
+      bounciness: 3,
+    }).start();
+  };
 
   return (
-    <Pressable onPress={onSelect} onPressIn={onPressIn} onPressOut={onPressOut} accessibilityRole="radio" accessibilityState={{ checked: selected }}>
-      <Animated.View style={[pw.planCard, selected && { borderColor: plan.accent, backgroundColor: 'rgba(255,255,255,0.05)' }, { transform: [{ scale }] }]}>
-        {plan.badge && (
-          <View style={[pw.planBadge, { backgroundColor: plan.accent }]}>
-            <Text style={pw.planBadgeText}>{plan.badge}</Text>
+    <Pressable
+      onPress={onSelect}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      accessibilityRole="radio"
+      accessibilityState={{ checked: selected }}
+    >
+      <Animated.View
+        style={[
+          pw.planCard,
+          selected
+            ? {
+                borderColor: plan.accent,
+                backgroundColor:
+                  plan.key === 'annual'
+                    ? 'rgba(165, 113, 100, 0.14)'
+                    : plan.key === 'monthly'
+                      ? 'rgba(138, 154, 91, 0.14)'
+                      : 'rgba(255, 255, 255, 0.08)',
+              }
+            : null,
+          { transform: [{ scale }] },
+        ]}
+      >
+        <View style={[pw.planAccentRail, { backgroundColor: plan.accent }]} />
+
+        {plan.badge || active ? (
+          <View style={pw.planBadgeRow}>
+            <View style={pw.planBadgeStack}>
+              {plan.badge ? (
+                <View style={[pw.planBadge, { backgroundColor: plan.accent }]}>
+                  <Text style={pw.planBadgeText}>{plan.badge}</Text>
+                </View>
+              ) : null}
+            </View>
+            {active ? (
+              <View style={[pw.planStatePill, { borderColor: plan.accent }]}>
+                <Text style={[pw.planStatePillText, { color: plan.accent }]}>AKTIF</Text>
+              </View>
+            ) : null}
           </View>
-        )}
-        <View style={{ flex: 1 }}>
-          <Text style={pw.planLabel}>{plan.label}</Text>
-          <Text style={pw.planPeriod}>/ {plan.period}</Text>
+        ) : null}
+
+        <View style={pw.planHeaderRow}>
+          <View style={pw.planTitleBlock}>
+            <Text style={pw.planLabel}>{plan.label}</Text>
+            <Text style={pw.planSummary}>{plan.summary}</Text>
+          </View>
+          <View style={pw.planPriceBlock}>
+            <Text style={[pw.planPrice, selected ? { color: plan.accent } : null]}>
+              {plan.price}
+            </Text>
+            <Text style={pw.planPeriod}>{plan.period}</Text>
+          </View>
         </View>
-        <View style={{ alignItems: 'flex-end' }}>
-          <Text style={[pw.planPrice, selected && { color: plan.accent }]}>{plan.price}</Text>
-        </View>
-        <View style={[pw.planRadio, selected && { borderColor: plan.accent }]}>
-          {selected && <View style={[pw.planRadioDot, { backgroundColor: plan.accent }]} />}
+
+        <View style={pw.planFooterRow}>
+          <View style={pw.planInfoStack}>
+            <Text style={pw.planDetail}>{plan.detail}</Text>
+            <Text style={pw.planMeta}>{plan.meta}</Text>
+          </View>
+          <View style={[pw.planRadio, selected ? { borderColor: plan.accent } : null]}>
+            {selected ? <View style={[pw.planRadioDot, { backgroundColor: plan.accent }]} /> : null}
+          </View>
         </View>
       </Animated.View>
     </Pressable>
   );
 };
 
-// ── PaywallModal ─────────────────────────────────────────
 export const PaywallModal = ({
   visible,
   onClose,
   onPurchase,
   onRestore,
+  products,
+  currentTier,
+  currentPlan,
+  loading = false,
   purchasing,
   error,
 }: {
   visible: boolean;
   onClose: () => void;
   onPurchase: (plan: IapPlan) => void;
-  onRestore: () => void;
+  onRestore?: () => void;
+  products?: Product[];
+  currentTier?: SubscriptionTier;
+  currentPlan?: IapPlan | null;
+  loading?: boolean;
   purchasing: boolean;
   error: string | null;
 }) => {
   const [selected, setSelected] = useState<IapPlan>('annual');
-  const shineAnim = useRef(new Animated.Value(-200)).current;
 
   useEffect(() => {
     if (!visible) return;
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(shineAnim, { toValue: 400, duration: 2200, delay: 800, useNativeDriver: true }),
-        Animated.timing(shineAnim, { toValue: -200, duration: 0, useNativeDriver: true }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [visible, shineAnim]);
+    setSelected(currentPlan || 'annual');
+  }, [currentPlan, visible]);
 
-  const selectedPlan = PLANS.find(p => p.key === selected)!;
+  const plans = useMemo(() => {
+    const productMap = new Map<string, Product>();
+    for (const product of products || []) {
+      productMap.set(String(product.id || '').trim(), product);
+    }
+
+    return PLAN_FALLBACKS.map((plan) => {
+      const product = productMap.get(IAP_PRODUCTS[plan.key]);
+      return {
+        ...plan,
+        price: String(product?.displayPrice || '').trim() || plan.price,
+        period:
+          plan.key === 'supporter'
+            ? 'tek seferlik'
+            : plan.key === 'annual'
+              ? 'yillik yenilenir'
+              : 'aylik yenilenir',
+      };
+    });
+  }, [products]);
+
+  const selectedPlan = useMemo(
+    () => plans.find((plan) => plan.key === selected) || plans[1] || PLAN_FALLBACKS[1],
+    [plans, selected]
+  );
+  const activePlan = useMemo(
+    () => plans.find((plan) => plan.key === currentPlan) || null,
+    [currentPlan, plans]
+  );
+
+  const isWebPreview = Platform.OS === 'web';
+  const isProductLoading = !isWebPreview && loading && (!products || products.length === 0);
+  const hasActiveEntitlement = currentTier === 'premium' || currentTier === 'supporter';
+  const selectedIsCurrentPlan = Boolean(currentPlan && selected === currentPlan);
+  const purchaseDisabled = purchasing || isWebPreview || selectedIsCurrentPlan || isProductLoading;
+  const paymentSummary =
+    selected === 'supporter'
+      ? `${selectedPlan.label} • ${selectedPlan.price} • tek seferlik`
+      : `${selectedPlan.label} • ${selectedPlan.price} • ${selectedPlan.period}`;
+  const paymentLegal =
+    selected === 'supporter'
+      ? 'Tek seferlik odemedir. Yenilenmez.'
+      : 'Aboneliktir. Iptal edilmedikce donem sonunda yenilenir.';
+  const footerNote = isWebPreview
+    ? 'Web onizleme. Satin alma mobilde calisir.'
+    : isProductLoading
+      ? 'Planlar hazirlaniyor. Fiyatlar yuklenince satin alma acilacak.'
+    : paymentLegal;
+  const ctaLabel = purchasing ? 'Isleniyor...' : 'Odemeyi yap';
+  const currentPlanLabel =
+    activePlan?.label || (currentTier === 'supporter' ? 'Destekci' : 'Premium');
+  const currentPlanBody =
+    currentTier === 'supporter'
+      ? 'Destekci paketin acik. Dilersen planlara tekrar goz atabilirsin.'
+      : 'Aktif bir planin var. Istersen yine de diger secenekleri inceleyebilirsin.';
+  const effectiveFooterNote =
+    !isWebPreview && selectedIsCurrentPlan
+      ? 'Bu plan hesabinda zaten acik.'
+      : footerNote;
+  const effectiveCtaLabel = purchasing
+    ? 'Isleniyor...'
+    : isProductLoading
+      ? 'Planlar yukleniyor...'
+    : selectedIsCurrentPlan
+      ? 'Aktif plan'
+      : hasActiveEntitlement
+        ? 'Bu plana gec'
+        : ctaLabel;
 
   if (!visible) return null;
 
   return (
     <Modal visible animationType="slide" transparent={false} onRequestClose={onClose}>
       <View style={pw.container}>
-        {/* Close */}
-        <Pressable style={pw.closeBtn} onPress={onClose} hitSlop={12} accessibilityRole="button">
-          <Ionicons name="close" size={22} color="#8e8b84" />
+        <Pressable
+          style={({ pressed }) => [pw.closeBtn, pressed ? pw.closeBtnPressed : null]}
+          onPress={onClose}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Abonelik ekranini kapat"
+        >
+          <Ionicons name="close" size={20} color={TEXT_PRIMARY} />
         </Pressable>
 
-        <ScrollView contentContainerStyle={pw.scroll} showsVerticalScrollIndicator={false}>
-          {/* Hero */}
-          <View style={pw.hero}>
-            <View style={pw.crownWrap}>
-              <Ionicons name="star" size={32} color="#B8860B" />
-              {/* shine sweep */}
-              <Animated.View style={[pw.shine, { transform: [{ translateX: shineAnim }] }]} />
+        <ScrollView
+          contentContainerStyle={pw.scroll}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
+          <View style={pw.heroShell}>
+            <View style={pw.heroRail}>
+              <View style={[pw.heroRailLine, { backgroundColor: SAGE }]} />
+              <View style={[pw.heroRailLine, { backgroundColor: CLAY }]} />
+              <View style={pw.heroRailLineMuted} />
             </View>
-            <Text style={pw.heroTitle}>180 Premium</Text>
-            <Text style={pw.heroSub}>Sinema deneyimini üst seviyeye taşı</Text>
+
+            <Text style={pw.heroEyebrow}>180 PREMIUM</Text>
+            <Text style={pw.heroTitle}>Quiz tarafini limitsiz ac.</Text>
+            <Text style={pw.heroSub}>Reklamsiz akis ve premium ayricaliklar tek yerde.</Text>
+
+            {hasActiveEntitlement ? (
+              <View style={pw.activeStatusRow}>
+                <View style={pw.activeStatusDot} />
+                <View style={pw.activeStatusCopy}>
+                  <Text style={pw.activeStatusTitle}>{currentPlanLabel} aktif</Text>
+                  <Text style={pw.activeStatusBody}>{currentPlanBody}</Text>
+                </View>
+              </View>
+            ) : null}
+
+            <View style={pw.heroPanel}>
+              <View style={pw.heroPanelTop}>
+                <View style={pw.heroIconWrap}>
+                  <Ionicons name="diamond-outline" size={20} color={CLAY} />
+                </View>
+                <View style={pw.heroPanelCopy}>
+                  <Text style={pw.heroPanelTitle}>Premium acildiginda</Text>
+                  <Text style={pw.heroPanelBody}>Limit kalkar, reklam gider, rozet acilir.</Text>
+                </View>
+              </View>
+
+              <View style={pw.heroStatsRow}>
+                {HERO_STATS.map((item) => (
+                  <HeroStatChip key={item.label} item={item} />
+                ))}
+              </View>
+            </View>
           </View>
 
-          {/* Benefits */}
-          <View style={pw.benefitsWrap}>
-            {BENEFITS.map((b, i) => (
-              <BenefitRow key={b.text} icon={b.icon} text={b.text} delay={i * 60} />
+          <View style={pw.sectionHeader}>
+            <Text style={pw.sectionEyebrow}>Kisa ozet</Text>
+            <Text style={pw.sectionTitle}>Ne alirsin?</Text>
+          </View>
+
+          <View style={pw.benefitsList}>
+            {BENEFITS.map((item, index) => (
+              <BenefitRow key={item.title} item={item} delay={index * 50} />
             ))}
           </View>
 
-          {/* Divider */}
-          <View style={pw.divider} />
-
-          {/* Plans */}
-          <Text style={pw.sectionLabel}>Plan seç</Text>
-          <View style={{ gap: 10 }}>
-            {PLANS.map(plan => (
-              <PlanCard key={plan.key} plan={plan} selected={selected === plan.key} onSelect={() => setSelected(plan.key)} />
-            ))}
+          <View style={pw.sectionHeader}>
+            <Text style={pw.sectionEyebrow}>Planlar</Text>
+            <Text style={pw.sectionTitle}>Plan sec</Text>
           </View>
 
-          {error && <Text style={pw.errorText}>{error}</Text>}
+          {isProductLoading ? (
+            <View style={pw.loadingPlanCard}>
+              <View style={pw.loadingPlanHeader}>
+                <ActivityIndicator size="small" color={CLAY} />
+                <View style={pw.loadingPlanCopy}>
+                  <Text style={pw.loadingPlanTitle}>Planlar hazirlaniyor</Text>
+                  <Text style={pw.loadingPlanBody}>
+                    Store fiyatlari ve satin alma detaylari yukleniyor.
+                  </Text>
+                </View>
+              </View>
 
-          {/* CTA */}
-          <Pressable
-            style={[pw.ctaBtn, { backgroundColor: selectedPlan.accent }, purchasing && { opacity: 0.6 }]}
-            onPress={() => !purchasing && onPurchase(selected)}
-            disabled={purchasing}
-            accessibilityRole="button"
-          >
-            <Text style={pw.ctaBtnText}>
-              {purchasing ? 'İşleniyor...' : `${selectedPlan.price} ile başla`}
-            </Text>
-          </Pressable>
+              <View style={pw.loadingPlanSkeletonStack}>
+                <View style={pw.loadingPlanSkeletonRow}>
+                  <View style={[pw.loadingPlanSkeletonLine, pw.loadingPlanSkeletonLineWide]} />
+                  <View style={[pw.loadingPlanSkeletonLine, pw.loadingPlanSkeletonLineShort]} />
+                </View>
+                <View style={pw.loadingPlanSkeletonRow}>
+                  <View style={[pw.loadingPlanSkeletonLine, pw.loadingPlanSkeletonLineMedium]} />
+                  <View style={[pw.loadingPlanSkeletonLine, pw.loadingPlanSkeletonLineTiny]} />
+                </View>
+                <View style={pw.loadingPlanSkeletonPillRow}>
+                  <View style={pw.loadingPlanSkeletonPill} />
+                  <View style={pw.loadingPlanSkeletonPill} />
+                  <View style={pw.loadingPlanSkeletonPillMuted} />
+                </View>
+              </View>
+            </View>
+          ) : (
+            <View style={pw.planList}>
+              {plans.map((plan) => (
+                <PlanCard
+                  key={plan.key}
+                  plan={plan}
+                  selected={selected === plan.key}
+                  active={Boolean(currentPlan && currentPlan === plan.key)}
+                  onSelect={() => setSelected(plan.key)}
+                />
+              ))}
+            </View>
+          )}
 
-          {/* Restore */}
-          <Pressable onPress={onRestore} style={pw.restoreBtn} accessibilityRole="button">
-            <Text style={pw.restoreText}>Satın alımları geri yükle</Text>
-          </Pressable>
-
-          <Text style={pw.legalText}>
-            Abonelik, seçilen plan fiyatı üzerinden App Store hesabınızdan tahsil edilir. Yenileme, mevcut dönem bitmeden en az 24 saat önce iptal edilmezse otomatik olarak gerçekleşir.
-          </Text>
+          {error ? <Text style={pw.errorText}>{error}</Text> : null}
         </ScrollView>
+
+        <View style={pw.footerShell}>
+          <Text style={[pw.footerSummary, { color: selectedPlan.accent }]}>{paymentSummary}</Text>
+
+          <Pressable
+            style={({ pressed }) => [
+              pw.ctaBtn,
+              purchaseDisabled ? pw.ctaBtnDisabled : null,
+              pressed && !purchaseDisabled ? pw.ctaBtnPressed : null,
+            ]}
+            onPress={() => {
+              if (purchaseDisabled) return;
+              onPurchase(selected);
+            }}
+            disabled={purchaseDisabled}
+            accessibilityRole="button"
+            accessibilityLabel="Premium satin al"
+          >
+            <Text style={pw.ctaBtnText}>{effectiveCtaLabel}</Text>
+          </Pressable>
+
+          <Text style={pw.legalText}>{effectiveFooterNote}</Text>
+
+          {!isWebPreview && onRestore ? (
+            <Pressable
+              style={({ pressed }) => [pw.restoreBtn, pressed ? pw.restoreBtnPressed : null]}
+              onPress={onRestore}
+              disabled={purchasing}
+              accessibilityRole="button"
+              accessibilityLabel="Satin alimlari geri yukle"
+            >
+              <Text style={pw.restoreBtnText}>Satin alimlarini geri yukle</Text>
+            </Pressable>
+          ) : null}
+        </View>
       </View>
     </Modal>
   );
 };
 
-// ── Styles ───────────────────────────────────────────────
 const pw = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0d0d0d',
+    backgroundColor: '#121212',
   },
   closeBtn: {
     position: 'absolute',
     top: 52,
-    right: 20,
-    zIndex: 10,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    right: 18,
+    zIndex: 4,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(31, 31, 31, 0.9)',
+    borderWidth: 1,
+    borderColor: BORDER,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  closeBtnPressed: {
+    opacity: 0.82,
+    transform: [{ scale: 0.96 }],
   },
   scroll: {
-    padding: 24,
-    paddingTop: 60,
-    paddingBottom: 48,
+    paddingHorizontal: 22,
+    paddingTop: 82,
+    paddingBottom: 228,
   },
-  hero: {
+  heroShell: {
+    marginBottom: 24,
+  },
+  heroRail: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 20,
-    paddingBottom: 28,
+    gap: 8,
+    marginBottom: 12,
   },
-  crownWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: 'rgba(184,134,11,0.15)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(184,134,11,0.35)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-    overflow: 'hidden',
+  heroRailLine: {
+    width: 34,
+    height: 4,
+    borderRadius: 999,
   },
-  shine: {
-    position: 'absolute',
-    top: 0,
-    width: 30,
-    height: '100%',
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    transform: [{ skewX: '-20deg' }],
+  heroRailLineMuted: {
+    width: 20,
+    height: 2,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  heroEyebrow: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    color: CLAY,
+    textTransform: 'uppercase',
+    marginBottom: 10,
   },
   heroTitle: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#f5f0e8',
-    letterSpacing: 0.5,
-    marginBottom: 6,
+    fontSize: 29,
+    lineHeight: 34,
+    fontWeight: '900',
+    color: TEXT_PRIMARY,
+    maxWidth: 320,
   },
   heroSub: {
-    fontSize: 14,
-    color: '#8e8b84',
-    textAlign: 'center',
+    marginTop: 10,
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#c9c6bf',
+    maxWidth: 320,
   },
-  benefitsWrap: {
+  activeStatusRow: {
+    marginTop: 14,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     gap: 10,
-    marginBottom: 24,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: SURFACE_ELEVATED,
+    borderWidth: 1,
+    borderColor: BORDER_SOFT,
+  },
+  activeStatusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginTop: 4,
+    backgroundColor: SAGE,
+    flexShrink: 0,
+  },
+  activeStatusCopy: {
+    flex: 1,
+  },
+  activeStatusTitle: {
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: '800',
+    color: TEXT_PRIMARY,
+    marginBottom: 2,
+  },
+  activeStatusBody: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: TEXT_MUTED,
+  },
+  heroPanel: {
+    marginTop: 20,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: SURFACE,
+    padding: 18,
+    gap: 16,
+  },
+  heroPanelTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  heroIconWrap: {
+    width: 50,
+    height: 50,
+    borderRadius: 16,
+    backgroundColor: 'rgba(165, 113, 100, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(165, 113, 100, 0.24)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroPanelCopy: {
+    flex: 1,
+  },
+  heroPanelTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: TEXT_PRIMARY,
+    marginBottom: 4,
+  },
+  heroPanelBody: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#c9c6bf',
+  },
+  heroStatsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  heroStatChip: {
+    flex: 1,
+    minHeight: 74,
+    borderRadius: 18,
+    backgroundColor: SURFACE_ELEVATED,
+    borderWidth: 1,
+    borderColor: BORDER_SOFT,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    justifyContent: 'center',
+  },
+  heroStatValue: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: TEXT_PRIMARY,
+    marginBottom: 4,
+  },
+  heroStatLabel: {
+    fontSize: 11,
+    lineHeight: 15,
+    color: TEXT_MUTED,
+  },
+  sectionHeader: {
+    marginBottom: 14,
+  },
+  sectionEyebrow: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.3,
+    color: TEXT_MUTED,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+  },
+  sectionTitle: {
+    fontSize: 22,
+    lineHeight: 27,
+    fontWeight: '800',
+    color: TEXT_PRIMARY,
+  },
+  benefitsList: {
+    marginBottom: 22,
+    gap: 12,
   },
   benefitRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 14,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    backgroundColor: SURFACE_ELEVATED,
+    borderWidth: 1,
+    borderColor: BORDER_SOFT,
   },
   benefitIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(138,154,91,0.12)',
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    backgroundColor: 'rgba(138, 154, 91, 0.16)',
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
-  benefitText: {
-    fontSize: 14,
-    color: '#d4cfc7',
+  benefitCopy: {
     flex: 1,
   },
-  divider: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    marginBottom: 20,
+  benefitTitle: {
+    fontSize: 15,
+    lineHeight: 19,
+    fontWeight: '800',
+    color: TEXT_PRIMARY,
+    marginBottom: 2,
   },
-  sectionLabel: {
+  benefitBody: {
     fontSize: 12,
-    fontWeight: '700',
-    color: '#8e8b84',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    marginBottom: 12,
+    lineHeight: 16,
+    color: '#c9c6bf',
   },
-  planCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(255,255,255,0.02)',
-    padding: 16,
+  planList: {
     gap: 12,
   },
-  planBadge: {
+  loadingPlanCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: SURFACE,
+    padding: 18,
+    gap: 16,
+  },
+  loadingPlanHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  loadingPlanCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  loadingPlanTitle: {
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: '800',
+    color: TEXT_PRIMARY,
+  },
+  loadingPlanBody: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#c9c6bf',
+  },
+  loadingPlanSkeletonStack: {
+    gap: 10,
+  },
+  loadingPlanSkeletonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  loadingPlanSkeletonLine: {
+    height: 12,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.09)',
+  },
+  loadingPlanSkeletonLineWide: {
+    flex: 1,
+    maxWidth: '62%',
+  },
+  loadingPlanSkeletonLineMedium: {
+    flex: 1,
+    maxWidth: '48%',
+  },
+  loadingPlanSkeletonLineShort: {
+    width: 72,
+  },
+  loadingPlanSkeletonLineTiny: {
+    width: 44,
+  },
+  loadingPlanSkeletonPillRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 2,
+  },
+  loadingPlanSkeletonPill: {
+    height: 34,
+    flex: 1,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  loadingPlanSkeletonPillMuted: {
+    height: 34,
+    width: 54,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  planCard: {
+    position: 'relative',
+    overflow: 'hidden',
+    borderRadius: 24,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: SURFACE,
+    gap: 14,
+  },
+  planAccentRail: {
     position: 'absolute',
-    top: -10,
-    right: 14,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+    top: 0,
+    left: 0,
+    bottom: 0,
+    width: 4,
+  },
+  planBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  planBadgeStack: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  planBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
   planBadgeText: {
     fontSize: 10,
-    fontWeight: '800',
-    color: '#fff',
-    letterSpacing: 0.5,
+    fontWeight: '900',
+    color: '#121212',
+    letterSpacing: 0.45,
+  },
+  planStatePill: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+  },
+  planStatePillText: {
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '900',
+    letterSpacing: 0.45,
+  },
+  planHeaderRow: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'flex-start',
+  },
+  planTitleBlock: {
+    flex: 1,
+    minWidth: 0,
   },
   planLabel: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#f5f0e8',
+    fontSize: 20,
+    fontWeight: '900',
+    color: TEXT_PRIMARY,
+    marginBottom: 4,
   },
-  planPeriod: {
+  planSummary: {
     fontSize: 12,
-    color: '#8e8b84',
-    marginTop: 1,
+    color: TEXT_MUTED,
+    lineHeight: 17,
+  },
+  planPriceBlock: {
+    alignItems: 'flex-end',
+    minWidth: 84,
+    flexShrink: 0,
   },
   planPrice: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#f5f0e8',
+    fontSize: 25,
+    fontWeight: '900',
+    color: TEXT_PRIMARY,
+  },
+  planPeriod: {
+    fontSize: 11,
+    lineHeight: 15,
+    color: TEXT_MUTED,
+    marginTop: 2,
+  },
+  planFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  planInfoStack: {
+    flex: 1,
+    gap: 2,
+  },
+  planDetail: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#c9c6bf',
+  },
+  planMeta: {
+    fontSize: 11,
+    lineHeight: 15,
+    color: TEXT_MUTED,
   },
   planRadio: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: 'rgba(255, 255, 255, 0.18)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   planRadioDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
   },
   errorText: {
-    color: '#f87171',
+    marginTop: 16,
     fontSize: 13,
+    lineHeight: 18,
+    color: '#f08a8a',
     textAlign: 'center',
-    marginTop: 12,
+  },
+  footerShell: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    bottom: 14,
+    borderRadius: 24,
+    padding: 15,
+    gap: 10,
+    backgroundColor: 'rgba(18, 18, 18, 0.96)',
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  footerSummary: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '800',
+    textAlign: 'center',
   },
   ctaBtn: {
-    height: 54,
-    borderRadius: 14,
+    minHeight: 56,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 24,
+    paddingHorizontal: 16,
+    backgroundColor: SAGE,
+  },
+  ctaBtnDisabled: {
+    opacity: 0.7,
+  },
+  ctaBtnPressed: {
+    transform: [{ scale: 0.985 }],
   },
   ctaBtnText: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#fff',
-    letterSpacing: 0.3,
-  },
-  restoreBtn: {
-    alignItems: 'center',
-    paddingVertical: 14,
-  },
-  restoreText: {
-    fontSize: 13,
-    color: '#8e8b84',
-    textDecorationLine: 'underline',
+    fontSize: 15,
+    fontWeight: '900',
+    color: MOBILE_THEME.color.buttonBrandText,
+    textAlign: 'center',
   },
   legalText: {
     fontSize: 11,
-    color: '#5a5750',
-    textAlign: 'center',
     lineHeight: 16,
-    marginTop: 4,
+    color: TEXT_MUTED,
+    textAlign: 'center',
+  },
+  restoreBtn: {
+    alignSelf: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  restoreBtnPressed: {
+    opacity: 0.72,
+  },
+  restoreBtnText: {
+    fontSize: 11,
+    lineHeight: 16,
+    color: TEXT_MUTED,
+    textDecorationLine: 'underline',
   },
 });

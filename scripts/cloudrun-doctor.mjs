@@ -19,6 +19,15 @@ const REQUIRED_SERVER_KEYS = [
   'CRON_SECRET',
 ];
 
+// These are not required for the server to start, but wallet topup purchases
+// will fail at runtime if they are missing.
+const MOBILE_IAP_KEYS = [
+  'MOBILE_IAP_APPLE_ISSUER_ID',
+  'MOBILE_IAP_APPLE_KEY_ID',
+  'MOBILE_IAP_APPLE_PRIVATE_KEY',
+  'MOBILE_IAP_GOOGLE_SERVICE_ACCOUNT_JSON',
+];
+
 const PRE_DEPLOY_WEB_KEYS = ['VITE_PUBLIC_APP_URL'];
 const POST_DEPLOY_KEYS = ['VITE_API_BASE_URL'];
 
@@ -125,6 +134,13 @@ if (serviceRole && !looksLikeSecret(serviceRole)) {
 for (const key of REQUIRED_SERVER_KEYS.concat(PRE_DEPLOY_WEB_KEYS, POST_DEPLOY_KEYS)) {
   if (!(key in envExample)) {
     showWarn(`${key} .env.example icinde tanimli degil.`);
+  }
+}
+
+for (const key of MOBILE_IAP_KEYS) {
+  const value = normalizeText(rootEnv[key]);
+  if (!value) {
+    showWarn(`${key} eksik. Wallet ticket satin alma dogrulamasi (Apple/Google) bu olmadan calismiyor.`);
   }
 }
 

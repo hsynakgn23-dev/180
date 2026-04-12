@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { isSupabaseLive, readSupabaseSessionSafe, supabase } from './supabase';
+import { resolveMobileApiBaseUrl } from './mobileEnv';
 
 type SupabaseErrorLike = {
   code?: string | null;
@@ -12,12 +13,17 @@ type QueuedRitualDraft = {
   author: string;
   movieTitle: string;
   text: string;
+  genre: string | null;
+  rating: number | null;
   posterPath: string | null;
   league: string;
   year: string | null;
   createdAt: string;
   syncAttempts: number;
   lastSyncError: string | null;
+  commentSyncedAt: string | null;
+  rewardSyncAttempts: number;
+  lastRewardError: string | null;
 };
 
 type SessionIdentity = {
@@ -28,6 +34,8 @@ type SessionIdentity = {
 export type MobileRitualDraftInput = {
   movieTitle: string;
   text: string;
+  genre?: string | null;
+  rating?: number | null;
   posterPath?: string | null;
   league?: string | null;
   year?: string | null;
@@ -76,6 +84,11 @@ export type MobileRitualFlushResult =
 const RITUAL_QUEUE_KEY = '180_mobile_ritual_draft_queue_v1';
 const MAX_QUEUE_ITEMS = 40;
 const MAX_TEXT_LENGTH = 180;
+const AUTO_RETRY_BASE_DELAY_MS = 15_000;
+const AUTO_RETRY_MAX_DELAY_MS = 5 * 60_000;
+
+let queuedRitualRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let queuedRitualRetryPromise: Promise<MobileRitualFlushResult> | null = null;
 
 const normalizeText = (value: unknown, maxLength: number): string => {
   const text = String(value ?? '').trim();
@@ -86,6 +99,15 @@ const normalizeText = (value: unknown, maxLength: number): string => {
 const normalizeNullableText = (value: unknown, maxLength: number): string | null => {
   const text = normalizeText(value, maxLength);
   return text || null;
+};
+
+const normalizeRating = (value: unknown): number | null => {
+  if (value == null || value === '') return null;
+  const rating = Number(value);
+  if (!Number.isFinite(rating)) return null;
+  const normalized = Math.floor(rating);
+  if (normalized < 1 || normalized > 10) return null;
+  return normalized;
 };
 
 const normalizeErrorMessage = (error: SupabaseErrorLike | null | undefined): string =>
@@ -123,6 +145,8 @@ const sanitizeQueuedDraft = (value: unknown): QueuedRitualDraft | null => {
   const author = normalizeText(record.author, 80) || 'Observer';
   const movieTitle = normalizeText(record.movieTitle, 180);
   const text = normalizeText(record.text, MAX_TEXT_LENGTH);
+  const genre = normalizeNullableText(record.genre, 120);
+  const rating = normalizeRating(record.rating);
   const posterPath = normalizeNullableText(record.posterPath, 500);
   const league = normalizeText(record.league, 32) || 'Bronze';
   const year = normalizeNullableText(record.year, 12);
@@ -132,6 +156,12 @@ const sanitizeQueuedDraft = (value: unknown): QueuedRitualDraft | null => {
     ? Math.max(0, Math.min(50, Math.floor(parsedAttempts)))
     : 0;
   const lastSyncError = normalizeNullableText(record.lastSyncError, 220);
+  const commentSyncedAt = normalizeNullableText(record.commentSyncedAt, 80);
+  const parsedRewardAttempts = Number(record.rewardSyncAttempts);
+  const rewardSyncAttempts = Number.isFinite(parsedRewardAttempts)
+    ? Math.max(0, Math.min(50, Math.floor(parsedRewardAttempts)))
+    : 0;
+  const lastRewardError = normalizeNullableText(record.lastRewardError, 220);
 
   if (!draftId || !userId || !movieTitle || !text || !createdAt) return null;
 
@@ -141,12 +171,17 @@ const sanitizeQueuedDraft = (value: unknown): QueuedRitualDraft | null => {
     author,
     movieTitle,
     text,
+    genre,
+    rating,
     posterPath,
     league,
     year,
     createdAt,
     syncAttempts,
     lastSyncError,
+    commentSyncedAt,
+    rewardSyncAttempts,
+    lastRewardError,
   };
 };
 
@@ -173,6 +208,65 @@ const writeQueue = async (queue: QueuedRitualDraft[]): Promise<void> => {
   }
 };
 
+const clearQueuedRitualRetryTimer = (): void => {
+  if (queuedRitualRetryTimer === null) return;
+  clearTimeout(queuedRitualRetryTimer);
+  queuedRitualRetryTimer = null;
+};
+
+const getQueuedRitualRetryDelayMs = (
+  queue: QueuedRitualDraft[],
+  userId: string | null
+): number => {
+  const relevantDrafts = userId
+    ? queue.filter((draft) => draft.userId === userId)
+    : [];
+  const highestAttemptCount = relevantDrafts.reduce((maxAttempts, draft) => {
+    const attemptCount = draft.commentSyncedAt
+      ? draft.rewardSyncAttempts
+      : draft.syncAttempts;
+    return Math.max(maxAttempts, attemptCount);
+  }, 0);
+  const backoffSteps = Math.max(0, Math.min(4, highestAttemptCount - 1));
+  return Math.min(AUTO_RETRY_MAX_DELAY_MS, AUTO_RETRY_BASE_DELAY_MS * (2 ** backoffSteps));
+};
+
+const scheduleQueuedRitualRetry = (
+  queue: QueuedRitualDraft[],
+  userId: string | null
+): void => {
+  clearQueuedRitualRetryTimer();
+
+  if (!userId) return;
+  const hasPendingDraft = queue.some((draft) => draft.userId === userId);
+  if (!hasPendingDraft) return;
+
+  const delayMs = getQueuedRitualRetryDelayMs(queue, userId);
+  queuedRitualRetryTimer = setTimeout(() => {
+    queuedRitualRetryTimer = null;
+    if (queuedRitualRetryPromise) return;
+
+    queuedRitualRetryPromise = flushQueuedRitualDrafts(12)
+      .catch(() => ({
+        ok: false,
+        processed: 0,
+        synced: 0,
+        failed: 0,
+        pendingCount: 0,
+        message: 'Queued ritual retry failed.',
+      } satisfies MobileRitualFlushResult))
+      .finally(() => {
+        queuedRitualRetryPromise = null;
+      });
+  }, delayMs);
+};
+
+const upsertQueuedDraft = (queue: QueuedRitualDraft[], draft: QueuedRitualDraft): QueuedRitualDraft[] => {
+  const nextQueue = queue.filter((entry) => entry.draftId !== draft.draftId);
+  nextQueue.push(draft);
+  return nextQueue.slice(-MAX_QUEUE_ITEMS);
+};
+
 const getSessionIdentity = async (): Promise<SessionIdentity | null> => {
   if (!isSupabaseLive() || !supabase) return null;
   try {
@@ -189,15 +283,17 @@ const getSessionIdentity = async (): Promise<SessionIdentity | null> => {
   }
 };
 
-const buildPayloadVariants = (draft: QueuedRitualDraft): Array<Record<string, string | null>> => {
+const buildPayloadVariants = (draft: QueuedRitualDraft): Array<Record<string, string | number | null>> => {
   const base = {
     user_id: draft.userId,
     author: draft.author,
     movie_title: draft.movieTitle,
     text: draft.text,
   };
+  const withGenre = draft.genre ? { ...base, genre: draft.genre } : base;
+  const withRating = draft.rating != null ? { ...withGenre, rating: draft.rating } : withGenre;
   const withPoster = {
-    ...base,
+    ...withRating,
     poster_path: draft.posterPath,
   };
   const withYear = {
@@ -210,14 +306,20 @@ const buildPayloadVariants = (draft: QueuedRitualDraft): Array<Record<string, st
   return [
     { ...withYear, timestamp: createdAt, league },
     { ...withPoster, timestamp: createdAt, league },
-    { ...base, timestamp: createdAt, league },
-    { ...base, timestamp: createdAt },
+    { ...withRating, timestamp: createdAt, league },
+    { ...withRating, timestamp: createdAt },
     { ...withYear, created_at: createdAt, league },
     { ...withPoster, created_at: createdAt, league },
-    { ...base, created_at: createdAt, league },
-    { ...base, created_at: createdAt },
+    { ...withRating, created_at: createdAt, league },
+    { ...withRating, created_at: createdAt },
     { ...withYear, league },
     { ...withPoster, league },
+    { ...withRating, league },
+    { ...withRating },
+    { ...base, timestamp: createdAt, league },
+    { ...base, timestamp: createdAt },
+    { ...base, created_at: createdAt, league },
+    { ...base, created_at: createdAt },
     { ...base, league },
     { ...base },
   ];
@@ -259,6 +361,99 @@ const insertDraftToCloud = async (
   };
 };
 
+const buildRewardApiUrl = (): string => {
+  const base = resolveMobileApiBaseUrl();
+  if (!base) return '';
+  return `${base}/api/daily-ritual-reward`;
+};
+
+const claimDailyCommentReward = async (
+  draft: QueuedRitualDraft
+): Promise<{
+  ok: boolean;
+  rewarded: boolean;
+  message: string;
+}> => {
+  const rewardUrl = buildRewardApiUrl();
+  if (!rewardUrl) {
+    return {
+      ok: false,
+      rewarded: false,
+      message: '',
+    };
+  }
+
+  const sessionResult = await readSupabaseSessionSafe();
+  const accessToken = normalizeText(sessionResult.session?.access_token, 2400);
+  if (!accessToken) {
+    return {
+      ok: false,
+      rewarded: false,
+      message: '',
+    };
+  }
+
+  try {
+    const response = await fetch(rewardUrl, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        movieTitle: draft.movieTitle,
+        text: draft.text,
+        createdAt: draft.createdAt,
+      }),
+    });
+    const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!response.ok || !payload || payload.ok !== true) {
+      return {
+        ok: false,
+        rewarded: false,
+        message: '',
+      };
+    }
+
+    if (payload.rewarded !== true) {
+      const reason = normalizeText(payload.reason, 80);
+      if (reason === 'quality_threshold') {
+        return {
+          ok: true,
+          rewarded: false,
+          message: 'Odul acmak icin yorum biraz daha detayli olmali.',
+        };
+      }
+      return {
+        ok: true,
+        rewarded: false,
+        message: '',
+      };
+    }
+
+    const xpEarned = Math.max(0, Number(payload.xpEarned) || 0);
+    const ticketsEarned = Math.max(0, Number(payload.ticketsEarned) || 0);
+    const arenaScoreEarned = Math.max(0, Number(payload.arenaScoreEarned) || 0);
+    const completionBonusAwarded = payload.completionBonusAwarded === true;
+    const parts: string[] = [];
+    if (xpEarned > 0) parts.push(`+${xpEarned} XP`);
+    if (ticketsEarned > 0) parts.push(`+${ticketsEarned} Bilet`);
+    if (arenaScoreEarned > 0) parts.push(`+${arenaScoreEarned} Arena`);
+    if (completionBonusAwarded) parts.push('5/5 bonusu');
+    return {
+      ok: true,
+      rewarded: true,
+      message: parts.length > 0 ? ` Odul: ${parts.join(' • ')}` : '',
+    };
+  } catch {
+    return {
+      ok: false,
+      rewarded: false,
+      message: '',
+    };
+  }
+};
+
 const countForUser = (queue: QueuedRitualDraft[], userId: string | null): number => {
   if (!userId) return 0;
   return queue.filter((draft) => draft.userId === userId).length;
@@ -269,6 +464,7 @@ export const getQueuedRitualDraftCounts = async (): Promise<{
   currentUserCount: number;
 }> => {
   const [queue, identity] = await Promise.all([readQueue(), getSessionIdentity()]);
+  scheduleQueuedRitualRetry(queue, identity?.userId || null);
   return {
     totalCount: queue.length,
     currentUserCount: countForUser(queue, identity?.userId || null),
@@ -280,6 +476,8 @@ export const submitRitualDraftWithQueue = async (
 ): Promise<MobileRitualSubmitResult> => {
   const movieTitle = normalizeText(input.movieTitle, 180);
   const rawText = String(input.text || '').trim();
+  const hasExplicitRating = Object.prototype.hasOwnProperty.call(input, 'rating');
+  const rating = hasExplicitRating ? normalizeRating(input.rating) : null;
   if (!movieTitle || !rawText) {
     const counts = await getQueuedRitualDraftCounts();
     return {
@@ -296,6 +494,15 @@ export const submitRitualDraftWithQueue = async (
       reason: 'invalid_input',
       pendingCount: counts.currentUserCount,
       message: `Yorum en fazla ${MAX_TEXT_LENGTH} karakter olabilir.`,
+    };
+  }
+  if (hasExplicitRating && !rating) {
+    const counts = await getQueuedRitualDraftCounts();
+    return {
+      ok: false,
+      reason: 'invalid_input',
+      pendingCount: counts.currentUserCount,
+      message: 'Puan secmeden yorum gonderemezsin.',
     };
   }
   if (!isSupabaseLive() || !supabase) {
@@ -325,23 +532,47 @@ export const submitRitualDraftWithQueue = async (
     author: identity.author,
     movieTitle,
     text: rawText,
+    genre: normalizeNullableText(input.genre, 120),
+    rating,
     posterPath: normalizeNullableText(input.posterPath, 500),
     league: normalizeText(input.league, 32) || 'Bronze',
     year: normalizeNullableText(input.year, 12),
     createdAt: new Date().toISOString(),
     syncAttempts: 0,
     lastSyncError: null,
+    commentSyncedAt: null,
+    rewardSyncAttempts: 0,
+    lastRewardError: null,
   };
 
   const liveInsert = await insertDraftToCloud(draft);
   if (liveInsert.ok) {
+    const reward = await claimDailyCommentReward(draft);
+    if (!reward.ok) {
+      const queue = await readQueue();
+      const nextQueue = upsertQueuedDraft(queue, {
+        ...draft,
+        commentSyncedAt: new Date().toISOString(),
+        rewardSyncAttempts: 1,
+        lastRewardError: 'Reward claim failed after ritual sync.',
+      });
+      await writeQueue(nextQueue);
+      scheduleQueuedRitualRetry(nextQueue, identity.userId);
+      return {
+        ok: true,
+        synced: false,
+        queued: true,
+        pendingCount: countForUser(nextQueue, identity.userId),
+        message: 'Ritual clouda kaydedildi. XP odulu baglanti duzelince tekrar denenecek.',
+      };
+    }
     const counts = await getQueuedRitualDraftCounts();
     return {
       ok: true,
       synced: true,
       queued: false,
       pendingCount: counts.currentUserCount,
-      message: 'Ritual clouda kaydedildi.',
+      message: `Ritual clouda kaydedildi.${reward.message || ''}`,
     };
   }
 
@@ -355,6 +586,7 @@ export const submitRitualDraftWithQueue = async (
     },
   ].slice(-MAX_QUEUE_ITEMS);
   await writeQueue(nextQueue);
+  scheduleQueuedRitualRetry(nextQueue, identity.userId);
 
   return {
     ok: true,
@@ -420,9 +652,38 @@ export const flushQueuedRitualDrafts = async (maxToProcess = 12): Promise<Mobile
     }
 
     processed += 1;
+    if (draft.commentSyncedAt) {
+      const rewardResult = await claimDailyCommentReward(draft);
+      if (rewardResult.ok) {
+        synced += 1;
+        continue;
+      }
+
+      failed += 1;
+      nextQueue.push({
+        ...draft,
+        rewardSyncAttempts: Math.min(50, draft.rewardSyncAttempts + 1),
+        lastRewardError: 'Reward claim failed after ritual sync.',
+      });
+      continue;
+    }
+
     const result = await insertDraftToCloud(draft);
     if (result.ok) {
-      synced += 1;
+      const rewardResult = await claimDailyCommentReward(draft);
+      if (rewardResult.ok) {
+        synced += 1;
+        continue;
+      }
+
+      failed += 1;
+      nextQueue.push({
+        ...draft,
+        commentSyncedAt: new Date().toISOString(),
+        rewardSyncAttempts: Math.min(50, draft.rewardSyncAttempts + 1),
+        lastRewardError: 'Reward claim failed after ritual sync.',
+        lastSyncError: null,
+      });
       continue;
     }
 
@@ -435,6 +696,7 @@ export const flushQueuedRitualDrafts = async (maxToProcess = 12): Promise<Mobile
   }
 
   await writeQueue(nextQueue);
+  scheduleQueuedRitualRetry(nextQueue, identity.userId);
   const pendingCount = countForUser(nextQueue, identity.userId);
   if (failed > 0) {
     return {
@@ -443,7 +705,7 @@ export const flushQueuedRitualDrafts = async (maxToProcess = 12): Promise<Mobile
       synced,
       failed,
       pendingCount,
-      message: 'Bazi ritual taslaklari clouda gonderilemedi.',
+      message: 'Bazi ritual taslaklari veya XP odulleri tekrar denenecek.',
     };
   }
 

@@ -82,6 +82,11 @@ body.light-mode [class*="border-white/"] {
   border-color: var(--color-border) !important;
 }
 
+/* Generic bg-white/ first, then specifics override */
+body.light-mode [class*="bg-white/"] {
+  background-color: rgba(128, 108, 83, 0.09) !important;
+}
+
 body.light-mode [class*="bg-white/5"] {
   background-color: rgba(128, 108, 83, 0.07) !important;
 }

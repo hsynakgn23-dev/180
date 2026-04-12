@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { CINEMA_AVATARS, resolveAvatarDisplay } from '../../data/avatarData';
 import { useXP, type RegistrationGender } from '../../context/XPContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { applyThemeMode, resolveThemeMode, type ThemeMode } from '../../lib/themeMode';
@@ -84,11 +85,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         inviteClaimsCount,
         inviteRewardsEarned,
         inviteRewardConfig,
-        claimInviteCode
+        claimInviteCode,
+        isPremium
     } = useXP();
     const { text, language, setLanguage } = useLanguage();
     const [activeTab, setActiveTab] = useState<SettingsTab>('identity');
     const [bioDraft, setBioDraft] = useState(bio);
+    const [avatarIdDraft, setAvatarIdDraft] = useState(avatarId);
     const [fullNameDraft, setFullNameDraft] = useState(fullName);
     const [usernameDraft, setUsernameDraft] = useState(username);
     const [genderDraft, setGenderDraft] = useState<RegistrationGender | ''>(gender || '');
@@ -501,7 +504,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             setStatusMessage(profileResult.message || text.settings.statusIdentitySaveFailed);
             return;
         }
-        updateIdentity(bioDraft, avatarId);
+        updateIdentity(bioDraft, avatarIdDraft);
         setStatusMessage(profileResult.message || text.settings.statusIdentitySaved);
     };
 
@@ -774,15 +777,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     {activeTab === 'identity' && (
                         <div className="space-y-5 animate-fade-in">
                             <div className="settings-panel rounded-xl p-5 sm:p-6">
-                                <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-3">{text.settings.avatar}</p>
-                                <div className="flex items-center gap-4">
-                                    <div className="w-16 h-16 rounded-lg overflow-hidden border border-white/10 bg-[#0f0f0f]">
+                                <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-4">{text.settings.avatar}</p>
+
+                                {/* Current avatar preview */}
+                                <div className="flex items-center gap-4 mb-5">
+                                    <div className="w-16 h-16 rounded-xl overflow-hidden border border-white/10 bg-[#0f0f0f] flex items-center justify-center shrink-0">
                                         {avatarUrl ? (
                                             <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
                                         ) : (
-                                            <div className="w-full h-full flex items-center justify-center text-lg text-sage/70 font-bold">
-                                                {user?.name?.slice(0, 1).toUpperCase() || 'U'}
-                                            </div>
+                                            (() => {
+                                                const { svgPaths, bg, color } = resolveAvatarDisplay(avatarIdDraft);
+                                                return (
+                                                    <div className={`w-full h-full flex items-center justify-center ${bg}`} style={{ color }}>
+                                                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none"
+                                                            strokeLinecap="round" strokeLinejoin="round"
+                                                            dangerouslySetInnerHTML={{ __html: svgPaths }} />
+                                                    </div>
+                                                );
+                                            })()
                                         )}
                                     </div>
                                     <div>
@@ -796,6 +808,49 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                         <p className="text-[10px] text-gray-500 mt-2">{text.settings.avatarHint}</p>
                                     </div>
                                 </div>
+
+                                {/* Cinema avatar grid */}
+                                <div className="grid grid-cols-4 gap-2">
+                                    {CINEMA_AVATARS.map((av) => {
+                                        const isSelected = !avatarUrl && avatarIdDraft === av.id;
+                                        const isLocked = !av.isFree && !isPremium;
+                                        return (
+                                            <button
+                                                key={av.id}
+                                                type="button"
+                                                disabled={isLocked}
+                                                onClick={() => {
+                                                    if (isLocked) return;
+                                                    setAvatarIdDraft(av.id);
+                                                    if (avatarUrl) updateAvatar('');
+                                                }}
+                                                className={`relative flex flex-col items-center justify-center gap-1 rounded-lg p-2 border transition-colors ${
+                                                    isLocked
+                                                        ? 'border-white/5 bg-white/2 opacity-45 cursor-not-allowed'
+                                                        : isSelected
+                                                            ? 'border-sage/60 bg-sage/10'
+                                                            : 'border-white/10 hover:border-sage/30 bg-white/5'
+                                                }`}
+                                                title={isLocked ? 'Premium üyelik gerektirir' : av.label}
+                                            >
+                                                {isLocked && (
+                                                    <span className="absolute top-1 right-1 text-[8px] leading-none">🔒</span>
+                                                )}
+                                                <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
+                                                    strokeLinecap="round" strokeLinejoin="round"
+                                                    style={{ color: av.color }}
+                                                    dangerouslySetInnerHTML={{ __html: av.svgPaths }} />
+                                                <span className="text-[8px] uppercase tracking-widest text-gray-500 truncate w-full text-center">{av.label}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                {!isPremium && (
+                                    <div className="flex items-center gap-2 bg-amber-900/10 border border-amber-500/20 rounded-lg px-3 py-2 mt-1">
+                                        <span className="text-[10px] text-amber-400/80">🔒 Diğer avatarlar premium üyelik gerektirir.</span>
+                                    </div>
+                                )}
+
                                 <input
                                     ref={fileInputRef}
                                     type="file"

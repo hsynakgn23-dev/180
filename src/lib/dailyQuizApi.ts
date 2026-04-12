@@ -1,4 +1,5 @@
 import { buildApiUrl } from './apiBase';
+import { fetchWithTimeout } from './network';
 import { isSupabaseLive, supabase } from './supabase';
 
 export type DailyQuizOptionKey = 'a' | 'b' | 'c' | 'd';
@@ -67,6 +68,9 @@ export type DailyQuizAnswerResult = {
     status?: number;
 };
 
+const DAILY_QUIZ_REQUEST_TIMEOUT_MS = 10000;
+const DAILY_QUIZ_TIMEOUT_ERROR = 'Quiz request timed out. Please try again.';
+
 const getAccessToken = async (): Promise<string | null> => {
     if (!isSupabaseLive() || !supabase) return null;
     try {
@@ -89,32 +93,44 @@ export const readDailyQuizBundle = async (input: {
     dateKey?: string;
     language: DailyQuizLanguageCode;
 }): Promise<DailyQuizBundle | DailyQuizBundleError> => {
-    const params = new URLSearchParams({
-        lang: input.language
-    });
-    if (input.dateKey) {
-        params.set('date', input.dateKey);
-    }
+    try {
+        const params = new URLSearchParams({
+            lang: input.language
+        });
+        if (input.dateKey) {
+            params.set('date', input.dateKey);
+        }
 
-    const response = await fetch(buildApiUrl(`/api/daily-bundle?${params.toString()}`), {
-        headers: {
-            Accept: 'application/json',
-            ...(await buildAuthHeaders())
-        },
-        cache: 'no-store'
-    });
+        const response = await fetchWithTimeout({
+            url: buildApiUrl(`/api/daily-bundle?${params.toString()}`),
+            timeoutMs: DAILY_QUIZ_REQUEST_TIMEOUT_MS,
+            timeoutMessage: DAILY_QUIZ_TIMEOUT_ERROR,
+            init: {
+                headers: {
+                    Accept: 'application/json',
+                    ...(await buildAuthHeaders())
+                },
+                cache: 'no-store'
+            }
+        });
 
-    const payload = (await response.json().catch(() => ({}))) as DailyQuizBundle | DailyQuizBundleError;
-    if (!response.ok) {
-        const errorPayload = payload as Partial<DailyQuizBundleError>;
+        const payload = (await response.json().catch(() => ({}))) as DailyQuizBundle | DailyQuizBundleError;
+        if (!response.ok) {
+            const errorPayload = payload as Partial<DailyQuizBundleError>;
+            return {
+                ok: false,
+                error: typeof errorPayload.error === 'string' ? errorPayload.error : `HTTP ${response.status}`,
+                status: response.status
+            };
+        }
+
+        return payload;
+    } catch (error) {
         return {
             ok: false,
-            error: typeof errorPayload.error === 'string' ? errorPayload.error : `HTTP ${response.status}`,
-            status: response.status
+            error: error instanceof Error ? error.message : DAILY_QUIZ_TIMEOUT_ERROR
         };
     }
-
-    return payload;
 };
 
 export const submitDailyQuizAnswer = async (input: {
@@ -123,29 +139,41 @@ export const submitDailyQuizAnswer = async (input: {
     selectedOption: DailyQuizOptionKey;
     language: DailyQuizLanguageCode;
 }): Promise<DailyQuizAnswerResult> => {
-    const response = await fetch(buildApiUrl('/api/daily-quiz-answer'), {
-        method: 'POST',
-        headers: {
-            'content-type': 'application/json',
-            ...(await buildAuthHeaders())
-        },
-        body: JSON.stringify({
-            dateKey: input.dateKey,
-            questionId: input.questionId,
-            selectedOption: input.selectedOption,
-            language: input.language
-        })
-    });
+    try {
+        const response = await fetchWithTimeout({
+            url: buildApiUrl('/api/daily-quiz-answer'),
+            timeoutMs: DAILY_QUIZ_REQUEST_TIMEOUT_MS,
+            timeoutMessage: DAILY_QUIZ_TIMEOUT_ERROR,
+            init: {
+                method: 'POST',
+                headers: {
+                    'content-type': 'application/json',
+                    ...(await buildAuthHeaders())
+                },
+                body: JSON.stringify({
+                    dateKey: input.dateKey,
+                    questionId: input.questionId,
+                    selectedOption: input.selectedOption,
+                    language: input.language
+                })
+            }
+        });
 
-    const payload = (await response.json().catch(() => ({}))) as DailyQuizAnswerResult;
-    if (!response.ok) {
-        const errorPayload = payload as Partial<Extract<DailyQuizAnswerResult, { ok: false }>>;
+        const payload = (await response.json().catch(() => ({}))) as DailyQuizAnswerResult;
+        if (!response.ok) {
+            const errorPayload = payload as Partial<Extract<DailyQuizAnswerResult, { ok: false }>>;
+            return {
+                ok: false,
+                error: typeof errorPayload.error === 'string' ? errorPayload.error : `HTTP ${response.status}`,
+                status: response.status
+            };
+        }
+
+        return payload;
+    } catch (error) {
         return {
             ok: false,
-            error: typeof errorPayload.error === 'string' ? errorPayload.error : `HTTP ${response.status}`,
-            status: response.status
+            error: error instanceof Error ? error.message : DAILY_QUIZ_TIMEOUT_ERROR
         };
     }
-
-    return payload;
 };

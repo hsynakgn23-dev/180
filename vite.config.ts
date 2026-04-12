@@ -22,6 +22,9 @@ export default defineConfig(({ mode }) => {
           ]
         : []),
     ],
+    server: {
+      port: 8082,
+    },
     build: {
       chunkSizeWarningLimit: 550,
       rollupOptions: {

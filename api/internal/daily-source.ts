@@ -96,10 +96,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     }
 
     const expectedSecret = resolveSourceSecret();
-    const providedSecret =
-        getBearerToken(req) ||
-        String(getQueryParam(req, 'secret') || '').trim() ||
-        '';
+    // Accept secret only via Authorization Bearer header — NOT as a query param,
+    // since query params are logged in server logs, CDN logs, and browser history.
+    const providedSecret = getBearerToken(req) || '';
 
     if (!expectedSecret || providedSecret !== expectedSecret) {
         return sendJson(res, 401, { ok: false, error: 'Unauthorized.' });

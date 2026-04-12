@@ -2,12 +2,15 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { InfoFooter } from '../../components/InfoFooter';
 import { useLanguage } from '../../context/LanguageContext';
 import {
+    createAdminGiftCode,
+    listAdminGiftCodes,
     moderateAdminComment,
     moderateAdminUser,
     readAdminDashboard,
     readAdminSession,
     type AdminDashboardPayload,
-    type AdminSessionPayload
+    type AdminSessionPayload,
+    type GiftCode
 } from '../../lib/adminApi';
 
 interface AdminPanelProps {
@@ -16,6 +19,16 @@ interface AdminPanelProps {
 }
 
 type ViewState = 'loading' | 'ready' | 'forbidden' | 'error';
+type DestructiveUserAction = 'suspend' | 'delete';
+
+type PendingUserAction = {
+    targetUserId: string;
+    targetLabel: string;
+    action: DestructiveUserAction;
+    durationHours?: number;
+};
+
+type GiftType = 'tickets' | 'premium';
 
 const formatDateTime = (value: string | null, language: string): string => {
     if (!value) return '-';
@@ -60,6 +73,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onHome }) => {
                       suspend7d: '7 Gun Askiya Al',
                       unsuspend: 'Askiyi Kaldir',
                       deleteUser: 'Hesabi Sil',
+                      cancel: 'Vazgec',
+                      confirm: 'Onayla',
                       remove: 'Kaldir',
                       restore: 'Geri Al',
                       active: 'Aktif',
@@ -68,6 +83,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onHome }) => {
                       reason: 'Sebep',
                       empty: 'Kayit yok',
                       deleteConfirm: 'Bu hesap kalici olarak silinecek. Devam edilsin mi?',
+                      suspend24Confirm: 'Bu hesap 24 saatligine askiya alinacak. Devam edilsin mi?',
+                      suspend7dConfirm: 'Bu hesap 7 gunlugune askiya alinacak. Devam edilsin mi?',
+                      confirmTitle: 'Destructive aksiyonu onayla',
+                      confirmTarget: 'Hedef hesap',
+                      suspendConfirmCta: 'Askiya Al',
+                      deleteConfirmCta: 'Kalici Olarak Sil',
                       success: 'Aksiyon uygulandi.',
                       failed: 'Aksiyon tamamlanamadi.',
                       session: 'Oturum',
@@ -99,6 +120,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onHome }) => {
                       suspend7d: 'Suspend 7d',
                       unsuspend: 'Lift Suspension',
                       deleteUser: 'Delete Account',
+                      cancel: 'Cancel',
+                      confirm: 'Confirm',
                       remove: 'Remove',
                       restore: 'Restore',
                       active: 'Active',
@@ -107,6 +130,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onHome }) => {
                       reason: 'Reason',
                       empty: 'No records',
                       deleteConfirm: 'This will permanently delete the user account. Continue?',
+                      suspend24Confirm: 'This account will be suspended for 24 hours. Continue?',
+                      suspend7dConfirm: 'This account will be suspended for 7 days. Continue?',
+                      confirmTitle: 'Confirm destructive action',
+                      confirmTarget: 'Target account',
+                      suspendConfirmCta: 'Suspend Account',
+                      deleteConfirmCta: 'Delete Permanently',
                       success: 'Action applied.',
                       failed: 'Action failed.',
                       session: 'Session',
@@ -130,6 +159,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onHome }) => {
     const [query, setQuery] = useState('');
     const [statusMessage, setStatusMessage] = useState('');
     const [busyKey, setBusyKey] = useState<string | null>(null);
+    const [pendingUserAction, setPendingUserAction] = useState<PendingUserAction | null>(null);
+    const [giftCodes, setGiftCodes] = useState<GiftCode[]>([]);
+    const [showGiftForm, setShowGiftForm] = useState(false);
+    const [giftType, setGiftType] = useState<GiftType>('tickets');
+    const [giftAmount, setGiftAmount] = useState('100');
+    const [giftMaxUses, setGiftMaxUses] = useState('1');
+    const [giftExpiresInDays, setGiftExpiresInDays] = useState('30');
+    const [giftNote, setGiftNote] = useState('');
 
     const loadDashboard = async (nextQuery = query, withLoading = true) => {
         if (withLoading) setViewState('loading');
@@ -164,6 +201,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onHome }) => {
             setDashboard(dashboardResult.data);
             setQuery('');
             setViewState('ready');
+            void listAdminGiftCodes().then((r) => { if (active && r.ok && r.data) setGiftCodes(r.data); });
         })();
         return () => {
             active = false;
@@ -176,14 +214,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onHome }) => {
         return () => window.clearTimeout(timeout);
     }, [statusMessage]);
 
-    const handleUserAction = async (
+    const executeUserAction = async (
         targetUserId: string,
         action: 'suspend' | 'unsuspend' | 'delete',
         durationHours?: number
     ) => {
-        if (action === 'delete' && !window.confirm(copy.deleteConfirm)) {
-            return;
-        }
         setBusyKey(`user:${targetUserId}:${action}`);
         const result = await moderateAdminUser({
             targetUserId,
@@ -198,6 +233,67 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onHome }) => {
         }
         setStatusMessage(copy.success);
         await loadDashboard(query, false);
+    };
+
+    const handleUserAction = async (
+        targetUserId: string,
+        action: 'suspend' | 'unsuspend' | 'delete',
+        targetLabel: string,
+        durationHours?: number
+    ) => {
+        if (action === 'unsuspend') {
+            await executeUserAction(targetUserId, action, durationHours);
+            return;
+        }
+
+        setPendingUserAction({
+            targetUserId,
+            targetLabel,
+            action,
+            durationHours
+        });
+    };
+
+    const handleConfirmPendingUserAction = async () => {
+        if (!pendingUserAction) return;
+        const nextAction = pendingUserAction;
+        setPendingUserAction(null);
+        await executeUserAction(
+            nextAction.targetUserId,
+            nextAction.action,
+            nextAction.durationHours
+        );
+    };
+
+    const loadGiftCodes = async () => {
+        const result = await listAdminGiftCodes();
+        if (result.ok && result.data) setGiftCodes(result.data);
+    };
+
+    const handleCreateGiftCode = async () => {
+        setBusyKey('gift:create');
+        const value = Math.max(1, Math.min(5000, Number(giftAmount) || 100));
+        const maxUses = Math.max(1, Math.min(10000, Number(giftMaxUses) || 1));
+        const expiresInDays = Math.max(0, Math.min(365, Number(giftExpiresInDays) || 30));
+        const result = await createAdminGiftCode({
+            giftType,
+            value,
+            maxUses,
+            expiresInDays,
+            note: giftNote || undefined
+        });
+        setBusyKey(null);
+        if (!result.ok) {
+            setStatusMessage(result.message || copy.failed);
+            return;
+        }
+        setShowGiftForm(false);
+        setGiftNote('');
+        setGiftAmount('100');
+        setGiftMaxUses('1');
+        setGiftExpiresInDays('30');
+        setStatusMessage(copy.success);
+        await loadGiftCodes();
     };
 
     const handleCommentAction = async (
@@ -245,6 +341,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onHome }) => {
     const replies = dashboard?.replies || [];
     const reports = dashboard?.reports || [];
     const actions = dashboard?.actions || [];
+    const pendingActionMessage =
+        pendingUserAction?.action === 'delete'
+            ? copy.deleteConfirm
+            : pendingUserAction?.durationHours === 168
+              ? copy.suspend7dConfirm
+              : copy.suspend24Confirm;
+    const pendingActionCta =
+        pendingUserAction?.action === 'delete' ? copy.deleteConfirmCta : copy.suspendConfirmCta;
 
     return (
         <div className="relative min-h-screen overflow-x-hidden bg-[var(--color-bg)] text-[#E5E4E2] flex flex-col">
@@ -364,7 +468,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onHome }) => {
                                         <div className="mt-3 flex flex-wrap gap-2">
                                             <button
                                                 type="button"
-                                                onClick={() => void handleUserAction(item.userId, 'suspend', 24)}
+                                                onClick={() =>
+                                                    void handleUserAction(
+                                                        item.userId,
+                                                        'suspend',
+                                                        item.displayName || item.email || shortId(item.userId),
+                                                        24
+                                                    )
+                                                }
                                                 disabled={busyKey === `user:${item.userId}:suspend`}
                                                 className="rounded-lg border border-white/15 px-3 py-2 text-[10px] uppercase tracking-[0.16em] text-white/75 hover:border-sage/40 hover:text-sage disabled:opacity-60 transition-colors"
                                             >
@@ -372,7 +483,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onHome }) => {
                                             </button>
                                             <button
                                                 type="button"
-                                                onClick={() => void handleUserAction(item.userId, 'suspend', 168)}
+                                                onClick={() =>
+                                                    void handleUserAction(
+                                                        item.userId,
+                                                        'suspend',
+                                                        item.displayName || item.email || shortId(item.userId),
+                                                        168
+                                                    )
+                                                }
                                                 disabled={busyKey === `user:${item.userId}:suspend`}
                                                 className="rounded-lg border border-white/15 px-3 py-2 text-[10px] uppercase tracking-[0.16em] text-white/75 hover:border-sage/40 hover:text-sage disabled:opacity-60 transition-colors"
                                             >
@@ -380,7 +498,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onHome }) => {
                                             </button>
                                             <button
                                                 type="button"
-                                                onClick={() => void handleUserAction(item.userId, 'unsuspend')}
+                                                onClick={() =>
+                                                    void handleUserAction(
+                                                        item.userId,
+                                                        'unsuspend',
+                                                        item.displayName || item.email || shortId(item.userId)
+                                                    )
+                                                }
                                                 disabled={busyKey === `user:${item.userId}:unsuspend`}
                                                 className="rounded-lg border border-sage/25 px-3 py-2 text-[10px] uppercase tracking-[0.16em] text-sage hover:border-sage/50 disabled:opacity-60 transition-colors"
                                             >
@@ -388,7 +512,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onHome }) => {
                                             </button>
                                             <button
                                                 type="button"
-                                                onClick={() => void handleUserAction(item.userId, 'delete')}
+                                                onClick={() => {
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    void handleUserAction(
+                                                        item.userId,
+                                                        'delete',
+                                                        item.displayName || item.email || shortId(item.userId)
+                                                    )
+                                                }
                                                 disabled={busyKey === `user:${item.userId}:delete`}
                                                 className="rounded-lg border border-red-400/25 px-3 py-2 text-[10px] uppercase tracking-[0.16em] text-red-200/85 hover:border-red-400/50 disabled:opacity-60 transition-colors"
                                             >
@@ -520,6 +653,59 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onHome }) => {
                         </div>
                     </section>
                 </div>
+
+                <section className="mt-6 rounded-3xl border border-amber-400/15 bg-white/[0.03] p-5 sm:p-6">
+                    <div className="flex items-center justify-between gap-4 flex-wrap">
+                        <h2 className="text-sm font-bold tracking-[0.22em] uppercase text-amber-200/85">
+                            {language === 'tr' ? 'Hediye Kodları' : 'Gift Codes'}
+                        </h2>
+                        <button
+                            type="button"
+                            onClick={() => setShowGiftForm(true)}
+                            className="rounded-lg border border-amber-400/30 px-4 py-2 text-[10px] uppercase tracking-[0.18em] text-amber-200/80 hover:border-amber-400/55 transition-colors"
+                        >
+                            {language === 'tr' ? '+ Yeni Kod' : '+ New Code'}
+                        </button>
+                    </div>
+                    <div className="mt-4 overflow-x-auto">
+                        {giftCodes.length === 0 ? (
+                            <p className="text-[10px] uppercase tracking-[0.16em] text-gray-500">{copy.empty}</p>
+                        ) : (
+                            <table className="w-full text-[11px] text-left border-collapse">
+                                <thead>
+                                    <tr className="text-[9px] uppercase tracking-[0.18em] text-gray-500">
+                                        <th className="pb-2 pr-4">{language === 'tr' ? 'Kod' : 'Code'}</th>
+                                        <th className="pb-2 pr-4">{language === 'tr' ? 'Tür' : 'Type'}</th>
+                                        <th className="pb-2 pr-4">{language === 'tr' ? 'Değer' : 'Value'}</th>
+                                        <th className="pb-2 pr-4">{language === 'tr' ? 'Kullanım' : 'Uses'}</th>
+                                        <th className="pb-2 pr-4">{language === 'tr' ? 'Son Tarih' : 'Expires'}</th>
+                                        <th className="pb-2">{language === 'tr' ? 'Durum' : 'Status'}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {giftCodes.map((gc) => (
+                                        <tr key={gc.id} className="border-t border-white/5 text-white/70">
+                                            <td className="py-2 pr-4 font-mono text-amber-200/85">{gc.code}</td>
+                                            <td className="py-2 pr-4">{gc.gift_type}</td>
+                                            <td className="py-2 pr-4">{gc.value}</td>
+                                            <td className="py-2 pr-4">{gc.use_count}/{gc.max_uses}</td>
+                                            <td className="py-2 pr-4">{gc.expires_at ? formatDateTime(gc.expires_at, language) : '∞'}</td>
+                                            <td className="py-2">
+                                                {gc.is_revoked ? (
+                                                    <span className="text-red-300/70">{language === 'tr' ? 'İptal' : 'Revoked'}</span>
+                                                ) : gc.use_count >= gc.max_uses ? (
+                                                    <span className="text-gray-500">{language === 'tr' ? 'Tükendi' : 'Exhausted'}</span>
+                                                ) : (
+                                                    <span className="text-sage">{copy.active}</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
+                    </div>
+                </section>
             </div>
 
             <InfoFooter
@@ -527,6 +713,140 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onHome }) => {
                 panelWrapperClassName="px-4 sm:px-6 md:px-10 pb-4"
                 footerClassName="py-8 px-4 sm:px-6 md:px-10 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4 text-[10px] uppercase tracking-widest text-white/20"
             />
+
+            {showGiftForm ? (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 backdrop-blur-sm">
+                    <button
+                        type="button"
+                        aria-label={copy.cancel}
+                        className="absolute inset-0 cursor-default"
+                        onClick={() => setShowGiftForm(false)}
+                    />
+                    <div className="relative w-full max-w-md rounded-3xl border border-amber-400/20 bg-[#121212] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
+                        <p className="text-[10px] uppercase tracking-[0.22em] text-amber-200/80">
+                            {language === 'tr' ? 'Yeni Hediye Kodu' : 'New Gift Code'}
+                        </p>
+                        <div className="mt-4 flex gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setGiftType('tickets')}
+                                className={`flex-1 rounded-xl border px-3 py-2 text-[10px] uppercase tracking-[0.16em] transition-colors ${
+                                    giftType === 'tickets'
+                                        ? 'border-amber-400/60 bg-amber-400/10 text-amber-200'
+                                        : 'border-white/15 text-white/55 hover:border-amber-400/30'
+                                }`}
+                            >
+                                {language === 'tr' ? 'Bilet' : 'Tickets'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setGiftType('premium')}
+                                className={`flex-1 rounded-xl border px-3 py-2 text-[10px] uppercase tracking-[0.16em] transition-colors ${
+                                    giftType === 'premium'
+                                        ? 'border-amber-400/60 bg-amber-400/10 text-amber-200'
+                                        : 'border-white/15 text-white/55 hover:border-amber-400/30'
+                                }`}
+                            >
+                                {language === 'tr' ? 'Premium (gün)' : 'Premium (days)'}
+                            </button>
+                        </div>
+                        <input
+                            type="number"
+                            min={1}
+                            max={5000}
+                            value={giftAmount}
+                            onChange={(e) => setGiftAmount(e.target.value)}
+                            placeholder={language === 'tr' ? (giftType === 'tickets' ? 'Bilet miktarı' : 'Premium gün sayısı') : (giftType === 'tickets' ? 'Ticket amount' : 'Premium days')}
+                            className="mt-3 w-full rounded-xl border border-white/10 bg-[#131313] px-4 py-3 text-sm text-[#E5E4E2] placeholder:text-gray-600 outline-none focus:border-amber-400/40"
+                        />
+                        <input
+                            type="number"
+                            min={1}
+                            max={10000}
+                            value={giftMaxUses}
+                            onChange={(e) => setGiftMaxUses(e.target.value)}
+                            placeholder={language === 'tr' ? 'Max kullanım (varsayılan 1)' : 'Max uses (default 1)'}
+                            className="mt-3 w-full rounded-xl border border-white/10 bg-[#131313] px-4 py-3 text-sm text-[#E5E4E2] placeholder:text-gray-600 outline-none focus:border-amber-400/40"
+                        />
+                        <input
+                            type="number"
+                            min={0}
+                            max={365}
+                            value={giftExpiresInDays}
+                            onChange={(e) => setGiftExpiresInDays(e.target.value)}
+                            placeholder={language === 'tr' ? 'Son kullanma süresi (gün, 0=süresiz)' : 'Expires in days (0=never)'}
+                            className="mt-3 w-full rounded-xl border border-white/10 bg-[#131313] px-4 py-3 text-sm text-[#E5E4E2] placeholder:text-gray-600 outline-none focus:border-amber-400/40"
+                        />
+                        <input
+                            type="text"
+                            value={giftNote}
+                            onChange={(e) => setGiftNote(e.target.value)}
+                            placeholder={language === 'tr' ? 'Not (opsiyonel)' : 'Note (optional)'}
+                            className="mt-3 w-full rounded-xl border border-white/10 bg-[#131313] px-4 py-3 text-sm text-[#E5E4E2] placeholder:text-gray-600 outline-none focus:border-amber-400/40"
+                        />
+                        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                            <button
+                                type="button"
+                                onClick={() => setShowGiftForm(false)}
+                                className="rounded-xl border border-white/15 px-4 py-3 text-[10px] uppercase tracking-[0.18em] text-white/75 transition-colors hover:border-white/30"
+                            >
+                                {copy.cancel}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => void handleCreateGiftCode()}
+                                disabled={busyKey === 'gift:create'}
+                                className="rounded-xl border border-amber-400/25 bg-amber-400/10 px-4 py-3 text-[10px] uppercase tracking-[0.18em] text-amber-100 transition-colors hover:border-amber-400/50 hover:bg-amber-400/15 disabled:opacity-60"
+                            >
+                                {language === 'tr' ? 'Kodu Oluştur' : 'Create Code'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+
+            {pendingUserAction ? (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 backdrop-blur-sm">
+                    <button
+                        type="button"
+                        aria-label={copy.cancel}
+                        className="absolute inset-0 cursor-default"
+                        onClick={() => setPendingUserAction(null)}
+                    />
+                    <div className="relative w-full max-w-md rounded-3xl border border-red-400/20 bg-[#121212] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
+                        <p className="text-[10px] uppercase tracking-[0.22em] text-red-200/80">
+                            {copy.confirmTitle}
+                        </p>
+                        <p className="mt-4 text-sm leading-relaxed text-white/90">
+                            {pendingActionMessage}
+                        </p>
+                        <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                            <p className="text-[10px] uppercase tracking-[0.16em] text-gray-500">
+                                {copy.confirmTarget}
+                            </p>
+                            <p className="mt-2 break-all text-sm text-white/85">
+                                {pendingUserAction.targetLabel}
+                            </p>
+                        </div>
+                        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                            <button
+                                type="button"
+                                onClick={() => setPendingUserAction(null)}
+                                className="rounded-xl border border-white/15 px-4 py-3 text-[10px] uppercase tracking-[0.18em] text-white/75 transition-colors hover:border-white/30"
+                            >
+                                {copy.cancel}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => void handleConfirmPendingUserAction()}
+                                className="rounded-xl border border-red-400/25 bg-red-400/10 px-4 py-3 text-[10px] uppercase tracking-[0.18em] text-red-100 transition-colors hover:border-red-400/50 hover:bg-red-400/15"
+                            >
+                                {pendingActionCta}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
         </div>
     );
 };

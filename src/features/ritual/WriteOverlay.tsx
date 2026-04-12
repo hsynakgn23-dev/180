@@ -10,17 +10,23 @@ interface WriteOverlayProps {
 
 export const WriteOverlay: React.FC<WriteOverlayProps> = ({ movie, onClose }) => {
     const { submitRitual } = useXP();
-    const { text: ui } = useLanguage();
+    const { text: ui, language } = useLanguage();
     const [text, setText] = useState('');
     const [rating, setRating] = useState(0);
     const [errorMessage, setErrorMessage] = useState('');
 
     const MAX_CHARS = 180;
     const charsLeft = MAX_CHARS - text.length;
+    const ratingRequiredMessage =
+        language === 'tr' ? 'Puan secmeden yorum gonderemezsin.' : 'Pick a rating before sending your note.';
 
     const handleSubmit = () => {
-        if (text.length === 0) return;
-        const result = submitRitual(movie.id, text, rating, movie.genre, movie.title, movie.posterPath);
+        if (text.trim().length === 0) return;
+        if (rating <= 0 || rating > 10) {
+            setErrorMessage(ratingRequiredMessage);
+            return;
+        }
+        const result = submitRitual(movie.id, text.trim(), rating, movie.genre, movie.title, movie.posterPath);
         if (!result.ok) {
             setErrorMessage(result.message || 'Yorum gonderilemedi.');
             return;
@@ -51,6 +57,9 @@ export const WriteOverlay: React.FC<WriteOverlayProps> = ({ movie, onClose }) =>
                             }
                         }}
                         placeholder={ui.writeOverlay.placeholder}
+                        aria-label={ui.writeOverlay.placeholder || 'Write your comment'}
+                        aria-required="true"
+                        aria-describedby="write-char-counter"
                         className="w-full h-40 sm:h-48 bg-transparent text-lg sm:text-xl md:text-2xl text-[#E5E4E2] placeholder:text-gray-600 resize-none outline-none border-b border-white/10 focus:border-sage/50 transition-colors text-left sm:text-center px-1"
                     />
 
@@ -63,7 +72,11 @@ export const WriteOverlay: React.FC<WriteOverlayProps> = ({ movie, onClose }) =>
                                 style={{ width: `${(text.length / MAX_CHARS) * 100}%` }}
                             />
                         </div>
-                        <div className={`text-xs font-mono tracking-widest transition-all duration-300 ${charsLeft <= 10 ? 'text-red-500 font-bold shake' : 'text-gray-500'}`}>
+                        <div
+                            id="write-char-counter"
+                            aria-live="polite"
+                            className={`text-xs font-mono tracking-widest transition-all duration-300 ${charsLeft <= 10 ? 'text-red-500 font-bold shake' : 'text-gray-500'}`}
+                        >
                             {text.length}/{MAX_CHARS}
                         </div>
                     </div>
@@ -74,7 +87,10 @@ export const WriteOverlay: React.FC<WriteOverlayProps> = ({ movie, onClose }) =>
                     {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
                         <button
                             key={num}
-                            onClick={() => setRating(num)}
+                            onClick={() => {
+                                setRating(num);
+                                if (errorMessage) setErrorMessage('');
+                            }}
                             className={`w-full sm:w-8 h-8 rounded-lg sm:rounded-full text-xs font-bold transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] ${rating >= num
                                 ? 'bg-sage text-[#121212] sm:scale-110 shadow-[0_0_12px_rgba(138,154,91,0.4)]'
                                 : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-[#E5E4E2] hover:scale-105'
@@ -102,7 +118,7 @@ export const WriteOverlay: React.FC<WriteOverlayProps> = ({ movie, onClose }) =>
 
                     <button
                         onClick={handleSubmit}
-                        disabled={text.length === 0}
+                        disabled={text.trim().length === 0 || rating <= 0 || rating > 10}
                         className="w-full sm:w-auto px-10 py-3 bg-[#2C2C2C] text-white text-sm tracking-widest uppercase rounded-full hover:bg-sage disabled:opacity-20 disabled:hover:bg-[#2C2C2C] transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] shadow-[0_4px_14px_rgba(0,0,0,0.3)] hover:shadow-[0_6px_20px_rgba(138,154,91,0.3)] hover:-translate-y-1"
                     >
                         {ui.writeOverlay.save}

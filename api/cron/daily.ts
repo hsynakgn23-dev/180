@@ -528,19 +528,48 @@ const fetchTmdbGenreMap = async (apiKey: string): Promise<Map<number, string>> =
         api_key: apiKey,
         language: 'en-US'
     });
-    const response = await fetch(`${TMDB_API_BASE}/genre/movie/list?${params.toString()}`);
-    if (!response.ok) {
-        throw new Error(`genre_fetch_http_${response.status}`);
-    }
+    const url = `${TMDB_API_BASE}/genre/movie/list?${params.toString()}`;
+    const MAX_RETRIES = 3;
+    let lastError: Error | null = null;
 
-    const payload = (await response.json()) as { genres?: Array<{ id: number; name: string }> };
-    const genreMap = new Map<number, string>();
-    for (const genre of payload.genres || []) {
-        if (typeof genre?.id === 'number' && typeof genre?.name === 'string') {
-            genreMap.set(genre.id, genre.name);
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            const response = await fetch(url);
+            if (response.status === 429) {
+                // Rate limited — wait and retry
+                const retryAfter = Number(response.headers.get('retry-after') || 5) * 1000;
+                const waitMs = Math.min(retryAfter, attempt * 5000);
+                console.warn(`[daily-cron] TMDB genre fetch rate-limited, retrying in ${waitMs}ms (attempt ${attempt}/${MAX_RETRIES})`);
+                await new Promise((r) => setTimeout(r, waitMs));
+                lastError = new Error(`genre_fetch_http_429`);
+                continue;
+            }
+            if (!response.ok) {
+                throw new Error(`genre_fetch_http_${response.status}`);
+            }
+            const payload = (await response.json()) as { genres?: Array<{ id: number; name: string }> };
+            const genreMap = new Map<number, string>();
+            for (const genre of payload.genres || []) {
+                if (typeof genre?.id === 'number' && typeof genre?.name === 'string') {
+                    genreMap.set(genre.id, genre.name);
+                }
+            }
+            if (genreMap.size === 0) {
+                throw new Error('genre_fetch_empty_response');
+            }
+            return genreMap;
+        } catch (err) {
+            lastError = err instanceof Error ? err : new Error(String(err));
+            if (attempt < MAX_RETRIES) {
+                const waitMs = attempt * 2000;
+                console.warn(`[daily-cron] TMDB genre fetch failed (attempt ${attempt}/${MAX_RETRIES}), retrying in ${waitMs}ms:`, lastError.message);
+                await new Promise((r) => setTimeout(r, waitMs));
+            }
         }
     }
-    return genreMap;
+
+    console.error('[daily-cron] TMDB genre fetch exhausted all retries:', lastError?.message);
+    throw lastError ?? new Error('genre_fetch_failed');
 };
 
 const fetchTmdbDiscoverForSlot = async (
@@ -565,12 +594,18 @@ const fetchTmdbDiscoverForSlot = async (
         parsedSlotParams.forEach((value, key) => params.set(key, value));
         enforceDiscoverQualityFilters(params);
 
-        const response = await fetch(`${TMDB_API_BASE}/discover/movie?${params.toString()}`);
-        if (!response.ok) continue;
-
-        const payload = (await response.json()) as { results?: TmdbDiscoverMovie[] };
-        if (Array.isArray(payload.results)) {
-            results.push(...payload.results);
+        try {
+            const response = await fetch(`${TMDB_API_BASE}/discover/movie?${params.toString()}`);
+            if (!response.ok) {
+                console.warn(`[daily-cron] TMDB discover page ${page} failed with status ${response.status} (slot ${slotIndex})`);
+                continue;
+            }
+            const payload = (await response.json()) as { results?: TmdbDiscoverMovie[] };
+            if (Array.isArray(payload.results)) {
+                results.push(...payload.results);
+            }
+        } catch (err) {
+            console.warn(`[daily-cron] TMDB discover page ${page} threw (slot ${slotIndex}):`, err instanceof Error ? err.message : String(err));
         }
     }
 
@@ -1264,10 +1299,10 @@ export default async function handler(req: any, res: any) {
             return sendJson(res, 400, { error: 'Unsupported mode.', mode });
         }
         const secret = getCronSecret();
-        const querySecret = getQueryParam(req, 'secret');
         if (secret) {
+            // Accept secret only via Authorization Bearer header — not as a query param.
             const auth = getHeader(req, 'authorization');
-            if (auth !== `Bearer ${secret}` && querySecret !== secret) {
+            if (auth !== `Bearer ${secret}`) {
                 console.warn('[daily-cron] unauthorized');
                 return sendJson(res, 401, { error: 'Unauthorized' });
             }

@@ -27,8 +27,10 @@ type PushInboxRawItem = {
 };
 
 const PUSH_INBOX_STORAGE_KEY = '180_mobile_push_inbox_v1';
+const PUSH_INBOX_DISMISSED_STORAGE_KEY = '180_mobile_push_inbox_dismissed_ids_v1';
 const PUSH_INBOX_VIEW_PREFS_KEY = '180_mobile_push_inbox_view_prefs_v1';
 const MAX_ITEMS = 40;
+const MAX_DISMISSED_ITEMS = 500;
 const DEDUPE_TIME_WINDOW_MS = 15 * 60 * 1000;
 
 export type PushInboxViewPrefs = {
@@ -190,6 +192,31 @@ const saveInbox = async (items: PushInboxItem[]): Promise<void> => {
   await AsyncStorage.setItem(PUSH_INBOX_STORAGE_KEY, JSON.stringify(sorted));
 };
 
+const readDismissedNotificationIds = async (): Promise<Set<string>> => {
+  try {
+    const raw = await AsyncStorage.getItem(PUSH_INBOX_DISMISSED_STORAGE_KEY);
+    const parsed = JSON.parse(raw || '[]') as unknown;
+    if (!Array.isArray(parsed)) return new Set();
+    return normalizeIdSet(parsed.map((id) => String(id || '')));
+  } catch {
+    return new Set();
+  }
+};
+
+const saveDismissedNotificationIds = async (ids: Set<string>): Promise<void> => {
+  const next = Array.from(ids).filter(Boolean).slice(-MAX_DISMISSED_ITEMS);
+  await AsyncStorage.setItem(PUSH_INBOX_DISMISSED_STORAGE_KEY, JSON.stringify(next));
+};
+
+const dismissNotificationIds = async (ids: string[]): Promise<Set<string>> => {
+  const normalizedIds = normalizeIdSet(ids);
+  const current = await readDismissedNotificationIds();
+  if (normalizedIds.size === 0) return current;
+  normalizedIds.forEach((id) => current.add(id));
+  await saveDismissedNotificationIds(current);
+  return current;
+};
+
 const normalizeIdSet = (ids: string[]): Set<string> =>
   new Set(
     ids
@@ -259,6 +286,24 @@ export const appendPushInboxItem = async (input: {
   });
 
   const current = await readPushInbox();
+
+  if (item.notificationId) {
+    const dismissedIds = await readDismissedNotificationIds();
+    if (dismissedIds.has(item.notificationId)) {
+      return { item, items: current };
+    }
+  }
+
+  if (item.source === 'opened') {
+    if (item.notificationId) {
+      await dismissNotificationIds([item.notificationId]);
+      const next = current.filter((entry) => entry.notificationId !== item.notificationId);
+      await saveInbox(next);
+      return { item, items: next };
+    }
+    return { item, items: current };
+  }
+
   const duplicateIndex = findDuplicateIndex(current, item);
   const next =
     duplicateIndex >= 0
@@ -342,9 +387,14 @@ export const removePushInboxItems = async (
   }
 
   const current = await readPushInbox();
+  const notificationIdsToDismiss = current
+    .filter((item) => idSet.has(item.id))
+    .map((item) => item.notificationId)
+    .filter(Boolean);
   const next = current.filter((item) => !idSet.has(item.id));
   const removedCount = current.length - next.length;
   if (removedCount > 0) {
+    await dismissNotificationIds(notificationIdsToDismiss);
     await saveInbox(next);
   }
   return { removedCount, items: next };
@@ -352,6 +402,9 @@ export const removePushInboxItems = async (
 
 export const clearPushInbox = async (): Promise<void> => {
   try {
+    const current = await readPushInbox();
+    const notificationIdsToDismiss = current.map((item) => item.notificationId).filter(Boolean);
+    await dismissNotificationIds(notificationIdsToDismiss);
     await AsyncStorage.removeItem(PUSH_INBOX_STORAGE_KEY);
   } catch {
     // ignore

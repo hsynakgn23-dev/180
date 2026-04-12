@@ -79,6 +79,11 @@ const readCurrentUserId = async (): Promise<string> => {
   return normalizeText(sessionResult.session?.user?.id, 120);
 };
 
+const removeRealtimeChannel = (target: RealtimeChannel | null): void => {
+  if (!target || !supabase) return;
+  void supabase.removeChannel(target);
+};
+
 export const fetchRecentMobileNotificationEvents = async (input?: {
   limit?: number;
 }): Promise<PushNotificationSnapshot[]> => {
@@ -118,9 +123,9 @@ export const subscribeToMobileNotificationEvents = (
     if (!isSupabaseLive() || !supabase) return;
 
     const userId = await readCurrentUserId();
-    if (!userId || cancelled || !supabase) return;
+    if (!userId || !supabase) return;
 
-    channel = supabase
+    const nextChannel = supabase
       .channel(`mobile-notification-events-${userId}`)
       .on(
         'postgres_changes',
@@ -131,18 +136,26 @@ export const subscribeToMobileNotificationEvents = (
           filter: `recipient_user_id=eq.${userId}`,
         },
         (payload) => {
+          if (cancelled) return;
           const snapshot = toSnapshot((payload.new || {}) as NotificationEventRow);
           if (!snapshot) return;
           input.onInsert?.(snapshot);
         }
       )
       .subscribe();
+
+    channel = nextChannel;
+
+    if (cancelled) {
+      channel = null;
+      removeRealtimeChannel(nextChannel);
+    }
   })();
 
   return () => {
     cancelled = true;
-    if (channel && supabase) {
-      void supabase.removeChannel(channel);
-    }
+    const activeChannel = channel;
+    channel = null;
+    removeRealtimeChannel(activeChannel);
   };
 };

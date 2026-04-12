@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { resolveAvatarDisplay } from '../data/avatarData';
 import { useXP } from '../context/XPContext';
 import { MinorMarks } from '../features/marks/MinorMarks';
 import { MAJOR_MARKS } from '../data/marksData';
@@ -24,6 +25,7 @@ export const ProfileWidget: React.FC<ProfileWidgetProps> = ({ onClick, onOpenSet
         featuredMarks,
         user,
         avatarUrl,
+        avatarId,
         streak,
         daysPresent,
         nextLevelXP
@@ -54,11 +56,15 @@ export const ProfileWidget: React.FC<ProfileWidgetProps> = ({ onClick, onOpenSet
                             {avatarUrl ? (
                                 <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                             ) : (
-                                <div className="w-full h-full flex items-center justify-center text-xs text-sage/50 font-mono">
-                                    {user?.name?.substring(0, 2).toUpperCase() || 'OB'}
-                                </div>
+                                (() => {
+                                    const { icon, bg } = resolveAvatarDisplay(avatarId);
+                                    return (
+                                        <div className={`w-full h-full flex items-center justify-center text-xl ${bg}`}>
+                                            {icon}
+                                        </div>
+                                    );
+                                })()
                             )}
-                            {!avatarUrl && <div className="absolute inset-0 bg-sage/10 mix-blend-overlay pointer-events-none" />}
                         </div>
 
                         <div className="min-w-0">

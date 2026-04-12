@@ -101,7 +101,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         return access.response;
     }
 
-    const { corsHeaders, serviceClient } = access.context;
+    const { corsHeaders, serviceClient, csrfToken } = access.context;
     const limit = clampInteger(getQueryValue(req, 'limit'), 5, 40, 20);
     const rawQuery = getQueryValue(req, 'q');
     const normalizedQuery = normalizeSearchQuery(rawQuery);
@@ -314,6 +314,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         200,
         {
             ok: true,
+            csrfToken,
             data: {
                 query: normalizedQuery,
                 stats: {

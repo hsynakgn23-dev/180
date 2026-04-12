@@ -1,5 +1,6 @@
 export const MOBILE_ROUTE_TARGETS = [
     'daily',
+    'profile',
     'invite',
     'share',
     'public_profile',
@@ -19,6 +20,7 @@ export type MobileDiscoverRouteId = (typeof MOBILE_DISCOVER_ROUTE_IDS)[number];
 
 export type MobileRouteIntent =
     | { target: 'daily' }
+    | { target: 'profile' }
     | { target: 'invite'; invite?: string }
     | { target: 'share'; invite?: string; platform?: MobileSharePlatform; goal?: MobileShareGoal }
     | { target: 'public_profile'; userId?: string; username?: string }
@@ -72,6 +74,10 @@ const normalizeDiscoverRouteId = (value: string | null | undefined): MobileDisco
 export const normalizeMobileRouteIntent = (input: MobileRouteIntent): MobileRouteIntent => {
     if (input.target === 'daily') {
         return { target: 'daily' };
+    }
+
+    if (input.target === 'profile') {
+        return { target: 'profile' };
     }
 
     if (input.target === 'invite') {
@@ -143,6 +149,10 @@ export const parseMobileRouteIntentFromParams = (params: URLSearchParams): Mobil
 
     if (target === 'daily') {
         return { target: 'daily' };
+    }
+
+    if (target === 'profile') {
+        return { target: 'profile' };
     }
 
     if (target === 'invite') {

@@ -5,6 +5,8 @@ type SupabaseIdentityLike = {
 type SupabaseUserLike = {
   id?: unknown;
   email?: unknown;
+  email_confirmed_at?: unknown;
+  confirmed_at?: unknown;
   user_metadata?: Record<string, unknown> | null;
   identities?: SupabaseIdentityLike[] | null;
 } | null | undefined;
@@ -53,6 +55,14 @@ export const resolveSupabaseUserAuthLabel = (user: SupabaseUserLike): string => 
   if (!userId) return 'signed-in@local.user';
   return `${userId.slice(0, 12)}@private.local`;
 };
+
+export const resolveSupabaseUserEmailConfirmedAt = (user: SupabaseUserLike): string | null => {
+  const confirmedAt = normalizeText(user?.email_confirmed_at ?? user?.confirmed_at, 80);
+  return confirmedAt || null;
+};
+
+export const isSupabaseUserEmailVerified = (user: SupabaseUserLike): boolean =>
+  Boolean(resolveSupabaseUserEmailConfirmedAt(user));
 
 export const resolveSupabaseUserDisplayName = (user: SupabaseUserLike): string => {
   const metadataName = readRecordText(user?.user_metadata, ['full_name', 'name', 'user_name'], 120);

@@ -1,21 +1,116 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 
-import { useNotifications } from '../../context/NotificationContext';
+import { type Notification, useNotifications } from '../../context/NotificationContext';
 import { useLanguage } from '../../context/LanguageContext';
+
+const isHashRoute = (value: string): boolean =>
+    value.startsWith('#/') || value.startsWith('/u/') || value === '/admin' || value.startsWith('/admin?');
+
+const resolveNotificationLink = (
+    rawLink: string
+): { kind: 'hash' | 'assign'; href: string } | null => {
+    const normalized = String(rawLink || '').trim();
+    if (!normalized) return null;
+
+    if (isHashRoute(normalized)) {
+        return {
+            kind: 'hash',
+            href: normalized.replace(/^#/, '')
+        };
+    }
+
+    try {
+        const parsed = new URL(normalized, window.location.origin);
+        if (parsed.origin === window.location.origin) {
+            if (parsed.hash && isHashRoute(parsed.hash)) {
+                return {
+                    kind: 'hash',
+                    href: parsed.hash.replace(/^#/, '')
+                };
+            }
+
+            if (isHashRoute(parsed.pathname)) {
+                const nextHref = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+                return {
+                    kind: 'hash',
+                    href: nextHref.replace(/^#/, '')
+                };
+            }
+        }
+
+        return {
+            kind: 'assign',
+            href: parsed.toString()
+        };
+    } catch {
+        return {
+            kind: normalized.startsWith('/') ? 'assign' : 'hash',
+            href: normalized.replace(/^#/, '')
+        };
+    }
+};
 
 export const NotificationCenter: React.FC = () => {
     const [isOpen, setIsOpen] = useState(false);
-    const { notifications, unreadCount, markAllAsRead } = useNotifications();
+    const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+    const notificationItemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+    const { notifications, unreadCount, markAsRead } = useNotifications();
     const { text } = useLanguage();
+    const unreadNotificationIds = useMemo(
+        () => notifications.filter((notification) => !notification.read).map((notification) => notification.id),
+        [notifications]
+    );
+
+    const markVisibleNotificationsAsRead = useCallback(() => {
+        if (!isOpen || unreadNotificationIds.length === 0) return;
+        const container = scrollContainerRef.current;
+        if (!container) return;
+
+        const containerRect = container.getBoundingClientRect();
+        unreadNotificationIds.forEach((notificationId) => {
+            const element = notificationItemRefs.current[notificationId];
+            if (!element) return;
+            const itemRect = element.getBoundingClientRect();
+            const isVisible = itemRect.bottom > containerRect.top && itemRect.top < containerRect.bottom;
+            if (isVisible) {
+                markAsRead(notificationId);
+            }
+        });
+    }, [isOpen, markAsRead, unreadNotificationIds]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        const frame = window.requestAnimationFrame(() => {
+            markVisibleNotificationsAsRead();
+        });
+        return () => {
+            window.cancelAnimationFrame(frame);
+        };
+    }, [isOpen, notifications, markVisibleNotificationsAsRead]);
 
     const handleToggle = () => {
         setIsOpen(!isOpen);
-        if (!isOpen) {
-            markAllAsRead();
-        }
     };
 
+    const handleNotificationClick = (notification: Notification) => {
+        markAsRead(notification.id);
+
+        const destination = resolveNotificationLink(notification.link || '');
+        if (!destination) return;
+
+        setIsOpen(false);
+
+        if (destination.kind === 'hash') {
+            const normalizedHash = destination.href.startsWith('#')
+                ? destination.href
+                : `#${destination.href.startsWith('/') ? destination.href : `/${destination.href}`}`;
+            window.location.assign(normalizedHash);
+            return;
+        }
+
+        window.location.assign(destination.href);
+    };
 
     return (
         <div className="relative">
@@ -46,10 +141,22 @@ export const NotificationCenter: React.FC = () => {
                                 {text.notifications.panelTitle}
                             </h3>
                         </div>
-                        <div className="max-h-64 overflow-y-auto">
+                        <div
+                            ref={scrollContainerRef}
+                            className="max-h-64 overflow-y-auto"
+                            onScroll={markVisibleNotificationsAsRead}
+                        >
                             {notifications.length > 0 ? (
                                 notifications.map(notif => (
-                                    <div key={notif.id} className={`p-4 border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer ${!notif.read ? 'bg-sage/5' : ''}`}>
+                                    <button
+                                        key={notif.id}
+                                        ref={(element) => {
+                                            notificationItemRefs.current[notif.id] = element;
+                                        }}
+                                        type="button"
+                                        onClick={() => handleNotificationClick(notif)}
+                                        className={`w-full p-4 border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer text-left ${!notif.read ? 'bg-sage/5' : ''}`}
+                                    >
                                         <div className="flex items-start gap-3">
                                             {/* Icon based on type */}
                                             <div className="mt-0.5 text-sage/80">
@@ -78,7 +185,7 @@ export const NotificationCenter: React.FC = () => {
                                                 </span>
                                             </div>
                                         </div>
-                                    </div>
+                                    </button>
                                 ))
                             ) : (
                                 <div className="p-6 text-center text-gray-500 text-xs">

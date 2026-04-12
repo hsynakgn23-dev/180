@@ -86,7 +86,13 @@ type AuthState =
   | { status: 'idle'; message: string }
   | { status: 'loading'; message: string }
   | { status: 'signed_out'; message: string }
-  | { status: 'signed_in'; message: string; email: string }
+  | {
+      status: 'signed_in';
+      message: string;
+      email: string;
+      emailVerified: boolean;
+      emailConfirmedAt: string | null;
+    }
   | { status: 'error'; message: string };
 
 type RitualSubmitState = {
@@ -114,6 +120,8 @@ type ProfileState =
       nextLeagueKey: string | null;
       nextLeagueName: string | null;
       streak: number;
+      weeklyArenaScore: number;
+      weeklyArenaActivity: number;
       ritualsCount: number;
       daysPresent: number;
       followersCount: number;
@@ -121,6 +129,9 @@ type ProfileState =
       marks: string[];
       featuredMarks: string[];
       lastRitualDate: string | null;
+      streakProtectionWeekKey: string | null;
+      streakProtectionDate: string | null;
+      streakProtectionClaimedAt: string | null;
       source: 'xp_state' | 'fallback';
     };
 

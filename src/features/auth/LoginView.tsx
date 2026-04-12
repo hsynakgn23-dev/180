@@ -31,6 +31,10 @@ const AppleMark: React.FC = () => (
     </svg>
 );
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const isValidEmailAddress = (value: string): boolean => EMAIL_PATTERN.test(String(value || '').trim());
+
 const ProviderButton: React.FC<{
     label: string;
     onClick: () => void;
@@ -111,6 +115,7 @@ export const LoginView: React.FC = () => {
     const appleContinueLabel = language === 'tr' ? 'Apple ile Devam Et' : 'Continue with Apple';
     const appleRedirectingLabel = language === 'tr' ? 'Apple yonlendiriliyor...' : 'Redirecting to Apple...';
     const appleFailedLabel = language === 'tr' ? 'Apple girisi basarisiz.' : 'Apple sign-in failed.';
+    const invalidEmailLabel = language === 'tr' ? 'Gecerli bir e-posta gir.' : 'Enter a valid email address.';
 
     useEffect(() => {
         if (!isPasswordRecoveryMode) return;
@@ -169,12 +174,23 @@ export const LoginView: React.FC = () => {
             }
 
             if (isForgotPassword) {
+                if (!isValidEmailAddress(email)) {
+                    setErrorMessage(invalidEmailLabel);
+                    trackEvent('auth_failure', { flow, method: 'password', reason: 'invalid_email' });
+                    return;
+                }
                 const result = await requestPasswordReset(email);
                 if (!result.ok) {
                     setErrorMessage(result.message || text.login.forgotPasswordFailed);
                     return;
                 }
                 setStatusMessage(result.message || text.login.forgotPasswordSuccess);
+                return;
+            }
+
+            if (!isValidEmailAddress(email)) {
+                setErrorMessage(invalidEmailLabel);
+                trackEvent('auth_failure', { flow, method: 'password', reason: 'invalid_email' });
                 return;
             }
 

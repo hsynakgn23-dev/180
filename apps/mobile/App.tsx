@@ -43,6 +43,7 @@ import {
   MOBILE_LEAGUES_DATA,
   MOBILE_LEAGUE_NAMES,
   getLeagueIndexFromXp,
+  getMobileLeagueTierInfo,
   resolveMobileLeagueInfo,
   resolveMobileLeagueInfoFromXp,
   resolveMobileLeagueKeyFromXp,
@@ -54,11 +55,12 @@ import {
   fetchMobilePublicProfileSnapshot,
   type MobilePublicProfileSnapshot,
 } from './src/lib/mobilePublicProfileSnapshot';
-import { MAX_MOBILE_AVATAR_BYTES } from './src/lib/mobileAvatar';
+import { normalizeMobileAvatarUrl, resolveMobileAvatarFromXpState } from './src/lib/mobileAvatar';
 import {
   fetchMobilePublicProfileActivity,
   type MobilePublicProfileActivityItem,
 } from './src/lib/mobilePublicProfileActivity';
+import { resolveStoredProfileMarks } from '../../src/domain/profileMarks';
 import {
   fetchMobileProfileActivity,
   type MobileProfileActivityItem,
@@ -67,6 +69,8 @@ import { type MobileWatchedMovie } from './src/lib/mobileProfileWatchedMovies';
 import { QuizHomeScreen } from './src/ui/quizScreens';
 import { PaywallModal } from './src/ui/paywallScreen';
 import { useSubscription } from './src/lib/useSubscription';
+import { useWallet } from './src/lib/useWallet';
+import { WalletModal } from './src/ui/walletScreen';
 import {
   formatMobileLetterboxdSummary,
   importMobileLetterboxdCsv,
@@ -116,8 +120,8 @@ import {
 import {
   appendPushInboxItem,
   clearPushInbox,
-  markPushInboxItemOpened,
   readPushInbox,
+  removePushInboxItems,
   type PushInboxItem,
 } from './src/lib/mobilePushInbox';
 import {
@@ -135,10 +139,13 @@ import {
   resolveSupabaseUserAuthLabel,
   resolveSupabaseUserAvatarUrl,
   resolveSupabaseUserDisplayName,
+  resolveSupabaseUserEmailConfirmedAt,
   resolveSupabaseUserEmail,
+  isSupabaseUserEmailVerified,
 } from './src/lib/supabaseUser';
 import { UiButton } from './src/ui/primitives';
 import { styles } from './src/ui/appStyles';
+import { type WalletStoreItemKey } from '../../src/domain/progressionEconomy';
 import {
   type AuthState,
   type CommentFeedState,
@@ -155,11 +162,13 @@ import {
 import type {
   MobileAuthEntryStage,
   MobileLeaguePromotionEvent,
+  MobileMarkUnlockEvent,
   MobileSettingsIdentityDraft,
   MobileSettingsLanguage,
   MobileSettingsPrivacyDraft,
   MobileSettingsSaveState,
   MobileStreakCelebrationEvent,
+  TierAdvancementEvent,
 } from './src/ui/appScreens';
 import { resolveMobileWebBaseUrl } from './src/lib/mobileEnv';
 import {
@@ -168,7 +177,7 @@ import {
   type MobileThemeMode,
 } from './src/lib/mobileThemeMode';
 import { useBackHandler } from './src/hooks/useBackHandler';
-import { getDeviceLanguage } from './src/i18n';
+import { getDeviceLanguage, mobileTranslations } from './src/i18n';
 
 const debugRequireAppDependency = <T,>(label: string, loader: () => T): T => {
   console.log('APP_IMPORT_STAGE', label);
@@ -252,11 +261,6 @@ const { File: ExpoFile } = debugRequireAppDependency(
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   () => require('expo-file-system') as typeof import('expo-file-system')
 );
-const ImagePicker = debugRequireAppDependency(
-  'expo-image-picker',
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  () => require('expo-image-picker') as typeof import('expo-image-picker')
-);
 const WebBrowser = debugRequireAppDependency(
   'expo-web-browser',
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -305,19 +309,24 @@ const { syncPushTokenToProfileState } = debugRequireAppDependency(
     require('./src/lib/mobilePushProfileSync') as typeof import('./src/lib/mobilePushProfileSync')
 );
 const {
-  ArenaChallengeCard,
+  AvatarView,
   ArenaLeaderboardCard,
   AuthGateScreen,
   AuthModal,
+  buildDailyGreetingCard,
   CollapsibleSectionCard,
   CommentFeedCard,
   DailyHomeScreen,
   InviteClaimScreen,
   LeaguePromotionModal,
+  MarkUnlockModal,
   MobileSettingsModal,
   MovieDetailsModal,
+  ProfileCommentsModal,
   ProfileCinematicCard,
+  ProfileFollowListModal,
   ProfileMarksCard,
+  ProfileMarksModal,
   ProfileMovieArchiveModal,
   ProfileUnifiedCard,
   PublicProfileMovieArchiveModal,
@@ -328,6 +337,8 @@ const {
   setAppScreensThemeMode,
   StatePanel,
   StreakCelebrationModal,
+  TierAdvancementModal,
+  XpGainToast,
 } = debugRequireAppDependency(
   './src/ui/appScreens',
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -382,57 +393,23 @@ const DEFAULT_SETTINGS_IDENTITY: MobileSettingsIdentityDraft = {
 };
 const DEFAULT_SETTINGS_PRIVACY: MobileProfileVisibility = getDefaultMobileProfileVisibility();
 
+const buildSignedInAuthState = (
+  user: Parameters<typeof resolveSupabaseUserAuthLabel>[0],
+  message: string
+): AuthState => ({
+  status: 'signed_in',
+  message,
+  email: resolveSupabaseUserAuthLabel(user),
+  emailVerified: isSupabaseUserEmailVerified(user),
+  emailConfirmedAt: resolveSupabaseUserEmailConfirmedAt(user),
+});
+
 const normalizeExternalUrl = (value: string): string => {
   const normalized = String(value || '').trim();
   if (!normalized) return '';
   if (/^https?:\/\//i.test(normalized)) return normalized;
   return `https://${normalized}`;
 };
-
-type PickedImageAsset = {
-  uri?: string | null;
-  mimeType?: string | null;
-  name?: string | null;
-  fileName?: string | null;
-  size?: number | null;
-  fileSize?: number | null;
-  file?: File;
-  base64?: string | null;
-};
-
-const resolveAvatarMimeType = (input: {
-  mimeType?: string | null;
-  name?: string | null;
-  fileName?: string | null;
-  uri?: string | null;
-}): string => {
-  const explicitMimeType = String(input.mimeType || '')
-    .trim()
-    .toLowerCase();
-  if (explicitMimeType.startsWith('image/')) return explicitMimeType;
-
-  const lookup = `${input.fileName || ''} ${input.name || ''} ${input.uri || ''}`.toLowerCase();
-  if (lookup.includes('.png')) return 'image/png';
-  if (lookup.includes('.webp')) return 'image/webp';
-  if (lookup.includes('.gif')) return 'image/gif';
-  if (lookup.includes('.heic')) return 'image/heic';
-  return 'image/jpeg';
-};
-
-const blobToDataUrl = async (blob: Blob): Promise<string> =>
-  await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Secilen dosya okunamadi.'));
-    reader.onload = () => {
-      const result = String(reader.result || '').trim();
-      if (!result) {
-        reject(new Error('Secilen dosya okunamadi.'));
-        return;
-      }
-      resolve(result);
-    };
-    reader.readAsDataURL(blob);
-  });
 
 const decodeBase64Utf8 = (base64: string): string => {
   const normalized = String(base64 || '').trim();
@@ -484,71 +461,6 @@ const readPickedAssetAsText = async (asset: DocumentPickerAsset): Promise<string
   }
 
   return await new ExpoFile(asset.uri).text();
-};
-
-const readPickedAssetAsDataUrl = async (asset: PickedImageAsset, mimeType: string): Promise<string> => {
-  const inlineBase64 = String(asset.base64 || '').trim();
-  if (inlineBase64) {
-    return `data:${mimeType};base64,${inlineBase64}`;
-  }
-
-  if (Platform.OS === 'web') {
-    if (asset.file) {
-      return await blobToDataUrl(asset.file);
-    }
-
-    const uri = String(asset.uri || '').trim();
-    if (uri.startsWith('data:')) return uri;
-    if (uri.startsWith('blob:') || uri.startsWith('http://') || uri.startsWith('https://')) {
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      return await blobToDataUrl(blob);
-    }
-
-    throw new Error('Secilen gorsel web uzerinde okunamadi.');
-  }
-
-  const nativeUri = String(asset.uri || '').trim();
-  if (!nativeUri) {
-    throw new Error('Secilen gorsel cihazdan okunamadi.');
-  }
-
-  const base64 = await new ExpoFile(nativeUri).base64();
-  return `data:${mimeType};base64,${String(base64 || '').trim()}`;
-};
-
-const pickAvatarAsset = async (): Promise<PickedImageAsset | null> => {
-  if (Platform.OS === 'web') {
-    const result = await DocumentPicker.getDocumentAsync({
-      type: ['image/*'],
-      copyToCacheDirectory: true,
-      multiple: false,
-      base64: true,
-    });
-    return result.canceled ? null : result.assets?.[0] || null;
-  }
-
-  const currentPermissions = await ImagePicker.getMediaLibraryPermissionsAsync();
-  const mediaLibraryPermission =
-    currentPermissions.status === 'granted'
-      ? currentPermissions
-      : await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (mediaLibraryPermission.status !== 'granted') {
-    throw new Error('Fotograflara erisim izni verilmedi.');
-  }
-
-  const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ['images'],
-    allowsEditing: true,
-    aspect: [1, 1],
-    quality: 0.82,
-    base64: true,
-    allowsMultipleSelection: false,
-    presentationStyle: ImagePicker.UIImagePickerPresentationStyle.FULL_SCREEN,
-    preferredAssetRepresentationMode:
-      ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
-  });
-  return result.canceled ? null : result.assets?.[0] || null;
 };
 
 const readStoredAuthRememberMe = async (): Promise<boolean> => {
@@ -675,6 +587,22 @@ type PublicProfileMovieArchiveModalState = {
   movie: PublicWatchedMovieSummary | null;
   items: MobilePublicProfileActivityItem[];
 };
+type ProfileStatsSheetSection = 'comments' | 'following' | 'followers' | 'marks';
+type ProfileStatsSheetState = {
+  visible: boolean;
+  section: ProfileStatsSheetSection | null;
+};
+type ProfileFollowListItem = {
+  userId: string;
+  displayName: string;
+  avatarUrl: string;
+  secondary: string;
+};
+type ProfileFollowListState = {
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  message: string;
+  items: ProfileFollowListItem[];
+};
 type DiscoverRouteSurfaceState = {
   visible: boolean;
   title: string;
@@ -711,48 +639,31 @@ const MAIN_KEY_BY_TAB = {
   'daily' | 'quiz' | 'inbox' | 'arena' | 'profile'
 >;
 
+const normalizeProfileSheetText = (value: unknown, maxLength = 120): string => {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  return text.length > maxLength ? text.slice(0, maxLength) : text;
+};
+
 const MOBILE_TAB_LABELS: Record<
   MobileSettingsLanguage,
   Record<'daily' | 'quiz' | 'inbox' | 'arena' | 'profile', string>
 > = {
-  tr: {
-    daily: 'Gunluk',
-    quiz: 'Quiz',
-    inbox: 'Gelenler',
-    arena: 'Arena',
-    profile: 'Profil',
-  },
-  en: {
-    daily: 'Daily',
-    quiz: 'Quiz',
-    inbox: 'Inbox',
-    arena: 'Arena',
-    profile: 'Profile',
-  },
-  es: {
-    daily: 'Diario',
-    quiz: 'Prueba',
-    inbox: 'Bandeja',
-    arena: 'Arena',
-    profile: 'Perfil',
-  },
-  fr: {
-    daily: 'Quotidien',
-    quiz: 'Quiz',
-    inbox: 'Boite',
-    arena: 'Arena',
-    profile: 'Profil',
-  },
+  tr: mobileTranslations.tr.app.nav,
+  en: mobileTranslations.en.app.nav,
+  es: mobileTranslations.es.app.nav,
+  fr: mobileTranslations.fr.app.nav,
 };
 
 const MAIN_TAB_BY_SCREEN = {
   daily_home: 'Daily',
+  profile_home: 'Profile',
   invite_claim: 'Profile',
   share_hub: 'Profile',
   public_profile: 'Profile',
   quiz_home: 'Quiz',
 } as const satisfies Record<
-  'daily_home' | 'invite_claim' | 'share_hub' | 'public_profile' | 'quiz_home',
+  'daily_home' | 'profile_home' | 'invite_claim' | 'share_hub' | 'public_profile' | 'quiz_home',
   keyof MainTabParamList
 >;
 const TAB_ICON_BY_ROUTE = {
@@ -935,6 +846,7 @@ export default function App() {
   });
   const [authModalVisible, setAuthModalVisible] = useState(false);
   const [ritualDraftText, setRitualDraftText] = useState('');
+  const [ritualDraftRating, setRitualDraftRating] = useState(0);
   const [ritualSubmitState, setRitualSubmitState] = useState<RitualSubmitState>({
     status: 'idle',
     message: '',
@@ -959,13 +871,26 @@ export default function App() {
     status: 'idle',
     message: 'Profil metrikleri hazir degil.',
   });
-  const [profileMarksExpanded, setProfileMarksExpanded] = useState(false);
+  const [profileStatsSheetState, setProfileStatsSheetState] = useState<ProfileStatsSheetState>({
+    visible: false,
+    section: null,
+  });
+  const [profileFollowListState, setProfileFollowListState] = useState<ProfileFollowListState>({
+    status: 'idle',
+    message: '',
+    items: [],
+  });
   const [leaguePromotionEvent, setLeaguePromotionEvent] = useState<MobileLeaguePromotionEvent | null>(
     null
   );
   const [streakCelebrationEvent, setStreakCelebrationEvent] = useState<MobileStreakCelebrationEvent | null>(
     null
   );
+  const [tierAdvancementEvent, setTierAdvancementEvent] = useState<TierAdvancementEvent | null>(null);
+  const [xpGainDelta, setXpGainDelta] = useState<number | null>(null);
+  const [markUnlockQueue, setMarkUnlockQueue] = useState<string[]>([]);
+  const activeMarkUnlockEvent: MobileMarkUnlockEvent | null =
+    markUnlockQueue.length > 0 ? { markId: markUnlockQueue[0] } : null;
   const [pushState, setPushState] = useState<PushState>({
     status: PUSH_FEATURE_ENABLED ? 'idle' : 'unsupported',
     message: PUSH_FEATURE_ENABLED
@@ -1134,7 +1059,10 @@ export default function App() {
     status: 'idle',
     message: '',
   });
-  const [isPickingAvatar, setIsPickingAvatar] = useState(false);
+  const [emailVerificationState, setEmailVerificationState] = useState<MobileSettingsSaveState>({
+    status: 'idle',
+    message: '',
+  });
   const [inviteCodeDraft, setInviteCodeDraft] = useState('');
   const [inviteStatus, setInviteStatus] = useState('');
   const [isInviteActionBusy, setIsInviteActionBusy] = useState(false);
@@ -1182,6 +1110,7 @@ export default function App() {
     isAppending: false,
     items: [],
   });
+  const [dailyCommentFeedScope, setDailyCommentFeedScope] = useState<CommentFeedScope>('today');
   const [dailyCommentFeedState, setDailyCommentFeedState] = useState<CommentFeedState>({
     status: 'idle',
     message: 'Gunluk yorum akisi hazir degil.',
@@ -1199,11 +1128,17 @@ export default function App() {
     status: 'loading' | 'ready' | 'error';
     source: 'live' | 'fallback';
     message: string;
+    scope: 'league' | 'global';
+    cohortLeagueKey: string | null;
+    weekKey: string | null;
     entries: ArenaEntryView[];
   }>({
     status: 'loading',
     source: 'fallback',
     message: 'Arena siralamasi yukleniyor...',
+    scope: 'global',
+    cohortLeagueKey: null,
+    weekKey: null,
     entries: [],
   });
   const [letterboxdImportState, setLetterboxdImportState] = useState<{
@@ -1271,6 +1206,7 @@ export default function App() {
   const [debugExpanded, setDebugExpanded] = useState(false);
   const {
     activeIntent,
+    clearIncomingIntent,
     deepLink,
     handleIncomingUrl,
     lastIncomingIntent,
@@ -1281,16 +1217,21 @@ export default function App() {
   const { pageEntrance, pageEnterTranslateY } = usePageEntranceAnimation();
   const hasCloudIdentityHydratedRef = useRef(false);
   const hasCloudPrivacyHydratedRef = useRef(false);
+  const publicProfileReturnTabRef = useRef<keyof MainTabParamList | null>(null);
   const lastObservedLeagueIndexRef = useRef<number | null>(null);
   const lastObservedStreakRef = useRef<number | null>(null);
   const lastObservedStreakDateRef = useRef<string | null>(null);
   const streakObservedInitRef = useRef(false);
+  const lastObservedTierRef = useRef<{ leagueIndex: number; tier: number } | null>(null);
+  const lastObservedTotalXpRef = useRef<number | null>(null);
+  const lastObservedMarksRef = useRef<string[] | null>(null);
   const lastHandledAuthCallbackUrlRef = useRef<string | null>(null);
   const lastHandledPublicProfileIntentRef = useRef<string | null>(null);
   const lastNotificationEventIdRef = useRef('');
   const lastAutoOpenedAuthRouteRef = useRef<string | null>(null);
   const hasAutoOpenedLaunchAuthRef = useRef(false);
   const hasAttemptedSignedInPushRegistrationRef = useRef(false);
+  const dailyCommentFeedRequestIdRef = useRef(0);
 
   const primaryDailyMovie =
     dailyState.status === 'success' && dailyState.movies.length > 0 ? dailyState.movies[0] : null;
@@ -1301,6 +1242,10 @@ export default function App() {
 
   const isSignedIn = authState.status === 'signed_in';
 
+  useEffect(() => {
+    setRitualDraftRating(0);
+  }, [selectedDailyMovie?.id]);
+
   // ── Subscription ────────────────────────────────────────
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [paywallVisible, setPaywallVisible] = useState(false);
@@ -1309,6 +1254,13 @@ export default function App() {
     readSupabaseSessionSafe().then((r) => setAccessToken(r.session?.access_token || null));
   }, [isSignedIn]);
   const subscription = useSubscription(accessToken);
+  const wallet = useWallet(accessToken, settingsLanguage);
+  const walletReadyTaskRewardTickets = wallet.snapshot.dailyTasks.reduce(
+    (sum, task) => sum + (task.status === 'ready' ? Math.max(0, Number(task.ticketReward) || 0) : 0),
+    0
+  );
+  const [walletVisible, setWalletVisible] = useState(false);
+  const [walletFocusItem, setWalletFocusItem] = useState<WalletStoreItemKey | null>(null);
 
   const resolveNotificationActorLabel = useCallback(() => {
     const profileName =
@@ -1339,7 +1291,6 @@ export default function App() {
       const sessionResult = await readSupabaseSessionSafe();
       const sessionUser = sessionResult.session?.user;
       const userId = String(sessionUser?.id || '').trim();
-      const authLabel = resolveSupabaseUserAuthLabel(sessionUser);
       if (sessionResult.session?.access_token && userId) {
         if (applyRememberMePolicy) {
           const rememberMe = await readStoredAuthRememberMe();
@@ -1355,11 +1306,12 @@ export default function App() {
           }
         }
 
-        setAuthState({
-          status: 'signed_in',
-          message: isTurkishUi ? 'Mobil oturum hazir.' : 'Mobile session is ready.',
-          email: authLabel,
-        });
+        setAuthState(
+          buildSignedInAuthState(
+            sessionUser,
+            isTurkishUi ? 'Mobil oturum hazir.' : 'Mobile session is ready.'
+          )
+        );
         return;
       }
 
@@ -1407,6 +1359,16 @@ export default function App() {
     if (authState.status === 'loading') return;
     setAuthModalVisible(false);
   }, [authState.status]);
+
+  const openWallet = useCallback((itemKey: WalletStoreItemKey | null = null) => {
+    if (!isSignedIn) {
+      openAuthModal('login');
+      return;
+    }
+    wallet.reconcileTopupPurchaseState();
+    setWalletFocusItem(itemKey);
+    setWalletVisible(true);
+  }, [isSignedIn, openAuthModal, wallet]);
 
   const refreshRitualQueue = useCallback(async () => {
     const counts = await getQueuedRitualDraftCounts();
@@ -1702,8 +1664,10 @@ export default function App() {
     (movie: PublicWatchedMovieSummary, sourceItems: MobilePublicProfileActivityItem[]) => {
       const movieTitle = String(movie.movieTitle || '').trim().toLowerCase();
       return sourceItems.filter((item) => {
+        const itemText = String(item.text || '').trim();
         const itemTitle = String(item.movieTitle || '').trim().toLowerCase();
         if (!itemTitle || itemTitle !== movieTitle) return false;
+        if (!itemText) return false;
         if (typeof movie.year !== 'number') return true;
         return item.year === null || item.year === movie.year;
       });
@@ -1900,6 +1864,10 @@ export default function App() {
 
   const openPublicProfileInApp = useCallback(
     async (target: PublicProfileOpenTarget) => {
+      const currentTabRoute = tabNavigationRef.isReady() ? tabNavigationRef.getCurrentRoute()?.name ?? null : null;
+      publicProfileReturnTabRef.current =
+        currentTabRoute && currentTabRoute !== MAIN_TAB_BY_KEY.profile ? currentTabRoute : null;
+
       const displayNameHint =
         String(target.displayNameHint || '').trim() || String(target.username || '').trim();
       const resolvedUserId = await resolvePublicProfileUserId({
@@ -1964,6 +1932,185 @@ export default function App() {
     [isTurkishUi, localizedUiCopy, loadPublicProfileFull, loadPublicProfileModal, resolvePublicProfileUserId]
   );
 
+  const loadProfileFollowList = useCallback(
+    async (mode: 'following' | 'followers'): Promise<ProfileFollowListState> => {
+      if (authState.status !== 'signed_in') {
+        return {
+          status: 'error',
+          message: isTurkishUi ? 'Liste icin once giris yap.' : 'Sign in to view this list.',
+          items: [],
+        };
+      }
+
+      if (!supabase) {
+        return {
+          status: 'error',
+          message: isTurkishUi ? 'Supabase baglantisi hazir degil.' : 'Supabase connection is not ready.',
+          items: [],
+        };
+      }
+
+      const sessionResult = await readSupabaseSessionSafe();
+      const viewerUserId = normalizeProfileSheetText(sessionResult.session?.user?.id, 120);
+      if (!viewerUserId) {
+        return {
+          status: 'error',
+          message: isTurkishUi ? 'Kullanici kimligi bulunamadi.' : 'User identity could not be resolved.',
+          items: [],
+        };
+      }
+
+      const targetColumn = mode === 'following' ? 'followed_user_id' : 'follower_user_id';
+      const filterColumn = mode === 'following' ? 'follower_user_id' : 'followed_user_id';
+      const relationResponse = await supabase
+        .from('user_follows')
+        .select(targetColumn)
+        .eq(filterColumn, viewerUserId);
+
+      if (relationResponse.error) {
+        return {
+          status: 'error',
+          message:
+            normalizeProfileSheetText(relationResponse.error.message, 220) ||
+            (isTurkishUi ? 'Takip listesi okunamadi.' : 'The follow list could not be read.'),
+          items: [],
+        };
+      }
+
+      const targetIds = Array.from(
+        new Set(
+          ((relationResponse.data || []) as Array<Record<string, unknown>>)
+            .map((row) => normalizeProfileSheetText(row[targetColumn], 120))
+            .filter(Boolean)
+        )
+      );
+
+      if (targetIds.length === 0) {
+        return {
+          status: 'ready',
+          message: '',
+          items: [],
+        };
+      }
+
+      const profileResponse = await supabase
+        .from('profiles_public')
+        .select('user_id, display_name, xp_state')
+        .in('user_id', targetIds);
+
+      if (profileResponse.error) {
+        return {
+          status: 'error',
+          message:
+            normalizeProfileSheetText(profileResponse.error.message, 220) ||
+            (isTurkishUi ? 'Profil listesi okunamadi.' : 'Profiles could not be read.'),
+          items: [],
+        };
+      }
+
+      const profileMap = new Map<
+        string,
+        {
+          display_name?: string | null;
+          xp_state?: Record<string, unknown> | null;
+        }
+      >();
+
+      ((profileResponse.data || []) as Array<{
+        user_id?: string | null;
+        display_name?: string | null;
+        xp_state?: Record<string, unknown> | null;
+      }>).forEach((row) => {
+        const userId = normalizeProfileSheetText(row.user_id, 120);
+        if (!userId) return;
+        profileMap.set(userId, row);
+      });
+
+      const items = targetIds.map((targetUserId) => {
+        const profileRow = profileMap.get(targetUserId);
+        const xpState =
+          profileRow?.xp_state && typeof profileRow.xp_state === 'object' && !Array.isArray(profileRow.xp_state)
+            ? profileRow.xp_state
+            : null;
+        const displayName =
+          normalizeProfileSheetText(profileRow?.display_name, 80) ||
+          normalizeProfileSheetText(xpState?.fullName, 80) ||
+          normalizeProfileSheetText(xpState?.username, 80).replace(/^@+/, '') ||
+          (isTurkishUi ? 'Bilinmeyen kullanici' : 'Unknown user');
+        const username = normalizeProfileSheetText(xpState?.username, 80).replace(/^@+/, '');
+        const totalXp = Math.max(
+          0,
+          Math.floor(Number(xpState?.totalXP ?? xpState?.xp ?? 0) || 0)
+        );
+        const leagueName = totalXp > 0 ? resolveMobileLeagueInfoFromXp(totalXp).leagueInfo.name : '';
+        const secondary = [username ? `@${username}` : '', leagueName].filter(Boolean).join(' | ');
+        return {
+          userId: targetUserId,
+          displayName,
+          avatarUrl: resolveMobileAvatarFromXpState(xpState),
+          secondary,
+        };
+      });
+
+      return {
+        status: 'ready',
+        message: '',
+        items,
+      };
+    },
+    [authState.status, isTurkishUi]
+  );
+
+  const handleCloseProfileStatsSheet = useCallback(() => {
+    setProfileStatsSheetState({
+      visible: false,
+      section: null,
+    });
+  }, []);
+
+  const handleOpenProfileCommentsSheet = useCallback(() => {
+    setProfileStatsSheetState({
+      visible: true,
+      section: 'comments',
+    });
+  }, []);
+
+  const handleOpenProfileMarksSheet = useCallback(() => {
+    setProfileStatsSheetState({
+      visible: true,
+      section: 'marks',
+    });
+  }, []);
+
+  const handleOpenProfileFollowSheet = useCallback(
+    async (mode: 'following' | 'followers') => {
+      setProfileStatsSheetState({
+        visible: true,
+        section: mode,
+      });
+      setProfileFollowListState({
+        status: 'loading',
+        message: isTurkishUi ? 'Liste yukleniyor...' : 'Loading list...',
+        items: [],
+      });
+      const result = await loadProfileFollowList(mode);
+      setProfileFollowListState(result);
+    },
+    [isTurkishUi, loadProfileFollowList]
+  );
+
+  const handleOpenProfileFollowUser = useCallback(
+    async (userId: string, displayName: string) => {
+      handleCloseProfileStatsSheet();
+      await openPublicProfileInApp({
+        userId,
+        displayNameHint: displayName,
+        origin: 'manual',
+      });
+    },
+    [handleCloseProfileStatsSheet, openPublicProfileInApp]
+  );
+
   const refreshArenaLeaderboard = useCallback(async () => {
     setArenaState((prev) => ({
       ...prev,
@@ -1977,6 +2124,9 @@ export default function App() {
       status: result.ok ? 'ready' : 'error',
       source: result.source,
       message: result.message,
+      scope: result.scope,
+      cohortLeagueKey: result.cohortLeagueKey,
+      weekKey: result.weekKey,
       entries: result.entries,
     });
 
@@ -2036,12 +2186,22 @@ export default function App() {
     [isTurkishUi]
   );
 
-  const refreshDailyCommentFeed = useCallback(async () => {
+  const refreshDailyCommentFeed = useCallback(async (scope: CommentFeedScope) => {
+    const requestId = dailyCommentFeedRequestIdRef.current + 1;
+    dailyCommentFeedRequestIdRef.current = requestId;
+    const isTodayScope = scope === 'today';
+
     setDailyCommentFeedState((prev) => ({
       ...prev,
       status: 'loading',
-      message: isTurkishUi ? 'Gunluk yorum akisi yukleniyor...' : 'Loading daily comment feed...',
-      scope: 'today',
+      message: isTurkishUi
+        ? isTodayScope
+          ? 'Gunluk yorum akisi yukleniyor...'
+          : 'Tum yorum akisi yukleniyor...'
+        : isTodayScope
+          ? 'Loading daily comment feed...'
+          : 'Loading full comment feed...',
+      scope,
       sort: 'latest',
       query: '',
       page: 1,
@@ -2050,18 +2210,22 @@ export default function App() {
     }));
 
     const result = await fetchMobileCommentFeed({
-      scope: 'today',
+      scope,
       sort: 'latest',
       query: '',
       page: 1,
       pageSize: 24,
     });
 
+    if (dailyCommentFeedRequestIdRef.current !== requestId) {
+      return;
+    }
+
     setDailyCommentFeedState({
       status: result.ok ? 'ready' : 'error',
       message: result.message,
       source: result.source,
-      scope: 'today',
+      scope,
       sort: 'latest',
       query: '',
       page: result.page,
@@ -2074,6 +2238,7 @@ export default function App() {
     void trackMobileEvent('page_view', {
       reason: result.ok ? 'mobile_daily_comment_feed_loaded' : 'mobile_daily_comment_feed_failed',
       source: result.source,
+      scope,
       items: result.items.length,
     });
   }, [isTurkishUi]);
@@ -2132,7 +2297,7 @@ export default function App() {
     }) => {
       const copy = buildLeagueNotificationCopy(settingsLanguage, input.leagueName || input.leagueKey);
       const deepLink = buildMobileDeepLinkFromRouteIntent(
-        { target: 'daily' },
+        { target: 'profile' },
         { base: MOBILE_DEEP_LINK_BASE }
       );
       const snapshot: PushNotificationSnapshot = {
@@ -2269,12 +2434,14 @@ export default function App() {
     async (item: PushInboxItem) => {
       if (!item.deepLink) return;
       handleIncomingUrl(item.deepLink);
-      const marked = await markPushInboxItemOpened(item.id);
+      const removed = await removePushInboxItems([item.id]);
       setPushInboxState((prev) => ({
         ...prev,
         status: 'ready',
-        message: isTurkishUi ? 'Inbox deep-link acildi.' : 'Inbox deep link opened.',
-        items: marked.items,
+        message: isTurkishUi
+          ? 'Bildirim acildi ve listeden kaldirildi.'
+          : 'Notification opened and removed from the list.',
+        items: removed.items,
       }));
       void trackMobileEvent('page_view', {
         reason: 'mobile_push_inbox_deeplink_opened',
@@ -2285,14 +2452,14 @@ export default function App() {
   );
 
   const handlePressPushInboxItem = useCallback(async (item: PushInboxItem) => {
-    const marked = await markPushInboxItemOpened(item.id);
+    const removed = await removePushInboxItems([item.id]);
     setPushInboxState((prev) => ({
       ...prev,
       status: 'ready',
-      message: marked.updated
-        ? (isTurkishUi ? 'Bildirim okundu olarak isaretlendi.' : 'Notification marked as read.')
-        : (isTurkishUi ? 'Bildirim zaten okunmustu.' : 'Notification was already read.'),
-      items: marked.items,
+      message: removed.removedCount > 0
+        ? (isTurkishUi ? 'Bildirim goruldu ve listeden kaldirildi.' : 'Notification viewed and removed from the list.')
+        : (isTurkishUi ? 'Bildirim zaten kapatilmisti.' : 'Notification was already dismissed.'),
+      items: removed.items,
     }));
   }, [isTurkishUi]);
 
@@ -2667,11 +2834,12 @@ export default function App() {
         return;
       }
 
-      setAuthState({
-        status: 'signed_in',
-        message: isTurkishUi ? 'Giris basarili.' : 'Sign-in successful.',
-        email: resolveSupabaseUserAuthLabel(data.user || data.session?.user || null),
-      });
+      setAuthState(
+        buildSignedInAuthState(
+          data.user || data.session?.user || null,
+          isTurkishUi ? 'Giris basarili.' : 'Sign-in successful.'
+        )
+      );
       setAuthEntryStage('form');
       setAuthFullName('');
       setAuthUsername('');
@@ -2779,7 +2947,6 @@ export default function App() {
         return;
       }
 
-      const authLabel = resolveSupabaseUserAuthLabel(data.user || data.session?.user || null);
       const hasLiveSession = Boolean(data.session?.access_token);
 
       setSettingsIdentityDraft((prev) => ({
@@ -2797,20 +2964,19 @@ export default function App() {
 
       setAuthState(
         hasLiveSession
-          ? {
-              status: 'signed_in',
-              message: authRememberMe
+          ? buildSignedInAuthState(
+              data.user || data.session?.user || null,
+              authRememberMe
                 ? (isTurkishUi ? 'Kayit tamamlandi. Oturum acildi.' : 'Registration complete. Session opened.')
                 : (isTurkishUi
                     ? 'Kayit tamamlandi. Oturum bu acilis icin aktif; sonraki acilista tekrar giris istenebilir.'
-                    : 'Registration complete. This session is active for now; you may need to sign in again next time.'),
-              email: authLabel,
-            }
+                    : 'Registration complete. This session is active for now; you may need to sign in again next time.')
+            )
           : {
               status: 'signed_out',
               message: isTurkishUi
-                ? 'Kayit tamamlandi. E-posta onayi sonrasi giris yap.'
-                : 'Registration complete. Sign in after email confirmation.',
+                ? 'Kayit tamamlandi. Oturum acilmadi; proje ayarinda e-posta onayi acik olabilir.'
+                : 'Registration complete. The session did not open; email confirmation may still be enabled for this project.',
             }
       );
       setAuthEntryStage('form');
@@ -3091,18 +3257,18 @@ export default function App() {
       }
 
       const sessionResult = await readSupabaseSessionSafe();
-      const email = resolveSupabaseUserAuthLabel(sessionResult.session?.user || null);
+      const sessionUser = sessionResult.session?.user || null;
+      const hasLiveSession = Boolean(sessionResult.session?.access_token);
       setAuthPassword('');
       setAuthConfirmPassword('');
       setAuthFlowMode('login');
       setAuthEntryStage('form');
       setAuthState(
-        email
-          ? {
-              status: 'signed_in',
-              message: isTurkishUi ? 'Sifre guncellendi. Yeni sifren artik aktif.' : 'Password updated. Your new password is now active.',
-              email,
-            }
+        hasLiveSession
+          ? buildSignedInAuthState(
+              sessionUser,
+              isTurkishUi ? 'Sifre guncellendi. Yeni sifren artik aktif.' : 'Password updated. Your new password is now active.'
+            )
           : {
               status: 'signed_out',
               message: isTurkishUi ? 'Sifre guncellendi. Yeni sifrenle tekrar giris yapabilirsin.' : 'Password updated. You can sign in again with your new password.',
@@ -3165,6 +3331,10 @@ export default function App() {
   useEffect(() => {
     if (settingsVisible) return;
     setAccountDeletionState({
+      status: 'idle',
+      message: '',
+    });
+    setEmailVerificationState({
       status: 'idle',
       message: '',
     });
@@ -3278,8 +3448,47 @@ export default function App() {
       lastObservedLeagueIndexRef.current = currentIndex;
       lastObservedStreakRef.current = profileState.streak;
       lastObservedStreakDateRef.current = streakDateKey;
+      lastObservedTotalXpRef.current = profileState.totalXp;
+      lastObservedMarksRef.current = [...(profileState.marks || [])];
+      const tierInfo = getMobileLeagueTierInfo(profileState.totalXp);
+      lastObservedTierRef.current = { leagueIndex: currentIndex, tier: tierInfo.tier };
       return;
     }
+
+    // Tier advancement: same league, higher tier
+    const tierInfo = getMobileLeagueTierInfo(profileState.totalXp);
+    const prevTier = lastObservedTierRef.current;
+    if (
+      prevTier !== null &&
+      currentIndex === prevTier.leagueIndex &&
+      tierInfo.tier > prevTier.tier
+    ) {
+      setTierAdvancementEvent({
+        leagueKey: profileState.leagueKey,
+        tier: tierInfo.tier as 1 | 2 | 3,
+        tierLabel: tierInfo.tierLabel,
+        color: profileState.leagueColor,
+      });
+    }
+    lastObservedTierRef.current = { leagueIndex: currentIndex, tier: tierInfo.tier };
+
+    // XP gain toast
+    const prevXp = lastObservedTotalXpRef.current;
+    if (prevXp !== null && profileState.totalXp > prevXp) {
+      setXpGainDelta(profileState.totalXp - prevXp);
+    }
+    lastObservedTotalXpRef.current = profileState.totalXp;
+
+    // New mark detection
+    const prevMarks = lastObservedMarksRef.current;
+    if (prevMarks !== null) {
+      const prevSet = new Set(prevMarks);
+      const newMarks = (profileState.marks || []).filter((id) => !prevSet.has(id));
+      if (newMarks.length > 0) {
+        setMarkUnlockQueue((prev) => [...prev, ...newMarks]);
+      }
+    }
+    lastObservedMarksRef.current = [...(profileState.marks || [])];
 
     // Streak celebration: fires when today's ritual date becomes set during this session
     const streakAdvanced =
@@ -3337,8 +3546,8 @@ export default function App() {
   ]);
 
   useEffect(() => {
-    void refreshDailyCommentFeed();
-  }, [authState.status, refreshDailyCommentFeed]);
+    void refreshDailyCommentFeed(dailyCommentFeedScope);
+  }, [authState.status, dailyCommentFeedScope, refreshDailyCommentFeed]);
 
   useEffect(() => {
     void refreshAuthState();
@@ -3388,9 +3597,10 @@ export default function App() {
         return;
       }
 
-      const email = supabase
-        ? resolveSupabaseUserAuthLabel((await readSupabaseSessionSafe()).session?.user || null)
-        : '';
+      const sessionResult = supabase ? await readSupabaseSessionSafe() : null;
+      const sessionUser = sessionResult?.session?.user || null;
+      const hasLiveSession = Boolean(sessionResult?.session?.access_token);
+      const email = hasLiveSession ? resolveSupabaseUserAuthLabel(sessionUser) : '';
 
       if (callbackResult.recoveryMode) {
         setAuthEntryStage('form');
@@ -3409,12 +3619,8 @@ export default function App() {
       }
 
       setAuthState(
-        email
-          ? {
-              status: 'signed_in',
-              message: callbackResult.message,
-              email,
-            }
+        hasLiveSession
+          ? buildSignedInAuthState(sessionUser, callbackResult.message)
           : {
               status: 'signed_out',
               message: callbackResult.message,
@@ -3479,8 +3685,14 @@ export default function App() {
     lastObservedStreakRef.current = null;
     lastObservedStreakDateRef.current = null;
     streakObservedInitRef.current = false;
+    lastObservedTierRef.current = null;
+    lastObservedTotalXpRef.current = null;
+    lastObservedMarksRef.current = null;
     setLeaguePromotionEvent(null);
     setStreakCelebrationEvent(null);
+    setTierAdvancementEvent(null);
+    setXpGainDelta(null);
+    setMarkUnlockQueue([]);
 
     setProfileState({
       status: 'idle',
@@ -3742,11 +3954,11 @@ export default function App() {
     if (dailyPullRefreshing) return;
     setDailyPullRefreshing(true);
     try {
-      await Promise.all([loadDailyMovies(), refreshDailyCommentFeed()]);
+      await Promise.all([loadDailyMovies(), refreshDailyCommentFeed(dailyCommentFeedScope)]);
     } finally {
       setDailyPullRefreshing(false);
     }
-  }, [dailyPullRefreshing, loadDailyMovies, refreshDailyCommentFeed]);
+  }, [dailyCommentFeedScope, dailyPullRefreshing, loadDailyMovies, refreshDailyCommentFeed]);
 
   const handlePullRefreshExplore = useCallback(async () => {
     if (explorePullRefreshing) return;
@@ -3763,10 +3975,13 @@ export default function App() {
     setInboxPullRefreshing(true);
     try {
       await refreshPushInbox();
+      if (authState.status === 'signed_in') {
+        await syncNotificationEventInbox('poll');
+      }
     } finally {
       setInboxPullRefreshing(false);
     }
-  }, [inboxPullRefreshing, refreshPushInbox]);
+  }, [authState.status, inboxPullRefreshing, refreshPushInbox, syncNotificationEventInbox]);
 
 
   const handleSubmitRitualDraft = useCallback(async () => {
@@ -3795,6 +4010,13 @@ export default function App() {
       });
       return;
     }
+    if (ritualDraftRating <= 0) {
+      setRitualSubmitState({
+        status: 'error',
+        message: 'Puan secmeden yorum gonderemezsin.',
+      });
+      return;
+    }
 
     setRitualSubmitState({
       status: 'submitting',
@@ -3809,6 +4031,8 @@ export default function App() {
     const result = await submitRitualDraftWithQueue({
       movieTitle: selectedDailyMovie.title,
       text,
+      genre: selectedDailyMovie.genre,
+      rating: ritualDraftRating,
       posterPath: selectedDailyMovie.posterPath,
       league: draftLeagueKey,
       year:
@@ -3835,6 +4059,7 @@ export default function App() {
     }
 
     setRitualDraftText('');
+    setRitualDraftRating(0);
     setRitualQueueState((prev) => ({
       ...prev,
       pendingCount: result.pendingCount,
@@ -3853,7 +4078,7 @@ export default function App() {
       setRitualComposerVisible(false);
       void refreshProfileStats();
       void refreshProfileActivity();
-      void refreshDailyCommentFeed();
+      void refreshDailyCommentFeed(dailyCommentFeedScope);
       return;
     }
 
@@ -3869,12 +4094,14 @@ export default function App() {
     setRitualComposerVisible(false);
   }, [
     authState.status,
+    dailyCommentFeedScope,
     openAuthModal,
     profileState,
     refreshDailyCommentFeed,
     refreshProfileStats,
     refreshProfileActivity,
     ritualDraftText,
+    ritualDraftRating,
     selectedDailyMovie,
   ]);
 
@@ -3904,11 +4131,11 @@ export default function App() {
     if (result.synced > 0) {
       void refreshProfileStats();
       void refreshProfileActivity();
-      void refreshDailyCommentFeed();
+      void refreshDailyCommentFeed(dailyCommentFeedScope);
     }
 
     await refreshRitualQueue();
-  }, [refreshDailyCommentFeed, refreshProfileActivity, refreshProfileStats, refreshRitualQueue]);
+  }, [dailyCommentFeedScope, refreshDailyCommentFeed, refreshProfileActivity, refreshProfileStats, refreshRitualQueue]);
 
   useEffect(() => {
     if (dailyState.status === 'idle') {
@@ -3984,7 +4211,7 @@ export default function App() {
   const _sharePlatform = activeIntent.target === 'share' ? activeIntent.platform : undefined;
   const shareGoal = activeIntent.target === 'share' ? activeIntent.goal : undefined;
   const canSubmitRitualDraft = Boolean(
-    isSignedIn && selectedDailyMovie && ritualDraftText.trim().length > 0
+    isSignedIn && selectedDailyMovie && ritualDraftText.trim().length > 0 && ritualDraftRating > 0
   );
   const isShareRouteActive = screenPlan.screen === 'share_hub';
   const isDevSurfaceEnabled = INTERNAL_OPS_VISIBLE;
@@ -4025,8 +4252,63 @@ export default function App() {
   ).length;
   const pendingQueueCount = ritualQueueState.pendingCount;
   const streakSummary = profileState.status === 'success' ? String(profileState.streak) : '--';
-  const ritualsCountSummary =
-    profileState.status === 'success' ? String(profileState.ritualsCount) : '--';
+  const arenaIdentityLabel =
+    profileState.status === 'success'
+      ? String(profileState.displayName || '').trim()
+      : authState.status === 'signed_in'
+        ? String(authState.email.split('@')[0] || '').trim()
+        : '';
+  const arenaCurrentEntry =
+    arenaIdentityLabel
+      ? arenaState.entries.find(
+          (entry) =>
+            String(entry.displayName || '').trim().toLowerCase() === arenaIdentityLabel.toLowerCase()
+        ) || null
+      : null;
+  const arenaScoreSummary =
+    profileState.status === 'success' ? profileState.weeklyArenaScore.toLocaleString() : '--';
+  const arenaActivitySummary =
+    profileState.status === 'success' ? String(profileState.weeklyArenaActivity) : '--';
+  const arenaRankSummary = arenaCurrentEntry ? `#${arenaCurrentEntry.rank}` : '--';
+  const arenaAboveEntry =
+    arenaCurrentEntry && arenaCurrentEntry.rank > 1
+      ? arenaState.entries[arenaCurrentEntry.rank - 2] || null
+      : null;
+  const arenaGapValue =
+    arenaAboveEntry && arenaCurrentEntry
+      ? Math.max(0, arenaAboveEntry.weeklyArenaScore - arenaCurrentEntry.weeklyArenaScore)
+      : 0;
+  const arenaGapSummary =
+    arenaCurrentEntry && arenaCurrentEntry.rank === 1
+      ? isTurkishUi
+        ? 'Lider'
+        : 'Leader'
+      : arenaGapValue > 0
+        ? `-${arenaGapValue}`
+        : '--';
+  const arenaSeasonSummary = arenaState.weekKey || '--';
+  const arenaGroupSummary =
+    arenaState.scope === 'league' && arenaState.cohortLeagueKey
+      ? arenaState.cohortLeagueKey
+      : isTurkishUi
+        ? 'Genel'
+        : 'Global';
+  const arenaLeagueSummary =
+    profileState.status === 'success'
+      ? `${profileState.leagueName}${isTurkishUi ? ' ligi' : ' league'}`
+      : isTurkishUi
+        ? 'Lig bekleniyor'
+        : 'League pending';
+  const arenaSourceSummary =
+    arenaCurrentEntry && arenaCurrentEntry.rank === 1
+      ? isTurkishUi
+        ? 'Bu tabloda liderlik sende.'
+        : 'You are leading this board.'
+      : arenaGapValue > 0 && arenaAboveEntry
+        ? isTurkishUi
+          ? `${arenaGapValue.toLocaleString()} puan sonra ${arenaAboveEntry.displayName} ustune cikarsin.`
+          : `${arenaGapValue.toLocaleString()} points to pass ${arenaAboveEntry.displayName}.`
+        : arenaState.message;
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _commentFeedSummary =
     commentFeedState.status === 'ready'
@@ -4046,6 +4328,34 @@ export default function App() {
     ),
     [tabLabels, inboxTabBadge, isDawnTheme]
   );
+  const dailyHeroFirstName =
+    String(
+      settingsIdentityDraft.fullName ||
+        (profileState.status === 'success' ? profileState.displayName : '') ||
+        (authState.status === 'signed_in' ? authState.email.split('@')[0] : '')
+    )
+      .trim()
+      .split(/\s+/)[0] || null;
+  const dailyHeroGreeting =
+    dailyState.status === 'success'
+      ? buildDailyGreetingCard({
+          language: settingsLanguage,
+          hour: new Date().getHours(),
+          completed: selectedDailyMovieId != null,
+          streakValue: profileState.status === 'success' ? profileState.streak : 0,
+          firstName: dailyHeroFirstName,
+          selectedMovieTitle:
+            dailyState.movies.find((movie) => movie.id === selectedDailyMovieId)?.title?.trim() || null,
+          firstMovieTitle: dailyState.movies[0]?.title?.trim() || null,
+          dateKey: dailyState.date || null,
+        })
+      : null;
+  const dailyHeroGreetingAccent =
+    dailyHeroGreeting?.tone === 'sage'
+      ? '#8A9A5B'
+      : dailyHeroGreeting?.tone === 'clay'
+        ? '#A57164'
+        : '#B68B4C';
   const mobileDailySectionCopy = useMemo(
     () =>
       ({
@@ -4053,7 +4363,10 @@ export default function App() {
           dailyTitle: 'Gunluk Filmler',
           dailyMeta: 'Secimler',
           commentsTitle: 'Yorumlar',
-          commentsMeta: 'Gunluk akis',
+          commentsMetaToday: 'Gunluk akis',
+          commentsMetaAll: 'Tum yorumlar',
+          commentsTodayLabel: 'Bugun',
+          commentsAllLabel: 'Tum Yorumlar',
           routesTitle: 'Kesif Rotalari',
           routesCount: (count: number) => `${count} rota`,
         },
@@ -4061,7 +4374,10 @@ export default function App() {
           dailyTitle: 'Daily Films',
           dailyMeta: 'Picks',
           commentsTitle: 'Comments',
-          commentsMeta: 'Daily feed',
+          commentsMetaToday: 'Daily feed',
+          commentsMetaAll: 'All comments',
+          commentsTodayLabel: 'Today',
+          commentsAllLabel: 'All Comments',
           routesTitle: 'Discovery Routes',
           routesCount: (count: number) => `${count} routes`,
         },
@@ -4069,7 +4385,10 @@ export default function App() {
           dailyTitle: 'Peliculas del Dia',
           dailyMeta: 'Selecciones',
           commentsTitle: 'Comentarios',
-          commentsMeta: 'Flujo diario',
+          commentsMetaToday: 'Flujo diario',
+          commentsMetaAll: 'Todos los comentarios',
+          commentsTodayLabel: 'Hoy',
+          commentsAllLabel: 'Todos',
           routesTitle: 'Rutas de Descubrimiento',
           routesCount: (count: number) => `${count} rutas`,
         },
@@ -4077,7 +4396,10 @@ export default function App() {
           dailyTitle: 'Films du Jour',
           dailyMeta: 'Selections',
           commentsTitle: 'Commentaires',
-          commentsMeta: 'Flux quotidien',
+          commentsMetaToday: 'Flux quotidien',
+          commentsMetaAll: 'Tous les commentaires',
+          commentsTodayLabel: "Aujourd hui",
+          commentsAllLabel: 'Tous',
           routesTitle: 'Routes de Decouverte',
           routesCount: (count: number) => `${count} routes`,
         },
@@ -4085,7 +4407,10 @@ export default function App() {
         dailyTitle: 'Daily Films',
         dailyMeta: 'Picks',
         commentsTitle: 'Comments',
-        commentsMeta: 'Daily feed',
+        commentsMetaToday: 'Daily feed',
+        commentsMetaAll: 'All comments',
+        commentsTodayLabel: 'Today',
+        commentsAllLabel: 'All Comments',
         routesTitle: 'Discovery Routes',
         routesCount: (count: number) => `${count} routes`,
       },
@@ -4095,54 +4420,29 @@ export default function App() {
     () =>
       ({
         tr: {
-          meta: 'Haftalik siralama',
+          meta: 'Siralama',
           leaguesTitle: 'Ligler',
           leaguesMeta: `Her ${LEVEL_THRESHOLD} XP`,
         },
         en: {
-          meta: 'Weekly leaderboard',
+          meta: 'Ranking',
           leaguesTitle: 'Leagues',
           leaguesMeta: `Every ${LEVEL_THRESHOLD} XP`,
         },
         es: {
-          meta: 'Clasificacion semanal',
+          meta: 'Clasificacion',
           leaguesTitle: 'Ligas',
           leaguesMeta: `Cada ${LEVEL_THRESHOLD} XP`,
         },
         fr: {
-          meta: 'Classement hebdomadaire',
+          meta: 'Classement',
           leaguesTitle: 'Ligues',
           leaguesMeta: `Chaque ${LEVEL_THRESHOLD} XP`,
         },
       })[settingsLanguage] || {
-        meta: 'Weekly leaderboard',
+        meta: 'Ranking',
         leaguesTitle: 'Leagues',
         leaguesMeta: `Every ${LEVEL_THRESHOLD} XP`,
-      },
-    [settingsLanguage]
-  );
-  const mobileMarksSectionCopy = useMemo(
-    () =>
-      ({
-        tr: {
-          title: 'Marklar',
-          meta: 'Koleksiyon',
-        },
-        en: {
-          title: 'Marks',
-          meta: 'Collection',
-        },
-        es: {
-          title: 'Marcas',
-          meta: 'Coleccion',
-        },
-        fr: {
-          title: 'Marques',
-          meta: 'Collection',
-        },
-      })[settingsLanguage] || {
-        title: 'Marks',
-        meta: 'Collection',
       },
     [settingsLanguage]
   );
@@ -4293,11 +4593,68 @@ export default function App() {
   ).trim();
   const publicProfileAvatarUrl = String(publicSnapshot?.avatarUrl || '').trim();
   const publicProfileVisibility = publicSnapshot?.visibility || DEFAULT_SETTINGS_PRIVACY;
+  const publicProfileResolvedMarks = useMemo(() => {
+    if (!publicSnapshot) {
+      return {
+        marks: [],
+        featuredMarks: [],
+      };
+    }
+
+    if (publicSnapshot.marks.length > 0 || publicProfileFullState.items.length === 0) {
+      return {
+        marks: publicSnapshot.marks,
+        featuredMarks: publicSnapshot.featuredMarks,
+      };
+    }
+
+    const dailyRituals = publicProfileFullState.items.map((item) => ({
+      date: String(item.dayKey || '').trim() || null,
+      movieId: item.movieId,
+      movieTitle: item.movieTitle,
+      text: item.text,
+      genre: item.genre,
+      year: item.year,
+      created_at: item.rawTimestamp,
+    }));
+
+    const activeDays = Array.from(
+      new Set(
+        publicProfileFullState.items
+          .map((item) => String(item.dayKey || '').trim())
+          .filter(Boolean)
+      )
+    );
+
+    const uniqueGenres = Array.from(
+      new Set(
+        publicProfileFullState.items
+          .map((item) => String(item.genre || '').trim())
+          .filter(Boolean)
+      )
+    );
+
+    return resolveStoredProfileMarks({
+      marks: publicSnapshot.marks,
+      featuredMarks: publicSnapshot.featuredMarks,
+      dailyRituals,
+      activeDays,
+      uniqueGenres,
+      streak: publicSnapshot.streak,
+      following:
+        publicSnapshot.followingCount > 0
+          ? Array.from({ length: publicSnapshot.followingCount }, (_, index) => `follow-${index + 1}`)
+          : [],
+    });
+  }, [publicProfileFullState.items, publicSnapshot]);
+  const publicProfileCommentCount = publicSnapshot
+    ? Math.max(publicSnapshot.ritualsCount, publicProfileFullState.items.length)
+    : 0;
   const publicProfileStats = publicSnapshot
     ? {
         streak: publicSnapshot.streak,
-        rituals: publicSnapshot.ritualsCount,
-        marks: publicSnapshot.marks.length,
+        rituals: publicProfileCommentCount,
+        marks: publicProfileResolvedMarks.marks.length,
         followers: publicSnapshot.followersCount,
         following: publicSnapshot.followingCount,
         days: publicSnapshot.daysPresent,
@@ -4340,12 +4697,12 @@ export default function App() {
         nextLeagueKey: null,
         nextLeagueName: null,
         streak: publicSnapshot.streak,
-        ritualsCount: publicSnapshot.ritualsCount,
+        ritualsCount: publicProfileCommentCount,
         daysPresent: publicSnapshot.daysPresent,
         followersCount: publicSnapshot.followersCount,
         followingCount: publicSnapshot.followingCount,
-        marks: publicSnapshot.marks,
-        featuredMarks: publicSnapshot.featuredMarks,
+        marks: publicProfileResolvedMarks.marks,
+        featuredMarks: publicProfileResolvedMarks.featuredMarks,
         lastRitualDate: publicSnapshot.lastRitualDate,
         source: publicSnapshot.source,
       }
@@ -4422,6 +4779,8 @@ export default function App() {
   const letterboxdSummary = formatMobileLetterboxdSummary(letterboxdImportState.snapshot);
   const activeAccountLabel = profileDisplayName || localizedUiCopy.observerLabel;
   const activeEmailLabel = authState.status === 'signed_in' ? authState.email : '-';
+  const isEmailVerified = authState.status === 'signed_in' ? authState.emailVerified : false;
+  const emailConfirmedAt = authState.status === 'signed_in' ? authState.emailConfirmedAt : null;
   const shareHandle = String(
     profileUsername || (authState.status === 'signed_in' ? authState.email.split('@')[0] : localizedUiCopy.observerHandle)
   )
@@ -4493,6 +4852,14 @@ export default function App() {
     setCommentFeedState((prev) => ({
       ...prev,
       sort,
+    }));
+  }, []);
+
+  const handleDailyCommentFeedScopeChange = useCallback((scope: CommentFeedScope) => {
+    setDailyCommentFeedScope(scope);
+    setDailyCommentFeedState((prev) => ({
+      ...prev,
+      scope,
     }));
   }, []);
 
@@ -5073,83 +5440,103 @@ export default function App() {
     [authState.status]
   );
 
-  const handlePickAvatar = useCallback(async () => {
-    if (authState.status !== 'signed_in') {
-      setSettingsSaveState({
+  const handleSendVerificationEmail = useCallback(async () => {
+    if (!isSupabaseConfigured || !supabase) {
+      setEmailVerificationState({
         status: 'error',
-        message: 'Avatar icin once giris yap.',
+        message: isTurkishUi ? 'Supabase ayarlari eksik.' : 'Supabase settings are missing.',
       });
       return;
     }
 
-    setIsPickingAvatar(true);
-    try {
-      const asset = await pickAvatarAsset();
-      if (!asset?.uri) {
-        setSettingsSaveState((prev) =>
-          prev.status === 'idle' && !prev.message ? prev : { status: 'idle', message: '' }
-        );
-        return;
-      }
-
-      const assetSize = Number(
-        'fileSize' in asset ? asset.fileSize || 0 : 'size' in asset ? asset.size || 0 : 0
-      );
-      if (Number.isFinite(assetSize) && assetSize > MAX_MOBILE_AVATAR_BYTES) {
-        setSettingsSaveState({
-          status: 'error',
-          message: 'Avatar 768 KB altinda olmali.',
-        });
-        return;
-      }
-
-      const mimeType = resolveAvatarMimeType(asset);
-      if (!mimeType.startsWith('image/')) {
-        setSettingsSaveState({
-          status: 'error',
-          message: 'Sadece gorsel sec.',
-        });
-        return;
-      }
-
-      const dataUrl = await readPickedAssetAsDataUrl(
-        asset,
-        String(asset.base64 || '').trim() ? 'image/jpeg' : mimeType
-      );
-      const normalizedDataUrl = String(dataUrl || '').trim();
-      if (!normalizedDataUrl) {
-        setSettingsSaveState({
-          status: 'error',
-          message: 'Avatar okunamadi.',
-        });
-        return;
-      }
-
-      setSettingsIdentityDraft((prev) => ({
-        ...prev,
-        avatarUrl: normalizedDataUrl,
-      }));
-      setSettingsSaveState((prev) =>
-        prev.status === 'idle' && !prev.message ? prev : { status: 'idle', message: '' }
-      );
-    } catch (error) {
-      setSettingsSaveState({
+    if (authState.status !== 'signed_in') {
+      setEmailVerificationState({
         status: 'error',
-        message: error instanceof Error ? error.message : 'Avatar secilemedi.',
+        message: isTurkishUi ? 'Bu islem icin once giris yap.' : 'Sign in first for this action.',
       });
-    } finally {
-      setIsPickingAvatar(false);
+      return;
     }
-  }, [authState.status]);
 
-  const handleClearAvatar = useCallback(() => {
-    setSettingsIdentityDraft((prev) => ({
-      ...prev,
-      avatarUrl: '',
-    }));
-    setSettingsSaveState((prev) =>
-      prev.status === 'idle' && !prev.message ? prev : { status: 'idle', message: '' }
-    );
+    if (authState.emailVerified) {
+      setEmailVerificationState({
+        status: 'success',
+        message: isTurkishUi
+          ? 'Bu e-posta zaten dogrulanmis gorunuyor.'
+          : 'This email already appears to be verified.',
+      });
+      return;
+    }
+
+    const email = String(authState.email || '').trim().toLowerCase();
+    if (!email || !email.includes('@') || email.endsWith('@private.local') || email.endsWith('@local.user')) {
+      setEmailVerificationState({
+        status: 'error',
+        message: isTurkishUi
+          ? 'Dogrulama icin gecerli bir e-posta bulunamadi.'
+          : 'No valid email was found for verification.',
+      });
+      return;
+    }
+
+    setEmailVerificationState({
+      status: 'saving',
+      message: '',
+    });
+
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+        options: {
+          emailRedirectTo: MOBILE_AUTH_CALLBACK_URL,
+        },
+      });
+
+      if (error) {
+        setEmailVerificationState({
+          status: 'error',
+          message:
+            error.message ||
+            (isTurkishUi ? 'Dogrulama maili gonderilemedi.' : 'Verification email could not be sent.'),
+        });
+        void trackMobileEvent('auth_failure', {
+          method: 'email_verification_resend',
+          reason: error.message || 'email_verification_resend_failed',
+        });
+        return;
+      }
+
+      setEmailVerificationState({
+        status: 'success',
+        message: isTurkishUi
+          ? 'Dogrulama maili gonderildi. Gelen kutunu kontrol et.'
+          : 'Verification email sent. Check your inbox.',
+      });
+      void trackMobileEvent('email_verification_requested', {
+        method: 'email',
+        redirectTo: MOBILE_AUTH_CALLBACK_URL,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : isTurkishUi
+            ? 'Dogrulama maili gonderilemedi.'
+            : 'Verification email could not be sent.';
+      setEmailVerificationState({
+        status: 'error',
+        message,
+      });
+      void trackMobileEvent('auth_failure', {
+        method: 'email_verification_resend',
+        reason: message,
+      });
+    }
+  }, [authState, isTurkishUi]);
+
+  const handleSelectPresetAvatar = useCallback((avatarUrl: string) => {
+    const normalized = normalizeMobileAvatarUrl(avatarUrl);
+    setSettingsIdentityDraft((prev) => ({ ...prev, avatarUrl: normalized }));
   }, []);
 
   const handleCopyInviteLink = useCallback(async () => {
@@ -5309,6 +5696,9 @@ export default function App() {
   ]);
 
   const handleClosePublicProfileFull = useCallback(() => {
+    const returnTabRoute = publicProfileReturnTabRef.current;
+    const source = publicProfileTarget?.source || publicProfileModalState.source;
+
     setPublicProfileFullState((prev) => ({
       ...prev,
       visible: false,
@@ -5318,7 +5708,19 @@ export default function App() {
       visible: false,
     }));
     setPublicProfileTarget(null);
-  }, []);
+    publicProfileReturnTabRef.current = null;
+
+    if (source === 'deeplink') {
+      clearIncomingIntent();
+    }
+
+    if (returnTabRoute && tabNavigationRef.isReady()) {
+      const currentRouteName = tabNavigationRef.getCurrentRoute()?.name;
+      if (currentRouteName !== returnTabRoute) {
+        tabNavigationRef.navigate(returnTabRoute);
+      }
+    }
+  }, [clearIncomingIntent, publicProfileModalState.source, publicProfileTarget]);
 
   const handleOpenProfileLink = useCallback(async () => {
     const targetUrl = normalizeExternalUrl(settingsIdentityDraft.profileLink);
@@ -6024,19 +6426,38 @@ export default function App() {
       </View>
       <Text style={styles.heroEyebrow}>Absolute Cinema</Text>
       <Text style={styles.title}>180 Absolute Cinema</Text>
-      <Text style={styles.subtitle}>{mobileHeroCopy.subtitle}</Text>
-      <View style={styles.heroMetaRow}>
-        <Text style={styles.heroBadgeMuted}>
-          {isSignedIn ? mobileHeroCopy.sessionReady : mobileHeroCopy.sessionRequired}
-        </Text>
-        {isDevSurfaceEnabled ? (
-          <>
-            <Text style={styles.heroBadge}>Screen: {screenPlan.screen}</Text>
-            <Text style={styles.heroBadge}>Tab: {tabLabel}</Text>
-            <Text style={styles.heroBadgeNeutral}>{MOBILE_UI_PACKAGE_LABEL}</Text>
-          </>
-        ) : null}
-      </View>
+      {dailyHeroGreeting ? (
+        <View style={styles.heroPulseWrap}>
+          <View style={styles.heroPulseBodyRow}>
+            <View
+              style={[
+                styles.heroPulseIconWrap,
+                {
+                  backgroundColor: `${dailyHeroGreetingAccent}16`,
+                  borderColor: `${dailyHeroGreetingAccent}30`,
+                },
+              ]}
+            >
+              <Ionicons name={dailyHeroGreeting.icon} size={18} color={dailyHeroGreetingAccent} />
+            </View>
+            <View style={styles.heroPulseCopy}>
+              <Text style={styles.heroPulseTitle} numberOfLines={2}>
+                {dailyHeroGreeting.title}
+              </Text>
+              <Text style={styles.heroPulseBody} numberOfLines={2}>
+                {dailyHeroGreeting.body}
+              </Text>
+            </View>
+          </View>
+        </View>
+      ) : null}
+      {isDevSurfaceEnabled ? (
+        <View style={styles.heroMetaRow}>
+          <Text style={styles.heroBadge}>Screen: {screenPlan.screen}</Text>
+          <Text style={styles.heroBadge}>Tab: {tabLabel}</Text>
+          <Text style={styles.heroBadgeNeutral}>{MOBILE_UI_PACKAGE_LABEL}</Text>
+        </View>
+      ) : null}
       {isDevSurfaceEnabled ? (
         <>
           <View style={styles.statusRail}>
@@ -6185,6 +6606,17 @@ export default function App() {
           language={settingsLanguage}
           onClose={() => setStreakCelebrationEvent(null)}
         />
+        <TierAdvancementModal
+          event={tierAdvancementEvent}
+          language={settingsLanguage}
+          onClose={() => setTierAdvancementEvent(null)}
+        />
+        <MarkUnlockModal
+          event={activeMarkUnlockEvent}
+          language={settingsLanguage}
+          onClose={() => setMarkUnlockQueue((prev) => prev.slice(1))}
+        />
+        <XpGainToast xpDelta={xpGainDelta} onDone={() => setXpGainDelta(null)} />
         <Animated.View
           style={[
             styles.pageMotion,
@@ -6253,16 +6685,12 @@ export default function App() {
                       showsVerticalScrollIndicator={false}
                     >
                       {renderHeroCard(tabLabels.daily)}
-                      <View style={styles.sectionAnchor}>
-                        <View style={styles.sectionHeaderRow}>
-                          <Text style={styles.sectionHeader}>{mobileDailySectionCopy.dailyTitle}</Text>
-                          <Text style={styles.sectionHeaderMeta}>{mobileDailySectionCopy.dailyMeta}</Text>
-                        </View>
-                      </View>
+                      <View style={{ height: 12 }} />
 
                       <DailyHomeScreen
                         state={dailyState}
                         showOpsMeta={isDevSurfaceEnabled}
+                        showGreetingCard={false}
                         language={settingsLanguage}
                         selectedMovieId={selectedDailyMovieId}
                         streak={profileState.status === 'success' ? profileState.streak : null}
@@ -6275,7 +6703,51 @@ export default function App() {
                       <View style={styles.sectionAnchor}>
                         <View style={styles.sectionHeaderRow}>
                           <Text style={styles.sectionHeader}>{mobileDailySectionCopy.commentsTitle}</Text>
-                          <Text style={styles.sectionHeaderMeta}>{mobileDailySectionCopy.commentsMeta}</Text>
+                          <Text style={styles.sectionHeaderMeta}>
+                            {dailyCommentFeedScope === 'today'
+                              ? mobileDailySectionCopy.commentsMetaToday
+                              : mobileDailySectionCopy.commentsMetaAll}
+                          </Text>
+                        </View>
+                        <View style={styles.commentFeedFilterStack}>
+                          <View style={styles.commentFeedControlRow}>
+                            <Pressable
+                              style={[
+                                styles.commentFeedSegmentOption,
+                                dailyCommentFeedScope === 'today' && styles.commentFeedSegmentActive,
+                              ]}
+                              onPress={() => handleDailyCommentFeedScopeChange('today')}
+                              accessibilityLabel={mobileDailySectionCopy.commentsTodayLabel}
+                            >
+                              <Text
+                                style={[
+                                  styles.commentFeedSegmentText,
+                                  dailyCommentFeedScope === 'today' && styles.commentFeedSegmentTextActive,
+                                ]}
+                                numberOfLines={1}
+                              >
+                                {mobileDailySectionCopy.commentsTodayLabel}
+                              </Text>
+                            </Pressable>
+                            <Pressable
+                              style={[
+                                styles.commentFeedSegmentOption,
+                                dailyCommentFeedScope === 'all' && styles.commentFeedSegmentActive,
+                              ]}
+                              onPress={() => handleDailyCommentFeedScopeChange('all')}
+                              accessibilityLabel={mobileDailySectionCopy.commentsAllLabel}
+                            >
+                              <Text
+                                style={[
+                                  styles.commentFeedSegmentText,
+                                  dailyCommentFeedScope === 'all' && styles.commentFeedSegmentTextActive,
+                                ]}
+                                numberOfLines={1}
+                              >
+                                {mobileDailySectionCopy.commentsAllLabel}
+                              </Text>
+                            </Pressable>
+                          </View>
                         </View>
                       </View>
                       <CommentFeedCard
@@ -6283,7 +6755,7 @@ export default function App() {
                         language={settingsLanguage}
                         currentUserAvatarUrl={profileAvatarUrl}
                         showFilters={false}
-                        onScopeChange={() => undefined}
+                        onScopeChange={handleDailyCommentFeedScopeChange}
                         onSortChange={() => undefined}
                         onQueryChange={() => undefined}
                         onEcho={handleEchoComment}
@@ -6312,8 +6784,15 @@ export default function App() {
                       isDawn={isDawnTheme}
                       isSignedIn={isSignedIn}
                       isPremium={subscription.isPremium}
+                      walletBalance={wallet.snapshot.balance}
+                      walletInventory={wallet.snapshot.inventory}
+                      walletReadyTaskRewardTickets={walletReadyTaskRewardTickets}
+                      walletOverlayVisible={walletVisible}
+                      onOpenWallet={openWallet}
+                      onRefreshWallet={wallet.refresh}
                       onRequireAuth={() => setAuthModalVisible(true)}
                       onRequirePaywall={() => setPaywallVisible(true)}
+                      onNewMarks={(ids) => setMarkUnlockQueue((prev) => [...prev, ...ids])}
                     />
                   </ScrollView>
                 )}
@@ -6384,38 +6863,14 @@ export default function App() {
                           <Text style={styles.sectionHeaderMeta}>{mobileArenaSectionCopy.meta}</Text>
                         </View>
                       </View>
-                      <ArenaChallengeCard
-                        streakLabel={streakSummary}
-                        ritualsLabel={ritualsCountSummary}
-                        language={settingsLanguage}
-                      />
                       <ArenaLeaderboardCard
                         state={arenaState}
                         language={settingsLanguage}
-                        currentDisplayName={profileDisplayName || null}
+                        currentDisplayName={arenaIdentityLabel || null}
                         onOpenProfile={(item) => {
                           void handleOpenArenaProfile(item);
                         }}
                       />
-                      <CollapsibleSectionCard
-                        accent="clay"
-                        title={mobileArenaSectionCopy.leaguesTitle}
-                        meta={mobileArenaSectionCopy.leaguesMeta}
-                        defaultExpanded={false}
-                      >
-                        <View style={styles.detailInfoGrid}>
-                          {MOBILE_LEAGUE_NAMES.map((leagueKey, index) => {
-                            const leagueInfo = MOBILE_LEAGUES_DATA[leagueKey];
-                            return (
-                              <View key={leagueKey} style={styles.detailInfoCard}>
-                                <Text style={styles.detailInfoLabel}>{leagueKey}</Text>
-                                <Text style={styles.detailInfoValue}>{leagueInfo.name}</Text>
-                                <Text style={styles.screenMeta}>{index * LEVEL_THRESHOLD} XP</Text>
-                              </View>
-                            );
-                          })}
-                        </View>
-                      </CollapsibleSectionCard>
                     </ScrollView>
                   </KeyboardAvoidingView>
                 )}
@@ -6496,6 +6951,34 @@ export default function App() {
                           const borderColor = rawColor && rawColor !== '#121212' && rawColor !== '#e5e4e2' ? `${rawColor}CC` : 'rgba(255,255,255,0.12)';
                           const leagueName = publicProfileLeague?.leagueInfo.name ?? null;
                           const isFollowBusy = publicProfileModalState.followStatus === 'loading';
+                          const publicMetricItems = [
+                            ...(publicProfileVisibility.showStats
+                              ? [
+                                  {
+                                    key: 'comments',
+                                    label: isTurkishUi ? 'Yorum' : 'Comments',
+                                    value: String(publicProfileStats.rituals),
+                                    accent: '#8A9A5B',
+                                  },
+                                ]
+                              : []),
+                            ...(publicProfileVisibility.showFollowCounts
+                              ? [
+                                  {
+                                    key: 'following',
+                                    label: isTurkishUi ? 'Takip' : 'Following',
+                                    value: String(publicProfileStats.following),
+                                    accent: 'rgba(229,228,226,0.82)',
+                                  },
+                                  {
+                                    key: 'followers',
+                                    label: isTurkishUi ? 'Takipci' : 'Followers',
+                                    value: String(publicProfileStats.followers),
+                                    accent: '#C98B6B',
+                                  },
+                                ]
+                              : []),
+                          ];
                           return (
                             <View style={[styles.screenCard, { position: 'relative' }]}>
                               <View style={[styles.screenCardAccent, styles.screenCardAccentSage]} />
@@ -6516,15 +6999,12 @@ export default function App() {
                               </View>
                               {/* Hero row */}
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingTop: 4 }}>
-                                <View style={[styles.profileIdentityAvatarWrap, { width: 72, height: 72, borderColor, borderWidth: 2 }]}>
-                                  {publicProfileAvatarUrl ? (
-                                    <Image source={{ uri: publicProfileAvatarUrl }} style={[styles.profileIdentityAvatarImage, { width: 72, height: 72, borderRadius: 36 }]} resizeMode="cover" />
-                                  ) : (
-                                    <Text style={[styles.profileIdentityAvatarFallback, { fontSize: 26, color: accentColor }]}>
-                                      {(publicProfileDisplayName.slice(0, 1) || 'O').toUpperCase()}
-                                    </Text>
-                                  )}
-                                </View>
+                                <AvatarView
+                                  avatarUrl={publicProfileAvatarUrl}
+                                  displayName={publicProfileDisplayName}
+                                  size={72}
+                                  borderColor={borderColor}
+                                />
                                 <View style={{ flex: 1, gap: 4, paddingRight: 40 }}>
                                   <Text style={styles.sectionLeadTitle} numberOfLines={1}>{publicProfileDisplayName}</Text>
                                   {leagueName ? (
@@ -6546,26 +7026,21 @@ export default function App() {
                                 ) : null}
                               </View>
                               {/* Stats row */}
-                              {publicProfileVisibility.showStats || publicProfileVisibility.showFollowCounts ? (
-                                <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
-                                  {publicProfileVisibility.showStats ? (
-                                    <View style={[styles.detailInfoCard, { flex: 1 }]}>
-                                      <Text style={[styles.detailInfoLabel, { textAlign: 'center' }]}>{isTurkishUi ? 'YORUM' : 'COMMENTS'}</Text>
-                                      <Text style={styles.detailInfoValue}>{publicProfileStats.rituals}</Text>
+                              {publicMetricItems.length > 0 ? (
+                                <View style={styles.publicProfileMetricStrip}>
+                                  {publicMetricItems.map((item, index) => (
+                                    <View
+                                      key={item.key}
+                                      style={[
+                                        styles.publicProfileMetricCell,
+                                        index < publicMetricItems.length - 1 ? styles.publicProfileMetricCellBorder : null,
+                                      ]}
+                                    >
+                                      <View style={[styles.publicProfileMetricAccent, { backgroundColor: item.accent }]} />
+                                      <Text style={styles.publicProfileMetricLabel}>{item.label}</Text>
+                                      <Text style={styles.publicProfileMetricValue}>{item.value}</Text>
                                     </View>
-                                  ) : null}
-                                  {publicProfileVisibility.showFollowCounts ? (
-                                    <>
-                                      <View style={[styles.detailInfoCard, { flex: 1 }]}>
-                                        <Text style={[styles.detailInfoLabel, { textAlign: 'center' }]}>{isTurkishUi ? 'TAKİP' : 'FOLLOWING'}</Text>
-                                        <Text style={styles.detailInfoValue}>{publicProfileStats.following}</Text>
-                                      </View>
-                                      <View style={[styles.detailInfoCard, { flex: 1 }]}>
-                                        <Text style={[styles.detailInfoLabel, { textAlign: 'center' }]}>{isTurkishUi ? 'TAKİPÇİ' : 'FOLLOWERS'}</Text>
-                                        <Text style={styles.detailInfoValue}>{publicProfileStats.followers}</Text>
-                                      </View>
-                                    </>
-                                  ) : null}
+                                  ))}
                                 </View>
                               ) : null}
                               {/* Actions */}
@@ -6579,7 +7054,7 @@ export default function App() {
                                   />
                                 </View>
                               ) : null}
-                              {publicProfileModalState.followMessage ? (
+                              {publicProfileModalState.followStatus === 'error' && publicProfileModalState.followMessage ? (
                                 <Text style={{ color: '#8e8b84', fontSize: 11, marginTop: 8, textAlign: 'center' }}>{publicProfileModalState.followMessage}</Text>
                               ) : null}
                             </View>
@@ -6657,16 +7132,6 @@ export default function App() {
                           />
                         )}
 
-                        <View style={styles.sectionAnchor}>
-                          <View style={styles.sectionHeaderRow}>
-                            <Text style={styles.sectionHeader}>{isTurkishUi ? 'Marklar' : 'Marks'}</Text>
-                            <Text style={styles.sectionHeaderMeta}>
-                              {publicProfileVisibility.showMarks
-                                ? `${publicProfileStats.marks} ${isTurkishUi ? 'acik mark' : 'visible marks'}`
-                                : isTurkishUi ? 'Gizli' : 'Hidden'}
-                            </Text>
-                          </View>
-                        </View>
                         {publicProfileVisibility.showMarks ? (
                           <ProfileMarksCard
                             state={publicProfileMarksState}
@@ -6689,12 +7154,14 @@ export default function App() {
                           <ProfileCinematicCard
                             state={publicProfileMarksState}
                             isSignedIn={isSignedIn || Boolean(publicSnapshot)}
+                            showFilmFallback={false}
+                            language={settingsLanguage}
                             activityState={{
                               status: publicProfileFullState.status,
                               message: publicProfileFullState.message,
                               items: publicProfileFullState.items.map((item) => ({
                                 id: item.id,
-                                movieId: null,
+                                movieId: item.movieId,
                                 movieTitle: item.movieTitle,
                                 text: item.text,
                                 genre: (item as { genre?: string | null }).genre ?? null,
@@ -6702,7 +7169,7 @@ export default function App() {
                                 year: item.year,
                                 rawTimestamp: item.rawTimestamp,
                                 timestampLabel: item.timestampLabel,
-                                dayKey: item.rawTimestamp.slice(0, 10),
+                                dayKey: item.dayKey,
                               })),
                             }}
                           />
@@ -6727,32 +7194,24 @@ export default function App() {
                           onOpenProfileLink={() => {
                             void handleOpenProfileLink();
                           }}
-                          onOpenMarks={() => setProfileMarksExpanded((v) => !v)}
+                          onOpenShareHub={handleOpenShareHubFromProfile}
+                          onOpenComments={handleOpenProfileCommentsSheet}
+                          onOpenFollowing={() => {
+                            void handleOpenProfileFollowSheet('following');
+                          }}
+                          onOpenFollowers={() => {
+                            void handleOpenProfileFollowSheet('followers');
+                          }}
+                          onOpenMarks={handleOpenProfileMarksSheet}
                         />
                         <ProfileCinematicCard
                           state={profileState}
                           isSignedIn={isSignedIn}
+                          language={settingsLanguage}
                           activityState={profileActivityState}
                         />
 
                         {/* Marks section — collapsed by default, toggle via Marks stat button */}
-                        {profileMarksExpanded && (
-                          <>
-                            <View style={styles.sectionAnchor}>
-                              <View style={styles.sectionHeaderRow}>
-                                <Text style={styles.sectionHeader}>{mobileMarksSectionCopy.title}</Text>
-                                <Text style={styles.sectionHeaderMeta}>{mobileMarksSectionCopy.meta}</Text>
-                              </View>
-                            </View>
-                            <ProfileMarksCard
-                              state={profileState}
-                              isSignedIn={isSignedIn}
-                              language={settingsLanguage}
-                              mode="all"
-                            />
-                          </>
-                        )}
-
                         {isSignedIn ? (
                           <>
                             {screenPlan.screen === 'invite_claim' ? (
@@ -6932,6 +7391,14 @@ export default function App() {
             onApplyQuizProgress={applyQuizProgressToProfile}
             language={settingsLanguage}
             isSignedIn={isSignedIn}
+            commentFeedState={dailyCommentFeedState}
+            currentUserAvatarUrl={profileAvatarUrl}
+            onEchoComment={handleEchoComment}
+            onLoadCommentReplies={handleLoadCommentReplies}
+            onSubmitCommentReply={handleSubmitCommentReply}
+            onEchoCommentReply={handleEchoReply}
+            onDeleteComment={handleDeleteComment}
+            onOpenCommentAuthorProfile={handleOpenCommentAuthorProfile}
           />
 
           <RitualComposerModal
@@ -6947,8 +7414,25 @@ export default function App() {
                 : null
             }
             draftText={ritualDraftText}
+            rating={ritualDraftRating}
             onDraftTextChange={(value) => {
               setRitualDraftText(value);
+              if (ritualSubmitState.status !== 'idle') {
+                setRitualSubmitState({
+                  status: 'idle',
+                  message: '',
+                });
+              }
+              if (ritualQueueState.status === 'done') {
+                setRitualQueueState((prev) => ({
+                  ...prev,
+                  status: 'idle',
+                  message: '',
+                }));
+              }
+            }}
+            onRatingChange={(value) => {
+              setRitualDraftRating(value);
               if (ritualSubmitState.status !== 'idle') {
                 setRitualSubmitState({
                   status: 'idle',
@@ -6971,6 +7455,35 @@ export default function App() {
             onSubmit={handleSubmitRitualDraft}
             onFlushQueue={handleFlushRitualQueue}
             onClose={() => setRitualComposerVisible(false)}
+          />
+
+          <ProfileCommentsModal
+            visible={profileStatsSheetState.visible && profileStatsSheetState.section === 'comments'}
+            activityState={profileActivityState}
+            language={settingsLanguage}
+            onClose={handleCloseProfileStatsSheet}
+          />
+
+          <ProfileFollowListModal
+            visible={
+              profileStatsSheetState.visible &&
+              (profileStatsSheetState.section === 'following' || profileStatsSheetState.section === 'followers')
+            }
+            mode={profileStatsSheetState.section === 'followers' ? 'followers' : 'following'}
+            state={profileFollowListState}
+            language={settingsLanguage}
+            onOpenProfile={(userId, displayName) => {
+              void handleOpenProfileFollowUser(userId, displayName);
+            }}
+            onClose={handleCloseProfileStatsSheet}
+          />
+
+          <ProfileMarksModal
+            visible={profileStatsSheetState.visible && profileStatsSheetState.section === 'marks'}
+            state={profileState}
+            isSignedIn={isSignedIn}
+            language={settingsLanguage}
+            onClose={handleCloseProfileStatsSheet}
           />
 
           <ProfileMovieArchiveModal
@@ -7005,15 +7518,20 @@ export default function App() {
             onChangeTheme={setThemeMode}
             onChangeLanguage={setSettingsLanguage}
             onSavePassword={handleSaveSettingsPassword}
+            onSendVerificationEmail={() => {
+              void handleSendVerificationEmail();
+            }}
             privacyDraft={settingsPrivacyDraft}
             onChangePrivacy={handleChangeSettingsPrivacy}
             onSavePrivacy={handleSaveSettingsPrivacy}
             saveState={settingsSaveState}
-            onPickAvatar={handlePickAvatar}
-            onClearAvatar={handleClearAvatar}
-            isPickingAvatar={isPickingAvatar}
+            onSelectAvatar={handleSelectPresetAvatar}
+            isPremium={subscription.isPremium}
             activeAccountLabel={activeAccountLabel}
             activeEmailLabel={activeEmailLabel}
+            isEmailVerified={isEmailVerified}
+            emailConfirmedAt={emailConfirmedAt}
+            emailVerificationState={emailVerificationState}
             inviteCode={inviteProgram.code}
             inviteLink={inviteProgram.inviteLink}
             inviteStatsLabel={inviteStatsLabel}
@@ -7047,6 +7565,42 @@ export default function App() {
             onOpenShareHub={() => {
               setSettingsVisible(false);
               handleOpenShareHubFromProfile();
+            }}
+            onSignOut={() => {
+              void handleSignOut();
+            }}
+          />
+
+          <WalletModal
+            visible={walletVisible}
+            onClose={() => {
+              setWalletVisible(false);
+              setWalletFocusItem(null);
+            }}
+            language={settingsLanguage}
+            isPremium={subscription.isPremium}
+            balance={wallet.snapshot.balance}
+            inventory={wallet.snapshot.inventory}
+            rewardedAd={wallet.snapshot.rewardedAd}
+            dailyTasks={wallet.snapshot.dailyTasks}
+            productMap={wallet.productMap}
+            actionBusy={wallet.actionBusy}
+            topupPurchasing={wallet.topupPurchasing}
+            message={wallet.message}
+            error={wallet.error}
+            focusedItemKey={walletFocusItem}
+            onBuyStoreItem={(itemKey) => {
+              setWalletFocusItem(itemKey);
+              void wallet.buyStoreItem(itemKey);
+            }}
+            onClaimRewarded={() => {
+              void wallet.claimRewardedReels();
+            }}
+            onClaimDailyTask={(taskKey) => {
+              void wallet.claimDailyTask(taskKey);
+            }}
+            onPurchasePack={(packKey) => {
+              void wallet.purchaseTopupPack(packKey);
             }}
           />
 

@@ -1,5 +1,14 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { evaluateRateLimit } from './rateLimit.js';
 
+try {
+  const { config: loadDotenv } = await import('dotenv');
+  loadDotenv();
+} catch {
+  // Cloud Run provides env vars directly; dotenv is only needed for local startup.
+}
+
+import accountDeleteHandler from '../api/account-delete.js';
 import adminDashboardHandler from '../api/admin/dashboard.js';
 import adminSessionHandler from '../api/admin/session.js';
 import adminModerationCommentHandler from '../api/admin/moderation/comment.js';
@@ -9,6 +18,7 @@ import cronDailyHandler from '../api/cron/daily.js';
 import dailyHandler from '../api/daily.js';
 import dailyBundleHandler from '../api/daily-bundle.js';
 import dailyQuizAnswerHandler from '../api/daily-quiz-answer.js';
+import dailyRitualRewardHandler from '../api/daily-ritual-reward.js';
 import dailyQuizImportHandler from '../api/internal/daily-quiz-import.js';
 import dailySourceHandler from '../api/internal/daily-source.js';
 import ogFilmHandler from '../api/og/film.js';
@@ -20,18 +30,27 @@ import poolMoviesHandler from '../api/pool-movies.js';
 import poolSwipeHandler from '../api/pool-swipe.js';
 import poolQuizHandler from '../api/pool-quiz.js';
 import poolAnswerHandler from '../api/pool-answer.js';
+import poolJokerHandler from '../api/pool-joker.js';
 import rushStartHandler from '../api/rush-start.js';
 import rushAnswerHandler from '../api/rush-answer.js';
 import rushCompleteHandler from '../api/rush-complete.js';
+import rushJokerHandler from '../api/rush-joker.js';
 import subscriptionStatusHandler from '../api/subscription-status.js';
 import subscriptionVerifyHandler from '../api/subscription-verify.js';
 import adImpressionHandler from '../api/ad-impression.js';
+import walletConsumeHandler from '../api/wallet-consume.js';
+import walletRewardedHandler from '../api/wallet-rewarded.js';
+import walletSpendHandler from '../api/wallet-spend.js';
+import walletStatusHandler from '../api/wallet-status.js';
+import walletTaskClaimHandler from '../api/wallet-task-claim.js';
+import walletTopupVerifyHandler from '../api/wallet-topup-verify.js';
 import poolBatchGenerateHandler from '../api/internal/pool-batch-generate.js';
 import poolBatchStatusHandler from '../api/internal/pool-batch-status.js';
 import poolBackfillHandler from '../api/internal/pool-backfill.js';
 import poolFetchChunkHandler from '../api/internal/pool-fetch-chunk.js';
 import poolGenerateMissingHandler from '../api/internal/pool-generate-missing.js';
 import poolTopupHandler from '../api/internal/pool-topup.js';
+import blurQuizHandler from '../api/blur-quiz.js';
 
 type QueryValue = string | string[] | undefined;
 
@@ -63,10 +82,12 @@ const ROUTES: RouteEntry[] = [
         handler: adminModerationUserHandler as ApiRouteHandler
     },
     { path: '/api/analytics', handler: analyticsHandler as ApiRouteHandler },
+    { path: '/api/account-delete', handler: accountDeleteHandler as ApiRouteHandler },
     { path: '/api/cron/daily', handler: cronDailyHandler as ApiRouteHandler },
     { path: '/api/daily', handler: dailyHandler as ApiRouteHandler },
     { path: '/api/daily-bundle', handler: dailyBundleHandler as ApiRouteHandler },
     { path: '/api/daily-quiz-answer', handler: dailyQuizAnswerHandler as ApiRouteHandler },
+    { path: '/api/daily-ritual-reward', handler: dailyRitualRewardHandler as ApiRouteHandler },
     { path: '/api/internal/daily-quiz-import', handler: dailyQuizImportHandler as ApiRouteHandler },
     { path: '/api/internal/daily-source', handler: dailySourceHandler as ApiRouteHandler },
     { path: '/api/og/film', handler: ogFilmHandler as ApiRouteHandler },
@@ -80,18 +101,27 @@ const ROUTES: RouteEntry[] = [
     { path: '/api/pool-swipe', handler: poolSwipeHandler as ApiRouteHandler },
     { path: '/api/pool-quiz', handler: poolQuizHandler as ApiRouteHandler },
     { path: '/api/pool-answer', handler: poolAnswerHandler as ApiRouteHandler },
+    { path: '/api/pool-joker', handler: poolJokerHandler as ApiRouteHandler },
     { path: '/api/rush-start', handler: rushStartHandler as ApiRouteHandler },
     { path: '/api/rush-answer', handler: rushAnswerHandler as ApiRouteHandler },
     { path: '/api/rush-complete', handler: rushCompleteHandler as ApiRouteHandler },
+    { path: '/api/rush-joker', handler: rushJokerHandler as ApiRouteHandler },
     { path: '/api/subscription-status', handler: subscriptionStatusHandler as ApiRouteHandler },
     { path: '/api/subscription-verify', handler: subscriptionVerifyHandler as ApiRouteHandler },
     { path: '/api/ad-impression', handler: adImpressionHandler as ApiRouteHandler },
+    { path: '/api/wallet-consume', handler: walletConsumeHandler as ApiRouteHandler },
+    { path: '/api/wallet-rewarded', handler: walletRewardedHandler as ApiRouteHandler },
+    { path: '/api/wallet-spend', handler: walletSpendHandler as ApiRouteHandler },
+    { path: '/api/wallet-status', handler: walletStatusHandler as ApiRouteHandler },
+    { path: '/api/wallet-task-claim', handler: walletTaskClaimHandler as ApiRouteHandler },
+    { path: '/api/wallet-topup-verify', handler: walletTopupVerifyHandler as ApiRouteHandler },
     { path: '/api/internal/pool-batch-generate', handler: poolBatchGenerateHandler as ApiRouteHandler },
     { path: '/api/internal/pool-batch-status', handler: poolBatchStatusHandler as ApiRouteHandler },
     { path: '/api/internal/pool-backfill', handler: poolBackfillHandler as ApiRouteHandler },
     { path: '/api/internal/pool-fetch-chunk', handler: poolFetchChunkHandler as ApiRouteHandler },
     { path: '/api/internal/pool-generate-missing', handler: poolGenerateMissingHandler as ApiRouteHandler },
-    { path: '/api/internal/pool-topup', handler: poolTopupHandler as ApiRouteHandler }
+    { path: '/api/internal/pool-topup', handler: poolTopupHandler as ApiRouteHandler },
+    { path: '/api/blur-quiz', handler: blurQuizHandler as ApiRouteHandler }
 ];
 
 const trimTrailingSlash = (value: string): string => {
@@ -140,6 +170,12 @@ const writeJson = (
         res.setHeader(key, value);
     }
     res.end(JSON.stringify(payload));
+};
+
+const applyHeaders = (res: ServerResponse, headers: Record<string, string>): void => {
+    for (const [key, value] of Object.entries(headers)) {
+        res.setHeader(key, value);
+    }
 };
 
 const createCompatResponse = (res: ServerResponse): ServerResponse => {
@@ -225,6 +261,20 @@ const server = createServer(async (req, res) => {
             routes: ROUTES.map((route) => route.path)
         });
         return;
+    }
+
+    if (pathname.startsWith('/api/')) {
+        const rateLimit = evaluateRateLimit(req, pathname);
+        applyHeaders(res, rateLimit.headers);
+
+        if (rateLimit.limited) {
+            writeJson(res, 429, {
+                ok: false,
+                error: 'Too many requests.',
+                retryAfterSeconds: rateLimit.retryAfterSeconds
+            });
+            return;
+        }
     }
 
     const route = findRoute(pathname);

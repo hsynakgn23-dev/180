@@ -8,6 +8,7 @@ import { resolveMobileScreenPlan } from './mobileScreenMap';
 
 export type MobileDeepLinkInput =
     | { type: 'daily' }
+    | { type: 'profile' }
     | { type: 'invite'; inviteCode?: string }
     | { type: 'share'; platform?: string; goal?: string; inviteCode?: string }
     | { type: 'public_profile'; userId?: string; username?: string }
@@ -37,6 +38,9 @@ const appendQuery = (base: string, params: Record<string, string>): string => {
 const toRouteIntent = (input: MobileDeepLinkInput): MobileRouteIntent => {
     if (input.type === 'daily') {
         return { target: 'daily' };
+    }
+    if (input.type === 'profile') {
+        return { target: 'profile' };
     }
     if (input.type === 'invite') {
         return { target: 'invite', invite: input.inviteCode };

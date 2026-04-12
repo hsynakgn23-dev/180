@@ -6,6 +6,7 @@ import { moderateComment } from '../lib/commentModeration';
 import { trackEvent } from '../lib/analytics';
 import { MAX_AVATAR_DATA_URL_LENGTH, normalizeAvatarUrl } from '../lib/avatarUpload';
 import { STREAK_MILESTONE_SET } from '../domain/celebrations';
+import { buildApiUrl } from '../lib/apiBase';
 export { getLeagueKeyByIndex, resolveLeagueInfo, resolveLeagueKey, resolveLeagueKeyFromXp } from '../domain/leagueSystem';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
@@ -186,6 +187,7 @@ interface XPContextType {
     avatarUrl?: string; // Custom uploaded avatar
     updateAvatar: (url: string) => void;
     redeemInviteCode: (code: string) => AuthResult;
+    isPremium: boolean;
 }
 
 
@@ -964,7 +966,29 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     const canWriteFollowRef = useRef(true);
     const [isXpHydrated, setIsXpHydrated] = useState(false);
     const [isPasswordRecoveryMode, setIsPasswordRecoveryMode] = useState<boolean>(() => isPasswordRecoveryUrl());
+    const [isPremium, setIsPremium] = useState(false);
     const authMode: 'supabase' | 'local' = isSupabaseLive() && supabase ? 'supabase' : 'local';
+
+    useEffect(() => {
+        if (!user) { setIsPremium(false); return; }
+        let cancelled = false;
+        (async () => {
+            try {
+                const headers: Record<string, string> = { Accept: 'application/json' };
+                if (supabase) {
+                    const { data } = await supabase.auth.getSession();
+                    const token = data?.session?.access_token;
+                    if (token) headers['Authorization'] = `Bearer ${token}`;
+                }
+                const res = await fetch(buildApiUrl('/api/subscription-status'), { headers });
+                if (!cancelled && res.ok) {
+                    const json = await res.json();
+                    setIsPremium(json.tier === 'premium');
+                }
+            } catch { /* fallback: stays false */ }
+        })();
+        return () => { cancelled = true; };
+    }, [user]);
 
     const setSessionUser = (nextUser: SessionUser | null) => {
         setUser(nextUser);
@@ -2321,7 +2345,8 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             logout,
             avatarUrl: state.avatarUrl,
             updateAvatar,
-            redeemInviteCode
+            redeemInviteCode,
+            isPremium
         }}>
             {children}
         </XPContext.Provider>

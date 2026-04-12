@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { resolveAvatarDisplay } from '../../data/avatarData';
 import { InfoFooter } from '../../components/InfoFooter';
 import { LEAGUE_NAMES, resolveLeagueInfo, resolveLeagueKey, useXP } from '../../context/XPContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { TMDB_SEEDS } from '../../data/tmdbSeeds';
+import { runWithAbortTimeout } from '../../lib/network';
 import { resolvePosterCandidates } from '../../lib/posterCandidates';
 import { isSupabaseLive, supabase } from '../../lib/supabase';
 import {
@@ -200,6 +202,7 @@ const RITUAL_SELECT_VARIANTS = [
     { select: 'id, user_id, author, movie_title, text, timestamp, league', orderBy: 'timestamp' },
     { select: 'id, user_id, author, movie_title, text, created_at, league', orderBy: 'created_at' }
 ] as const;
+const PUBLIC_PROFILE_REQUEST_TIMEOUT_MS = 10000;
 
 export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, onClose, onHome }) => {
     const { text, format, language } = useLanguage();
@@ -247,190 +250,206 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
 
             setIsLoading(true);
             setError(null);
+            try {
+                const resolvedProfile = await runWithAbortTimeout({
+                    timeoutMs: PUBLIC_PROFILE_REQUEST_TIMEOUT_MS,
+                    timeoutMessage: text.profile.profileLoadFailed,
+                    task: async (signal) => {
+                        const normalizedUsername = (target.username || '').trim();
+                        let ritualRows: RitualRow[] = [];
+                        let lastError: { code?: string | null; message?: string | null } | null = null;
 
-            const normalizedUsername = (target.username || '').trim();
-            let ritualRows: RitualRow[] = [];
-            let lastError: { code?: string | null; message?: string | null } | null = null;
+                        for (const variant of RITUAL_SELECT_VARIANTS) {
+                            let query = supabase
+                                .from('rituals')
+                                .select(variant.select)
+                                .abortSignal(signal)
+                                .order(variant.orderBy, { ascending: false })
+                                .limit(300);
 
-            for (const variant of RITUAL_SELECT_VARIANTS) {
-                let query = supabase
-                    .from('rituals')
-                    .select(variant.select)
-                    .order(variant.orderBy, { ascending: false })
-                    .limit(300);
+                            if (target.userId) {
+                                query = query.eq('user_id', target.userId);
+                            } else if (normalizedUsername) {
+                                query = query.ilike('author', normalizedUsername);
+                            }
 
-                if (target.userId) {
-                    query = query.eq('user_id', target.userId);
-                } else if (normalizedUsername) {
-                    query = query.ilike('author', normalizedUsername);
-                }
+                            const { data, error: ritualsError } = await query;
+                            if (ritualsError) {
+                                lastError = ritualsError;
+                                if (isSupabaseCapabilityError(ritualsError)) continue;
+                                break;
+                            }
 
-                const { data, error: ritualsError } = await query;
-                if (ritualsError) {
-                    lastError = ritualsError;
-                    if (isSupabaseCapabilityError(ritualsError)) continue;
-                    break;
-                }
+                            const typedRows = Array.isArray(data)
+                                ? (data as unknown as Array<Record<string, unknown>>)
+                                : [];
+                            ritualRows = typedRows
+                                .map((row) => ({
+                                    id: typeof row.id === 'string' ? row.id : '',
+                                    user_id: typeof row.user_id === 'string' ? row.user_id : null,
+                                    author: typeof row.author === 'string' ? row.author : null,
+                                    movie_title: typeof row.movie_title === 'string' ? row.movie_title : null,
+                                    poster_path: typeof row.poster_path === 'string' ? row.poster_path : null,
+                                    text: typeof row.text === 'string' ? row.text : null,
+                                    timestamp: typeof row.timestamp === 'string'
+                                        ? row.timestamp
+                                        : typeof row.created_at === 'string'
+                                            ? row.created_at
+                                            : null,
+                                    league: typeof row.league === 'string' ? row.league : null,
+                                    year: typeof row.year === 'string' ? row.year : null
+                                }))
+                                .filter((row) => row.id && row.movie_title && row.text);
+                            lastError = null;
+                            break;
+                        }
 
-                const typedRows = Array.isArray(data)
-                    ? (data as unknown as Array<Record<string, unknown>>)
-                    : [];
-                ritualRows = typedRows
-                    .map((row) => ({
-                        id: typeof row.id === 'string' ? row.id : '',
-                        user_id: typeof row.user_id === 'string' ? row.user_id : null,
-                        author: typeof row.author === 'string' ? row.author : null,
-                        movie_title: typeof row.movie_title === 'string' ? row.movie_title : null,
-                        poster_path: typeof row.poster_path === 'string' ? row.poster_path : null,
-                        text: typeof row.text === 'string' ? row.text : null,
-                        timestamp: typeof row.timestamp === 'string'
-                            ? row.timestamp
-                            : typeof row.created_at === 'string'
-                                ? row.created_at
-                                : null,
-                        league: typeof row.league === 'string' ? row.league : null,
-                        year: typeof row.year === 'string' ? row.year : null
-                    }))
-                    .filter((row) => row.id && row.movie_title && row.text);
-                lastError = null;
-                break;
-            }
+                        if (lastError && ritualRows.length === 0) {
+                            throw new Error(text.profile.profileLoadFailed);
+                        }
 
-            if (lastError && ritualRows.length === 0) {
+                        const resolvedUserId = target.userId || ritualRows.find((row) => row.user_id)?.user_id || null;
+                        let displayName = ritualRows[0]?.author || normalizedUsername || text.profileWidget.observer;
+                        const rituals: PublicRitual[] = ritualRows.map((row) => {
+                            const rawTimestamp = row.timestamp || new Date().toISOString();
+                            return {
+                                id: row.id,
+                                movieId: getMovieIdByTitle(row.movie_title || ''),
+                                movieTitle: row.movie_title || format(text.profile.filmFallback, { id: 0 }),
+                                posterPath: row.poster_path || undefined,
+                                text: row.text || '',
+                                timestamp: toRelativeTimestamp(rawTimestamp, relativeTimeLabels),
+                                createdAt: Date.parse(rawTimestamp),
+                                league: row.league || 'Bronze'
+                            };
+                        });
+
+                        let fullName = '';
+                        let username = normalizedUsername || displayName;
+                        let gender = '';
+                        let birthDate = '';
+                        let bio = '';
+                        let avatarId = 'geo_1';
+                        let avatarUrl: string | undefined;
+                        let xp = 0;
+                        let streak = 0;
+                        let daysPresent = Array.from(new Set(ritualRows.map((row) => toDateKey(row.timestamp)).filter(Boolean))).length;
+                        let league = rituals[0]?.league || 'Bronze';
+                        let followingCount = 0;
+                        let followersCount = 0;
+                        let visibility = getDefaultProfileVisibility();
+
+                        if (resolvedUserId) {
+                            const { data: profileRow, error: profileError } = await supabase
+                                .from('profiles_public')
+                                .select('display_name, xp_state')
+                                .abortSignal(signal)
+                                .eq('user_id', resolvedUserId)
+                                .maybeSingle();
+
+                            if (!profileError && profileRow?.xp_state && typeof profileRow.xp_state === 'object') {
+                                const xpState = profileRow.xp_state as Record<string, unknown>;
+                                visibility = readProfileVisibilityFromXpState(xpState);
+                                fullName = typeof xpState.fullName === 'string' ? xpState.fullName : '';
+                                username = typeof xpState.username === 'string' && xpState.username.trim()
+                                    ? xpState.username
+                                    : username;
+                                gender = typeof xpState.gender === 'string' ? xpState.gender : '';
+                                birthDate = typeof xpState.birthDate === 'string' ? xpState.birthDate : '';
+                                bio = typeof xpState.bio === 'string' && xpState.bio.trim() ? xpState.bio : bio;
+                                avatarId = typeof xpState.avatarId === 'string' ? xpState.avatarId : avatarId;
+                                avatarUrl =
+                                    typeof xpState.avatarUrl === 'string' && xpState.avatarUrl.trim()
+                                        ? xpState.avatarUrl
+                                        : typeof xpState.avatar_url === 'string' && xpState.avatar_url.trim()
+                                            ? xpState.avatar_url
+                                            : undefined;
+                                xp = typeof xpState.totalXP === 'number' ? xpState.totalXP : 0;
+                                streak = typeof xpState.streak === 'number' ? xpState.streak : 0;
+                                daysPresent = Array.isArray(xpState.activeDays) ? xpState.activeDays.length : daysPresent;
+                                followingCount = Array.isArray(xpState.following) ? xpState.following.length : 0;
+                                if (typeof profileRow.display_name === 'string' && profileRow.display_name.trim()) {
+                                    displayName = profileRow.display_name.trim();
+                                    username = username || profileRow.display_name;
+                                }
+                            } else if (profileError && !isSupabaseCapabilityError(profileError)) {
+                                console.error('[PublicProfile] failed to read profile row', profileError);
+                            }
+
+                            const [followingCountRes, followersCountRes] = await Promise.all([
+                                supabase
+                                    .from('user_follows')
+                                    .select('*', { head: true, count: 'exact' })
+                                    .abortSignal(signal)
+                                    .eq('follower_user_id', resolvedUserId),
+                                supabase
+                                    .from('user_follows')
+                                    .select('*', { head: true, count: 'exact' })
+                                    .abortSignal(signal)
+                                    .eq('followed_user_id', resolvedUserId)
+                            ]);
+
+                            if (!followingCountRes.error && typeof followingCountRes.count === 'number') {
+                                followingCount = followingCountRes.count;
+                            }
+                            if (!followersCountRes.error && typeof followersCountRes.count === 'number') {
+                                followersCount = followersCountRes.count;
+                            }
+                        }
+
+                        if (!visibility.showFollowCounts) {
+                            followingCount = 0;
+                            followersCount = 0;
+                        }
+
+                        if (streak === 0) {
+                            const dateKeys = ritualRows
+                                .map((row) => toDateKey(row.timestamp))
+                                .filter((value): value is string => Boolean(value));
+                            streak = computeStreak(dateKeys);
+                        }
+
+                        if (xp > 0) {
+                            const leagueIndex = Math.min(Math.floor(xp / LEVEL_THRESHOLD), LEAGUE_NAMES.length - 1);
+                            league = LEAGUE_NAMES[leagueIndex] || league;
+                        }
+
+                        const resolvedProfile: PublicProfileData = {
+                            userId: resolvedUserId,
+                            displayName,
+                            username,
+                            fullName,
+                            gender,
+                            birthDate,
+                            bio,
+                            avatarId,
+                            avatarUrl,
+                            xp,
+                            league,
+                            streak,
+                            daysPresent,
+                            rituals,
+                            followCounts: {
+                                followers: followersCount,
+                                following: followingCount
+                            },
+                            visibility
+                        };
+
+                        return resolvedProfile;
+                    }
+                });
+
                 if (!active) return;
+                setProfile(resolvedProfile);
+                setIsLoading(false);
+            } catch (error) {
+                if (!active) return;
+                console.error('[PublicProfile] timed or failed while loading profile', error);
+                setProfile(null);
                 setError(text.profile.profileLoadFailed);
                 setIsLoading(false);
-                return;
             }
-
-            const resolvedUserId = target.userId || ritualRows.find((row) => row.user_id)?.user_id || null;
-            let displayName = ritualRows[0]?.author || normalizedUsername || text.profileWidget.observer;
-            const rituals: PublicRitual[] = ritualRows.map((row) => {
-                const rawTimestamp = row.timestamp || new Date().toISOString();
-                return {
-                    id: row.id,
-                    movieId: getMovieIdByTitle(row.movie_title || ''),
-                    movieTitle: row.movie_title || format(text.profile.filmFallback, { id: 0 }),
-                    posterPath: row.poster_path || undefined,
-                    text: row.text || '',
-                    timestamp: toRelativeTimestamp(rawTimestamp, relativeTimeLabels),
-                    createdAt: Date.parse(rawTimestamp),
-                    league: row.league || 'Bronze'
-                };
-            });
-
-            let fullName = '';
-            let username = normalizedUsername || displayName;
-            let gender = '';
-            let birthDate = '';
-            let bio = '';
-            let avatarId = 'geo_1';
-            let avatarUrl: string | undefined;
-            let xp = 0;
-            let streak = 0;
-            let daysPresent = Array.from(new Set(ritualRows.map((row) => toDateKey(row.timestamp)).filter(Boolean))).length;
-            let league = rituals[0]?.league || 'Bronze';
-            let followingCount = 0;
-            let followersCount = 0;
-            let visibility = getDefaultProfileVisibility();
-
-            if (resolvedUserId) {
-                const { data: profileRow, error: profileError } = await supabase
-                    .from('profiles')
-                    .select('display_name, xp_state')
-                    .eq('user_id', resolvedUserId)
-                    .maybeSingle();
-
-                if (!profileError && profileRow?.xp_state && typeof profileRow.xp_state === 'object') {
-                    const xpState = profileRow.xp_state as Record<string, unknown>;
-                    visibility = readProfileVisibilityFromXpState(xpState);
-                    fullName = typeof xpState.fullName === 'string' ? xpState.fullName : '';
-                    username = typeof xpState.username === 'string' && xpState.username.trim()
-                        ? xpState.username
-                        : username;
-                    gender = typeof xpState.gender === 'string' ? xpState.gender : '';
-                    birthDate = typeof xpState.birthDate === 'string' ? xpState.birthDate : '';
-                    bio = typeof xpState.bio === 'string' && xpState.bio.trim() ? xpState.bio : bio;
-                    avatarId = typeof xpState.avatarId === 'string' ? xpState.avatarId : avatarId;
-                    avatarUrl =
-                        typeof xpState.avatarUrl === 'string' && xpState.avatarUrl.trim()
-                            ? xpState.avatarUrl
-                            : typeof xpState.avatar_url === 'string' && xpState.avatar_url.trim()
-                                ? xpState.avatar_url
-                                : undefined;
-                    xp = typeof xpState.totalXP === 'number' ? xpState.totalXP : 0;
-                    streak = typeof xpState.streak === 'number' ? xpState.streak : 0;
-                    daysPresent = Array.isArray(xpState.activeDays) ? xpState.activeDays.length : daysPresent;
-                    followingCount = Array.isArray(xpState.following) ? xpState.following.length : 0;
-                    if (typeof profileRow.display_name === 'string' && profileRow.display_name.trim()) {
-                        displayName = profileRow.display_name.trim();
-                        username = username || profileRow.display_name;
-                    }
-                } else if (profileError && !isSupabaseCapabilityError(profileError)) {
-                    console.error('[PublicProfile] failed to read profile row', profileError);
-                }
-
-                const [followingCountRes, followersCountRes] = await Promise.all([
-                    supabase
-                        .from('user_follows')
-                        .select('*', { head: true, count: 'exact' })
-                        .eq('follower_user_id', resolvedUserId),
-                    supabase
-                        .from('user_follows')
-                        .select('*', { head: true, count: 'exact' })
-                        .eq('followed_user_id', resolvedUserId)
-                ]);
-
-                if (!followingCountRes.error && typeof followingCountRes.count === 'number') {
-                    followingCount = followingCountRes.count;
-                }
-                if (!followersCountRes.error && typeof followersCountRes.count === 'number') {
-                    followersCount = followersCountRes.count;
-                }
-            }
-
-            if (!visibility.showFollowCounts) {
-                followingCount = 0;
-                followersCount = 0;
-            }
-
-            if (streak === 0) {
-                const dateKeys = ritualRows
-                    .map((row) => toDateKey(row.timestamp))
-                    .filter((value): value is string => Boolean(value));
-                streak = computeStreak(dateKeys);
-            }
-
-            if (xp > 0) {
-                const leagueIndex = Math.min(Math.floor(xp / LEVEL_THRESHOLD), LEAGUE_NAMES.length - 1);
-                league = LEAGUE_NAMES[leagueIndex] || league;
-            }
-
-            const resolvedProfile: PublicProfileData = {
-                userId: resolvedUserId,
-                displayName,
-                username,
-                fullName,
-                gender,
-                birthDate,
-                bio,
-                avatarId,
-                avatarUrl,
-                xp,
-                league,
-                streak,
-                daysPresent,
-                rituals,
-                followCounts: {
-                    followers: followersCount,
-                    following: followingCount
-                },
-                visibility
-            };
-
-            if (!active) return;
-            setProfile(resolvedProfile);
-            setIsLoading(false);
         };
 
         void fetchProfile();
@@ -682,9 +701,14 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                                         {profile.avatarUrl ? (
                                             <img src={profile.avatarUrl} alt={profile.displayName} className="w-full h-full object-cover" />
                                         ) : (
-                                            <div className={`w-20 h-20 rounded-full flex items-center justify-center text-2xl text-sage/50 font-serif italic ${profile.avatarId === 'geo_1' ? 'bg-sage/10' : profile.avatarId === 'geo_2' ? 'bg-clay/10' : 'bg-gray-50/5'}`}>
-                                                {profile.avatarId === 'geo_1' ? 'I' : profile.avatarId === 'geo_2' ? 'II' : profile.avatarId === 'geo_3' ? 'III' : 'IV'}
-                                            </div>
+                                            (() => {
+                                                const { icon, bg } = resolveAvatarDisplay(profile.avatarId);
+                                                return (
+                                                    <div className={`w-20 h-20 rounded-full flex items-center justify-center text-3xl ${bg}`}>
+                                                        {icon}
+                                                    </div>
+                                                );
+                                            })()
                                         )}
                                     </div>
 
@@ -694,12 +718,18 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                                     <p className="text-[10px] tracking-[0.2em] uppercase text-gray-400 mb-2 text-center break-all max-w-full px-2">
                                         @{profile.username || profile.displayName}
                                     </p>
-                                    <div className="mb-5 text-[10px] text-gray-500 text-center leading-relaxed space-y-1">
-                                        <p className="break-words">{profile.fullName || text.profile.missingName}</p>
-                                        <p className="break-words">
-                                            {(profile.gender || text.profile.missingGender)} | {(profile.birthDate || text.profile.missingBirthDate)}
-                                        </p>
-                                    </div>
+                                    {(profile.fullName || profile.gender || profile.birthDate) ? (
+                                        <div className="mb-5 text-[10px] text-gray-500 text-center leading-relaxed space-y-1">
+                                            {profile.fullName ? (
+                                                <p className="break-words">{profile.fullName}</p>
+                                            ) : null}
+                                            {(profile.gender || profile.birthDate) ? (
+                                                <p className="break-words">
+                                                    {[profile.gender, profile.birthDate].filter(Boolean).join(' | ')}
+                                                </p>
+                                            ) : null}
+                                        </div>
+                                    ) : null}
 
                                     <div className="mb-5 flex flex-wrap items-center justify-center gap-2.5">
                                         {!isOwnProfile && (
@@ -751,9 +781,11 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                                         </p>
                                     )}
 
-                                    <p className="text-xs font-serif italic text-sage/60 text-center max-w-xs leading-relaxed">
-                                        "{profile.bio}"
-                                    </p>
+                                    {profile.bio ? (
+                                        <p className="text-xs font-serif italic text-sage/60 text-center max-w-xs leading-relaxed">
+                                            "{profile.bio}"
+                                        </p>
+                                    ) : null}
                                     {relationshipMessage ? (
                                         <p className="mt-4 text-center text-[10px] uppercase tracking-[0.14em] text-sage/80">
                                             {relationshipMessage}

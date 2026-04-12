@@ -4,7 +4,6 @@ import {
     startRushSession,
     submitRushAnswer,
     completeRushSession,
-    fetchSubscriptionStatus,
     type PoolLanguageCode,
     type PoolOptionKey,
     type RushMode,
@@ -43,6 +42,9 @@ const COPY: Record<PoolLanguageCode, {
         modes: { rush_15: { label: 'Quick 15', sub: '15 questions · 90s', color: '#8A9A5B' }, rush_30: { label: 'Marathon 30', sub: '30 questions · 150s', color: '#FFA500' } },
     },
 };
+
+const toPoolOptionKey = (value: string): PoolOptionKey | null =>
+    value === 'a' || value === 'b' || value === 'c' || value === 'd' ? value : null;
 
 type Phase =
     | { phase: 'lobby' }
@@ -357,15 +359,12 @@ export const QuizRushPanel: React.FC = () => {
     const copy = COPY[lang] || COPY.en;
 
     const [phase, setPhase] = useState<Phase>({ phase: 'lobby' });
-    const [sub, setSub] = useState<{ tier: string; daily_rush_limit: number; daily_rush_used: number } | null>(null);
     const [revealed, setRevealed] = useState<{ selected: PoolOptionKey; isCorrect: boolean; correctKey: PoolOptionKey } | null>(null);
     const [confettiKey, setConfettiKey] = useState(0);
     const revealTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => { injectStyles(); }, []);
-    useEffect(() => { fetchSubscriptionStatus().then(setSub); }, []);
 
-    const isPremium = sub?.tier === 'premium';
     const totalSecs = phase.phase === 'playing' && phase.session.mode === 'rush_30' ? 150 : 90;
 
     const handleStart = useCallback(async (mode: RushMode) => {
@@ -375,7 +374,9 @@ export const QuizRushPanel: React.FC = () => {
         else setPhase({ phase: 'lobby' });
     }, [lang]);
 
-    const handleAnswer = useCallback(async (selected: PoolOptionKey) => {
+    const handleAnswer = useCallback(async (selectedValue: string) => {
+        const selected = toPoolOptionKey(selectedValue);
+        if (!selected) return;
         if (phase.phase !== 'playing' || phase.submitting || revealed) return;
         const q = phase.session.questions[phase.current];
         if (!q) return;
@@ -450,7 +451,7 @@ export const QuizRushPanel: React.FC = () => {
                     {(['rush_15', 'rush_30'] as const).map((mode) => {
                         const info = copy.modes[mode];
                         const isMarathon = mode === 'rush_30';
-                        const locked = isMarathon && !isPremium;
+                        const locked = false;
                         return (
                             <button
                                 key={mode}

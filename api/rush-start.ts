@@ -1,229 +1,423 @@
 import { createCorsHeaders } from './lib/cors.js';
+import {
+  buildRushSessionMetadata,
+  readRushSelectionHistory,
+  selectBalancedRushQuestions,
+} from './lib/rushVariety.js';
+import { resolveSubscriptionEntitlement } from './lib/subscriptionAccess.js';
 import { createSupabaseServiceClient } from './lib/supabaseServiceClient.js';
 
 export const config = { runtime: 'nodejs' };
 
 type ApiRequest = {
-    method?: string;
-    body?: unknown;
-    headers?: Record<string, string | undefined> | Headers;
-    on?: (event: string, callback: (chunk: Buffer | string) => void) => void;
+  method?: string;
+  body?: unknown;
+  headers?: Record<string, string | undefined> | Headers;
+  on?: (event: string, callback: (chunk: Buffer | string) => void) => void;
 };
 
 type ApiResponse = {
-    setHeader?: (key: string, value: string) => void;
-    status?: (statusCode: number) => { json: (payload: Record<string, unknown>) => unknown };
+  setHeader?: (key: string, value: string) => void;
+  status?: (statusCode: number) => { json: (payload: Record<string, unknown>) => unknown };
 };
 
 const RUSH_CONFIG = {
-    rush_15: { questionCount: 15, timeLimitSeconds: 90 },
-    rush_30: { questionCount: 30, timeLimitSeconds: 150 },
-    endless: { questionCount: 50, timeLimitSeconds: null }
+  rush_15: { questionCount: 15, timeLimitSeconds: 90 },
+  rush_30: { questionCount: 30, timeLimitSeconds: 150 },
+  endless: { questionCount: 50, timeLimitSeconds: null },
 } as const;
 
 const FREE_DAILY_RUSH_LIMIT = 3;
+const TMDB_API_BASE = 'https://api.themoviedb.org/3';
+const rushPosterCache = new Map<string, string | null>();
 
 const sendJson = (
-    res: ApiResponse,
-    status: number,
-    payload: Record<string, unknown>,
-    headers: Record<string, string> = {}
+  res: ApiResponse,
+  status: number,
+  payload: Record<string, unknown>,
+  headers: Record<string, string> = {},
 ) => {
-    if (res && typeof res.setHeader === 'function') {
-        for (const [key, value] of Object.entries(headers)) res.setHeader(key, value);
-    }
-    if (res && typeof res.status === 'function') {
-        return res.status(status).json(payload);
-    }
-    return new Response(JSON.stringify(payload), {
-        status,
-        headers: { 'content-type': 'application/json; charset=utf-8', ...headers }
-    });
+  if (res && typeof res.setHeader === 'function') {
+    for (const [key, value] of Object.entries(headers)) res.setHeader(key, value);
+  }
+  if (res && typeof res.status === 'function') return res.status(status).json(payload);
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { 'content-type': 'application/json; charset=utf-8', ...headers },
+  });
 };
 
 const getHeader = (req: ApiRequest, key: string): string => {
-    const headers = req.headers;
-    if (!headers) return '';
-    if (typeof (headers as Headers).get === 'function') return ((headers as Headers).get(key) || '').trim();
-    const obj = headers as Record<string, string | undefined>;
-    return (obj[key.toLowerCase()] || obj[key] || '').trim();
+  const headers = req.headers;
+  if (!headers) return '';
+  if (typeof (headers as Headers).get === 'function') return ((headers as Headers).get(key) || '').trim();
+  const obj = headers as Record<string, string | undefined>;
+  return (obj[key.toLowerCase()] || obj[key] || '').trim();
 };
 
 const getBearerToken = (req: ApiRequest): string | null => {
-    const authHeader = getHeader(req, 'authorization');
-    const match = authHeader.match(/^Bearer\s+(.+)$/i);
-    return match ? match[1].trim() || null : null;
+  const authHeader = getHeader(req, 'authorization');
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1].trim() || null : null;
 };
 
 const parseBody = async (req: ApiRequest): Promise<unknown> => {
-    if (req.body !== undefined) return req.body;
-    if (typeof req.on !== 'function') return null;
-    const chunks: string[] = [];
-    await new Promise<void>((resolve) => {
-        req.on?.('data', (chunk) => {
-            chunks.push(Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk));
-        });
-        req.on?.('end', () => resolve());
+  if (req.body !== undefined) return req.body;
+  if (typeof req.on !== 'function') return null;
+  const chunks: string[] = [];
+  await new Promise<void>((resolve) => {
+    req.on?.('data', (chunk) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk));
     });
-    const raw = chunks.join('').trim();
-    if (!raw) return null;
-    try { return JSON.parse(raw); } catch { return null; }
+    req.on?.('end', () => resolve());
+  });
+  const raw = chunks.join('').trim();
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
 };
 
 const getSupabaseUrl = (): string =>
-    String(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
-const getSupabaseServiceRoleKey = (): string =>
-    String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+  String(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
 
-// Fisher-Yates shuffle
-const shuffle = <T>(arr: T[]): T[] => {
-    const result = [...arr];
-    for (let i = result.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [result[i], result[j]] = [result[j], result[i]];
+const getSupabaseServiceRoleKey = (): string =>
+  String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+
+const isLikelyTmdbReadAccessToken = (value: string): boolean =>
+  value.length > 40 || value.includes('.');
+
+const getTmdbReadAccessToken = (): string => {
+  const credential = String(
+    process.env.TMDB_READ_ACCESS_TOKEN ||
+      process.env.TMDB_API_READ_ACCESS_TOKEN ||
+      process.env.TMDB_V4_ACCESS_TOKEN ||
+      process.env.TMDB_API_KEY ||
+      ''
+  ).trim();
+
+  return isLikelyTmdbReadAccessToken(credential) ? credential : '';
+};
+
+const buildPosterCacheKey = (tmdbMovieId: unknown, movieTitle: unknown): string => {
+  const numericId = Number(tmdbMovieId);
+  if (Number.isInteger(numericId) && numericId > 0) return `tmdb:${numericId}`;
+  const title = String(movieTitle || '').trim().toLowerCase();
+  return `title:${title}`;
+};
+
+const fetchRushPosterPath = async (tmdbMovieId: unknown, movieTitle: unknown): Promise<string | null> => {
+  const cacheKey = buildPosterCacheKey(tmdbMovieId, movieTitle);
+  if (rushPosterCache.has(cacheKey)) return rushPosterCache.get(cacheKey) || null;
+
+  const readAccessToken = getTmdbReadAccessToken();
+  if (!readAccessToken) {
+    rushPosterCache.set(cacheKey, null);
+    return null;
+  }
+
+  const numericId = Number(tmdbMovieId);
+  if (Number.isInteger(numericId) && numericId > 0) {
+    try {
+      const detailUrl = new URL(`${TMDB_API_BASE}/movie/${numericId}`);
+      detailUrl.search = new URLSearchParams({
+        language: 'en-US',
+      }).toString();
+      const detailRes = await fetch(detailUrl.toString(), {
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${readAccessToken}`,
+        },
+      });
+      if (detailRes.ok) {
+        const detail = await detailRes.json();
+        if (typeof detail?.poster_path === 'string' && detail.poster_path) {
+          rushPosterCache.set(cacheKey, detail.poster_path);
+          return detail.poster_path;
+        }
+      }
+    } catch {
+      // noop: search fallback below
     }
-    return result;
+  }
+
+  const title = String(movieTitle || '').trim();
+  if (title) {
+    try {
+      const searchUrl = new URL(`${TMDB_API_BASE}/search/movie`);
+      searchUrl.search = new URLSearchParams({
+        query: title,
+        include_adult: 'false',
+      }).toString();
+      const searchRes = await fetch(searchUrl.toString(), {
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${readAccessToken}`,
+        },
+      });
+      if (searchRes.ok) {
+        const searchData = await searchRes.json();
+        const firstPath = searchData?.results?.[0]?.poster_path;
+        if (typeof firstPath === 'string' && firstPath) {
+          rushPosterCache.set(cacheKey, firstPath);
+          return firstPath;
+        }
+      }
+    } catch {
+      // noop
+    }
+  }
+
+  rushPosterCache.set(cacheKey, null);
+  return null;
 };
 
 export default async function handler(req: ApiRequest, res: ApiResponse) {
-    const cors = createCorsHeaders(req, {
-        headers: 'authorization, content-type, apikey, x-client-info',
-        methods: 'POST, OPTIONS'
-    });
+  const cors = createCorsHeaders(req, {
+    headers: 'authorization, content-type, apikey, x-client-info',
+    methods: 'POST, OPTIONS',
+  });
 
-    if (req.method === 'OPTIONS') return sendJson(res, 204, {}, cors);
-    if (req.method !== 'POST') return sendJson(res, 405, { ok: false, error: 'Method not allowed.' }, cors);
+  if (req.method === 'OPTIONS') return sendJson(res, 204, {}, cors);
+  if (req.method !== 'POST') return sendJson(res, 405, { ok: false, error: 'Method not allowed.' }, cors);
 
-    const accessToken = getBearerToken(req);
-    if (!accessToken) return sendJson(res, 401, { ok: false, error: 'Missing authorization.' }, cors);
+  const accessToken = getBearerToken(req);
+  if (!accessToken) return sendJson(res, 401, { ok: false, error: 'Missing authorization.' }, cors);
 
-    const supabaseUrl = getSupabaseUrl();
-    const supabaseServiceKey = getSupabaseServiceRoleKey();
-    if (!supabaseUrl || !supabaseServiceKey) return sendJson(res, 500, { ok: false, error: 'Server config error.' }, cors);
+  const supabaseUrl = getSupabaseUrl();
+  const supabaseServiceKey = getSupabaseServiceRoleKey();
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return sendJson(res, 500, { ok: false, error: 'Server config error.' }, cors);
+  }
 
-    const supabase = createSupabaseServiceClient(supabaseUrl, supabaseServiceKey);
-    const { data: { user }, error: authError } = await supabase.auth.getUser(accessToken);
-    if (authError || !user) return sendJson(res, 401, { ok: false, error: 'Invalid token.' }, cors);
+  const supabase = createSupabaseServiceClient(supabaseUrl, supabaseServiceKey);
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser(accessToken);
+  if (authError || !user) return sendJson(res, 401, { ok: false, error: 'Invalid token.' }, cors);
 
-    const body = await parseBody(req);
-    const bodyObj = (body && typeof body === 'object' && !Array.isArray(body)) ? body as Record<string, unknown> : {};
-    const mode = String(bodyObj.mode || '').trim();
-    const lang = String(bodyObj.lang || 'tr').trim();
+  const body = await parseBody(req);
+  const payload =
+    body && typeof body === 'object' && !Array.isArray(body)
+      ? (body as Record<string, unknown>)
+      : {};
 
-    if (!['rush_10', 'rush_20', 'endless'].includes(mode)) {
-        return sendJson(res, 400, { ok: false, error: 'Invalid mode. Must be "rush_10", "rush_20", or "endless".' }, cors);
-    }
+  const mode = String(payload.mode || '').trim() as keyof typeof RUSH_CONFIG;
+  const language = String(payload.language || payload.lang || 'tr').trim();
+  const rewardUnlock =
+    payload.reward_unlock === true ||
+    payload.rewarded_unlock === true ||
+    payload.unlock_via_rewarded_ad === true;
 
-    const config = RUSH_CONFIG[mode as keyof typeof RUSH_CONFIG];
-
-    // Check subscription for endless mode and daily limit
-    const { data: profile } = await supabase
-        .from('profiles')
-        .select('subscription_tier')
-        .eq('user_id', user.id)
-        .single();
-
-    const isFreeUser = !profile?.subscription_tier || profile.subscription_tier === 'free';
-
-    if (isFreeUser && mode === 'endless') {
-        return sendJson(res, 403, {
-            ok: false,
-            error: 'Endless mode requires a premium subscription.',
-            requiresSubscription: true
-        }, cors);
-    }
-
-    // Check daily rush limit for free users
-    if (isFreeUser) {
-        const { data: dailyCount } = await supabase
-            .rpc('get_daily_rush_count', { p_user_id: user.id });
-
-        if ((dailyCount || 0) >= FREE_DAILY_RUSH_LIMIT) {
-            return sendJson(res, 429, {
-                ok: false,
-                error: 'Daily rush limit reached.',
-                dailyLimit: FREE_DAILY_RUSH_LIMIT,
-                requiresSubscription: true
-            }, cors);
-        }
-    }
-
-    // Fetch random questions from the pool
-    const { data: allQuestions, error: questionsError } = await supabase
-        .from('question_pool_questions')
-        .select(`
-            id,
-            tmdb_movie_id,
-            question_order,
-            question_translations,
-            options_translations,
-            difficulty,
-            question_pool_movies!inner (title, poster_path, genre)
-        `)
-        .limit(config.questionCount * 3); // overfetch for randomization
-
-    if (questionsError || !allQuestions || allQuestions.length === 0) {
-        return sendJson(res, 503, { ok: false, error: 'Not enough questions available.' }, cors);
-    }
-
-    const shuffled = shuffle(allQuestions).slice(0, config.questionCount);
-    const validLang = ['tr', 'en', 'es', 'fr'].includes(lang) ? lang : 'tr';
-
-    // Create session
-    const now = new Date();
-    const expiresAt = config.timeLimitSeconds
-        ? new Date(now.getTime() + config.timeLimitSeconds * 1000).toISOString()
-        : null;
-
-    const { data: session, error: sessionError } = await supabase
-        .from('quiz_rush_sessions')
-        .insert({
-            user_id: user.id,
-            mode,
-            total_questions: shuffled.length,
-            correct_count: 0,
-            wrong_count: 0,
-            time_limit_seconds: config.timeLimitSeconds,
-            xp_earned: 0,
-            status: 'in_progress',
-            started_at: now.toISOString(),
-            expires_at: expiresAt
-        })
-        .select('id')
-        .single();
-
-    if (sessionError || !session) {
-        return sendJson(res, 500, { ok: false, error: 'Failed to create session.' }, cors);
-    }
-
-    // Format questions for client
-    const formattedQuestions = shuffled.map((q) => {
-        const translations = q.question_translations as Record<string, string>;
-        const optionsTranslations = q.options_translations as Record<string, Record<string, string>>;
-        const movieData = q.question_pool_movies as unknown as { title: string; poster_path: string | null; genre: string | null };
-
-        return {
-            id: q.id,
-            movieTitle: movieData?.title || '',
-            moviePosterPath: movieData?.poster_path || null,
-            movieGenre: movieData?.genre || null,
-            question: translations[validLang] || translations.tr || translations.en || '',
-            options: ['a', 'b', 'c', 'd'].map((key) => ({
-                key,
-                label: optionsTranslations[key]?.[validLang] || optionsTranslations[key]?.tr || optionsTranslations[key]?.en || ''
-            })),
-            difficulty: q.difficulty
-        };
-    });
-
-    return sendJson(res, 200, {
-        ok: true,
-        sessionId: session.id,
-        mode,
-        totalQuestions: shuffled.length,
-        timeLimitSeconds: config.timeLimitSeconds,
-        startedAt: now.toISOString(),
-        expiresAt,
-        questions: formattedQuestions
+  if (!(mode in RUSH_CONFIG)) {
+    return sendJson(res, 400, {
+      ok: false,
+      error: 'Invalid mode. Must be "rush_15", "rush_30", or "endless".',
     }, cors);
+  }
+
+  const config = RUSH_CONFIG[mode];
+
+  const { data: subscription } = await supabase
+    .from('subscriptions')
+    .select('plan, status')
+    .eq('user_id', user.id)
+    .eq('status', 'active')
+    .maybeSingle();
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('subscription_tier')
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  const { data: recentSessions } = await supabase
+    .from('quiz_rush_sessions')
+    .select('metadata')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+    .limit(4);
+
+  const { isPremium } = resolveSubscriptionEntitlement({
+    subscriptionPlan: subscription?.plan,
+    subscriptionStatus: subscription?.status,
+    profileTier: profile?.subscription_tier,
+  });
+
+  if (!isPremium && mode === 'endless') {
+    return sendJson(res, 403, {
+      ok: false,
+      error: 'Endless mode requires a premium subscription.',
+      requiresSubscription: true,
+    }, cors);
+  }
+
+  if (!isPremium && !rewardUnlock) {
+    const { data: dailyCount } = await supabase
+      .rpc('get_daily_rush_count', { p_user_id: user.id });
+
+    if ((Number(dailyCount) || 0) >= FREE_DAILY_RUSH_LIMIT) {
+      return sendJson(res, 429, {
+        ok: false,
+        error: 'Daily rush limit reached.',
+        limitReached: true,
+        requiresSubscription: true,
+        rewardedAdAvailable: true,
+        dailyLimit: FREE_DAILY_RUSH_LIMIT,
+      }, cors);
+    }
+  }
+
+  const { data: allQuestions, error: questionsError } = await supabase
+    .from('question_pool_questions')
+    .select(`
+      id,
+      tmdb_movie_id,
+      question_order,
+      question_translations,
+      options_translations,
+      difficulty,
+      question_pool_movies!inner (id, title, poster_path, genre, release_year)
+    `)
+    .limit(Math.min(config.questionCount * 18, 480));
+
+  if (questionsError || !allQuestions || allQuestions.length === 0) {
+    return sendJson(res, 503, { ok: false, error: 'Not enough questions available.' }, cors);
+  }
+
+  const selectedQuestions = selectBalancedRushQuestions(
+    allQuestions,
+    config.questionCount,
+    readRushSelectionHistory(recentSessions || []),
+  );
+  if (!selectedQuestions.length) {
+    return sendJson(res, 503, { ok: false, error: 'Not enough diversified questions available.' }, cors);
+  }
+  const validLanguage = ['tr', 'en', 'es', 'fr'].includes(language) ? language : 'tr';
+
+  const missingPosterMovies = Array.from(new Map(
+    selectedQuestions
+      .map((question) => {
+        const movie = question.question_pool_movies as unknown as {
+          id: string;
+          title: string;
+          poster_path: string | null;
+        };
+        if (movie?.poster_path) return null;
+        const movieKey = movie?.id || buildPosterCacheKey(question.tmdb_movie_id, movie?.title);
+        return {
+          movieKey,
+          movieId: movie?.id || '',
+          tmdbMovieId: question.tmdb_movie_id,
+          title: movie?.title || '',
+        };
+      })
+      .filter((entry): entry is { movieKey: string; movieId: string; tmdbMovieId: unknown; title: string } => Boolean(entry))
+      .map((entry) => [entry.movieKey, entry]),
+  ).values());
+
+  const fallbackPosterMap = new Map<string, string | null>();
+  await Promise.all(missingPosterMovies.map(async (entry) => {
+    const posterPath = await fetchRushPosterPath(entry.tmdbMovieId, entry.title);
+    fallbackPosterMap.set(entry.movieKey, posterPath);
+    if (posterPath && entry.movieId) {
+      await supabase
+        .from('question_pool_movies')
+        .update({ poster_path: posterPath })
+        .eq('id', entry.movieId);
+    }
+  }));
+
+  const now = new Date();
+  const expiresAt = config.timeLimitSeconds
+    ? new Date(now.getTime() + config.timeLimitSeconds * 1000).toISOString()
+    : null;
+
+  const { data: session, error: sessionError } = await supabase
+    .from('quiz_rush_sessions')
+    .insert({
+      user_id: user.id,
+      mode,
+      total_questions: selectedQuestions.length,
+      correct_count: 0,
+      wrong_count: 0,
+      time_limit_seconds: config.timeLimitSeconds,
+      xp_earned: 0,
+      status: 'in_progress',
+      started_at: now.toISOString(),
+      expires_at: expiresAt,
+      metadata: buildRushSessionMetadata(selectedQuestions),
+    })
+    .select('id')
+    .single();
+
+  if (sessionError || !session) {
+    return sendJson(res, 500, { ok: false, error: 'Failed to create session.' }, cors);
+  }
+
+  const questions = selectedQuestions.map((question) => {
+    const translations = question.question_translations as Record<string, string>;
+    const optionsTranslations = question.options_translations as Record<string, Record<string, string>>;
+    const movie = question.question_pool_movies as unknown as {
+      id: string;
+      title: string;
+      poster_path: string | null;
+      genre: string | null;
+    };
+    const movieKey = movie?.id || buildPosterCacheKey(question.tmdb_movie_id, movie?.title);
+    const posterPath = movie?.poster_path || fallbackPosterMap.get(movieKey) || null;
+
+    const options = ['a', 'b', 'c', 'd'].map((key) => ({
+      key,
+      label:
+        optionsTranslations[key]?.[validLanguage] ||
+        optionsTranslations[key]?.tr ||
+        optionsTranslations[key]?.en ||
+        '',
+    }));
+
+    return {
+      id: question.id,
+      question_id: question.id,
+      movie_title: movie?.title || '',
+      movieTitle: movie?.title || '',
+      movie_poster_path: posterPath,
+      moviePosterPath: posterPath,
+      movieGenre: movie?.genre || null,
+      question:
+        translations[validLanguage] ||
+        translations.tr ||
+        translations.en ||
+        '',
+      options,
+      difficulty: question.difficulty,
+    };
+  });
+
+  const responseSession = {
+    id: session.id,
+    mode,
+    total_questions: selectedQuestions.length,
+    time_limit_seconds: config.timeLimitSeconds,
+    total_time_seconds: config.timeLimitSeconds,
+    started_at: now.toISOString(),
+    expires_at: expiresAt,
+    questions,
+  };
+
+  return sendJson(res, 200, {
+    ok: true,
+    sessionId: session.id,
+    mode,
+    totalQuestions: selectedQuestions.length,
+    timeLimitSeconds: config.timeLimitSeconds,
+    totalTimeSeconds: config.timeLimitSeconds,
+    startedAt: now.toISOString(),
+    expiresAt,
+    questions,
+    session: responseSession,
+  }, cors);
 }

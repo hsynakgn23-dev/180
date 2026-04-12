@@ -26,12 +26,16 @@ const COPY: Record<PoolLanguageCode, {
     fr: { title: 'Découvrir', sub: 'Glissez — faites le quiz', noMovies: 'Aucun film trouvé.', takeQuiz: 'Faire le Quiz', skip: 'Passer', correct: 'Correct', wrong: 'Incorrect', next: 'Suivant', finish: 'Terminer', xp: 'XP', back: 'Fermer', of: '/', loading: 'Chargement...', timeUp: 'Temps écoulé!', score: 'Votre score', doğru: 'Correct', yanlış: 'Incorrect', başarı: 'Succès' },
 };
 
+const toPoolOptionKey = (value: string): PoolOptionKey | null =>
+    value === 'a' || value === 'b' || value === 'c' || value === 'd' ? value : null;
+
 type Revealed = { selected: PoolOptionKey; isCorrect: boolean; correctKey: PoolOptionKey } | null;
+type QuizAnswerRecord = { selected: PoolOptionKey | null; correct: boolean; explanation: string; correctOption: PoolOptionKey; timedOut?: boolean };
 
 type QuizState =
     | { phase: 'idle' }
     | { phase: 'loading' }
-    | { phase: 'active'; movieId: string; title: string; poster: string | null; questions: PoolQuestion[]; current: number; answers: Map<string, { selected: PoolOptionKey; correct: boolean; explanation: string; correctOption: PoolOptionKey }>; submitting: boolean }
+    | { phase: 'active'; movieId: string; title: string; poster: string | null; questions: PoolQuestion[]; current: number; answers: Map<string, QuizAnswerRecord>; submitting: boolean }
     | { phase: 'result'; title: string; total: number; correct: number; xp: number };
 
 const gradeInfo = (correct: number, total: number) => {
@@ -86,11 +90,13 @@ const QUIZ_STYLES = `
 .pd-option-btn:active { transform: scale(0.96) !important; }
 `;
 
-let styleInjected = false;
+const QUIZ_STYLE_ELEMENT_ID = 'pool-discovery-panel-styles';
+
 const injectStyles = () => {
-    if (styleInjected) return;
-    styleInjected = true;
+    if (typeof document === 'undefined') return;
+    if (document.getElementById(QUIZ_STYLE_ELEMENT_ID)) return;
     const s = document.createElement('style');
+    s.id = QUIZ_STYLE_ELEMENT_ID;
     s.textContent = QUIZ_STYLES;
     document.head.appendChild(s);
 };
@@ -330,10 +336,20 @@ export const PoolDiscoveryPanel: React.FC = () => {
 
     useEffect(() => { injectStyles(); }, []);
 
+    const [fetchError, setFetchError] = useState(false);
+
     useEffect(() => {
         setLoading(true);
+        setFetchError(false);
         fetchPoolMovies({ language: lang, limit: 20 }).then((res) => {
-            if (res.ok) setMovies(res.movies);
+            if (res.ok) {
+                setMovies(res.movies);
+            } else {
+                setFetchError(true);
+            }
+            setLoading(false);
+        }).catch(() => {
+            setFetchError(true);
             setLoading(false);
         });
     }, [lang]);
@@ -352,7 +368,7 @@ export const PoolDiscoveryPanel: React.FC = () => {
                         const cur = q.questions[q.current];
                         if (!cur || q.answers.has(cur.id)) return q;
                         const newAnswers = new Map(q.answers);
-                        newAnswers.set(cur.id, { selected: '_timeout' as PoolOptionKey, correct: false, explanation: '', correctOption: 'a' });
+                        newAnswers.set(cur.id, { selected: null, correct: false, explanation: '', correctOption: 'a', timedOut: true });
                         return { ...q, answers: newAnswers };
                     });
                     return 0;
@@ -383,7 +399,9 @@ export const PoolDiscoveryPanel: React.FC = () => {
         }
     }, [current, lang]);
 
-    const handleAnswer = useCallback(async (questionId: string, selected: PoolOptionKey) => {
+    const handleAnswer = useCallback(async (questionId: string, selectedValue: string) => {
+        const selected = toPoolOptionKey(selectedValue);
+        if (!selected) return;
         if (quiz.phase !== 'active' || quiz.submitting || quiz.answers.has(questionId) || revealed) return;
         if (timerRef.current) clearInterval(timerRef.current);
         setQuiz((q) => q.phase === 'active' ? { ...q, submitting: true } : q);
@@ -464,7 +482,7 @@ export const PoolDiscoveryPanel: React.FC = () => {
         const q = quiz.questions[quiz.current];
         const answer = q ? quiz.answers.get(q.id) : undefined;
         const isAnswered = Boolean(answer);
-        const isTimeUp = isAnswered && (answer?.selected as string) === '_timeout';
+        const isTimeUp = Boolean(isAnswered && answer?.timedOut);
 
         const correctCount = Array.from(quiz.answers.values()).filter((a) => a.correct).length;
         const wrongCount = Array.from(quiz.answers.values()).filter((a) => !a.correct).length;
@@ -497,8 +515,11 @@ export const PoolDiscoveryPanel: React.FC = () => {
                             <p className="text-xs text-white/35 mt-0.5">Soru {quiz.current + 1}{copy.of}{quiz.questions.length}</p>
                         </div>
                     </div>
-                    <button onClick={() => setQuiz({ phase: 'idle' })}
-                        className="w-8 h-8 rounded-full bg-white/[0.06] flex items-center justify-center text-white/40 hover:text-white/70 hover:bg-white/[0.10] transition text-base">
+                    <button
+                        onClick={() => setQuiz({ phase: 'idle' })}
+                        aria-label={copy.back}
+                        className="w-8 h-8 rounded-full bg-white/[0.06] flex items-center justify-center text-white/40 hover:text-white/70 hover:bg-white/[0.10] transition text-base"
+                    >
                         ✕
                     </button>
                 </div>
@@ -539,8 +560,8 @@ export const PoolDiscoveryPanel: React.FC = () => {
                                         else if (opt.key === revealed.selected && !revealed.isCorrect) result = 'wrong';
                                         else if (opt.key === revealed.correctKey && !revealed.isCorrect) result = 'reveal';
                                     } else if (answer) {
-                                        if (opt.key === answer.selected && answer.correct) result = 'correct';
-                                        else if (opt.key === answer.selected && !answer.correct) result = 'wrong';
+                                        if (answer.selected && opt.key === answer.selected && answer.correct) result = 'correct';
+                                        else if (answer.selected && opt.key === answer.selected && !answer.correct) result = 'wrong';
                                         else if (opt.key === answer.correctOption && !answer.correct) result = 'reveal';
                                     }
 
@@ -611,13 +632,35 @@ export const PoolDiscoveryPanel: React.FC = () => {
                 </div>
             )}
 
-            {!loading && !current && (
+            {!loading && fetchError && (
+                <div className="px-5 pb-10 text-center">
+                    <p className="text-sm text-red-400/70">
+                        {lang === 'tr' ? 'Filmler yüklenemedi. Lütfen tekrar dene.' : 'Failed to load movies. Please try again.'}
+                    </p>
+                    <button
+                        onClick={() => {
+                            setFetchError(false);
+                            setLoading(true);
+                            fetchPoolMovies({ language: lang, limit: 20 }).then((res) => {
+                                if (res.ok) setMovies(res.movies);
+                                else setFetchError(true);
+                                setLoading(false);
+                            }).catch(() => { setFetchError(true); setLoading(false); });
+                        }}
+                        className="mt-3 text-xs text-white/40 hover:text-white/70 underline"
+                    >
+                        {lang === 'tr' ? 'Tekrar dene' : 'Retry'}
+                    </button>
+                </div>
+            )}
+
+            {!loading && !fetchError && !current && (
                 <div className="px-5 pb-10 text-center">
                     <p className="text-sm text-white/30">{copy.noMovies}</p>
                 </div>
             )}
 
-            {!loading && current && (
+            {!loading && !fetchError && current && (
                 <>
                     {/* Poster card */}
                     {current.poster_path && (

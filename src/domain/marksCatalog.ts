@@ -70,4 +70,20 @@ export const MARK_CATALOG: MarkCatalogEntry[] = [
   { id: 'rush_endless_10', title: 'Unstoppable', description: 'Reach 10 correct in Endless mode.', category: 'Knowledge', whisper: 'No end in sight.', motion: 'float' },
   { id: 'swipe_explorer', title: 'Film Explorer', description: 'Swipe right on 20 films.', category: 'Knowledge', whisper: 'Always seeking.', motion: 'pulse' },
   { id: 'genre_brain', title: 'Genre Brain', description: 'Answer correctly across 5 different genres.', category: 'Knowledge', whisper: 'A mind without borders.', motion: 'spin' },
+
+  // League milestone marks — one per league reached
+  { id: 'league_silver', title: 'Silver Ascent', description: 'Reach Silver league.', category: 'Legacy', whisper: 'The climb begins.', motion: 'pulse' },
+  { id: 'league_gold', title: 'Golden Standard', description: 'Reach Gold league.', category: 'Legacy', whisper: 'Worth its weight.', motion: 'pulse' },
+  { id: 'league_platinum', title: 'Platinum Mind', description: 'Reach Platinum league.', category: 'Legacy', whisper: 'Refined under pressure.', motion: 'spin' },
+  { id: 'league_emerald', title: 'Emerald Eye', description: 'Reach Emerald league.', category: 'Legacy', whisper: 'A rarer lens.', motion: 'float' },
+  { id: 'league_sapphire', title: 'Sapphire Depth', description: 'Reach Sapphire league.', category: 'Legacy', whisper: 'Deep waters.', motion: 'float' },
+  { id: 'league_ruby', title: 'Ruby Vision', description: 'Reach Ruby league.', category: 'Legacy', whisper: 'Burning bright.', motion: 'signal' },
+  { id: 'league_diamond', title: 'Diamond Cut', description: 'Reach Diamond league.', category: 'Legacy', whisper: 'Unbreakable clarity.', motion: 'spin' },
+  { id: 'league_master', title: 'Master Frame', description: 'Reach Master league.', category: 'Legacy', whisper: 'The craft is yours.', motion: 'signal' },
+  { id: 'league_grandmaster', title: 'Grandmaster', description: 'Reach Grandmaster league.', category: 'Legacy', whisper: 'Few have walked here.', motion: 'float' },
+  { id: 'league_absolute', title: 'The Absolute', description: 'Reach Absolute league.', category: 'Legacy', whisper: 'Into the void.', motion: 'spark' },
+
+  // Extended streak marks
+  { id: 'streak_fourteen', title: 'Fortnight', description: 'Maintain a 14-day streak.', category: 'Rhythm', whisper: 'Two weeks without missing a beat.', motion: 'pulse' },
+  { id: 'streak_thirty', title: 'The Constant', description: 'Maintain a 30-day streak.', category: 'Rhythm', whisper: 'A month. Unbroken.', motion: 'float' },
 ];

@@ -5,6 +5,8 @@ import {
     getDailyQuizCompletionXp,
     getDailyQuizRequiredCorrectCount
 } from '../../src/domain/dailyQuizRewards.js';
+import { getDailyQuizReward } from '../../src/domain/progressionRewards.js';
+import { applyProgressionReward } from './progressionProfile.js';
 
 export type DailyQuizLanguageCode = 'tr' | 'en' | 'es' | 'fr';
 
@@ -73,13 +75,6 @@ type DailyQuizProgressRow = {
     xp_awarded?: unknown;
     last_answered_at?: unknown;
     metadata?: unknown;
-};
-
-type ProfileRow = {
-    user_id?: unknown;
-    email?: unknown;
-    display_name?: unknown;
-    xp_state?: unknown;
 };
 
 type LocalizedRecord = Record<DailyQuizLanguageCode, string>;
@@ -214,6 +209,8 @@ export type SubmitAnswerResult = {
         total: number | null;
         streak: number | null;
         streakProtectedNow: boolean;
+        tickets: number;
+        arenaScore: number;
     };
 } | {
     ok: false;
@@ -300,15 +297,6 @@ const getDateKeyDaysFrom = (dateKey: string, days: number): string => {
     const nextMonth = String(date.getUTCMonth() + 1).padStart(2, '0');
     const nextDay = String(date.getUTCDate()).padStart(2, '0');
     return `${nextYear}-${nextMonth}-${nextDay}`;
-};
-
-const parseDateKeyToDayIndex = (dateKey: string): number | null => {
-    const parts = dateKey.split('-').map((part) => Number(part));
-    if (parts.length !== 3 || parts.some((part) => Number.isNaN(part))) return null;
-    const [year, month, day] = parts;
-    const parsed = new Date(Date.UTC(year, month - 1, day));
-    if (Number.isNaN(parsed.getTime())) return null;
-    return Math.floor(parsed.getTime() / 86400000);
 };
 
 const normalizeLanguage = (value: unknown): DailyQuizLanguageCode => {
@@ -1696,75 +1684,32 @@ const updateProfileXpStateForQuiz = async (input: {
     xpDelta: number;
     dateKey: string;
     shouldProtectStreak: boolean;
-}): Promise<{ totalXP: number | null; streak: number | null }> => {
-    const { data: profileRow, error: profileError } = await input.supabase
-        .from('profiles')
-        .select('user_id,email,display_name,xp_state')
-        .eq('user_id', input.userId)
-        .maybeSingle();
-
-    if (profileError && profileError.code !== 'PGRST116') {
-        throw new Error(profileError.message);
-    }
-
-    const currentProfile = (profileRow || {}) as ProfileRow;
-    const currentState = toObject(currentProfile.xp_state) || {};
-    const currentTotalXp = toInteger(currentState.totalXP);
-    const currentStreak = toInteger(currentState.streak);
-    const currentLastStreakDate = normalizeText(currentState.lastStreakDate, 40) || null;
-    const currentActiveDays = Array.from(
-        new Set(
-            toArray<unknown>(currentState.activeDays)
-                .map((value) => normalizeText(value, 40))
-                .filter(Boolean)
-        )
-    );
-
-    let nextStreak = currentStreak;
-    let nextLastStreakDate = currentLastStreakDate;
-    let nextActiveDays = currentActiveDays;
-
-    if (input.shouldProtectStreak && currentLastStreakDate !== input.dateKey) {
-        const todayDayIndex = parseDateKeyToDayIndex(input.dateKey);
-        const lastDayIndex = currentLastStreakDate ? parseDateKeyToDayIndex(currentLastStreakDate) : null;
-        if (todayDayIndex !== null && lastDayIndex !== null && todayDayIndex - lastDayIndex === 1) {
-            nextStreak = Math.max(1, currentStreak) + 1;
-        } else {
-            nextStreak = 1;
-        }
-        nextLastStreakDate = input.dateKey;
-        nextActiveDays = Array.from(new Set([...currentActiveDays, input.dateKey])).sort();
-    }
-
-    const nextTotalXp = currentTotalXp + Math.max(0, input.xpDelta);
-    const nextState = {
-        ...currentState,
-        totalXP: nextTotalXp,
-        streak: nextStreak,
-        lastStreakDate: nextLastStreakDate,
-        activeDays: nextActiveDays
+    reward: {
+        tickets: number;
+        arenaScore: number;
+        arenaActivity: number;
     };
-
-    const { error: upsertError } = await input.supabase
-        .from('profiles')
-        .upsert(
-            {
-                user_id: input.userId,
-                email: normalizeText(currentProfile.email, 240) || input.email,
-                display_name: normalizeText(currentProfile.display_name, 180) || normalizeText(input.email.split('@')[0], 120),
-                xp_state: nextState,
-                updated_at: new Date().toISOString()
-            },
-            { onConflict: 'user_id' }
-        );
-
-    if (upsertError) {
-        throw new Error(upsertError.message);
-    }
+}): Promise<{ totalXP: number | null; streak: number | null; tickets: number; arenaScore: number }> => {
+    const applied = await applyProgressionReward({
+        supabase: input.supabase,
+        userId: input.userId,
+        fallbackEmail: input.email,
+        fallbackDisplayName: normalizeText(input.email.split('@')[0], 120),
+        reward: {
+            xp: Math.max(0, input.xpDelta),
+            tickets: Math.max(0, input.reward.tickets),
+            arenaScore: Math.max(0, input.reward.arenaScore),
+            arenaActivity: Math.max(0, input.reward.arenaActivity),
+        },
+        markActiveDateKey: input.shouldProtectStreak ? input.dateKey : null,
+        isQuizReward: true
+    });
 
     return {
-        totalXP: nextTotalXp,
-        streak: nextStreak
+        totalXP: applied.totalXP,
+        streak: applied.streak,
+        tickets: Math.max(0, input.reward.tickets),
+        arenaScore: Math.max(0, input.reward.arenaScore)
     };
 };
 
@@ -2313,7 +2258,18 @@ export const submitDailyQuizAnswer = async (input: {
         const batchQuestions = readStoredQuestions((batchQuestionRows || []) as DailyQuizQuestionRow[]);
         const nextProgress = deriveProgressFromAttempts(attempts, batchQuestions, previousProgress);
         const streakProtectedNow = nextProgress.completedMovieIds.length > 0 && !previousProgress.streakProtected;
+        const completedMovieNow = nextProgress.completedMovieIds.length > previousProgress.completedMovieIds.length;
+        const totalMovieCount = new Set(batchQuestions.map((entry) => entry.movieId)).size;
+        const completedBatchNow =
+            completedMovieNow && totalMovieCount > 0 && nextProgress.completedMovieIds.length >= totalMovieCount;
         const xpDelta = alreadyAnswered ? 0 : computeQuizXpDelta(isCorrect, previousProgress, nextProgress, batchQuestions);
+        const rewardGrant = alreadyAnswered
+            ? { xp: 0, tickets: 0, arenaScore: 0, arenaActivity: 0 }
+            : getDailyQuizReward({
+                  isCorrect,
+                  completedMovieNow,
+                  completedBatchNow
+              });
         const xpSummary = xpDelta > 0 || streakProtectedNow
             ? await updateProfileXpStateForQuiz({
                   supabase,
@@ -2321,9 +2277,10 @@ export const submitDailyQuizAnswer = async (input: {
                   email: authUser.email,
                   xpDelta,
                   dateKey: batchDate,
-                  shouldProtectStreak: nextProgress.completedMovieIds.length > 0
+                  shouldProtectStreak: nextProgress.completedMovieIds.length > 0,
+                  reward: rewardGrant
               })
-            : { totalXP: null, streak: null };
+            : { totalXP: null, streak: null, tickets: 0, arenaScore: 0 };
 
         const persistedProgress: StoredDailyQuizProgress = {
             ...nextProgress,
@@ -2370,7 +2327,9 @@ export const submitDailyQuizAnswer = async (input: {
                 delta: xpDelta,
                 total: xpSummary.totalXP,
                 streak: xpSummary.streak,
-                streakProtectedNow
+                streakProtectedNow,
+                tickets: xpSummary.tickets,
+                arenaScore: xpSummary.arenaScore
             }
         };
     } catch (error) {
@@ -2381,5 +2340,3 @@ export const submitDailyQuizAnswer = async (input: {
         };
     }
 };
-
-

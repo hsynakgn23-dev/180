@@ -5,6 +5,8 @@ import {
   resolveMobileNextLeagueKey,
   resolveMobileLeagueInfo,
 } from './mobileLeagueSystem';
+import { getCurrentWeekKey, normalizeWeeklyArenaState } from '../../../../src/domain/progressionRewards';
+import { resolveStoredProfileMarks } from '../../../../src/domain/profileMarks';
 
 type SupabaseErrorLike = {
   code?: string | null;
@@ -32,6 +34,8 @@ export type MobileProfileStats = {
   nextLeagueKey: string | null;
   nextLeagueName: string | null;
   streak: number;
+  weeklyArenaScore: number;
+  weeklyArenaActivity: number;
   ritualsCount: number;
   daysPresent: number;
   followersCount: number;
@@ -39,6 +43,9 @@ export type MobileProfileStats = {
   marks: string[];
   featuredMarks: string[];
   lastRitualDate: string | null;
+  streakProtectionWeekKey: string | null;
+  streakProtectionDate: string | null;
+  streakProtectionClaimedAt: string | null;
   source: 'xp_state' | 'fallback';
 };
 
@@ -65,6 +72,36 @@ const sanitizeStringList = (value: unknown, maxItems = 120): string[] => {
     .filter(Boolean);
   return Array.from(new Set(cleaned)).slice(0, maxItems);
 };
+
+const resolveStoredFollowCounts = (
+  xpState: ProfileXpState | null | undefined
+): { followersCount: number; followingCount: number } => {
+  if (!xpState || typeof xpState !== 'object' || Array.isArray(xpState)) {
+    return { followersCount: 0, followingCount: 0 };
+  }
+
+  return {
+    followersCount: Math.max(
+      toSafeInt(xpState.followers),
+      toSafeInt(xpState.followersCount),
+      toSafeInt(xpState.followerCount)
+    ),
+    followingCount: Math.max(
+      sanitizeStringList(xpState.following, 420).length,
+      toSafeInt(xpState.followingCount),
+      toSafeInt(xpState.following_count)
+    ),
+  };
+};
+
+const sortDateKeysDesc = (dateKeys: string[]): string[] =>
+  Array.from(new Set(dateKeys))
+    .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value))
+    .sort((left, right) => {
+      const leftIndex = parseDateKeyToDayIndex(left) ?? 0;
+      const rightIndex = parseDateKeyToDayIndex(right) ?? 0;
+      return rightIndex - leftIndex;
+    });
 
 const isSupabaseCapabilityError = (error: SupabaseErrorLike | null | undefined): boolean => {
   if (!error) return false;
@@ -222,43 +259,64 @@ const parseStatsFromXpState = (
   displayNameCandidate: string;
   totalXp: number;
   streak: number;
+  weeklyArenaScore: number;
+  weeklyArenaActivity: number;
   ritualsCount: number;
   daysPresent: number;
+  followersCount: number;
+  followingCount: number;
   marks: string[];
   featuredMarks: string[];
   lastRitualDate: string | null;
+  streakProtectionWeekKey: string | null;
+  streakProtectionDate: string | null;
+  streakProtectionClaimedAt: string | null;
 } | null => {
   if (!xpState || typeof xpState !== 'object' || Array.isArray(xpState)) return null;
 
   const displayNameCandidate =
     normalizeText(xpState.username, 80) || normalizeText(xpState.fullName, 80) || '';
-  const totalXp = toSafeInt(xpState.totalXP);
-  const streak = toSafeInt(xpState.streak);
+  const totalXp = Math.max(toSafeInt(xpState.totalXP), toSafeInt(xpState.xp));
+  const weeklyArena = normalizeWeeklyArenaState(xpState.weeklyArena, getCurrentWeekKey(new Date()));
   const dailyRituals = Array.isArray(xpState.dailyRituals) ? xpState.dailyRituals : [];
-  const activeDays = Array.isArray(xpState.activeDays) ? xpState.activeDays : [];
-  const ritualsCount = dailyRituals.length;
-  const daysPresent = activeDays.length;
-  const marks = sanitizeStringList(xpState.marks, 160);
-  const featuredMarks = sanitizeStringList(xpState.featuredMarks, 8).filter((markId) =>
-    marks.includes(markId)
+  const dailyRitualDates = sortDateKeysDesc(
+    dailyRituals
+      .map((entry) => {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+        return normalizeText((entry as Record<string, unknown>).date, 40) || null;
+      })
+      .filter((value): value is string => Boolean(value))
   );
-
-  const lastRitualDate = (() => {
-    if (dailyRituals.length === 0) return null;
-    const latest = dailyRituals[0];
-    if (!latest || typeof latest !== 'object' || Array.isArray(latest)) return null;
-    return normalizeText((latest as Record<string, unknown>).date, 40) || null;
-  })();
+  const activeDays = sortDateKeysDesc(sanitizeStringList(xpState.activeDays, 420));
+  const streakSeed = activeDays.length > 0 ? activeDays : dailyRitualDates;
+  const streak = Math.max(toSafeInt(xpState.streak), computeCurrentStreak(streakSeed));
+  const ritualsCount = dailyRituals.length;
+  const daysPresent = activeDays.length > 0 ? activeDays.length : dailyRitualDates.length;
+  const followCounts = resolveStoredFollowCounts(xpState);
+  const { marks, featuredMarks } = resolveStoredProfileMarks(xpState);
+  const streakProtectionDate = normalizeText(xpState.lastStreakProtectionDate, 40) || null;
+  const lastRitualDate = sortDateKeysDesc(
+    [dailyRitualDates[0] || null, activeDays[0] || null, streakProtectionDate].filter(
+      (value): value is string => Boolean(value)
+    )
+  )[0] || null;
 
   return {
     displayNameCandidate,
     totalXp,
     streak,
+    weeklyArenaScore: weeklyArena.score,
+    weeklyArenaActivity: weeklyArena.activityCount,
     ritualsCount,
     daysPresent,
+    followersCount: followCounts.followersCount,
+    followingCount: followCounts.followingCount,
     marks,
     featuredMarks,
     lastRitualDate,
+    streakProtectionWeekKey: normalizeText(xpState.lastStreakProtectionWeekKey, 40) || null,
+    streakProtectionDate,
+    streakProtectionClaimedAt: normalizeText(xpState.lastStreakProtectionClaimedAt, 80) || null,
   };
 };
 
@@ -318,13 +376,18 @@ export const fetchMobileProfileStats = async (): Promise<MobileProfileStatsResul
         nextLeagueKey,
         nextLeagueName,
         streak: xpStats.streak,
+        weeklyArenaScore: xpStats.weeklyArenaScore,
+        weeklyArenaActivity: xpStats.weeklyArenaActivity,
         ritualsCount: xpStats.ritualsCount,
         daysPresent: xpStats.daysPresent,
-        followersCount: followCounts.followersCount,
-        followingCount: followCounts.followingCount,
+        followersCount: Math.max(followCounts.followersCount, xpStats.followersCount),
+        followingCount: Math.max(followCounts.followingCount, xpStats.followingCount),
         marks: xpStats.marks,
         featuredMarks: xpStats.featuredMarks,
         lastRitualDate: xpStats.lastRitualDate,
+        streakProtectionWeekKey: xpStats.streakProtectionWeekKey,
+        streakProtectionDate: xpStats.streakProtectionDate,
+        streakProtectionClaimedAt: xpStats.streakProtectionClaimedAt,
         source: 'xp_state',
       },
     };
@@ -346,6 +409,8 @@ export const fetchMobileProfileStats = async (): Promise<MobileProfileStatsResul
       nextLeagueKey,
       nextLeagueName,
       streak: computeCurrentStreak(uniqueDays),
+      weeklyArenaScore: 0,
+      weeklyArenaActivity: 0,
       ritualsCount: timeline.ritualsCount,
       daysPresent: uniqueDays.length,
       followersCount: followCounts.followersCount,
@@ -353,6 +418,9 @@ export const fetchMobileProfileStats = async (): Promise<MobileProfileStatsResul
       marks: [],
       featuredMarks: [],
       lastRitualDate: timeline.lastRitualDate,
+      streakProtectionWeekKey: null,
+      streakProtectionDate: null,
+      streakProtectionClaimedAt: null,
       source: 'fallback',
     },
   };

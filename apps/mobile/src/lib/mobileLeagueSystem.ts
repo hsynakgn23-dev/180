@@ -3,15 +3,17 @@ import {
   LEAGUE_NAMES,
   LEVEL_THRESHOLD,
   getLeagueIndexFromXp,
+  getLeagueTierInfo,
   resolveLeagueInfo,
   resolveLeagueKeyFromXp,
   type LeagueKey,
   type LeagueInfo,
+  type LeagueTierInfo,
 } from '../../../../src/domain/leagueSystem';
 
 export { LEAGUES_DATA as MOBILE_LEAGUES_DATA, LEAGUE_NAMES as MOBILE_LEAGUE_NAMES, LEVEL_THRESHOLD };
-export type { LeagueInfo as MobileLeagueInfo };
-export { getLeagueIndexFromXp };
+export type { LeagueInfo as MobileLeagueInfo, LeagueTierInfo as MobileLeagueTierInfo };
+export { getLeagueIndexFromXp, getLeagueTierInfo as getMobileLeagueTierInfo };
 
 const FALLBACK_LEAGUE_KEY: LeagueKey = 'Bronze';
 

@@ -64,6 +64,22 @@ export const MARK_ICON_KEY_BY_ID: Record<string, MarkIconKey> = {
   rush_endless_10: 'infinity',
   swipe_explorer: 'orbit',
   genre_brain: 'triangle',
+
+  // League milestone marks
+  league_silver: 'circle',
+  league_gold: 'sun',
+  league_platinum: 'diamond',
+  league_emerald: 'orbit',
+  league_sapphire: 'nested_square',
+  league_ruby: 'spark',
+  league_diamond: 'hexagon',
+  league_master: 'shield',
+  league_grandmaster: 'triangle',
+  league_absolute: 'infinity',
+
+  // Extended streak marks
+  streak_fourteen: 'signal',
+  streak_thirty: 'monument',
 };
 
 export const MARK_MOTION_DURATION_MS: Record<MarkMotion, number> = {

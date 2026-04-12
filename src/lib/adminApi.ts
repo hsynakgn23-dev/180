@@ -4,6 +4,7 @@ import { buildApiUrl } from './apiBase';
 type AdminApiErrorCode =
     | 'UNAUTHORIZED'
     | 'FORBIDDEN'
+    | 'INVALID_TARGET'
     | 'INVALID_ID'
     | 'INVALID_ACTION'
     | 'METHOD_NOT_ALLOWED'
@@ -16,6 +17,11 @@ type AdminApiResponse<T> = {
     errorCode?: AdminApiErrorCode;
     message?: string;
 };
+
+const ADMIN_CSRF_STORAGE_KEY = 'absolute-cinema.admin.csrf';
+const ADMIN_CSRF_HEADER = 'x-admin-csrf-token';
+
+let cachedAdminCsrfToken: string | null = null;
 
 export type AdminSessionPayload = {
     userId: string;
@@ -101,6 +107,100 @@ const getAuthToken = async (): Promise<string | null> => {
     }
 };
 
+const readStoredAdminCsrfToken = (): string | null => {
+    if (cachedAdminCsrfToken) return cachedAdminCsrfToken;
+    if (typeof window === 'undefined') return null;
+
+    try {
+        const token = window.sessionStorage.getItem(ADMIN_CSRF_STORAGE_KEY)?.trim() || '';
+        cachedAdminCsrfToken = token || null;
+        return cachedAdminCsrfToken;
+    } catch {
+        return null;
+    }
+};
+
+const storeAdminCsrfToken = (value: unknown) => {
+    const token = String(value || '').trim();
+    if (!token) return;
+
+    cachedAdminCsrfToken = token;
+    if (typeof window === 'undefined') return;
+
+    try {
+        window.sessionStorage.setItem(ADMIN_CSRF_STORAGE_KEY, token);
+    } catch {
+        // Ignore storage failures and keep the in-memory copy.
+    }
+};
+
+const mergeHeaders = (headersInit?: HeadersInit): Record<string, string> => {
+    if (!headersInit) return {};
+    if (typeof Headers !== 'undefined' && headersInit instanceof Headers) {
+        const nextHeaders: Record<string, string> = {};
+        headersInit.forEach((value, key) => {
+            nextHeaders[key] = value;
+        });
+        return nextHeaders;
+    }
+
+    if (Array.isArray(headersInit)) {
+        return Object.fromEntries(
+            headersInit
+                .filter(
+                    (entry): entry is [string, string] =>
+                        Array.isArray(entry) && entry.length === 2 && entry[1] != null
+                )
+                .map(([key, value]) => [key, String(value)])
+        );
+    }
+
+    return Object.fromEntries(
+        Object.entries(headersInit).flatMap(([key, value]) =>
+            value == null ? [] : [[key, String(value)]]
+        )
+    );
+};
+
+const readMethod = (init?: RequestInit): string =>
+    String(init?.method || 'GET')
+        .trim()
+        .toUpperCase() || 'GET';
+
+const isStateChangingMethod = (method: string): boolean =>
+    !['GET', 'HEAD', 'OPTIONS'].includes(method);
+
+const bootstrapAdminCsrfToken = async (
+    accessToken: string,
+    forceRefresh = false
+): Promise<string | null> => {
+    if (!forceRefresh) {
+        const existing = readStoredAdminCsrfToken();
+        if (existing) return existing;
+    }
+
+    try {
+        const response = await fetch(buildApiUrl('/api/admin/session'), {
+            method: 'GET',
+            headers: {
+                'content-type': 'application/json',
+                Authorization: `Bearer ${accessToken}`
+            }
+        });
+        const rawBody = (await response.json().catch(() => ({}))) as {
+            csrfToken?: string;
+        };
+        if (!response.ok) {
+            return null;
+        }
+
+        storeAdminCsrfToken(rawBody.csrfToken);
+        return readStoredAdminCsrfToken();
+    } catch {
+        return null;
+    }
+};
+
 const requestAdminApi = async <T>(
     path: string,
     init?: RequestInit
@@ -115,13 +215,29 @@ const requestAdminApi = async <T>(
     }
 
     try {
+        const method = readMethod(init);
+        const headers: Record<string, string> = {
+            'content-type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+            ...mergeHeaders(init?.headers)
+        };
+
+        if (isStateChangingMethod(method)) {
+            const csrfToken =
+                (await bootstrapAdminCsrfToken(accessToken, true)) || readStoredAdminCsrfToken();
+            if (!csrfToken) {
+                return {
+                    ok: false,
+                    errorCode: 'FORBIDDEN',
+                    message: 'Admin security token is missing.'
+                };
+            }
+            headers[ADMIN_CSRF_HEADER] = csrfToken;
+        }
+
         const response = await fetch(path, {
             ...init,
-            headers: {
-                'content-type': 'application/json',
-                Authorization: `Bearer ${accessToken}`,
-                ...(init?.headers || {})
-            }
+            headers
         });
 
         const rawBody = (await response.json().catch(() => ({}))) as {
@@ -130,7 +246,10 @@ const requestAdminApi = async <T>(
             errorCode?: AdminApiErrorCode;
             message?: string;
             error?: string;
+            csrfToken?: string;
         };
+
+        storeAdminCsrfToken(rawBody.csrfToken);
 
         if (!response.ok || rawBody.ok === false) {
             return {
@@ -207,6 +326,34 @@ export const moderateAdminUser = async (input: {
         targetUserId: string;
         suspendedUntil?: string | null;
     }>(buildApiUrl('/api/admin/moderation/user'), {
+        method: 'POST',
+        body: JSON.stringify(input)
+    });
+
+export type GiftCode = {
+    id: string;
+    code: string;
+    gift_type: 'tickets' | 'premium';
+    value: number;
+    max_uses: number;
+    use_count: number;
+    expires_at: string | null;
+    note: string | null;
+    created_at: string;
+    is_revoked: boolean;
+};
+
+export const listAdminGiftCodes = async (): Promise<AdminApiResponse<GiftCode[]>> =>
+    requestAdminApi<GiftCode[]>(buildApiUrl('/api/admin/gift'), { method: 'GET' });
+
+export const createAdminGiftCode = async (input: {
+    giftType: 'tickets' | 'premium';
+    value: number;
+    maxUses?: number;
+    expiresInDays?: number;
+    note?: string;
+}) =>
+    requestAdminApi<GiftCode>(buildApiUrl('/api/admin/gift'), {
         method: 'POST',
         body: JSON.stringify(input)
     });

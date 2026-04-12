@@ -23,6 +23,9 @@ const PoolDiscoveryPanel = lazy(() =>
 const QuizRushPanel = lazy(() =>
   import('./features/pool-quiz/QuizRushPanel').then((mod) => ({ default: mod.QuizRushPanel }))
 )
+const BlurQuizPanel = lazy(() =>
+  import('./features/blur-quiz/BlurQuizPanel').then((mod) => ({ default: mod.BlurQuizPanel }))
+)
 const MovieDetailModal = lazy(() =>
   import('./features/daily-showcase/MovieDetailModal').then((mod) => ({ default: mod.MovieDetailModal }))
 )
@@ -120,6 +123,7 @@ const AppContent = () => {
   const [DebugPanelComponent, setDebugPanelComponent] = useState<ComponentType | null>(null);
   const lastLevelUpNotificationKeyRef = useRef('');
   const lastStreakNotificationKeyRef = useRef('');
+  const previousUserIdRef = useRef<string | null>(user?.id ?? null);
 
   useEffect(() => {
     if (user?.id) return;
@@ -152,7 +156,12 @@ const AppContent = () => {
   }, [addNotification, dailyRitualsCount, language, streakCelebrationEvent]);
 
   const [showLanding, setShowLanding] = useState(true);
+  const didJustLogout = Boolean(previousUserIdRef.current && !user?.id && !isPasswordRecoveryMode);
   const showDebugPanel = import.meta.env.DEV && import.meta.env.VITE_ENABLE_DEBUG_PANEL !== '0';
+
+  useEffect(() => {
+    previousUserIdRef.current = user?.id ?? null;
+  }, [user?.id]);
 
   useEffect(() => {
     const syncFromHash = () => {
@@ -187,6 +196,21 @@ const AppContent = () => {
     if (!showProfile && !publicProfileTarget && !showAdminPanel) return;
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   }, [showAdminPanel, showProfile, publicProfileTarget]);
+
+  useEffect(() => {
+    if (!didJustLogout) return;
+    setShowLanding(true);
+    setActiveMovie(null);
+    setDetailMovie(null);
+    setShowProfile(false);
+    setShowAdminPanel(false);
+    setStartProfileInSettings(false);
+    setPublicProfileTarget(null);
+    if (window.location.hash.startsWith('#/u/') || parseAdminHash(window.location.hash)) {
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+    }
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [didJustLogout]);
 
   useEffect(() => {
     let active = true;
@@ -238,7 +262,7 @@ const AppContent = () => {
   const fullScreenFallback = <div className="min-h-screen" aria-hidden="true" />;
 
   if (!user || isPasswordRecoveryMode) {
-    if (showLanding && !isPasswordRecoveryMode) {
+    if ((showLanding || didJustLogout) && !isPasswordRecoveryMode) {
       return (
         <Suspense fallback={fullScreenFallback}>
           <LandingPage onStart={() => setShowLanding(false)} />
@@ -428,15 +452,21 @@ const AppContent = () => {
             </SectionErrorBoundary>
           </Suspense>
 
-          <Suspense fallback={null}>
+          <Suspense fallback={<section className="mt-6 rounded-2xl border border-white/10 bg-white/5 px-4 py-10 text-center text-sm text-white/30 animate-pulse">...</section>}>
             <SectionErrorBoundary title="Quiz" fallbackMessage="">
               <PoolDiscoveryPanel />
             </SectionErrorBoundary>
           </Suspense>
 
-          <Suspense fallback={null}>
+          <Suspense fallback={<section className="mt-6 rounded-2xl border border-white/10 bg-white/5 px-4 py-10 text-center text-sm text-white/30 animate-pulse">...</section>}>
             <SectionErrorBoundary title="Quiz Rush" fallbackMessage="">
               <QuizRushPanel />
+            </SectionErrorBoundary>
+          </Suspense>
+
+          <Suspense fallback={<section className="mt-6 rounded-2xl border border-white/10 bg-white/5 px-4 py-10 text-center text-sm text-white/30 animate-pulse">...</section>}>
+            <SectionErrorBoundary title="Blur Quiz" fallbackMessage="">
+              <BlurQuizPanel />
             </SectionErrorBoundary>
           </Suspense>
 
@@ -469,6 +499,5 @@ function App() {
 }
 
 export default App
-
 
 

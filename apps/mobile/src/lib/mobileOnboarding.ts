@@ -7,7 +7,8 @@ export const readMobileOnboardingSeen = async (): Promise<boolean> => {
   try {
     const raw = await AsyncStorage.getItem(MOBILE_ONBOARDING_SEEN_KEY);
     return raw === MOBILE_ONBOARDING_SEEN_VALUE;
-  } catch {
+  } catch (error) {
+    console.warn('mobileOnboarding:read', error);
     return false;
   }
 };
@@ -19,8 +20,7 @@ export const writeMobileOnboardingSeen = async (seen: boolean): Promise<void> =>
       return;
     }
     await AsyncStorage.removeItem(MOBILE_ONBOARDING_SEEN_KEY);
-  } catch {
-    // best-effort persistence only
+  } catch (error) {
+    console.warn('mobileOnboarding:write', error);
   }
 };
-

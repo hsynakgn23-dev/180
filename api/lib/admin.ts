@@ -1,6 +1,7 @@
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createSupabaseServiceClient } from './supabaseServiceClient.js';
-import { createCorsHeaders } from './cors.js';
+import { createCorsHeaders, resolveAllowedOrigin } from './cors.js';
 
 export type ApiRequest = {
     method?: string;
@@ -45,10 +46,21 @@ export type AdminContext = {
     serviceClient: SupabaseClient;
     authUser: AuthUser;
     membership: AdminMembership;
+    csrfToken: string;
+};
+
+type AdminCsrfPayload = {
+    version: 1;
+    userId: string;
+    issuedAt: number;
+    nonce: string;
 };
 
 const UUID_REGEX =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const ADMIN_CSRF_HEADER = 'x-admin-csrf-token';
+const ADMIN_CSRF_TTL_MS = 12 * 60 * 60 * 1000;
 
 export const sendJson = (
     res: ApiResponse,
@@ -178,6 +190,156 @@ export const isSupabaseCapabilityError = (
     );
 };
 
+const normalizeOriginValue = (value: string): string => {
+    const normalized = String(value || '').trim();
+    if (!normalized) return '';
+
+    try {
+        return new URL(normalized).origin;
+    } catch {
+        return '';
+    }
+};
+
+const resolveRequestOrigin = (req: ApiRequest): string => {
+    const origin = normalizeOriginValue(getHeader(req, 'origin'));
+    if (origin) return origin;
+    return normalizeOriginValue(getHeader(req, 'referer'));
+};
+
+const base64UrlEncode = (value: string): string =>
+    Buffer.from(value, 'utf8')
+        .toString('base64')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/g, '');
+
+const base64UrlDecode = (value: string): string => {
+    const normalized = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    return Buffer.from(padded, 'base64').toString('utf8');
+};
+
+const buildCsrfSignature = (payload: string, secret: string): string =>
+    createHmac('sha256', secret)
+        .update(payload)
+        .digest('base64')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/g, '');
+
+const issueAdminCsrfToken = (userId: string, secret: string): string => {
+    const payload: AdminCsrfPayload = {
+        version: 1,
+        userId,
+        issuedAt: Date.now(),
+        nonce: randomBytes(18).toString('hex')
+    };
+
+    const encodedPayload = base64UrlEncode(JSON.stringify(payload));
+    return `${encodedPayload}.${buildCsrfSignature(encodedPayload, secret)}`;
+};
+
+const isCsrfSignatureValid = (expected: string, actual: string): boolean => {
+    if (!expected || !actual) return false;
+    const expectedBuffer = Buffer.from(expected, 'utf8');
+    const actualBuffer = Buffer.from(actual, 'utf8');
+    if (expectedBuffer.length !== actualBuffer.length) return false;
+    return timingSafeEqual(expectedBuffer, actualBuffer);
+};
+
+const validateAdminCsrfToken = (
+    token: string,
+    userId: string,
+    secret: string
+): boolean => {
+    const [encodedPayload, signature] = String(token || '').split('.');
+    if (!encodedPayload || !signature) return false;
+
+    const expectedSignature = buildCsrfSignature(encodedPayload, secret);
+    if (!isCsrfSignatureValid(expectedSignature, signature)) {
+        return false;
+    }
+
+    try {
+        const parsed = JSON.parse(base64UrlDecode(encodedPayload)) as Partial<AdminCsrfPayload>;
+        const issuedAt = Number(parsed.issuedAt);
+        if (parsed.version !== 1) return false;
+        if (normalizeUuid(parsed.userId) !== userId) return false;
+        if (!Number.isFinite(issuedAt) || issuedAt <= 0) return false;
+        if (Date.now() - issuedAt > ADMIN_CSRF_TTL_MS) return false;
+        return true;
+    } catch {
+        return false;
+    }
+};
+
+const requireAdminCsrf = (
+    req: ApiRequest,
+    res: ApiResponse,
+    corsHeaders: Record<string, string>,
+    userId: string,
+    secret: string
+): { ok: true } | { ok: false; response: unknown } => {
+    const requestOrigin = resolveRequestOrigin(req);
+    if (!requestOrigin) {
+        return {
+            ok: false,
+            response: sendJson(
+                res,
+                403,
+                {
+                    ok: false,
+                    errorCode: 'FORBIDDEN',
+                    message: 'Missing request origin for admin mutation.'
+                },
+                corsHeaders
+            )
+        };
+    }
+
+    const allowedOrigin = resolveAllowedOrigin({
+        headers: {
+            origin: requestOrigin
+        }
+    });
+
+    if (allowedOrigin !== requestOrigin) {
+        return {
+            ok: false,
+            response: sendJson(
+                res,
+                403,
+                {
+                    ok: false,
+                    errorCode: 'FORBIDDEN',
+                    message: 'Admin mutation origin is not allowed.'
+                },
+                corsHeaders
+            )
+        };
+    }
+
+    const csrfToken = getHeader(req, ADMIN_CSRF_HEADER);
+    if (!validateAdminCsrfToken(csrfToken, userId, secret)) {
+        return {
+            ok: false,
+            response: sendJson(
+                res,
+                403,
+                {
+                    ok: false,
+                    errorCode: 'FORBIDDEN',
+                    message: 'Admin CSRF validation failed.'
+                },
+                corsHeaders
+            )
+        };
+    }
+
+    return { ok: true };
+};
+
 const getSupabaseAdminConfig = (): SupabaseAdminConfig | null => {
     const url = toText(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL, 240);
     const serviceRoleKey = toText(process.env.SUPABASE_SERVICE_ROLE_KEY, 2048);
@@ -259,7 +421,7 @@ export const requireAdminAccess = async (
 ): Promise<{ ok: true; context: AdminContext } | { ok: false; response: unknown }> => {
     const corsHeaders = createCorsHeaders(req, {
         methods,
-        headers: 'content-type,authorization'
+        headers: `content-type,authorization,${ADMIN_CSRF_HEADER}`
     });
 
     if (req.method === 'OPTIONS') {
@@ -340,6 +502,19 @@ export const requireAdminAccess = async (
         };
     }
 
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(requestMethod)) {
+        const csrfResult = requireAdminCsrf(
+            req,
+            res,
+            corsHeaders,
+            authUser.id,
+            config.serviceRoleKey
+        );
+        if (!csrfResult.ok) {
+            return csrfResult;
+        }
+    }
+
     return {
         ok: true,
         context: {
@@ -347,7 +522,8 @@ export const requireAdminAccess = async (
             config,
             serviceClient,
             authUser,
-            membership
+            membership,
+            csrfToken: issueAdminCsrfToken(authUser.id, config.serviceRoleKey)
         }
     };
 };

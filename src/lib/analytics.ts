@@ -417,6 +417,10 @@ export const trackEvent = (
     scheduleFlush();
 };
 
+const onHashChange = () => { captureAttributionTouch(); trackPageView('hashchange'); };
+const onPopState = () => { captureAttributionTouch(); trackPageView('popstate'); };
+const onVisibilityChange = () => { if (document.visibilityState === 'hidden') flushWithBeacon(); };
+
 export const initAnalytics = (): void => {
     if (!isBrowser()) return;
     if (initialized) return;
@@ -427,18 +431,9 @@ export const initAnalytics = (): void => {
     const sessionId = getSessionId();
     const hasSessionStarted = safeGetStorageItem(window.sessionStorage, SESSION_STARTED_KEY) === '1';
 
-    const onRouteChange = (reason: string) => {
-        captureAttributionTouch();
-        trackPageView(reason);
-    };
-
-    window.addEventListener('hashchange', () => onRouteChange('hashchange'));
-    window.addEventListener('popstate', () => onRouteChange('popstate'));
-    window.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden') {
-            flushWithBeacon();
-        }
-    });
+    window.addEventListener('hashchange', onHashChange);
+    window.addEventListener('popstate', onPopState);
+    window.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('beforeunload', flushWithBeacon);
 
     if (!hasSessionStarted) {
@@ -455,4 +450,21 @@ export const initAnalytics = (): void => {
     if (pendingQueue.length) {
         scheduleFlush();
     }
+};
+
+export const teardownAnalytics = (): void => {
+    if (!isBrowser()) return;
+    window.removeEventListener('hashchange', onHashChange);
+    window.removeEventListener('popstate', onPopState);
+    window.removeEventListener('visibilitychange', onVisibilityChange);
+    window.removeEventListener('beforeunload', flushWithBeacon);
+    if (flushInterval !== null) {
+        window.clearInterval(flushInterval);
+        flushInterval = null;
+    }
+    if (flushTimer !== null) {
+        window.clearTimeout(flushTimer);
+        flushTimer = null;
+    }
+    initialized = false;
 };

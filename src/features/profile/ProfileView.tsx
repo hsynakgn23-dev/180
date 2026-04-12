@@ -13,6 +13,7 @@ import { InfoFooter } from '../../components/InfoFooter';
 import { buildFilmOgImageUrl, buildProfileOgImageUrl } from '../../lib/ogCards';
 import { appendMobileDeepLinkParams } from '../../domain/deepLinks';
 import { readAvatarFileAsDataUrl } from '../../lib/avatarUpload';
+import { resolveAvatarDisplay } from '../../data/avatarData';
 import {
     buildProfileActivityPulse,
     buildProfileDnaSegments,
@@ -170,6 +171,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
     const {
         xp,
         league,
+        leagueInfo,
         progressPercentage,
         marks,
         daysPresent,
@@ -923,37 +925,40 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                         <div className="bg-white/5 border border-white/5 rounded-xl p-6 animate-slide-up">
                             <div className="flex flex-col items-center">
                                 {/* Avatar with Settings Icon */}
-                                <div className="relative mb-5">
-                                    <div
-                                        className="w-24 h-24 rounded-full border border-gray-200/10 flex items-center justify-center bg-white/5 shadow-sm relative group overflow-hidden"
-                                        onClick={() => isEditing && fileInputRef.current?.click()}
-                                    >
-                                        <input
-                                            type="file"
-                                            ref={fileInputRef}
-                                            className="hidden"
-                                            accept="image/*"
-                                            onChange={handleFileUpload}
-                                        />
-
-                                        {isEditing && (
-                                            <div className="absolute inset-0 z-20 bg-black/50 flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <span className="text-[9px] uppercase tracking-widest text-white/80 font-bold">{text.profile.upload}</span>
+                                <div className="relative mb-6">
+                                    {(() => {
+                                        const { svgPaths, color } = resolveAvatarDisplay(avatarId);
+                                        const borderCol = avatarUrl ? 'rgba(255,255,255,0.12)' : color;
+                                        return (
+                                            <div
+                                                className="w-28 h-28 rounded-full flex items-center justify-center bg-white/5 shadow-lg relative group overflow-hidden cursor-pointer"
+                                                style={{ border: `2px solid ${borderCol}`, boxShadow: `0 0 18px ${borderCol}30` }}
+                                                onClick={() => isEditing && fileInputRef.current?.click()}
+                                            >
+                                                <input
+                                                    type="file"
+                                                    ref={fileInputRef}
+                                                    className="hidden"
+                                                    accept="image/*"
+                                                    onChange={handleFileUpload}
+                                                />
+                                                {isEditing && (
+                                                    <div className="absolute inset-0 z-20 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <span className="text-[9px] uppercase tracking-widest text-white/80 font-bold">{text.profile.upload}</span>
+                                                    </div>
+                                                )}
+                                                {avatarUrl ? (
+                                                    <img src={avatarUrl} alt="User Avatar" className="w-full h-full object-cover transition-all duration-700 hover:scale-105" />
+                                                ) : (
+                                                    <div className="w-full h-full flex items-center justify-center" style={{ color }}>
+                                                        <svg width="56" height="56" viewBox="0 0 24 24" fill="none"
+                                                            strokeLinecap="round" strokeLinejoin="round"
+                                                            dangerouslySetInnerHTML={{ __html: svgPaths }} />
+                                                    </div>
+                                                )}
                                             </div>
-                                        )}
-
-                                        {avatarUrl ? (
-                                            <img
-                                                src={avatarUrl}
-                                                alt="User Avatar"
-                                                className="w-full h-full object-cover transition-all duration-700 hover:scale-105"
-                                            />
-                                        ) : (
-                                            <div className={`w-20 h-20 rounded-full flex items-center justify-center text-2xl text-sage/50 font-serif italic ${avatarId === 'geo_1' ? 'bg-sage/10' : avatarId === 'geo_2' ? 'bg-clay/10' : 'bg-gray-50/5'}`}>
-                                                {avatarId === 'geo_1' ? 'I' : avatarId === 'geo_2' ? 'II' : avatarId === 'geo_3' ? 'III' : 'IV'}
-                                            </div>
-                                        )}
-                                    </div>
+                                        );
+                                    })()}
 
                                     {/* Settings Icon */}
                                     <button
@@ -966,22 +971,34 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                                 </div>
 
                                 {/* Username & Bio */}
-                                <h2 className="text-lg sm:text-xl tracking-[0.14em] sm:tracking-widest font-bold leading-tight text-[#E5E4E2]/90 mb-3 text-center break-words max-w-full">
+                                <h2 className="text-lg sm:text-xl tracking-[0.14em] sm:tracking-widest font-bold leading-tight text-[#E5E4E2]/90 mb-1 text-center break-words max-w-full">
                                     {user?.name ? user.name.toUpperCase() : text.profile.curatorFallback}
                                 </h2>
-                                <p className="text-[10px] tracking-[0.2em] uppercase text-gray-400 mb-2 text-center break-all max-w-full px-2">
+                                <p className="text-[10px] tracking-[0.2em] uppercase text-gray-500 mb-4 text-center break-all max-w-full px-2">
                                     @{username || text.profile.observerHandle}
                                 </p>
-                                <div className="mb-5 text-[10px] text-gray-500 text-center leading-relaxed space-y-1">
-                                    <p className="break-words">{fullName || text.profile.missingName}</p>
-                                    <p className="break-words">
-                                        {genderLabel || text.profile.missingGender} | {birthDate || text.profile.missingBirthDate}
-                                    </p>
-                                </div>
 
-                                <div className="mb-5 flex flex-wrap items-center justify-center gap-2.5 sm:gap-3.5 text-[10px] uppercase tracking-[0.14em]">
-                                    <span className="text-[#E5E4E2]/80">{text.profile.following}: {followCounts.following}</span>
-                                    <span className="text-[#E5E4E2]/80">{text.profile.followers}: {followCounts.followers}</span>
+                                {(fullName || genderLabel || birthDate) && (
+                                    <div className="mb-4 text-[10px] text-gray-500 text-center leading-relaxed space-y-0.5">
+                                        {fullName && <p className="break-words text-gray-400">{fullName}</p>}
+                                        {(genderLabel || birthDate) && (
+                                            <p className="break-words">
+                                                {[genderLabel, birthDate].filter(Boolean).join(' · ')}
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+
+                                <div className="mb-5 flex items-center gap-5 text-[10px] uppercase tracking-[0.14em]">
+                                    <div className="flex flex-col items-center gap-0.5">
+                                        <span className="text-[#E5E4E2]/90 font-bold text-sm">{followCounts.following}</span>
+                                        <span className="text-gray-500">{text.profile.following}</span>
+                                    </div>
+                                    <div className="w-px h-6 bg-white/10" />
+                                    <div className="flex flex-col items-center gap-0.5">
+                                        <span className="text-[#E5E4E2]/90 font-bold text-sm">{followCounts.followers}</span>
+                                        <span className="text-gray-500">{text.profile.followers}</span>
+                                    </div>
                                 </div>
 
                                 {isEditing ? (
@@ -1013,24 +1030,34 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                                     </div>
                                 )}
 
-                                {/* League & XP */}
-                                <div className="text-xs tracking-[0.2em] text-[#E5E4E2]/60 mb-5 uppercase">
-                                    {currentLeagueLabel} - {Math.floor(xp)} XP
+                                {/* League badge + XP */}
+                                <div className="flex flex-col items-center gap-2 mb-5">
+                                    <div
+                                        className="px-3 py-1 rounded-full text-[10px] font-bold tracking-[0.18em] uppercase"
+                                        style={{
+                                            color: leagueInfo.color,
+                                            backgroundColor: `${leagueInfo.color}18`,
+                                            border: `1px solid ${leagueInfo.color}40`
+                                        }}
+                                    >
+                                        {currentLeagueLabel}
+                                    </div>
+                                    <span className="text-[11px] font-mono text-[#E5E4E2]/50">{Math.floor(xp)} XP</span>
                                 </div>
 
                                 {/* XP Progress Bar */}
                                 <div className="w-full">
-                                    <div className="flex justify-between items-end mb-2 text-[9px]">
-                                        <span className="font-bold text-sage tracking-wider uppercase">
+                                    <div className="flex justify-between items-center mb-2 text-[9px]">
+                                        <span className="tracking-wider uppercase" style={{ color: leagueInfo.color + 'cc' }}>
                                             {nextLeagueLabel}
                                         </span>
-                                        <span className="font-mono text-sage/60">
+                                        <span className="font-mono text-gray-600">
                                             {Math.floor(nextLevelXP - xp)} XP
                                         </span>
                                     </div>
-                                    <div className="h-1 w-full bg-[#1A1A1A] rounded-full overflow-hidden border border-white/5 relative">
+                                    <div className="h-[3px] w-full bg-white/5 rounded-full overflow-hidden relative">
                                         <div
-                                            className="h-full relative"
+                                            className="h-full rounded-full relative"
                                             style={{
                                                 width: `${progressPercentage}%`,
                                                 background: progressFill,
@@ -1039,7 +1066,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                                                 transitionTimingFunction: PROGRESS_EASING
                                             }}
                                         >
-                                            <div className="absolute right-0 top-0 bottom-0 w-[2px] bg-white/50 blur-[1px] animate-pulse"></div>
+                                            <div className="absolute right-0 top-0 bottom-0 w-[2px] bg-white/50 blur-[1px] animate-pulse" />
                                         </div>
                                     </div>
                                 </div>

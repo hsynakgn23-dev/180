@@ -58,3 +58,60 @@ export const resolveLeagueKeyFromXp = (xp: number): LeagueKey => getLeagueKeyByI
 
 export const resolveLeagueInfo = (leagueKey: string | null | undefined): LeagueInfo =>
   LEAGUES_DATA[resolveLeagueKey(leagueKey)];
+
+export type LeagueTier = 1 | 2 | 3;
+
+export interface LeagueTierInfo {
+  leagueKey: LeagueKey;
+  tier: LeagueTier;
+  tierLabel: string;
+  tierXpStart: number;
+  tierXpEnd: number;
+  tierProgress: number;
+  xpToNextTier: number;
+  nextLeagueKey: LeagueKey | null;
+  isTopTier: boolean;
+  isMaxLeague: boolean;
+}
+
+const TIER_ROMAN: Record<LeagueTier, string> = { 1: 'I', 2: 'II', 3: 'III' };
+
+export const getLeagueTierInfo = (xp: number): LeagueTierInfo => {
+  const safeXp = Math.max(0, Math.floor(Number(xp) || 0));
+  const leagueIndex = getLeagueIndexFromXp(safeXp);
+  const leagueKey = LEAGUE_NAMES[leagueIndex];
+  const leagueXpStart = leagueIndex * LEVEL_THRESHOLD;
+  const nextLeagueKey = leagueIndex + 1 < LEAGUE_NAMES.length ? LEAGUE_NAMES[leagueIndex + 1] : null;
+  const leagueXpEnd = leagueXpStart + LEVEL_THRESHOLD;
+
+  const span = LEVEL_THRESHOLD;
+  const xpInLeague = safeXp - leagueXpStart;
+
+  const t1End = leagueXpStart + Math.floor(span / 3);
+  const t2End = leagueXpStart + Math.floor((2 * span) / 3);
+
+  let tier: LeagueTier;
+  let tierXpStart: number;
+  let tierXpEnd: number;
+
+  if (xpInLeague < Math.floor(span / 3)) {
+    tier = 1; tierXpStart = leagueXpStart; tierXpEnd = t1End;
+  } else if (xpInLeague < Math.floor((2 * span) / 3)) {
+    tier = 2; tierXpStart = t1End; tierXpEnd = t2End;
+  } else {
+    tier = 3; tierXpStart = t2End; tierXpEnd = leagueXpEnd;
+  }
+
+  const tierSpan = Math.max(1, tierXpEnd - tierXpStart);
+  const tierProgress = Math.min(1, Math.max(0, (safeXp - tierXpStart) / tierSpan));
+  const xpToNextTier = Math.max(0, tierXpEnd - safeXp);
+  const isTopTier = tier === 3;
+  const isMaxLeague = nextLeagueKey === null && isTopTier;
+
+  return {
+    leagueKey, tier,
+    tierLabel: `${leagueKey} ${TIER_ROMAN[tier]}`,
+    tierXpStart, tierXpEnd, tierProgress, xpToNextTier,
+    nextLeagueKey, isTopTier, isMaxLeague,
+  };
+};

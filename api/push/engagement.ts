@@ -35,7 +35,45 @@ type RitualRow = {
     movie_title?: unknown;
 };
 
-const MOBILE_DAILY_DEEP_LINK = 'absolutecinema://open?target=daily';
+const MOBILE_DEEP_LINK_BASE = 'absolutecinema://open';
+
+const buildMobileDeepLink = (input: {
+    target: 'daily' | 'profile' | 'share' | 'public_profile';
+    goal?: 'comment' | 'streak';
+    userId?: string;
+}): string => {
+    const params = new URLSearchParams();
+    params.set('target', input.target);
+
+    if (input.target === 'daily') {
+        params.set('screen', 'daily_home');
+    } else if (input.target === 'profile') {
+        params.set('screen', 'profile_home');
+    } else if (input.target === 'share') {
+        params.set('screen', 'share_hub');
+        if (input.goal) params.set('goal', input.goal);
+    } else if (input.target === 'public_profile') {
+        params.set('screen', 'public_profile');
+        const userId = normalizeText(input.userId, 120);
+        if (userId) params.set('user_id', userId);
+    }
+
+    return `${MOBILE_DEEP_LINK_BASE}?${params.toString()}`;
+};
+
+const resolveNotificationDeepLink = (input: {
+    kind: EngagementKind;
+    actorUserId: string;
+}): string => {
+    if (input.kind === 'follow') {
+        return buildMobileDeepLink({
+            target: 'public_profile',
+            userId: input.actorUserId
+        });
+    }
+
+    return buildMobileDeepLink({ target: 'daily' });
+};
 
 const sendJson = (
     res: ApiResponse,
@@ -315,6 +353,10 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         actorLabel,
         movieTitle
     });
+    const deepLink = resolveNotificationDeepLink({
+        kind,
+        actorUserId: authUser.id
+    });
 
     const notificationEventResult = await createNotificationEvent(pushConfig, {
         recipientUserId: targetUserId,
@@ -323,14 +365,15 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         kind,
         title: copy.title,
         body: copy.body,
-        deepLink: MOBILE_DAILY_DEEP_LINK,
+        deepLink,
         metadata: {
             source: 'mobile_engagement_api',
             kind,
             actorLabel,
             targetUserId,
             ritualId,
-            movieTitle: movieTitle || null
+            movieTitle: movieTitle || null,
+            deepLink
         }
     });
     const notificationEventId = notificationEventResult.ok ? notificationEventResult.eventId : null;
@@ -378,15 +421,15 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
             title: copy.title,
             body: copy.body,
             sound: 'default',
-            data: {
-                source: 'mobile_engagement_api',
-                kind,
-                notificationId: notificationEventId,
-                notificationType: kind,
-                deepLink: MOBILE_DAILY_DEEP_LINK,
-                sentAt: new Date().toISOString()
-            }
-        }))
+                data: {
+                    source: 'mobile_engagement_api',
+                    kind,
+                    notificationId: notificationEventId,
+                    notificationType: kind,
+                    deepLink,
+                    sentAt: new Date().toISOString()
+                }
+            }))
     );
 
     if (!pushResult.ok) {

@@ -10,12 +10,13 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         return access.response;
     }
 
-    const { corsHeaders, authUser, membership } = access.context;
+    const { corsHeaders, authUser, membership, csrfToken } = access.context;
     return sendJson(
         res,
         200,
         {
             ok: true,
+            csrfToken,
             data: {
                 userId: authUser.id,
                 email: authUser.email,

@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentProps,
   type ErrorInfo,
   type ReactNode,
 } from 'react';
@@ -25,14 +26,18 @@ import {
   type TextProps,
 } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
-import { FontAwesome, Ionicons } from '@expo/vector-icons';
+import { Audio } from 'expo-av';
+import { FontAwesome, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { SvgXml } from 'react-native-svg';
+import { mobileTranslations } from '../i18n';
 import {
   MOBILE_MARK_CATALOG,
   groupMobileMarksByCategory,
   resolveMobileMarkMeta,
   resolveMobileMarkTitle,
 } from '../lib/mobileMarksCatalog';
-import { resolveMobileLeagueProgress } from '../lib/mobileLeagueSystem';
+import { resolveMobileLeagueProgress, MOBILE_LEAGUES_DATA } from '../lib/mobileLeagueSystem';
+import { CINEMA_AVATAR_CATALOG, getCinemaAvatarEntry, makeCinemaAvatarUrl, resolveAvatarEntry, type CinemaAvatarEntry } from '../lib/mobileAvatarCatalog';
 import { type PushInboxItem } from '../lib/mobilePushInbox';
 import { isSupabaseConfigured } from '../lib/supabase';
 import type { MobileThemeMode } from '../lib/mobileThemeMode';
@@ -44,7 +49,7 @@ import {
   type MobileDailyQuizOptionKey,
 } from '../lib/mobileDailyQuizApi';
 import { getProgressHeadColor, getProgressTailColor } from '../../../../src/lib/progressVisuals';
-import { LEAGUE_TRANSITION_COPY, resolveStreakCelebrationCopy, resolveStreakCelebrationTheme, resolveStreakSurfaceCopy } from '../../../../src/domain/celebrations';
+import { LEAGUE_TRANSITION_COPY, resolveMarkUnlockSurfaceCopy, resolveStreakCelebrationCopy, resolveStreakCelebrationTheme, resolveStreakSurfaceCopy } from '../../../../src/domain/celebrations';
 import { MARK_MOTION_DURATION_MS } from '../../../../src/domain/markVisuals';
 import {
   buildProfileActivityPulse,
@@ -98,6 +103,14 @@ const MOBILE_SUPABASE_STORAGE_BUCKET =
     .replace(/^\/+|\/+$/g, '') || 'posters';
 let APP_SCREENS_THEME_MODE: MobileThemeMode = 'midnight';
 const DAWN_TEXT_COLOR_STYLE = { color: '#A45E4A' } as const;
+const DAILY_QUIZ_SOUND_CORRECT = require('../../assets/sounds/correct.wav') as number;
+const DAILY_QUIZ_SOUND_WRONG = require('../../assets/sounds/wrong.wav') as number;
+const DAILY_QUIZ_CONFETTI_COLORS = ['#4ade80', '#facc15', '#60a5fa', '#f472b6', '#fb923c', '#a78bfa'];
+const DAILY_QUIZ_CONFETTI_COUNT = 28;
+
+let dailyQuizAudioCtx: AudioContext | null = null;
+let dailyQuizAudioSuspendTimer: ReturnType<typeof setTimeout> | null = null;
+const DAILY_QUIZ_AUDIO_IDLE_MS = 12000;
 
 const blurActiveWebElement = (): void => {
   if (Platform.OS !== 'web') return;
@@ -147,6 +160,76 @@ const buildAccentGlowStyle = (accentColor: string): Record<string, unknown> =>
         shadowOffset: { width: 0, height: 0 },
       };
 
+const resolveGenreVisual = (
+  genreValue: string
+): {
+  icon: ComponentProps<typeof MaterialCommunityIcons>['name'];
+  accent: string;
+} => {
+  const genre = String(genreValue || '').trim().toLowerCase();
+  const normalized = genre
+    .replace(/[()]/g, ' ')
+    .replace(/[,&]/g, '/')
+    .split('/')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const has = (...needles: string[]) =>
+    needles.some((needle) => genre.includes(needle) || normalized.includes(needle));
+  const hasAll = (...groups: string[][]) =>
+    groups.every((group) =>
+      group.some((needle) => genre.includes(needle) || normalized.includes(needle))
+    );
+
+  if (
+    hasAll(
+      ['action', 'aksiyon'],
+      ['science fiction', 'sci-fi', 'scifi', 'bilim kurgu']
+    )
+  ) {
+    return { icon: 'rocket-launch', accent: '#60a5fa' };
+  }
+  if (hasAll(['action', 'aksiyon'], ['adventure', 'macera'])) {
+    return { icon: 'sword-cross', accent: '#a3e635' };
+  }
+  if (hasAll(['drama'], ['romance', 'romantik', 'ask', 'aşk'])) {
+    return { icon: 'heart-multiple', accent: '#ec4899' };
+  }
+  if (hasAll(['comedy', 'komedi'], ['romance', 'romantik', 'ask', 'aşk'])) {
+    return { icon: 'emoticon-kiss-outline', accent: '#f472b6' };
+  }
+  if (hasAll(['horror', 'korku'], ['thriller', 'gerilim'])) {
+    return { icon: 'ghost-outline', accent: '#fb7185' };
+  }
+  if (hasAll(['crime', 'suc', 'suç'], ['drama'])) {
+    return { icon: 'police-badge-outline', accent: '#fb923c' };
+  }
+  if (hasAll(['mystery', 'gizem'], ['thriller', 'gerilim'])) {
+    return { icon: 'incognito', accent: '#a78bfa' };
+  }
+
+  if (has('action', 'aksiyon')) return { icon: 'bomb', accent: '#f59e0b' };
+  if (has('adventure', 'macera')) return { icon: 'compass-outline', accent: '#84cc16' };
+  if (has('drama')) return { icon: 'drama-masks', accent: '#c98b6b' };
+  if (has('horror', 'korku')) return { icon: 'wizard-hat', accent: '#ef4444' };
+  if (has('thriller', 'gerilim')) return { icon: 'heart-pulse', accent: '#fb7185' };
+  if (has('crime', 'suc', 'suç')) return { icon: 'scale-balance', accent: '#f97316' };
+  if (has('romance', 'romantik', 'ask', 'aşk')) return { icon: 'heart', accent: '#ec4899' };
+  if (has('comedy', 'komedi')) return { icon: 'emoticon-happy-outline', accent: '#facc15' };
+  if (has('science fiction', 'sci-fi', 'scifi', 'bilim kurgu')) {
+    return { icon: 'planet', accent: '#60a5fa' };
+  }
+  if (has('fantasy', 'fantezi')) return { icon: 'auto-fix', accent: '#a78bfa' };
+  if (has('animation', 'animasyon')) return { icon: 'star-four-points-outline', accent: '#22c55e' };
+  if (has('documentary', 'belgesel')) return { icon: 'camera-outline', accent: '#94a3b8' };
+  if (has('family', 'aile')) return { icon: 'home-heart', accent: '#10b981' };
+  if (has('history', 'tarih')) return { icon: 'bank-outline', accent: '#c084fc' };
+  if (has('war', 'savas', 'savaş')) return { icon: 'shield-sword-outline', accent: '#fb923c' };
+  if (has('western')) return { icon: 'cowboy-hat', accent: '#f59e0b' };
+  if (has('music', 'muzik', 'müzik')) return { icon: 'music-note-outline', accent: '#38bdf8' };
+  if (has('mystery', 'gizem')) return { icon: 'magnify', accent: '#a78bfa' };
+  return { icon: 'movie-open-outline', accent: '#8A9A5B' };
+};
+
 const resolveMobileImageProxyBase = (): string => {
   const configured = String(process.env.EXPO_PUBLIC_IMAGE_PROXIES || '')
     .split(',')
@@ -184,6 +267,29 @@ const hexToRgba = (hex: string, alpha: number): string => {
   return `rgba(${r},${g},${b},${alpha})`;
 };
 
+const blendHexColors = (fromHex: string, toHex: string, ratio: number): string => {
+  const normalize = (value: string): string => {
+    const normalized = value.trim().replace('#', '');
+    const expanded = normalized.length === 3
+      ? normalized.split('').map((ch) => ch + ch).join('')
+      : normalized;
+    return /^[0-9a-fA-F]{6}$/.test(expanded) ? expanded : '8A9A5B';
+  };
+
+  const from = normalize(fromHex);
+  const to = normalize(toHex);
+  const safeRatio = Math.min(1, Math.max(0, ratio));
+  const mixChannel = (start: number, end: number) =>
+    Math.round(start + (end - start) * safeRatio)
+      .toString(16)
+      .padStart(2, '0');
+
+  const r = mixChannel(parseInt(from.slice(0, 2), 16), parseInt(to.slice(0, 2), 16));
+  const g = mixChannel(parseInt(from.slice(2, 4), 16), parseInt(to.slice(2, 4), 16));
+  const b = mixChannel(parseInt(from.slice(4, 6), 16), parseInt(to.slice(4, 6), 16));
+  return `#${r}${g}${b}`.toUpperCase();
+};
+
 const Text = ({ style, ...props }: TextProps) => (
   <RNText
     {...props}
@@ -217,6 +323,10 @@ export type MobileLeaguePromotionEvent = {
 export type MobileStreakCelebrationEvent = {
   day: number;
   isMilestone: boolean;
+};
+
+export type MobileMarkUnlockEvent = {
+  markId: string;
 };
 
 const LeaguePromotionModal = ({
@@ -460,7 +570,7 @@ const SectionLeadCard = ({
   accent?: 'sage' | 'clay';
   eyebrow: string;
   title: string;
-  body: string;
+  body?: string;
   badges?: Array<{ label: string; tone?: 'sage' | 'clay' | 'muted' }>;
   metrics?: Array<{ label: string; value: string }>;
   actions?: Array<{
@@ -473,7 +583,7 @@ const SectionLeadCard = ({
   <ScreenCard accent={accent}>
     <Text style={styles.sectionLeadEyebrow}>{eyebrow}</Text>
     <Text style={styles.sectionLeadTitle}>{title}</Text>
-    <Text style={styles.sectionLeadBody}>{body}</Text>
+    {body ? <Text style={styles.sectionLeadBody}>{body}</Text> : null}
 
     {Array.isArray(badges) && badges.length > 0 ? (
       <View style={styles.sectionLeadBadgeRow}>
@@ -1525,9 +1635,6 @@ const AuthModal = ({
           <View style={styles.authLaunchHero}>
             <Text style={styles.authLaunchBrand}>180</Text>
             <Text style={styles.authLaunchEyebrow}>Absolute Cinema</Text>
-            <Text style={styles.authLaunchTitle}>
-              Giris ve uye ol bolumleri burada.
-            </Text>
             <Text style={styles.authLaunchBody}>
               Email ile devam et, hesabini olustur ya da Google ve Apple ile giris yap.
             </Text>
@@ -1710,6 +1817,134 @@ const AuthGateScreen = ({
           />
         ) : null}
       </ScrollView>
+    </View>
+  );
+};
+
+// ─── AvatarView ─────────────────────────────────────────────────────────────
+// Unified avatar renderer — handles preset avatars and fallback initials.
+// Photo uploads are no longer supported; all avatars are preset-based.
+const AvatarView = ({
+  avatarUrl,
+  displayName,
+  size = 48,
+  borderColor,
+}: {
+  avatarUrl?: string | null;
+  displayName?: string | null;
+  size?: number;
+  borderColor?: string;
+}) => {
+  const entry = resolveAvatarEntry(avatarUrl || '');
+  const initial = (String(displayName || '').trim().slice(0, 1) || 'O').toUpperCase();
+  const radius = size / 2;
+  const fontSize = Math.round(size * 0.42);
+  const iconSize = Math.round(size * 0.55);
+
+  // Cinema SVG avatar
+  if (entry) {
+    const xml = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">${entry.svgPaths}</svg>`;
+    return (
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: radius,
+          backgroundColor: entry.bg,
+          alignItems: 'center' as const,
+          justifyContent: 'center' as const,
+          borderWidth: 2,
+          borderColor: borderColor || entry.accent,
+        }}
+      >
+        <SvgXml xml={xml} width={iconSize} height={iconSize} color={entry.accent} />
+      </View>
+    );
+  }
+  // Fallback: initials
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: radius,
+        backgroundColor: '#1a1a1a',
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+        borderWidth: 2,
+        borderColor: borderColor || 'rgba(255,255,255,0.12)',
+      }}
+    >
+      <Text style={{ color: borderColor || '#8e8b84', fontSize, fontWeight: '700' }}>{initial}</Text>
+    </View>
+  );
+};
+
+// ─── PresetAvatarPickerGrid ──────────────────────────────────────────────────
+// Grid of selectable preset avatars for the settings modal.
+const PresetAvatarPickerGrid = ({
+  selectedAvatarUrl,
+  isPremium,
+  onSelect,
+  language = 'tr',
+}: {
+  selectedAvatarUrl: string;
+  isPremium: boolean;
+  onSelect: (avatarUrl: string) => void;
+  language?: MobileSettingsLanguage;
+}) => {
+  const premiumHint = language === 'tr' ? 'Premium uyelik gerektirir' : language === 'fr' ? 'Abonnement premium requis' : language === 'es' ? 'Requiere suscripcion premium' : 'Requires premium membership';
+
+  const renderAvatarButton = (entry: CinemaAvatarEntry) => {
+    const avatarUrl = makeCinemaAvatarUrl(entry.id);
+    const isSelected = selectedAvatarUrl === avatarUrl;
+    const isLocked = !entry.isFree && !isPremium;
+    const xml = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">${entry.svgPaths}</svg>`;
+    return (
+      <Pressable
+        key={entry.id}
+        onPress={() => !isLocked && onSelect(avatarUrl)}
+        disabled={isLocked}
+        style={{ alignItems: 'center' as const, gap: 4, opacity: isLocked ? 0.4 : 1, width: 64 }}
+        accessibilityRole="button"
+        accessibilityLabel={entry.label}
+      >
+        <View
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: 12,
+            backgroundColor: entry.bg,
+            alignItems: 'center' as const,
+            justifyContent: 'center' as const,
+            borderWidth: isSelected ? 2 : 1,
+            borderColor: isSelected ? entry.accent : 'rgba(255,255,255,0.08)',
+          }}
+        >
+          <SvgXml xml={xml} width={30} height={30} color={entry.accent} />
+          {isLocked ? (
+            <View style={{ position: 'absolute' as const, top: 2, right: 2 }}>
+              <Text style={{ fontSize: 9 }}>🔒</Text>
+            </View>
+          ) : null}
+        </View>
+        <Text style={{ color: isSelected ? entry.accent : '#6b6b6b', fontSize: 9, fontWeight: isSelected ? '700' : '400', textAlign: 'center' as const }}>
+          {entry.label}
+        </Text>
+      </Pressable>
+    );
+  };
+
+  return (
+    <View style={{ gap: 12 }}>
+      <View style={{ flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 10 }}>
+        {CINEMA_AVATAR_CATALOG.map(renderAvatarButton)}
+      </View>
+      {!isPremium ? (
+        <View style={{ backgroundColor: 'rgba(255,149,0,0.08)', borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,149,0,0.2)', paddingHorizontal: 10, paddingVertical: 7 }}>
+          <Text style={{ color: '#FF9500', fontSize: 11 }}>🔒 {premiumHint}</Text>
+        </View>
+      ) : null}
     </View>
   );
 };
@@ -2053,23 +2288,11 @@ const ProfileIdentityCard = ({
 
       <ScreenCard accent="clay">
         <View style={styles.profileIdentityHeroRow}>
-          <View style={styles.profileIdentityAvatarWrap}>
-            {normalizedAvatarUrl ? (
-              <Image
-                source={{ uri: normalizedAvatarUrl }}
-                style={styles.profileIdentityAvatarImage}
-                resizeMode="cover"
-              />
-            ) : (
-              <Text style={styles.profileIdentityAvatarFallback}>
-                {(normalizedDisplayName.slice(0, 1) || 'O').toUpperCase()}
-              </Text>
-            )}
-          </View>
+          <AvatarView avatarUrl={normalizedAvatarUrl} displayName={normalizedDisplayName} size={64} />
           <View style={styles.profileIdentityHeroCopy}>
-            <Text style={styles.detailInfoLabel}>Profil Fotografi</Text>
+            <Text style={styles.detailInfoLabel}>Avatar</Text>
             <Text style={styles.detailInfoValue}>
-              {normalizedAvatarUrl ? 'Aktif' : 'Eklenmedi'}
+              {normalizedAvatarUrl ? 'Secildi' : 'Secilmedi'}
             </Text>
           </View>
         </View>
@@ -2780,6 +3003,415 @@ const ProfileUnifiedCard = ({
   onOpenShareHub,
   onOpenComments,
   onOpenFollowing,
+  onOpenFollowers,
+  onOpenMarks,
+  language = 'tr',
+}: {
+  state: ProfileState;
+  isSignedIn: boolean;
+  isShareHubActive?: boolean;
+  displayName: string;
+  avatarUrl?: string;
+  username?: string;
+  bio?: string;
+  birthDateLabel?: string;
+  genderLabel?: string;
+  profileLink?: string;
+  language?: MobileSettingsLanguage;
+  onOpenSettings?: () => void;
+  onOpenProfileLink?: () => void;
+  onOpenShareHub?: () => void;
+  onOpenComments?: () => void;
+  onOpenFollowing?: () => void;
+  onOpenFollowers?: () => void;
+  onOpenMarks?: () => void;
+}) => {
+  const copy =
+    language === 'tr'
+      ? {
+          observer: 'Gozlemci',
+          eyebrow: 'Profil',
+          bioFallback: 'Profil notunu ayarlardan duzenleyerek sahneni daha net hale getirebilirsin.',
+          settingsA11y: 'Profil ayarlarini ac',
+          linkLabel: 'Link',
+          noteLabel: 'Profil notu',
+          gender: 'Cinsiyet',
+          birth: 'Dogum',
+          handleMissing: 'Handle eklenmedi',
+          profileSync: 'Profil senkronlaniyor',
+          comments: 'Yorum',
+          following: 'Takip',
+          followers: 'Takipci',
+          marks: 'Mark',
+          streak: 'Seri',
+          streakTitle: 'Aktif seri',
+          streakHint: 'Bugunku ritmini korudukca burada buyur.',
+          activeDays: 'Aktif gun',
+          linkReady: 'Profil linki hazir',
+          shareOpen: 'Paylasim acik',
+          sharePending: 'Paylasim hazirlaniyor',
+          xpSection: 'Lig ilerleyisi',
+          xpRemaining: (label: string, xp: number) => `${label} icin ${xp} XP kaldi.`,
+          topLeague: 'Su an en ust ligdesin.',
+          openLink: 'Linki ac',
+          shareHub: 'Paylasim hubi',
+          shareOpenButton: 'Paylas',
+          progressNow: (current: number, total: number) => `${current}/${total} XP`,
+        }
+      : {
+          observer: 'Observer',
+          eyebrow: 'Profile',
+          bioFallback: 'Refine your profile note in settings to make your scene clearer.',
+          settingsA11y: 'Open profile settings',
+          linkLabel: 'Link',
+          noteLabel: 'Profile note',
+          gender: 'Gender',
+          birth: 'Birth',
+          handleMissing: 'Handle missing',
+          profileSync: 'Profile syncing',
+          comments: 'Comments',
+          following: 'Following',
+          followers: 'Followers',
+          marks: 'Marks',
+          streak: 'Streak',
+          streakTitle: 'Active streak',
+          streakHint: 'This grows as you keep the daily rhythm alive.',
+          activeDays: 'Active days',
+          linkReady: 'Profile link ready',
+          shareOpen: 'Share live',
+          sharePending: 'Share pending',
+          xpSection: 'League progress',
+          xpRemaining: (label: string, xp: number) => `${xp} XP left for ${label}.`,
+          topLeague: 'You are already in the top league.',
+          openLink: 'Open link',
+          shareHub: 'Share hub',
+          shareOpenButton: 'Share',
+          progressNow: (current: number, total: number) => `${current}/${total} XP`,
+        };
+  const normalizedDisplayName = String(displayName || '').trim() || copy.observer;
+  const normalizedAvatarUrl = String(avatarUrl || '').trim();
+  const rawBio = String(bio || '').trim();
+  const normalizedBio =
+    rawBio &&
+    rawBio !== copy.bioFallback &&
+    !/^(profilini ve lig durumunu buradan yonet\.?|manage your profile and league status here\.?|manage your profile and archive here\.?|a silent observer\.?)$/i.test(
+      rawBio
+    )
+      ? rawBio
+      : '';
+  const normalizedBirthDate = String(birthDateLabel || '').trim();
+  const normalizedGender = String(genderLabel || '').trim();
+  const normalizedLink = String(profileLink || '').trim();
+  const hasLink = Boolean(normalizedLink);
+  const hasShareHubAction = typeof onOpenShareHub === 'function';
+  const isProfileReady = state.status === 'success';
+  const totalXp = isProfileReady ? Math.max(0, Math.floor(Number(state.totalXp || 0))) : 0;
+  const progress = resolveMobileLeagueProgress(totalXp);
+  const xpToNext = Math.max(0, Math.floor(progress.nextLevelXp - totalXp));
+  const currentLeagueLabel = isProfileReady
+    ? resolveLocalizedLeagueDisplayName(language, state.leagueKey, state.leagueName)
+    : copy.profileSync;
+  const nextLeagueLabel = isProfileReady
+    ? resolveLocalizedLeagueDisplayName(language, state.nextLeagueKey, state.nextLeagueName)
+    : '';
+  const effectiveProgressWidth =
+    progress.progressPercentage > 0 ? Math.max(progress.progressPercentage, 3) : 0;
+  const fallbackLeagueColor = getProgressHeadColor(progress.progressPercentage);
+  const currentLeagueColor = isProfileReady
+    ? MOBILE_LEAGUES_DATA[state.leagueKey as keyof typeof MOBILE_LEAGUES_DATA]?.color ||
+      state.leagueColor ||
+      fallbackLeagueColor
+    : fallbackLeagueColor;
+  const nextLeagueColor =
+    isProfileReady && state.nextLeagueKey
+      ? MOBILE_LEAGUES_DATA[state.nextLeagueKey as keyof typeof MOBILE_LEAGUES_DATA]?.color ||
+        currentLeagueColor
+      : currentLeagueColor;
+  const leagueTransitionRatio = Math.min(1, Math.max(0, progress.progressPercentage / 100));
+  const leagueAccentColor = blendHexColors(currentLeagueColor, nextLeagueColor, leagueTransitionRatio);
+  const xpBarHeadColor = blendHexColors(
+    currentLeagueColor,
+    nextLeagueColor,
+    Math.min(1, leagueTransitionRatio + 0.16)
+  );
+  const xpBarBaseColor = hexToRgba(currentLeagueColor, 0.2);
+  const avatarBorderColor = `${currentLeagueColor}CC`;
+  const xpBarOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(xpBarOpacity, {
+      toValue: 1,
+      duration: 500,
+      delay: 150,
+      useNativeDriver: SUPPORTS_NATIVE_DRIVER,
+    }).start();
+  }, [xpBarOpacity]);
+
+  const compactLinkLabel = hasLink
+    ? normalizedLink.replace(/^https?:\/\//i, '').replace(/\/$/, '')
+    : '';
+  const summaryBadges = [
+    currentLeagueLabel,
+  ].filter(Boolean) as string[];
+  const detailCards = [
+    normalizedGender ? { key: 'gender', label: copy.gender, value: normalizedGender } : null,
+    normalizedBirthDate ? { key: 'birth', label: copy.birth, value: normalizedBirthDate } : null,
+    hasLink ? { key: 'link', label: copy.linkLabel, value: compactLinkLabel } : null,
+  ].filter(Boolean) as Array<{ key: string; label: string; value: string }>;
+  const statCards = [
+    {
+      key: 'comments',
+      label: copy.comments,
+      value: isProfileReady ? String(state.ritualsCount) : '--',
+      onPress: onOpenComments,
+    },
+    {
+      key: 'following',
+      label: copy.following,
+      value: isProfileReady ? String(state.followingCount) : '--',
+      onPress: onOpenFollowing,
+    },
+    {
+      key: 'followers',
+      label: copy.followers,
+      value: isProfileReady ? String(state.followersCount) : '--',
+      onPress: onOpenFollowers,
+    },
+    {
+      key: 'marks',
+      label: copy.marks,
+      value: isProfileReady ? String(state.marks.length) : '--',
+      onPress: onOpenMarks,
+    },
+  ];
+  const xpMeta = isProfileReady
+    ? state.nextLeagueName
+      ? copy.xpRemaining(nextLeagueLabel, xpToNext)
+      : copy.topLeague
+    : copy.profileSync;
+  return (
+    <ScreenCard accent="sage">
+      {onOpenSettings ? (
+        <View style={{ position: 'absolute', top: 16, right: 16, zIndex: 1 }}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.profileSettingsButton,
+              pressed ? { opacity: 0.55, transform: [{ scale: 0.88 }] } : null,
+            ]}
+            onPress={onOpenSettings}
+            hitSlop={PRESSABLE_HIT_SLOP}
+            accessibilityRole="button"
+            accessibilityLabel={copy.settingsA11y}
+          >
+            <Ionicons name="settings-sharp" size={18} color="#E5E4E2" />
+          </Pressable>
+        </View>
+      ) : null}
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingRight: 40 }}>
+        {(() => {
+          const entry = resolveAvatarEntry(normalizedAvatarUrl);
+          const accentBorder = entry ? entry.accent : avatarBorderColor;
+          return (
+            <AvatarView
+              avatarUrl={normalizedAvatarUrl}
+              displayName={normalizedDisplayName}
+              size={88}
+              borderColor={accentBorder}
+            />
+          );
+        })()}
+
+        <View style={{ flex: 1, gap: 4 }}>
+          <Text style={styles.sectionLeadEyebrow}>{copy.eyebrow}</Text>
+          <Text style={styles.sectionLeadTitle} numberOfLines={1}>
+            {normalizedDisplayName}
+          </Text>
+          {summaryBadges.length > 0 ? (
+            <View style={[styles.sectionLeadBadgeRow, { marginTop: 10 }]}>
+              {summaryBadges.map((badge) => (
+                <View key={badge} style={[styles.sectionLeadBadge, styles.sectionLeadBadgeMuted]}>
+                  <Text style={styles.sectionLeadBadgeText}>{badge}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </View>
+      </View>
+
+      {isProfileReady ? (
+        <View
+          style={[
+            styles.detailInfoCard,
+            {
+              marginTop: 16,
+              borderColor: 'rgba(255,149,0,0.22)',
+              backgroundColor: 'rgba(255,149,0,0.08)',
+            },
+          ]}
+        >
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 14 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.detailInfoLabel, { color: '#FFB457' }]}>{copy.streakTitle}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginTop: 6 }}>
+                <Text style={[styles.detailInfoValue, { color: '#FFB457', fontSize: 34, lineHeight: 36 }]}>
+                  {state.streak}
+                </Text>
+                <Text style={[styles.screenMeta, { marginBottom: 4, color: '#c4b29d' }]}>
+                  {copy.streak}
+                </Text>
+              </View>
+            </View>
+            <View
+              style={{
+                minWidth: 72,
+                paddingHorizontal: 10,
+                paddingVertical: 8,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: 'rgba(255,180,87,0.22)',
+                backgroundColor: 'rgba(255,180,87,0.12)',
+              }}
+            >
+              <Text style={[styles.detailInfoLabel, { color: '#FFB457', textAlign: 'center' }]}>
+                {copy.activeDays}
+              </Text>
+              <Text style={[styles.detailInfoValue, { color: '#FFB457', textAlign: 'center' }]}>
+                {state.daysPresent}
+              </Text>
+            </View>
+          </View>
+        </View>
+      ) : null}
+
+      {hasShareHubAction || hasLink ? (
+        <View style={[styles.sectionLeadActionRow, { marginTop: 14 }]}>
+          {hasShareHubAction ? (
+            <UiButton
+              label={isShareHubActive ? copy.shareOpenButton : copy.shareHub}
+              tone="neutral"
+              onPress={() => onOpenShareHub?.()}
+              disabled={!isSignedIn}
+            />
+          ) : null}
+          {hasLink ? (
+            <UiButton
+              label={copy.openLink}
+              tone="teal"
+              onPress={() => onOpenProfileLink?.()}
+              disabled={!isSignedIn}
+            />
+          ) : null}
+        </View>
+      ) : null}
+
+      {normalizedBio ? (
+        <View style={[styles.detailInfoCard, { marginTop: 16 }]}>
+          <Text style={styles.detailInfoLabel}>{copy.noteLabel}</Text>
+          <Text style={[styles.sectionLeadBody, { marginTop: 6 }]}>{normalizedBio}</Text>
+        </View>
+      ) : null}
+
+      {detailCards.length > 0 ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16 }}>
+          {detailCards.map((item) => (
+            <View key={item.key} style={[styles.detailInfoCard, { flexBasis: '48%', flexGrow: 1 }]}>
+              <Text style={styles.detailInfoLabel}>{item.label}</Text>
+              <Text style={[styles.screenMeta, { marginTop: 4 }]} numberOfLines={1}>
+                {item.value}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      <View style={[styles.profileUnifiedDivider, { marginTop: 16 }]} />
+
+      <View style={{ gap: 8, marginTop: 16 }}>
+        <Text style={styles.subSectionLabel}>{copy.xpSection}</Text>
+        <Text style={styles.sectionLeadBody}>{xpMeta}</Text>
+        <Animated.View
+          style={[
+            styles.profileXpTrack,
+            {
+              opacity: xpBarOpacity,
+              backgroundColor: hexToRgba(nextLeagueColor, 0.1),
+              borderColor: hexToRgba(leagueAccentColor, 0.3),
+            },
+          ]}
+        >
+          {effectiveProgressWidth > 0 ? (
+            <View
+              style={[
+                styles.profileXpFill,
+                {
+                  width: `${effectiveProgressWidth}%`,
+                  backgroundColor: xpBarBaseColor,
+                },
+              ]}
+            >
+              <View style={[styles.profileXpFillHeadTint, { backgroundColor: leagueAccentColor }]} />
+              <View
+                style={[
+                  styles.profileXpFillHeadTint,
+                  {
+                    width: '30%',
+                    right: 0,
+                    left: undefined,
+                    backgroundColor: xpBarHeadColor,
+                  },
+                ]}
+              />
+            </View>
+          ) : null}
+        </Animated.View>
+        <View style={styles.profileXpScaleRow}>
+          <Text style={styles.profileXpScaleText}>{currentLeagueLabel}</Text>
+          <Text style={styles.profileXpScaleText}>{nextLeagueLabel || currentLeagueLabel}</Text>
+        </View>
+      </View>
+
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16 }}>
+        {statCards.map((stat) =>
+          stat.onPress ? (
+            <Pressable
+              key={stat.key}
+              style={[styles.detailInfoCard, { flexBasis: '48%', flexGrow: 1 }]}
+              onPress={stat.onPress}
+              accessibilityRole="button"
+            >
+              <Text style={[styles.detailInfoLabel, { textAlign: 'center' }]}>{stat.label}</Text>
+              <Text style={styles.detailInfoValue}>{stat.value}</Text>
+            </Pressable>
+          ) : (
+            <View key={stat.key} style={[styles.detailInfoCard, { flexBasis: '48%', flexGrow: 1 }]}>
+              <Text style={[styles.detailInfoLabel, { textAlign: 'center' }]}>{stat.label}</Text>
+              <Text style={styles.detailInfoValue}>{stat.value}</Text>
+            </View>
+          )
+        )}
+      </View>
+
+    </ScreenCard>
+  );
+};
+
+const LegacyProfileUnifiedCard = ({
+  state,
+  isSignedIn,
+  isShareHubActive = false,
+  displayName,
+  avatarUrl,
+  username,
+  bio,
+  birthDateLabel,
+  genderLabel,
+  profileLink,
+  onOpenSettings,
+  onOpenProfileLink,
+  onOpenShareHub,
+  onOpenComments,
+  onOpenFollowing,
   onOpenMarks,
   language = 'tr',
 }: {
@@ -2994,21 +3626,19 @@ const ProfileUnifiedCard = ({
 
       {/* ── Hero row: Avatar | Name+Handle+League | Streak ── */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingTop: 4 }}>
-        {/* Avatar — enlarged to 96px */}
-        <View
-          style={[
-            styles.profileIdentityAvatarWrap,
-            { width: 96, height: 96, borderColor: avatarBorderColor, borderWidth: 2 },
-          ]}
-        >
-          {normalizedAvatarUrl ? (
-            <Image source={{ uri: normalizedAvatarUrl }} style={styles.profileIdentityAvatarImage} resizeMode="cover" />
-          ) : (
-            <Text style={[styles.profileIdentityAvatarFallback, { color: leagueAccentColor, fontSize: 32 }]}>
-              {(normalizedDisplayName.slice(0, 1) || 'O').toUpperCase()}
-            </Text>
-          )}
-        </View>
+        {/* Avatar — cinema SVG icon or photo */}
+        {(() => {
+          const entry = resolveAvatarEntry(normalizedAvatarUrl);
+          const accentBorder = entry ? entry.accent : avatarBorderColor;
+          return (
+            <AvatarView
+              avatarUrl={normalizedAvatarUrl}
+              displayName={normalizedDisplayName}
+              size={96}
+              borderColor={accentBorder}
+            />
+          );
+        })()}
 
         {/* Middle: Name, handle, bio, league chip */}
         <View style={{ flex: 1, gap: 3, paddingRight: 8 }}>
@@ -3165,10 +3795,14 @@ const ProfileCinematicCard = ({
   state,
   isSignedIn,
   activityState,
+  showFilmFallback = true,
+  language = 'tr',
 }: {
   state: ProfileState;
   isSignedIn: boolean;
   activityState: ProfileActivitySurfaceState;
+  showFilmFallback?: boolean;
+  language?: MobileSettingsLanguage;
 }) => {
   const genreSignals = useMemo(
     () => buildProfileGenreDistribution(activityState.items, 12),
@@ -3178,6 +3812,275 @@ const ProfileCinematicCard = ({
   const totalGenres = useMemo(
     () => genreSignals.reduce((sum, item) => sum + item.count, 0),
     [genreSignals]
+  );
+  const fallbackFilms = useMemo(
+    () => buildProfileFilmSummaries(activityState.items, 3),
+    [activityState.items]
+  );
+  const hiddenGemCount = useMemo(
+    () => countProfileHiddenGemSignals(activityState.items),
+    [activityState.items]
+  );
+  const exact180Count = useMemo(
+    () => countProfileExactCommentSignals(activityState.items),
+    [activityState.items]
+  );
+  const streakValue = state.status === 'success' ? state.streak : 0;
+  const dominantGenreVisual = topGenres[0] ? resolveGenreVisual(topGenres[0].genre) : null;
+  const copy =
+    language === 'tr'
+      ? {
+          eyebrow: 'Cinematic DNA',
+          body: 'Yorum yaptigin filmlere gore Cinematic DNA burada sekillenir.',
+          fallbackTitle: 'Tur izi zayif ama ritim gorunuyor',
+          fallbackBody: 'Tur verisi eksik yorumlar da profilin film hafizasina ekleniyor.',
+          emptyTitle: 'Henuz DNA izi olusmadi',
+          emptyBody: 'Yorum geldikce baskin turler burada belirir.',
+          loadingTitle: 'DNA sinyali yukleniyor',
+          loadingBody: 'Profil sinyalleri hazirlaniyor.',
+          errorTitle: 'DNA sinyali okunamadi',
+          comments: 'yorum',
+          genres: 'tur',
+          streak: 'seri',
+          traces: 'yorum izi',
+        }
+      : {
+          eyebrow: 'Cinematic DNA',
+          body: 'Your Cinematic DNA takes shape from the films you comment on.',
+          fallbackTitle: 'Genre signal is weak but the rhythm is visible',
+          fallbackBody: 'Comments without genre data still feed the film memory.',
+          emptyTitle: 'No DNA signal yet',
+          emptyBody: 'Dominant genres appear here as comments arrive.',
+          loadingTitle: 'Loading DNA signal',
+          loadingBody: 'Preparing profile signals.',
+          errorTitle: 'DNA signal could not be read',
+          comments: 'comments',
+          genres: 'genres',
+          streak: 'streak',
+          traces: 'comment traces',
+        };
+
+  if (!isSignedIn) {
+    return (
+      <StatePanel
+        tone="clay"
+        variant="empty"
+        eyebrow="Cinematic DNA"
+        title="DNA katmani icin giris yap"
+        body="DNA karti sadece oturumla acilir."
+      />
+    );
+  }
+
+  if (activityState.status !== 'ready' && activityState.items.length === 0) {
+    return (
+      <StatePanel
+        tone="sage"
+        variant={
+          activityState.status === 'loading'
+            ? 'loading'
+            : activityState.status === 'error'
+              ? 'error'
+              : 'empty'
+        }
+        eyebrow={copy.eyebrow}
+        title={activityState.status === 'error' ? copy.errorTitle : copy.loadingTitle}
+        body={activityState.status === 'error' ? activityState.message || copy.loadingBody : copy.loadingBody}
+      />
+    );
+  }
+
+  if (topGenres.length === 0) {
+    if (showFilmFallback && fallbackFilms.length > 0) {
+      return (
+        <ScreenCard accent="sage">
+          <Text style={styles.sectionLeadEyebrow}>{copy.eyebrow}</Text>
+          <Text style={styles.sectionLeadTitle}>{copy.fallbackTitle}</Text>
+          <Text style={styles.sectionLeadBody}>{copy.fallbackBody}</Text>
+
+          <View style={[styles.sectionLeadBadgeRow, { marginTop: 14 }]}>
+            <View style={[styles.sectionLeadBadge, styles.sectionLeadBadgeSage]}>
+              <Text style={styles.sectionLeadBadgeText}>{`${activityState.items.length} ${copy.comments}`}</Text>
+            </View>
+            <View style={[styles.sectionLeadBadge, styles.sectionLeadBadgeMuted]}>
+              <Text style={styles.sectionLeadBadgeText}>{`${fallbackFilms.length} film`}</Text>
+            </View>
+            <View
+              style={[
+                styles.sectionLeadBadge,
+                exact180Count > 0 ? styles.sectionLeadBadgeClay : styles.sectionLeadBadgeMuted,
+              ]}
+            >
+              <Text style={styles.sectionLeadBadgeText}>{`${exact180Count} exact-180`}</Text>
+            </View>
+          </View>
+
+          <View style={{ marginTop: 16, gap: 10 }}>
+            {fallbackFilms.map((film) => (
+              <View key={`dna-fallback-${film.key}`} style={styles.profileArchiveRow}>
+                <View style={styles.profileArchiveRowCopy}>
+                  <Text style={styles.profileArchiveTitle}>{film.title}</Text>
+                  <Text style={styles.profileArchiveMeta}>
+                    {film.year ? `${film.year} | ` : ''}
+                    {film.count} yorum
+                    {film.lastDate ? ` | Son: ${film.lastDate}` : ''}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        </ScreenCard>
+      );
+    }
+
+    return (
+      <StatePanel
+        tone="sage"
+        variant="empty"
+        eyebrow={copy.eyebrow}
+        title={copy.emptyTitle}
+        body={
+          activityState.items.length > 0
+            ? 'Film kayitlari gorundu ama tur sinyali henuz okunamadi.'
+            : copy.emptyBody
+        }
+      />
+    );
+  }
+
+  return (
+    <ScreenCard accent="sage">
+      <Text style={styles.sectionLeadEyebrow}>{copy.eyebrow}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <View
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: 21,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: `${dominantGenreVisual?.accent || '#8A9A5B'}18`,
+            borderWidth: 1,
+            borderColor: `${dominantGenreVisual?.accent || '#8A9A5B'}44`,
+          }}
+        >
+          <MaterialCommunityIcons
+            name={dominantGenreVisual?.icon || 'movie-open-outline'}
+            size={18}
+            color={dominantGenreVisual?.accent || '#8A9A5B'}
+          />
+        </View>
+        <Text style={[styles.sectionLeadTitle, { flex: 1 }]}>{topGenres[0]?.genre || 'DNA'}</Text>
+      </View>
+      <Text style={styles.sectionLeadBody}>{copy.body}</Text>
+
+        <View style={[styles.sectionLeadBadgeRow, { marginTop: 14 }]}>
+          <View style={[styles.sectionLeadBadge, styles.sectionLeadBadgeSage]}>
+            <Text style={styles.sectionLeadBadgeText}>{`${activityState.items.length} ${copy.comments}`}</Text>
+          </View>
+          <View style={[styles.sectionLeadBadge, styles.sectionLeadBadgeMuted]}>
+            <Text style={styles.sectionLeadBadgeText}>{`${genreSignals.length} ${copy.genres}`}</Text>
+          </View>
+        {hiddenGemCount > 0 ? (
+          <View style={[styles.sectionLeadBadge, styles.sectionLeadBadgeClay]}>
+            <Text style={styles.sectionLeadBadgeText}>{`${hiddenGemCount} hidden gem`}</Text>
+          </View>
+        ) : null}
+        {streakValue > 0 ? (
+          <View style={[styles.sectionLeadBadge, styles.sectionLeadBadgeMuted]}>
+            <Text style={styles.sectionLeadBadgeText}>{`${streakValue} ${copy.streak}`}</Text>
+          </View>
+        ) : null}
+      </View>
+
+      <View style={[styles.profileGrid, { marginTop: 14 }]}>
+        <View style={styles.profileMetricCard}>
+          <Text style={styles.profileMetricValue}>{streakValue}</Text>
+          <Text style={styles.profileMetricLabel}>Streak</Text>
+        </View>
+        <View style={styles.profileMetricCard}>
+          <Text style={styles.profileMetricValue}>{genreSignals.length}</Text>
+          <Text style={styles.profileMetricLabel}>Tur</Text>
+        </View>
+        <View style={styles.profileMetricCard}>
+          <Text style={styles.profileMetricValue}>{exact180Count}</Text>
+          <Text style={styles.profileMetricLabel}>Exact-180</Text>
+        </View>
+      </View>
+
+      <View style={[styles.profileDnaList, { marginTop: 14 }]}>
+        {topGenres.map((genreEntry) => {
+          const percentage = totalGenres > 0 ? Math.round((genreEntry.count / totalGenres) * 100) : 0;
+          const genreVisual = resolveGenreVisual(genreEntry.genre);
+          return (
+            <View key={`profile-dna-row-${genreEntry.genre}`} style={styles.profileDnaListItem}>
+              <View style={styles.profileGenreRow}>
+                <View style={[styles.profileDnaGenreCopy, { flexDirection: 'row', alignItems: 'center', gap: 10 }]}>
+                  <View
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 16,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: `${genreVisual.accent}18`,
+                      borderWidth: 1,
+                      borderColor: `${genreVisual.accent}3f`,
+                    }}
+                  >
+                    <MaterialCommunityIcons name={genreVisual.icon} size={15} color={genreVisual.accent} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.profileGenreLabel} numberOfLines={1}>
+                      {genreEntry.genre}
+                    </Text>
+                    <Text style={styles.profileDnaGenreHint}>{genreEntry.count} {copy.traces}</Text>
+                  </View>
+                </View>
+                <Text style={styles.profileDnaGenreValue}>{percentage}%</Text>
+              </View>
+              <View style={styles.profileDnaGenreTrack}>
+                <View
+                  style={[
+                    styles.profileDnaGenreFill,
+                    {
+                      width: `${Math.max(12, percentage)}%`,
+                      backgroundColor: `${genreVisual.accent}CC`,
+                    },
+                  ]}
+                />
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    </ScreenCard>
+  );
+};
+
+const LegacyProfileCinematicCard = ({
+  state,
+  isSignedIn,
+  activityState,
+  showFilmFallback = true,
+}: {
+  state: ProfileState;
+  isSignedIn: boolean;
+  activityState: ProfileActivitySurfaceState;
+  showFilmFallback?: boolean;
+}) => {
+  const genreSignals = useMemo(
+    () => buildProfileGenreDistribution(activityState.items, 12),
+    [activityState.items]
+  );
+  const topGenres = useMemo(() => genreSignals.slice(0, 3), [genreSignals]);
+  const totalGenres = useMemo(
+    () => genreSignals.reduce((sum, item) => sum + item.count, 0),
+    [genreSignals]
+  );
+  const fallbackFilms = useMemo(
+    () => buildProfileFilmSummaries(activityState.items, 3),
+    [activityState.items]
   );
   const hiddenGemCount = useMemo(
     () => countProfileHiddenGemSignals(activityState.items),
@@ -3208,7 +4111,7 @@ const ProfileCinematicCard = ({
         variant="empty"
         eyebrow="Cinematic DNA"
         title="DNA katmani icin giris yap"
-        body="Web profilindeki tur ve ritim katmani mobil profilde de ayni hesapla acilir."
+        body="DNA karti oturumla acilir."
       />
     );
   }
@@ -3229,67 +4132,113 @@ const ProfileCinematicCard = ({
         body={
           activityState.status === 'error'
             ? activityState.message || 'Profil aktivitesi okunurken gecici bir sorun olustu.'
-            : 'Yorumlar geldikce baskin turler ve unlock segmentleri burada cikar.'
+            : 'Profil sinyalleri hazirlaniyor.'
         }
       />
     );
   }
 
   if (topGenres.length === 0) {
+    if (showFilmFallback && activityState.items.length > 0) {
+      return (
+        <>
+          <SectionLeadCard
+            accent="sage"
+            eyebrow="Cinematic DNA"
+            title={fallbackFilms[0]?.title || 'Profil izi'}
+            body="Tur verisi eksik olsa da yorum ritmi okundu."
+            badges={[
+              { label: `${activityState.items.length} yorum`, tone: 'sage' },
+              { label: `${fallbackFilms.length} film`, tone: 'muted' },
+              { label: `${exact180Count} exact-180`, tone: exact180Count > 0 ? 'clay' : 'muted' },
+            ]}
+            metrics={[
+              { label: 'Streak', value: String(streakValue) },
+              { label: 'Film', value: String(fallbackFilms.length) },
+              { label: 'Iz', value: String(activityState.items.length) },
+            ]}
+          />
+          <ScreenCard accent="sage">
+            <Text style={styles.subSectionLabel}>Film Izleri</Text>
+            <View style={styles.profileArchiveList}>
+              {fallbackFilms.map((film) => (
+                <View key={`dna-fallback-${film.key}`} style={styles.profileArchiveRow}>
+                  <View style={styles.profileArchiveRowCopy}>
+                    <Text style={styles.profileArchiveTitle}>{film.title}</Text>
+                    <Text style={styles.profileArchiveMeta}>
+                      {film.year ? `${film.year} | ` : ''}
+                      {film.count} yorum
+                      {film.lastDate ? ` | Son: ${film.lastDate}` : ''}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </ScreenCard>
+        </>
+      );
+    }
     return (
       <StatePanel
         tone="sage"
         variant="empty"
         eyebrow="Cinematic DNA"
         title="Henuz DNA izi olusmadi"
-        body="Farkli turlerde yorum biraktikca web ile ayni DNA segmentleri burada dolacak."
-        meta="Ilk uc tur ve unlock ilerlemesi otomatik hesaplanir."
+        body={
+          activityState.items.length > 0
+            ? 'Film kayitlari gorundu ama tur sinyali henuz okunamadi.'
+            : 'Yorum geldikce baskin turler burada belirir.'
+        }
       />
     );
   }
 
   return (
-    <>
-      <SectionLeadCard
-        accent="sage"
-        eyebrow="Cinematic DNA"
-        title={topGenres[0]?.genre || 'DNA sinyali'}
-        body="Web profilindeki baskin tur, gizli cevher ve ritim mantigi mobile da ayni domain kuraliyla hesaplanir."
-        badges={[
-          { label: `${genreSignals.length} tur`, tone: 'sage' },
-          { label: `${hiddenGemCount} hidden gem`, tone: hiddenGemCount > 0 ? 'muted' : 'clay' },
-          { label: `${exact180Count} exact-180`, tone: exact180Count > 0 ? 'clay' : 'muted' },
-        ]}
-        metrics={[
-          { label: 'Streak', value: String(streakValue) },
-          { label: 'Tur', value: String(genreSignals.length) },
-          { label: 'Acilan', value: String(unlockedCount) },
-        ]}
-      />
+    <ScreenCard accent="sage">
+      <Text style={styles.sectionLeadEyebrow}>Cinematic DNA</Text>
+      <Text style={styles.sectionLeadTitle}>{topGenres[0]?.genre || 'DNA sinyali'}</Text>
 
-      <ScreenCard accent="sage">
-        <Text style={styles.subSectionLabel}>Baskin Turler</Text>
-        <View style={styles.profileDnaChart}>
-          {topGenres.map((genreEntry) => {
-            const percentage = totalGenres > 0 ? genreEntry.count / totalGenres : 0;
-            const height = Math.max(22, percentage * 100);
-            return (
-              <View key={`profile-dna-${genreEntry.genre}`} style={styles.profileDnaBarColumn}>
-                <View style={styles.profileDnaBarTrack}>
-                  <View style={[styles.profileDnaBarFill, { height: `${height}%` }]}>
-                    <View style={styles.profileDnaBarGlow} />
-                  </View>
-                </View>
-                <Text style={styles.profileDnaBarLabel}>{genreEntry.genre}</Text>
-                <Text style={styles.profileDnaBarMeta}>{Math.round(percentage * 100)}%</Text>
-              </View>
-            );
-          })}
+      <View style={styles.profileGrid}>
+        <View style={styles.profileMetricCard}>
+          <Text style={styles.profileMetricValue}>{streakValue}</Text>
+          <Text style={styles.profileMetricLabel}>Streak</Text>
         </View>
+        <View style={styles.profileMetricCard}>
+          <Text style={styles.profileMetricValue}>{genreSignals.length}</Text>
+          <Text style={styles.profileMetricLabel}>Tur</Text>
+        </View>
+        <View style={styles.profileMetricCard}>
+          <Text style={styles.profileMetricValue}>{activityState.items.length}</Text>
+          <Text style={styles.profileMetricLabel}>Yorum</Text>
+        </View>
+      </View>
 
-        {/* DNA segments removed — only top genres shown */}
-      </ScreenCard>
-    </>
+      <View style={styles.profileDnaList}>
+        {topGenres.map((genreEntry) => {
+          const percentage = totalGenres > 0 ? Math.round((genreEntry.count / totalGenres) * 100) : 0;
+          const fillWidth = `${Math.max(12, percentage)}%`;
+
+          return (
+            <View key={`profile-dna-row-${genreEntry.genre}`} style={styles.profileDnaListItem}>
+              <View style={styles.profileGenreRow}>
+                <View style={styles.profileDnaGenreCopy}>
+                  <Text style={styles.profileGenreLabel} numberOfLines={1}>
+                    {genreEntry.genre}
+                  </Text>
+                  <Text style={styles.profileDnaGenreHint}>
+                    {genreEntry.count} yorum izi
+                  </Text>
+                </View>
+                <Text style={styles.profileDnaGenreValue}>{percentage}%</Text>
+              </View>
+              <View style={styles.profileDnaGenreTrack}>
+                <View style={[styles.profileDnaGenreFill, { width: fillWidth }]} />
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    </ScreenCard>
   );
 };
 
@@ -3513,9 +4462,6 @@ const ProfileMarksCard = ({
     () => groupMobileMarksByCategory(MOBILE_MARK_CATALOG.map((mark) => mark.id), language),
     [language]
   );
-  const topFeaturedTitle = featuredMarks[0]
-    ? resolveMobileMarkTitle(featuredMarks[0], language)
-    : '';
   const activeMark = activeMarkId ? resolveMobileMarkMeta(activeMarkId, language) : null;
   const visibleGroups = mode === 'unlocked' ? groupedUnlockedMarks : groupedCatalogMarks;
   const copy =
@@ -3524,8 +4470,221 @@ const ProfileMarksCard = ({
           eyebrow: 'Marklar',
           titleUnlocked: 'Acik Marklar',
           titleAll: 'Mark Arsivi',
+          bodyUnlocked: 'Kazandigin marklar burada toplaniyor.',
+          bodyAll: 'Tum marklar tek yerde gorunur.',
+          unlocked: 'acik',
+          featured: 'vitrin',
+          groups: 'grup',
+          total: 'toplam',
+          showcase: 'Vitrin',
+          signInTitle: 'Marklar icin giris yap',
+          signInBody: 'Koleksiyonun oturumla birlikte gorunur.',
+          loadingTitle: 'Marklar yukleniyor',
+          loadingBody: 'Biraz bekle.',
+          emptyTitle: 'Henuz acik mark yok',
+          emptyBody: 'Yeni yorumlarla koleksiyon dolacak.',
+          unavailableTitle: 'Mark verisi hazir degil',
+          unavailableBody: 'Marklar hazir oldugunda burada gorunur.',
+          detailSuffix: 'mark detayini ac',
+        }
+      : {
+          eyebrow: 'Marks',
+          titleUnlocked: 'Unlocked Marks',
+          titleAll: 'Marks Archive',
+          bodyUnlocked: 'The marks you earned gather here.',
+          bodyAll: 'Every mark appears in one place.',
+          unlocked: 'unlocked',
+          featured: 'featured',
+          groups: 'groups',
+          total: 'total',
+          showcase: 'Showcase',
+          signInTitle: 'Sign in to view marks',
+          signInBody: 'Your collection becomes visible after sign-in.',
+          loadingTitle: 'Loading marks',
+          loadingBody: 'Please wait a moment.',
+          emptyTitle: 'No unlocked marks yet',
+          emptyBody: 'New comments will fill the collection.',
+          unavailableTitle: 'Mark data is unavailable',
+          unavailableBody: 'Marks will appear here when ready.',
+          detailSuffix: 'open mark details',
+        };
+
+  if (!isSignedIn) {
+    return (
+      <StatePanel
+        tone="clay"
+        variant="empty"
+        eyebrow={copy.eyebrow}
+        title={copy.signInTitle}
+        body={copy.signInBody}
+      />
+    );
+  }
+
+  if (state.status !== 'success') {
+    return (
+      <StatePanel
+        tone="sage"
+        variant={state.status === 'loading' ? 'loading' : 'empty'}
+        eyebrow={copy.eyebrow}
+        title={state.status === 'loading' ? copy.loadingTitle : copy.unavailableTitle}
+        body={state.status === 'loading' ? copy.loadingBody : copy.unavailableBody}
+      />
+    );
+  }
+
+  if (mode === 'unlocked' && unlockedMarks.length === 0) {
+    return (
+      <>
+        <StatePanel
+          tone="sage"
+          variant="empty"
+          eyebrow={copy.eyebrow}
+          title={copy.emptyTitle}
+          body={copy.emptyBody}
+        />
+        <MobileMarkDetailModal
+          mark={activeMark}
+          language={language}
+          isUnlocked={Boolean(activeMarkId && unlockedSet.has(activeMarkId))}
+          isFeatured={Boolean(activeMarkId && featuredMarks.includes(activeMarkId))}
+          onClose={() => setActiveMarkId(null)}
+        />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <ScreenCard accent="sage">
+        <Text style={styles.sectionLeadEyebrow}>{copy.eyebrow}</Text>
+        <Text style={styles.sectionLeadTitle}>
+          {mode === 'unlocked' ? copy.titleUnlocked : copy.titleAll}
+        </Text>
+        <Text style={styles.sectionLeadBody}>
+          {mode === 'unlocked' ? copy.bodyUnlocked : copy.bodyAll}
+        </Text>
+
+        <View style={[styles.sectionLeadBadgeRow, { marginTop: 14 }]}>
+          <View style={[styles.sectionLeadBadge, styles.sectionLeadBadgeSage]}>
+            <Text style={styles.sectionLeadBadgeText}>{`${unlockedMarks.length} ${copy.unlocked}`}</Text>
+          </View>
+          <View
+            style={[
+              styles.sectionLeadBadge,
+              featuredMarks.length > 0 ? styles.sectionLeadBadgeClay : styles.sectionLeadBadgeMuted,
+            ]}
+          >
+            <Text style={styles.sectionLeadBadgeText}>{`${featuredMarks.length} ${copy.featured}`}</Text>
+          </View>
+          <View style={[styles.sectionLeadBadge, styles.sectionLeadBadgeMuted]}>
+            <Text style={styles.sectionLeadBadgeText}>{`${visibleGroups.length} ${copy.groups}`}</Text>
+          </View>
+          {mode === 'all' ? (
+            <View style={[styles.sectionLeadBadge, styles.sectionLeadBadgeMuted]}>
+              <Text style={styles.sectionLeadBadgeText}>{`${MOBILE_MARK_CATALOG.length} ${copy.total}`}</Text>
+            </View>
+          ) : null}
+        </View>
+
+        {featuredMarks.length > 0 ? (
+          <>
+            <Text style={[styles.subSectionLabel, { marginTop: 16 }]}>{copy.showcase}</Text>
+            <View style={styles.markPillRow}>
+              {featuredMarks.map((markId) => {
+                const markMeta = resolveMobileMarkMeta(markId, language);
+                return (
+                  <MobileMarkPill
+                    key={`featured-${markId}`}
+                    markId={markId}
+                    title={resolveMobileMarkTitle(markId, language)}
+                    motion={markMeta.motion}
+                    isUnlocked
+                    isFeatured
+                    onPress={() => setActiveMarkId(markId)}
+                    accessibilityLabel={`${markMeta.title} ${copy.detailSuffix}`}
+                  />
+                );
+              })}
+            </View>
+          </>
+        ) : null}
+
+        <View style={[styles.profileUnifiedDivider, { marginTop: 16 }]} />
+
+        <View style={[styles.markCategoryList, { marginTop: 14 }]}>
+          {visibleGroups.map((group) => (
+            <View key={`mark-category-${group.category}`} style={styles.markCategoryBlock}>
+              <Text style={styles.markCategoryTitle}>{group.label}</Text>
+              <View style={styles.markPillRow}>
+                {group.marks.map((mark) => {
+                  const isUnlocked = mode === 'unlocked' ? true : unlockedSet.has(mark.id);
+                  const isFeatured = featuredMarks.includes(mark.id);
+                  return (
+                    <MobileMarkPill
+                      key={`mark-${mark.id}`}
+                      markId={mark.id}
+                      title={mark.title}
+                      motion={mark.motion}
+                      isUnlocked={isUnlocked}
+                      isFeatured={isUnlocked && isFeatured}
+                      onPress={() => setActiveMarkId(mark.id)}
+                      accessibilityLabel={`${mark.title} ${copy.detailSuffix}`}
+                    />
+                  );
+                })}
+              </View>
+            </View>
+          ))}
+        </View>
+      </ScreenCard>
+      <MobileMarkDetailModal
+        mark={activeMark}
+        language={language}
+        isUnlocked={Boolean(activeMarkId && unlockedSet.has(activeMarkId))}
+        isFeatured={Boolean(activeMarkId && featuredMarks.includes(activeMarkId))}
+        onClose={() => setActiveMarkId(null)}
+      />
+    </>
+  );
+};
+
+const LegacyProfileMarksCard = ({
+  state,
+  isSignedIn,
+  language = 'tr',
+  mode = 'all',
+}: {
+  state: ProfileState;
+  isSignedIn: boolean;
+  language?: MobileSettingsLanguage;
+  mode?: 'all' | 'unlocked';
+}) => {
+  const unlockedMarks = state.status === 'success' ? state.marks : [];
+  const featuredMarks = state.status === 'success' ? state.featuredMarks : [];
+  const [activeMarkId, setActiveMarkId] = useState<string | null>(null);
+  const unlockedSet = useMemo(() => new Set(unlockedMarks), [unlockedMarks]);
+  const groupedUnlockedMarks = useMemo(
+    () => groupMobileMarksByCategory(unlockedMarks, language),
+    [language, unlockedMarks]
+  );
+  const groupedCatalogMarks = useMemo(
+    () => groupMobileMarksByCategory(MOBILE_MARK_CATALOG.map((mark) => mark.id), language),
+    [language]
+  );
+  const topFeaturedTitle = featuredMarks[0]
+    ? resolveMobileMarkTitle(featuredMarks[0], language)
+    : '';
+  const activeMark = activeMarkId ? resolveMobileMarkMeta(activeMarkId, language) : null;
+  const visibleGroups = mode === 'unlocked' ? groupedUnlockedMarks : groupedCatalogMarks;
+  const copy =
+    language === 'tr'
+        ? {
+            eyebrow: 'Marklar',
+          titleUnlocked: 'Acik Marklar',
+          titleAll: 'Mark Arsivi',
           bodyUnlocked: 'Kazandigin marklar burada.',
-          bodyAll: 'Tum marklar tek yerde.',
+          bodyAll: 'Tum marklar burada.',
           unlockedBadgeSuffix: 'acik',
           featuredBadgeSuffix: 'vitrin',
           totalBadgeSuffix: 'toplam',
@@ -3533,16 +4692,16 @@ const ProfileMarksCard = ({
           metricFeatured: 'Vitrin',
           metricGroups: 'Grup',
           signInTitle: 'Marklar icin giris yap',
-          signInBody: 'Koleksiyon ve vitrin oturumla acilir.',
+          signInBody: 'Koleksiyon icin giris yap.',
           loadingTitle: 'Marklar yukleniyor',
           loadingBody: 'Biraz bekle.',
           unavailableTitle: 'Mark verisi hazir degil',
-          unavailableBody: 'Yeni marklar geldikce burada gorunur.',
+          unavailableBody: 'Mark verisi hazir oldugunda burada gorunur.',
           showcaseEyebrow: 'Vitrin',
           featuredCount: (count: number) => `${count} vitrin`,
           showcaseFallback: 'Secili marklar hazir.',
           emptyUnlockedTitle: 'Henuz acik mark yok',
-          emptyUnlockedBody: 'Yeni yorumlar ve streak ile koleksiyon dolacak.',
+          emptyUnlockedBody: 'Yeni yorumlarla koleksiyon dolacak.',
           sectionUnlocked: 'Kazanilan Marklar',
           sectionAll: 'Tum Marklar',
           detailA11ySuffix: 'mark detayini ac',
@@ -3637,17 +4796,25 @@ const ProfileMarksCard = ({
         accent="sage"
         eyebrow={copy.eyebrow}
         title={mode === 'unlocked' ? copy.titleUnlocked : copy.titleAll}
-        body={mode === 'unlocked' ? copy.bodyUnlocked : copy.bodyAll}
-        badges={[
-          { label: `${unlockedMarks.length} ${copy.unlockedBadgeSuffix}`, tone: 'sage' },
-          { label: `${featuredMarks.length} ${copy.featuredBadgeSuffix}`, tone: featuredMarks.length > 0 ? 'muted' : 'clay' },
-          ...(mode === 'all' ? [{ label: `${MOBILE_MARK_CATALOG.length} ${copy.totalBadgeSuffix}`, tone: 'muted' as const }] : []),
-        ]}
-        metrics={[
-          { label: copy.metricUnlocked, value: String(unlockedMarks.length) },
-          { label: copy.metricFeatured, value: String(featuredMarks.length) },
-          { label: copy.metricGroups, value: String(visibleGroups.length) },
-        ]}
+        body={mode === 'all' ? copy.bodyAll : undefined}
+        badges={
+          mode === 'all'
+            ? [
+                { label: `${unlockedMarks.length} ${copy.unlockedBadgeSuffix}`, tone: 'sage' },
+                { label: `${featuredMarks.length} ${copy.featuredBadgeSuffix}`, tone: featuredMarks.length > 0 ? 'muted' : 'clay' },
+                { label: `${MOBILE_MARK_CATALOG.length} ${copy.totalBadgeSuffix}`, tone: 'muted' as const },
+              ]
+            : undefined
+        }
+        metrics={
+          mode === 'all'
+            ? [
+                { label: copy.metricUnlocked, value: String(unlockedMarks.length) },
+                { label: copy.metricFeatured, value: String(featuredMarks.length) },
+                { label: copy.metricGroups, value: String(visibleGroups.length) },
+              ]
+            : undefined
+        }
       />
 
       {!isSignedIn ? (
@@ -3991,44 +5158,43 @@ const PushInboxRowCard = memo(
     const stateLabel = item.opened ? 'acildi' : 'yeni';
 
     return (
-      <Pressable
-        style={styles.inboxRow}
-        onPress={() => onPressRow(item)}
-        hitSlop={PRESSABLE_HIT_SLOP}
-        accessibilityRole="button"
-        accessibilityLabel={`${item.title} bildirimini okundu olarak isaretle`}
-      >
-        <Text style={styles.inboxTitle}>
-          {item.title || 'Bildirim'}{' '}
-          <Text style={styles.inboxTitleState}>({stateLabel})</Text>
-        </Text>
-        {showOpsMeta ? (
-          <Text style={styles.inboxMeta}>
-            {item.receivedAt} | source: {item.source} | type: {item.kind} | id: {idPreview}
-          </Text>
-        ) : (
-          <Text style={styles.inboxMeta}>{item.receivedAt}</Text>
-        )}
-        {item.body ? <Text style={styles.inboxBody}>{item.body}</Text> : null}
-        {showOpsMeta ? (
-          <Text selectable style={styles.inboxMeta}>
-            Deep-link: {item.deepLink || 'none'}
-          </Text>
-        ) : null}
-        {isActionable ? (
-          <View style={styles.inboxActionRow}>
-            <Pressable
-              style={styles.inboxOpenButton}
-              onPress={() => onOpenDeepLink(item)}
-              hitSlop={PRESSABLE_HIT_SLOP}
-              accessibilityRole="button"
-              accessibilityLabel="Bildirim detayini ac"
-            >
-              <Text style={styles.retryText}>Detayi Ac</Text>
-            </Pressable>
+      <View style={[styles.inboxRow, !item.opened ? styles.inboxRowUnread : null]}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.inboxPressTarget,
+            pressed ? styles.inboxPressTargetPressed : null,
+          ]}
+          onPress={() => (isActionable ? onOpenDeepLink(item) : onPressRow(item))}
+          hitSlop={PRESSABLE_HIT_SLOP}
+          accessibilityRole="button"
+          accessibilityLabel={
+            isActionable
+              ? `${item.title} bildirim detayini ac`
+              : `${item.title} bildirimini kapat`
+          }
+        >
+          <View style={styles.inboxRowHeader}>
+            {!item.opened ? <View style={styles.inboxUnreadDot} /> : null}
+            <Text style={[styles.inboxTitle, item.opened ? styles.inboxTitleRead : null]}>
+              {item.title || 'Bildirim'}{' '}
+              <Text style={styles.inboxTitleState}>({stateLabel})</Text>
+            </Text>
           </View>
-        ) : null}
-      </Pressable>
+          {showOpsMeta ? (
+            <Text style={styles.inboxMeta}>
+              {item.receivedAt} | source: {item.source} | type: {item.kind} | id: {idPreview}
+            </Text>
+          ) : (
+            <Text style={styles.inboxMeta}>{item.receivedAt}</Text>
+          )}
+          {item.body ? <Text style={styles.inboxBody}>{item.body}</Text> : null}
+          {showOpsMeta ? (
+            <Text selectable style={styles.inboxMeta}>
+              Deep-link: {item.deepLink || 'none'}
+            </Text>
+          ) : null}
+        </Pressable>
+      </View>
     );
   },
   (prev, next) =>
@@ -4127,6 +5293,7 @@ const PushInboxCard = ({
           disabled={isBusy || sortedItems.length === 0}
         />
       </View>
+      {state.message ? <Text style={[styles.screenMeta, { marginTop: 6 }]}>{state.message}</Text> : null}
 
       <FlatList
         data={sortedItems}
@@ -4203,8 +5370,8 @@ const MOBILE_COMMENT_FEED_COPY: Record<
     titleAll: 'Tum Yorumlar',
     titleToday: 'Bugunun Yorumlari',
     bodySelectedMovie: 'Ana sayfada sadece secili film ile ilgili yorumlar gosterilir.',
-    bodyAll: 'Arena ekraninda tum akisi filtreleyebilir ve siralayabilirsin.',
-    bodyToday: 'Ana sayfada yalnizca bugun yazilan yorumlar listelenir.',
+    bodyAll: 'Bu modda bugun ve onceki gunlerden yorumlar birlikte listelenir.',
+    bodyToday: 'Bu modda yalnizca bugun yazilan yorumlar listelenir.',
     movieFilterLabel: 'Film filtresi',
     selectedMoviePending: 'Film secimi bekleniyor',
     showAllAccessibility: 'Tum yorumlari goster',
@@ -4255,8 +5422,8 @@ const MOBILE_COMMENT_FEED_COPY: Record<
     titleAll: 'All Comments',
     titleToday: "Today's Comments",
     bodySelectedMovie: 'Only comments for the selected film are shown on the main screen.',
-    bodyAll: 'You can filter and sort the full feed in Arena.',
-    bodyToday: 'Only comments written today are listed on the main screen.',
+    bodyAll: 'This view shows comments from today together with earlier days.',
+    bodyToday: 'This view only lists comments written today.',
     movieFilterLabel: 'Film filter',
     selectedMoviePending: 'Waiting for film selection',
     showAllAccessibility: 'Show all comments',
@@ -4306,8 +5473,8 @@ const MOBILE_COMMENT_FEED_COPY: Record<
     titleAll: 'Todos los Comentarios',
     titleToday: 'Comentarios de Hoy',
     bodySelectedMovie: 'En la pantalla principal solo se muestran comentarios de la pelicula seleccionada.',
-    bodyAll: 'Puedes filtrar y ordenar todo el flujo en Arena.',
-    bodyToday: 'En la pantalla principal solo se listan los comentarios escritos hoy.',
+    bodyAll: 'Esta vista muestra juntos los comentarios de hoy y de dias anteriores.',
+    bodyToday: 'Esta vista solo muestra los comentarios escritos hoy.',
     movieFilterLabel: 'Filtro de pelicula',
     selectedMoviePending: 'Esperando la seleccion de pelicula',
     showAllAccessibility: 'Mostrar todos los comentarios',
@@ -4358,8 +5525,8 @@ const MOBILE_COMMENT_FEED_COPY: Record<
     titleAll: 'Tous les Commentaires',
     titleToday: 'Commentaires du Jour',
     bodySelectedMovie: 'Sur l ecran principal, seuls les commentaires du film selectionne sont affiches.',
-    bodyAll: 'Tu peux filtrer et trier tout le flux dans Arena.',
-    bodyToday: "Sur l ecran principal, seuls les commentaires ecrits aujourd hui sont listes.",
+    bodyAll: "Cette vue affiche ensemble les commentaires d aujourd hui et des jours precedents.",
+    bodyToday: "Cette vue affiche seulement les commentaires ecrits aujourd hui.",
     movieFilterLabel: 'Filtre film',
     selectedMoviePending: 'En attente du choix du film',
     showAllAccessibility: 'Afficher tous les commentaires',
@@ -4412,6 +5579,7 @@ const CommentFeedCard = ({
   language = 'tr',
   currentUserAvatarUrl,
   showFilters = true,
+  embedded = false,
   onScopeChange,
   onSortChange,
   onQueryChange,
@@ -4429,6 +5597,7 @@ const CommentFeedCard = ({
   language?: MobileSettingsLanguage;
   currentUserAvatarUrl?: string;
   showFilters?: boolean;
+  embedded?: boolean;
   onScopeChange: (scope: CommentFeedScope) => void;
   onSortChange: (sort: CommentFeedSort) => void;
   onQueryChange: (query: string) => void;
@@ -4466,7 +5635,9 @@ const CommentFeedCard = ({
   const normalizedSelectedMovieTitle = String(selectedMovieTitle || '').trim();
   const normalizedCurrentUserAvatarUrl = String(currentUserAvatarUrl || '').trim();
   const isMovieFiltering = movieFilterMode === 'selected_movie';
+  const isAllScope = !isMovieFiltering && state.scope === 'all';
   const waitingMovieSelection = isMovieFiltering && !normalizedSelectedMovieTitle;
+  const isEmbedded = embedded && isMovieFiltering;
   const visibleItems =
     waitingMovieSelection || !isMovieFiltering
       ? isMovieFiltering
@@ -4623,33 +5794,27 @@ const CommentFeedCard = ({
     [deleteSubmitting, onDeleteItem]
   );
 
-  return (
-    <KeyboardAvoidingView
-      enabled={Platform.OS !== 'web'}
-      behavior={KEYBOARD_AVOIDING_BEHAVIOR}
-      keyboardVerticalOffset={KEYBOARD_AVOIDING_OFFSET}
-    >
-      <ScreenCard accent="clay">
-      <Text style={styles.screenTitle}>
-        {isMovieFiltering
-          ? commentFeedCopy.titleSelectedMovie
-          : showFilters
-            ? commentFeedCopy.titleAll
-            : commentFeedCopy.titleToday}
-      </Text>
-      <Text style={styles.screenBody}>
-        {isMovieFiltering
-          ? commentFeedCopy.bodySelectedMovie
-          : showFilters
-            ? commentFeedCopy.bodyAll
-            : commentFeedCopy.bodyToday}
-      </Text>
-      {isMovieFiltering ? (
-        <Text style={styles.screenMeta}>
-          {commentFeedCopy.movieFilterLabel}: {normalizedSelectedMovieTitle || commentFeedCopy.selectedMoviePending}
-        </Text>
-      ) : null}
-
+  const content = (
+    <>
+        {!isMovieFiltering ? (
+          <>
+            <Text style={styles.screenTitle}>
+              {isAllScope || showFilters ? commentFeedCopy.titleAll : commentFeedCopy.titleToday}
+            </Text>
+            <Text style={styles.screenBody}>
+              {isAllScope || showFilters ? commentFeedCopy.bodyAll : commentFeedCopy.bodyToday}
+            </Text>
+          </>
+        ) : null}
+        {isMovieFiltering ? (
+          <View style={styles.commentFeedSelectedMoviePill}>
+            <Ionicons name="film-outline" size={14} color="#E5E4E2" />
+            <Text style={styles.commentFeedSelectedMovieText}>
+              {normalizedSelectedMovieTitle || commentFeedCopy.selectedMoviePending}
+            </Text>
+          </View>
+        ) : null}
+    
       {showFilters ? (
         <>
           <View style={styles.commentFeedFilterStack}>
@@ -4738,27 +5903,54 @@ const CommentFeedCard = ({
           meta={state.message}
         />
       ) : visibleItems.length === 0 ? (
-        <StatePanel
-          tone="clay"
-          variant={state.status === 'error' ? 'error' : 'empty'}
-          eyebrow={commentFeedCopy.feedEyebrow}
-          title={state.status === 'error' ? commentFeedCopy.errorTitle : commentFeedCopy.emptyTitle}
-          body={
-            state.status === 'error'
-              ? commentFeedCopy.errorBody
-              : commentFeedCopy.emptyBody
-          }
-        />
+        isEmbedded ? (
+          <View style={styles.commentFeedEmbeddedEmpty}>
+            <Text style={styles.commentFeedEmbeddedEyebrow}>{commentFeedCopy.feedEyebrow}</Text>
+            <Text style={styles.commentFeedEmbeddedEmptyTitle}>
+              {state.status === 'error' ? commentFeedCopy.errorTitle : commentFeedCopy.emptyTitle}
+            </Text>
+            {state.status === 'error' ? (
+              <Text style={styles.commentFeedEmbeddedEmptyBody}>{commentFeedCopy.errorBody}</Text>
+            ) : null}
+          </View>
+        ) : (
+          <StatePanel
+            tone="clay"
+            variant={state.status === 'error' ? 'error' : 'empty'}
+            eyebrow={commentFeedCopy.feedEyebrow}
+            title={state.status === 'error' ? commentFeedCopy.errorTitle : commentFeedCopy.emptyTitle}
+            body={
+              state.status === 'error'
+                ? commentFeedCopy.errorBody
+                : isMovieFiltering
+                  ? ''
+                  : commentFeedCopy.emptyBody
+            }
+          />
+        )
       ) : (
-        <View style={styles.commentFeedList}>
+        <View style={[styles.commentFeedList, isEmbedded ? styles.commentFeedListEmbedded : null]}>
           {visibleItems.map((item) => {
             const resolvedAvatarUrl =
               String(item.authorAvatarUrl || '').trim() ||
               (item.isMine ? normalizedCurrentUserAvatarUrl : '');
+            const posterUri = resolvePosterUrl(item.posterPath);
+            const posterFallbackLabel = (String(item.movieTitle || '').trim().slice(0, 1) || '?').toUpperCase();
             return (
-              <View key={item.id} style={styles.commentFeedRow}>
+              <View key={item.id} style={[styles.commentFeedRow, isEmbedded ? styles.commentFeedRowEmbedded : null]}>
                 <View style={styles.commentFeedRowHeader}>
-                  <Text style={styles.commentFeedMovieTitle}>{item.movieTitle}</Text>
+                  <View style={styles.commentFeedMovieHeaderMain}>
+                    {posterUri ? (
+                      <Image source={{ uri: posterUri }} style={styles.commentFeedMoviePoster} resizeMode="cover" />
+                    ) : (
+                      <View style={styles.commentFeedMoviePosterFallback}>
+                        <Text style={styles.commentFeedMoviePosterFallbackText}>{posterFallbackLabel}</Text>
+                      </View>
+                    )}
+                    <Text style={styles.commentFeedMovieTitle} numberOfLines={2}>
+                      {item.movieTitle}
+                    </Text>
+                  </View>
                   {item.isMine ? <Text style={styles.commentFeedMineBadge}>{commentFeedCopy.mineBadge}</Text> : null}
                 </View>
                 <View style={styles.commentFeedAuthorMetaRow}>
@@ -5005,7 +6197,23 @@ const CommentFeedCard = ({
           </Pressable>
         ) : null}
       </View>
-      </ScreenCard>
+    </>
+  );
+
+  return (
+    <KeyboardAvoidingView
+      enabled={Platform.OS !== 'web'}
+      behavior={KEYBOARD_AVOIDING_BEHAVIOR}
+      keyboardVerticalOffset={KEYBOARD_AVOIDING_OFFSET}
+    >
+      {isEmbedded ? (
+        <View style={styles.commentFeedEmbeddedShell}>
+          <View style={[styles.screenCardAccent, styles.screenCardAccentClay]} />
+          {content}
+        </View>
+      ) : (
+        <ScreenCard accent="clay">{content}</ScreenCard>
+      )}
     </KeyboardAvoidingView>
   );
 };
@@ -5073,9 +6281,756 @@ const DailyCycleTime = ({ language = 'tr' }: { language?: MobileSettingsLanguage
   );
 };
 
+type DailyGreetingTone = 'sage' | 'clay' | 'gold';
+type DailyGreetingScenario =
+  | 'night_open'
+  | 'morning_open_streak'
+  | 'morning_open_fresh'
+  | 'morning_done'
+  | 'midday_open'
+  | 'midday_done'
+  | 'afternoon_open'
+  | 'afternoon_done'
+  | 'evening_streak_open'
+  | 'evening_open'
+  | 'evening_done'
+  | 'late_open';
+
+type DailyGreetingCardData = {
+  eyebrow: string;
+  title: string;
+  body: string;
+  tone: DailyGreetingTone;
+  icon: ComponentProps<typeof Ionicons>['name'];
+  pill: string;
+};
+
+const hashDailyGreetingSeed = (value: string): number => {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash << 5) - hash + value.charCodeAt(index);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+};
+
+const pickSeededGreeting = <T,>(items: readonly T[], seed: string): T => {
+  if (items.length === 0) {
+    throw new Error('Greeting pool cannot be empty.');
+  }
+  return items[hashDailyGreetingSeed(seed) % items.length];
+};
+
+const withFirstName = (firstName: string | null, message: string): string =>
+  firstName ? `${firstName}, ${message}` : message;
+
+const resolveDailyGreetingScenario = (
+  hour: number,
+  completed: boolean,
+  streakValue: number
+): DailyGreetingScenario => {
+  if (hour < 6) return 'night_open';
+  if (hour < 10) return completed ? 'morning_done' : streakValue > 0 ? 'morning_open_streak' : 'morning_open_fresh';
+  if (hour < 14) return completed ? 'midday_done' : 'midday_open';
+  if (hour < 18) return completed ? 'afternoon_done' : 'afternoon_open';
+  if (hour < 22) return completed ? 'evening_done' : streakValue > 0 ? 'evening_streak_open' : 'evening_open';
+  return completed ? 'evening_done' : 'late_open';
+};
+
+const resolveDailyGreetingEyebrow = (
+  language: MobileSettingsLanguage,
+  scenario: DailyGreetingScenario
+): string => {
+  const phase =
+    scenario === 'night_open' || scenario === 'late_open'
+      ? 'night'
+      : scenario.startsWith('morning_')
+        ? 'morning'
+        : scenario.startsWith('midday_')
+          ? 'midday'
+          : scenario.startsWith('afternoon_')
+            ? 'afternoon'
+            : 'evening';
+
+  if (language === 'tr') {
+    if (phase === 'night') return 'GECE PENCERESI';
+    if (phase === 'morning') return 'SABAH KADRAJI';
+    if (phase === 'midday') return 'OGLE SINYALI';
+    if (phase === 'afternoon') return 'IKINDI PULSU';
+    return 'AKSAM PULSU';
+  }
+  if (language === 'es') {
+    if (phase === 'night') return 'VENTANA NOCTURNA';
+    if (phase === 'morning') return 'MARCO MATINAL';
+    if (phase === 'midday') return 'SENAL DEL MEDIODIA';
+    if (phase === 'afternoon') return 'PULSO DE LA TARDE';
+    return 'PULSO DE LA NOCHE';
+  }
+  if (language === 'fr') {
+    if (phase === 'night') return 'FENETRE DE NUIT';
+    if (phase === 'morning') return 'CADRE DU MATIN';
+    if (phase === 'midday') return 'SIGNAL DE MIDI';
+    if (phase === 'afternoon') return 'POULS DE L APRES MIDI';
+    return 'POULS DU SOIR';
+  }
+  if (phase === 'night') return 'NIGHT WINDOW';
+  if (phase === 'morning') return 'MORNING FRAME';
+  if (phase === 'midday') return 'MIDDAY SIGNAL';
+  if (phase === 'afternoon') return 'AFTERNOON PULSE';
+  return 'EVENING PULSE';
+};
+
+const resolveDailyGreetingPill = (
+  language: MobileSettingsLanguage,
+  completed: boolean,
+  streakValue: number
+): string => {
+  if (completed) {
+    if (language === 'tr') return 'BUGUN TAMAM';
+    if (language === 'es') return 'HOY LISTO';
+    if (language === 'fr') return 'AUJOURD HUI FAIT';
+    return 'TODAY DONE';
+  }
+  if (streakValue > 0) {
+    if (language === 'tr') return `${streakValue} GUN SERI`;
+    if (language === 'es') return `${streakValue} DIAS`;
+    if (language === 'fr') return `${streakValue} JOURS`;
+    return `${streakValue} DAY STREAK`;
+  }
+  if (language === 'tr') return 'ACIK PENCERE';
+  if (language === 'es') return 'ABIERTO';
+  if (language === 'fr') return 'OUVERT';
+  return 'OPEN NOW';
+};
+
+const resolveDailyGreetingSupportBody = ({
+  language,
+  completed,
+  streakValue,
+  selectedMovieTitle: _selectedMovieTitle,
+  firstMovieTitle: _firstMovieTitle,
+}: {
+  language: MobileSettingsLanguage;
+  completed: boolean;
+  streakValue: number;
+  selectedMovieTitle: string | null;
+  firstMovieTitle: string | null;
+}): string => {
+  if (language === 'tr') {
+    if (completed) {
+      return 'Bugunun puani yazildi. Yarin yeni tur acilir.';
+    }
+    if (streakValue > 0) {
+      return `${streakValue} gunluk seriyi korumak icin tek hamle yetiyor.`;
+    }
+    return 'Secimini yap, notunu birak, bugunun akisini ac.';
+  }
+
+  if (language === 'es') {
+    if (completed) {
+      return 'La puntuacion de hoy ya entro. Manana abre una nueva ronda.';
+    }
+    if (streakValue > 0) {
+      return `Una sola jugada protege tu racha de ${streakValue} dias.`;
+    }
+    return 'Elige, comenta y abre tu ritmo de hoy.';
+  }
+
+  if (language === 'fr') {
+    if (completed) {
+      return 'Le score du jour est deja enregistre. Une nouvelle manche arrive demain.';
+    }
+    if (streakValue > 0) {
+      return `Un seul geste suffit pour proteger ta serie de ${streakValue} jours.`;
+    }
+    return 'Choisis, note, et lance ton rythme du jour.';
+  }
+
+  if (completed) {
+    return "Today's score is locked. A new round opens tomorrow.";
+  }
+  if (streakValue > 0) {
+    return `One move protects the ${streakValue}-day streak.`;
+  }
+  return 'Pick, post, and open today on your terms.';
+};
+
+const resolveDailyGreetingVisual = (
+  language: MobileSettingsLanguage,
+  scenario: DailyGreetingScenario,
+  firstName: string | null,
+  streakValue: number
+): {
+  tone: DailyGreetingTone;
+  icon: ComponentProps<typeof Ionicons>['name'];
+  messages: string[];
+} => {
+  if (language === 'tr') {
+    switch (scenario) {
+      case 'night_open':
+        return {
+          tone: 'gold',
+          icon: 'moon-outline',
+          messages: [
+            'Gece sessiz. Tur yarin.',
+            'Bugun kapandi. Yarin yeniden.',
+            'Perde kapali. Puan yarin.',
+          ],
+        };
+      case 'morning_open_streak':
+        return {
+          tone: 'sage',
+          icon: 'flame-outline',
+          messages: [
+            withFirstName(firstName, `seri acik. Bugun kaybetme.`),
+            `${streakValue} gunluk seri savunmada.`,
+            'Sabah hamlesi seriyi korur.',
+          ],
+        };
+      case 'morning_open_fresh':
+        return {
+          tone: 'gold',
+          icon: 'sunny-outline',
+          messages: [
+            withFirstName(firstName, 'yeni tur acildi'),
+            'Gun basladi. Sahne sende.',
+            'Bugunluk tur masada.',
+          ],
+        };
+      case 'morning_done':
+        return {
+          tone: 'sage',
+          icon: 'checkmark-done-outline',
+          messages: [
+            withFirstName(firstName, 'bugun cebinde'),
+            'Erken hamle. Temiz skor.',
+            'Sabah puani yazildi.',
+          ],
+        };
+      case 'midday_open':
+        return {
+          tone: 'clay',
+          icon: 'time-outline',
+          messages: [
+            withFirstName(firstName, 'gun hala acik'),
+            'Orta turdasin. Gir.',
+            'Skor tahtasi seni bekliyor.',
+          ],
+        };
+      case 'midday_done':
+        return {
+          tone: 'sage',
+          icon: 'sparkles-outline',
+          messages: [
+            'Skor yazildi.',
+            'Bugun kilitlendi.',
+            'Hamle yerine oturdu.',
+          ],
+        };
+      case 'afternoon_open':
+        return {
+          tone: 'clay',
+          icon: 'flash-outline',
+          messages: [
+            'Baski var. Oyun bitmedi.',
+            'Hala yetisirsin.',
+            'Bir hamlelik acik var.',
+          ],
+        };
+      case 'afternoon_done':
+        return {
+          tone: 'sage',
+          icon: 'trophy-outline',
+          messages: [
+            'Bugun akista.',
+            'Skor sabitlendi.',
+            'Hamle temiz kapandi.',
+          ],
+        };
+      case 'evening_streak_open':
+        return {
+          tone: 'gold',
+          icon: 'flame-outline',
+          messages: [
+            withFirstName(firstName, 'seri bu gece sinanir'),
+            `${streakValue} gunluk seri riskte.`,
+            'Bu gece hamle zamani.',
+          ],
+        };
+      case 'evening_open':
+        return {
+          tone: 'gold',
+          icon: 'moon-outline',
+          messages: [
+            withFirstName(firstName, 'son tur acik'),
+            'Bugun hala senin olabilir.',
+            'Gece gelmeden gir.',
+          ],
+        };
+      case 'evening_done':
+        return {
+          tone: 'sage',
+          icon: 'checkmark-circle-outline',
+          messages: [
+            withFirstName(firstName, 'bugun kasada'),
+            'Skor kapandi. Yarin yeni tur.',
+            'Bugun tamam. Ritim sende.',
+          ],
+        };
+      case 'late_open':
+      default:
+        return {
+          tone: 'gold',
+          icon: 'hourglass-outline',
+          messages: [
+            'Final pencere acik.',
+            'Reset oncesi son hamle.',
+            withFirstName(firstName, 'simdi gir ya da yarini bekle'),
+          ],
+        };
+    }
+  }
+
+  if (language === 'en') {
+    switch (scenario) {
+      case 'night_open':
+        return {
+          tone: 'gold',
+          icon: 'moon-outline',
+          messages: [
+            'Night is quiet. Next round tomorrow.',
+            'Today is closed. Tomorrow reopens.',
+            'Screen down. Score tomorrow.',
+          ],
+        };
+      case 'morning_open_streak':
+        return {
+          tone: 'sage',
+          icon: 'flame-outline',
+          messages: [
+            withFirstName(firstName, 'the streak is live. Do not drop it.'),
+            `${streakValue}-day streak on defense.`,
+            'Morning move saves the streak.',
+          ],
+        };
+      case 'morning_open_fresh':
+        return {
+          tone: 'gold',
+          icon: 'sunny-outline',
+          messages: [
+            withFirstName(firstName, 'a new round is open'),
+            'Fresh day. Your move.',
+            'Today is on the board.',
+          ],
+        };
+      case 'morning_done':
+        return {
+          tone: 'sage',
+          icon: 'checkmark-done-outline',
+          messages: [
+            withFirstName(firstName, 'today is already banked'),
+            'Early move. Clean score.',
+            "Today's points are in.",
+          ],
+        };
+      case 'midday_open':
+        return {
+          tone: 'clay',
+          icon: 'time-outline',
+          messages: [
+            withFirstName(firstName, 'the day is still open'),
+            'Mid-round. Step in.',
+            'The board is waiting.',
+          ],
+        };
+      case 'midday_done':
+        return {
+          tone: 'sage',
+          icon: 'sparkles-outline',
+          messages: [
+            'Score locked.',
+            'Today is secured.',
+            'The move landed.',
+          ],
+        };
+      case 'afternoon_open':
+        return {
+          tone: 'clay',
+          icon: 'flash-outline',
+          messages: [
+            'Pressure is up. Game is not over.',
+            'You can still land it.',
+            'One move still fits.',
+          ],
+        };
+      case 'afternoon_done':
+        return {
+          tone: 'sage',
+          icon: 'trophy-outline',
+          messages: [
+            'Today is in the feed.',
+            'Score is stable.',
+            'The move closed clean.',
+          ],
+        };
+      case 'evening_streak_open':
+        return {
+          tone: 'gold',
+          icon: 'flame-outline',
+          messages: [
+            withFirstName(firstName, 'the streak gets tested tonight'),
+            `${streakValue}-day streak at risk.`,
+            'Tonight is the save point.',
+          ],
+        };
+      case 'evening_open':
+        return {
+          tone: 'gold',
+          icon: 'moon-outline',
+          messages: [
+            withFirstName(firstName, 'final round is open'),
+            'The day can still flip.',
+            'Get in before midnight.',
+          ],
+        };
+      case 'evening_done':
+        return {
+          tone: 'sage',
+          icon: 'checkmark-circle-outline',
+          messages: [
+            withFirstName(firstName, 'today is banked'),
+            'Score closed. New round tomorrow.',
+            'You closed on time.',
+          ],
+        };
+      case 'late_open':
+      default:
+        return {
+          tone: 'gold',
+          icon: 'hourglass-outline',
+          messages: [
+            'Final window is open.',
+            'One last move before reset.',
+            withFirstName(firstName, 'jump in now or wait for tomorrow'),
+          ],
+        };
+    }
+  }
+
+  if (language === 'es') {
+    switch (scenario) {
+      case 'night_open':
+        return { tone: 'gold', icon: 'moon-outline', messages: ['La noche esta en calma, manana abrira una nueva seleccion.'] };
+      case 'morning_open_streak':
+        return { tone: 'sage', icon: 'flame-outline', messages: [withFirstName(firstName, `tu racha de ${streakValue} dias tiene una buena apertura esta manana`)] };
+      case 'morning_open_fresh':
+        return { tone: 'gold', icon: 'sunny-outline', messages: [withFirstName(firstName, 'la primera escena del dia ya esta lista')] };
+      case 'morning_done':
+        return { tone: 'sage', icon: 'checkmark-done-outline', messages: [withFirstName(firstName, 'cerraste el ritual de hoy muy temprano')] };
+      case 'midday_open':
+        return { tone: 'clay', icon: 'time-outline', messages: [withFirstName(firstName, 'el mediodia llego y la seleccion de hoy sigue abierta')] };
+      case 'midday_done':
+        return { tone: 'sage', icon: 'sparkles-outline', messages: ['Aseguraste el ritual de hoy antes del momento mas ocupado.'] };
+      case 'afternoon_open':
+        return { tone: 'clay', icon: 'flash-outline', messages: ['La tarde avanza, pero todavia puedes entrar al ritual de hoy.'] };
+      case 'afternoon_done':
+        return { tone: 'sage', icon: 'trophy-outline', messages: ['El ritual de hoy ya esta colocado en el flujo.'] };
+      case 'evening_streak_open':
+        return { tone: 'gold', icon: 'flame-outline', messages: [withFirstName(firstName, `esta franja protege tu racha de ${streakValue} dias`)] };
+      case 'evening_open':
+        return { tone: 'gold', icon: 'moon-outline', messages: ['La noche sigue abierta si quieres girar el dia a tu favor.'] };
+      case 'evening_done':
+        return { tone: 'sage', icon: 'checkmark-circle-outline', messages: [withFirstName(firstName, 'el ritual de hoy esta completo')] };
+      case 'late_open':
+      default:
+        return { tone: 'gold', icon: 'hourglass-outline', messages: ['Ultima ventana de la noche, deja tu nota antes del reinicio.'] };
+    }
+  }
+
+  switch (scenario) {
+    case 'night_open':
+      return { tone: 'gold', icon: 'moon-outline', messages: ['La nuit est calme, une nouvelle selection s ouvrira demain matin.'] };
+    case 'morning_open_streak':
+      return { tone: 'sage', icon: 'flame-outline', messages: [withFirstName(firstName, `ta serie de ${streakValue} jours a une belle ouverture ce matin`)] };
+    case 'morning_open_fresh':
+      return { tone: 'gold', icon: 'sunny-outline', messages: [withFirstName(firstName, 'la premiere scene du jour est deja prete')] };
+    case 'morning_done':
+      return { tone: 'sage', icon: 'checkmark-done-outline', messages: [withFirstName(firstName, 'tu as boucle le rituel du jour tres tot')] };
+    case 'midday_open':
+      return { tone: 'clay', icon: 'time-outline', messages: [withFirstName(firstName, 'midi est la et la selection du jour est encore ouverte')] };
+    case 'midday_done':
+      return { tone: 'sage', icon: 'sparkles-outline', messages: ['Tu as verrouille le rituel du jour avant le rush.'] };
+    case 'afternoon_open':
+      return { tone: 'clay', icon: 'flash-outline', messages: ['L apres midi avance, mais il reste du temps pour le rituel du jour.'] };
+    case 'afternoon_done':
+      return { tone: 'sage', icon: 'trophy-outline', messages: ['Le rituel du jour est deja pose dans le flux.'] };
+    case 'evening_streak_open':
+      return { tone: 'gold', icon: 'flame-outline', messages: [withFirstName(firstName, `cette plage protege ta serie de ${streakValue} jours`)] };
+    case 'evening_open':
+      return { tone: 'gold', icon: 'moon-outline', messages: ['La soiree reste ouverte si tu veux encore changer le rythme du jour.'] };
+    case 'evening_done':
+      return { tone: 'sage', icon: 'checkmark-circle-outline', messages: [withFirstName(firstName, 'le rituel du jour est complet')] };
+    case 'late_open':
+    default:
+      return { tone: 'gold', icon: 'hourglass-outline', messages: ['Derniere fenetre ce soir, laisse ta note avant la remise a zero.'] };
+  }
+};
+
+const clearDailyQuizAudioSuspendTimer = () => {
+  if (dailyQuizAudioSuspendTimer === null) return;
+  clearTimeout(dailyQuizAudioSuspendTimer);
+  dailyQuizAudioSuspendTimer = null;
+};
+
+const suspendDailyQuizAudioCtx = async (): Promise<void> => {
+  clearDailyQuizAudioSuspendTimer();
+  const ctx = dailyQuizAudioCtx;
+  if (!ctx || ctx.state !== 'running') return;
+  await ctx.suspend().catch(() => undefined);
+};
+
+const closeDailyQuizAudioCtx = async (): Promise<void> => {
+  clearDailyQuizAudioSuspendTimer();
+  const ctx = dailyQuizAudioCtx;
+  dailyQuizAudioCtx = null;
+  if (!ctx || ctx.state === 'closed') return;
+  await ctx.close().catch(() => undefined);
+};
+
+const scheduleDailyQuizAudioSuspend = () => {
+  if (Platform.OS !== 'web') return;
+  clearDailyQuizAudioSuspendTimer();
+  dailyQuizAudioSuspendTimer = setTimeout(() => {
+    void suspendDailyQuizAudioCtx();
+  }, DAILY_QUIZ_AUDIO_IDLE_MS);
+};
+
+const getDailyQuizAudioCtx = (): AudioContext | null => {
+  if (Platform.OS !== 'web') return null;
+  if (dailyQuizAudioCtx?.state === 'closed') dailyQuizAudioCtx = null;
+  if (!dailyQuizAudioCtx) {
+    try {
+      dailyQuizAudioCtx = new (
+        window.AudioContext ||
+        (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+      )();
+    } catch {
+      return null;
+    }
+  }
+  if (dailyQuizAudioCtx.state === 'suspended') {
+    void dailyQuizAudioCtx.resume().catch(() => undefined);
+  }
+  clearDailyQuizAudioSuspendTimer();
+  return dailyQuizAudioCtx;
+};
+
+const playDailyQuizTone = (
+  freq: number,
+  duration: number,
+  type: OscillatorType = 'sine',
+  volume = 0.24
+) => {
+  const ctx = getDailyQuizAudioCtx();
+  if (!ctx) return;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(volume, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + duration);
+  scheduleDailyQuizAudioSuspend();
+};
+
+const playDailyQuizNativeSound = async (source: number) => {
+  try {
+    const { sound } = await Audio.Sound.createAsync(source);
+    await sound.playAsync();
+    sound.setOnPlaybackStatusUpdate((status) => {
+      if ('didJustFinish' in status && status.didJustFinish) {
+        void sound.unloadAsync();
+      }
+    });
+  } catch {
+    // ignore audio failures on preview surfaces
+  }
+};
+
+const playDailyQuizCorrectSound = () => {
+  if (Platform.OS === 'web') {
+    playDailyQuizTone(523, 0.12, 'sine', 0.2);
+    setTimeout(() => playDailyQuizTone(784, 0.18, 'sine', 0.24), 100);
+    return;
+  }
+  void playDailyQuizNativeSound(DAILY_QUIZ_SOUND_CORRECT);
+};
+
+const playDailyQuizWrongSound = () => {
+  if (Platform.OS === 'web') {
+    playDailyQuizTone(200, 0.24, 'square', 0.15);
+    setTimeout(() => playDailyQuizTone(150, 0.18, 'square', 0.12), 120);
+    return;
+  }
+  void playDailyQuizNativeSound(DAILY_QUIZ_SOUND_WRONG);
+};
+
+type DailyQuizConfettiParticle = {
+  x: Animated.Value;
+  y: Animated.Value;
+  rotate: Animated.Value;
+  opacity: Animated.Value;
+  color: string;
+  size: number;
+  isCircle: boolean;
+};
+
+const DailyQuizConfettiBlast = ({ trigger }: { trigger: number }) => {
+  const particles = useRef<DailyQuizConfettiParticle[]>([]);
+  const prevTrigger = useRef(0);
+
+  useEffect(() => {
+    if (particles.current.length > 0) return;
+    particles.current = Array.from({ length: DAILY_QUIZ_CONFETTI_COUNT }, (_, index) => ({
+      x: new Animated.Value(0),
+      y: new Animated.Value(0),
+      rotate: new Animated.Value(0),
+      opacity: new Animated.Value(0),
+      color: DAILY_QUIZ_CONFETTI_COLORS[index % DAILY_QUIZ_CONFETTI_COLORS.length],
+      size: 6 + Math.random() * 7,
+      isCircle: Math.random() > 0.45,
+    }));
+  }, []);
+
+  useEffect(() => {
+    if (trigger === 0 || trigger === prevTrigger.current) return;
+    prevTrigger.current = trigger;
+
+    const animations = particles.current.map((particle) => {
+      const startX = (Math.random() - 0.5) * 50;
+      const endX = startX + (Math.random() - 0.5) * 220;
+      const endY = -(140 + Math.random() * 180);
+      const rotations = (Math.random() > 0.5 ? 1 : -1) * (2 + Math.random() * 4);
+
+      particle.x.setValue(startX);
+      particle.y.setValue(0);
+      particle.rotate.setValue(0);
+      particle.opacity.setValue(1);
+
+      return Animated.parallel([
+        Animated.timing(particle.x, {
+          toValue: endX,
+          duration: 650 + Math.random() * 260,
+          useNativeDriver: true,
+        }),
+        Animated.sequence([
+          Animated.timing(particle.y, {
+            toValue: endY * 0.55,
+            duration: 360 + Math.random() * 140,
+            useNativeDriver: true,
+          }),
+          Animated.timing(particle.y, {
+            toValue: endY + 40,
+            duration: 300 + Math.random() * 180,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.timing(particle.rotate, {
+          toValue: rotations,
+          duration: 760 + Math.random() * 220,
+          useNativeDriver: true,
+        }),
+        Animated.sequence([
+          Animated.timing(particle.opacity, { toValue: 1, duration: 80, useNativeDriver: true }),
+          Animated.delay(420 + Math.random() * 160),
+          Animated.timing(particle.opacity, { toValue: 0, duration: 220, useNativeDriver: true }),
+        ]),
+      ]);
+    });
+
+    Animated.stagger(16, animations).start();
+  }, [trigger]);
+
+  if (trigger === 0) return null;
+
+  return (
+    <View style={styles.dailyQuizConfettiLayer} pointerEvents="none">
+      {particles.current.map((particle, index) => {
+        const rotateDeg = particle.rotate.interpolate({
+          inputRange: [-10, 10],
+          outputRange: ['-3600deg', '3600deg'],
+        });
+
+        return (
+          <Animated.View
+            key={index}
+            style={{
+              position: 'absolute',
+              bottom: '14%',
+              left: '50%',
+              width: particle.size,
+              height: particle.isCircle ? particle.size : particle.size * 1.5,
+              borderRadius: particle.isCircle ? particle.size / 2 : 2,
+              backgroundColor: particle.color,
+              opacity: particle.opacity,
+              transform: [{ translateX: particle.x }, { translateY: particle.y }, { rotate: rotateDeg }],
+            }}
+          />
+        );
+      })}
+    </View>
+  );
+};
+
+const buildDailyGreetingCard = ({
+  language,
+  hour,
+  completed,
+  streakValue,
+  firstName,
+  selectedMovieTitle,
+  firstMovieTitle,
+  dateKey,
+}: {
+  language: MobileSettingsLanguage;
+  hour: number;
+  completed: boolean;
+  streakValue: number;
+  firstName: string | null;
+  selectedMovieTitle: string | null;
+  firstMovieTitle: string | null;
+  dateKey: string | null;
+}): DailyGreetingCardData => {
+  const scenario = resolveDailyGreetingScenario(hour, completed, streakValue);
+  const visual = resolveDailyGreetingVisual(language, scenario, firstName, streakValue);
+  const title = pickSeededGreeting(
+    visual.messages,
+    [language, scenario, dateKey || 'today', firstName || 'guest', selectedMovieTitle || firstMovieTitle || 'film'].join('|')
+  );
+
+  return {
+    eyebrow: resolveDailyGreetingEyebrow(language, scenario),
+    title,
+    body: resolveDailyGreetingSupportBody({
+      language,
+      completed,
+      streakValue,
+      selectedMovieTitle,
+      firstMovieTitle,
+    }),
+    tone: visual.tone,
+    icon: visual.icon,
+    pill: resolveDailyGreetingPill(language, completed, streakValue),
+  };
+};
+
 const DailyHomeScreen = ({
   state,
   showOpsMeta = false,
+  showGreetingCard = true,
   selectedMovieId,
   onSelectMovie,
   language = 'tr',
@@ -5084,6 +7039,7 @@ const DailyHomeScreen = ({
 }: {
   state: DailyState;
   showOpsMeta?: boolean;
+  showGreetingCard?: boolean;
   selectedMovieId?: number | null;
   onSelectMovie?: (movieId: number) => void;
   language?: MobileSettingsLanguage;
@@ -5284,7 +7240,7 @@ const DailyHomeScreen = ({
   const firstName = username ? username.trim().split(/\s+/)[0] : null;
   const n = firstName ?? '';
   const completed = selectedMovieId != null;
-  const sv = streak ?? 0; // streak value
+  const sv = streak ?? 0;
 
   // 12 retention messages — criteria: hour range + completed today + streak count
   // Rule table:
@@ -5529,15 +7485,95 @@ const DailyHomeScreen = ({
       : successState.dataSource === 'cache'
         ? copy.dataSourceCache
         : copy.dataSourceFallback;
+  const selectedMovieTitle =
+    successState.movies.find((movie) => movie.id === selectedMovieId)?.title?.trim() || null;
+  const firstMovieTitle = successState.movies[0]?.title?.trim() || null;
+  const dailyGreeting = buildDailyGreetingCard({
+    language,
+    hour,
+    completed,
+    streakValue: sv,
+    firstName,
+    selectedMovieTitle,
+    firstMovieTitle,
+    dateKey: successState.date || null,
+  });
+  const greetingAccentColor =
+    dailyGreeting.tone === 'sage' ? '#8A9A5B' : dailyGreeting.tone === 'clay' ? '#A57164' : '#B68B4C';
   // eslint-disable-next-line react-hooks/refs
   const railGestureProps = railResponderHandlers || {};
 
   return (
     <View style={{ marginBottom: 12 }}>
       <ScreenCard accent="sage">
-        <Text style={{ color: '#8A9A5B', fontSize: 11, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 8 }}>
-          {retentionMsg}
-        </Text>
+        {showGreetingCard ? (
+          <View
+            style={[
+              styles.dailyGreetingCard,
+              dailyGreeting.tone === 'sage'
+                ? styles.dailyGreetingCardSage
+                : dailyGreeting.tone === 'clay'
+                  ? styles.dailyGreetingCardClay
+                  : styles.dailyGreetingCardGold,
+            ]}
+          >
+            <View style={styles.dailyGreetingSignalRow}>
+              <View style={[styles.dailyGreetingSignalDot, { backgroundColor: greetingAccentColor }]} />
+              <View style={[styles.dailyGreetingSignalBarShort, { backgroundColor: greetingAccentColor }]} />
+              <View style={[styles.dailyGreetingSignalBarLong, styles.dailyGreetingSignalMuted]} />
+            </View>
+            <View
+              style={[
+                styles.dailyGreetingGlow,
+                dailyGreeting.tone === 'sage'
+                  ? styles.dailyGreetingGlowSage
+                  : dailyGreeting.tone === 'clay'
+                    ? styles.dailyGreetingGlowClay
+                    : styles.dailyGreetingGlowGold,
+              ]}
+            />
+            <View style={styles.dailyGreetingHeader}>
+              <View style={styles.dailyGreetingEyebrowRow}>
+                <View style={[styles.dailyGreetingEyebrowDot, { backgroundColor: greetingAccentColor }]} />
+                <Text style={styles.dailyGreetingEyebrowText}>{dailyGreeting.eyebrow}</Text>
+              </View>
+              <View
+                style={[
+                  styles.dailyGreetingPill,
+                  dailyGreeting.tone === 'sage'
+                    ? styles.dailyGreetingPillSage
+                    : dailyGreeting.tone === 'clay'
+                      ? styles.dailyGreetingPillClay
+                      : styles.dailyGreetingPillGold,
+                ]}
+              >
+                <Text style={styles.dailyGreetingPillText}>{dailyGreeting.pill}</Text>
+              </View>
+            </View>
+            <View style={styles.dailyGreetingBodyRow}>
+              <View
+                style={[
+                  styles.dailyGreetingIconWrap,
+                  dailyGreeting.tone === 'sage'
+                    ? styles.dailyGreetingIconWrapSage
+                    : dailyGreeting.tone === 'clay'
+                      ? styles.dailyGreetingIconWrapClay
+                      : styles.dailyGreetingIconWrapGold,
+                ]}
+              >
+                <Ionicons name={dailyGreeting.icon} size={18} color={greetingAccentColor} />
+              </View>
+              <View style={styles.dailyGreetingCopy}>
+                <Text style={styles.dailyGreetingTitle} numberOfLines={2}>
+                  {dailyGreeting.title}
+                </Text>
+                <Text style={styles.dailyGreetingBody} numberOfLines={2}>
+                  {dailyGreeting.body}
+                </Text>
+              </View>
+            </View>
+          </View>
+        ) : null}
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <View style={{ flex: 1, paddingRight: 16 }}>
             <Text style={styles.screenTitle}>{copy.sectionTitle}</Text>
@@ -5717,6 +7753,9 @@ type MobileQuizCopy = {
   unlockedHint: string;
   commentCta: string;
   authCta: string;
+  nextCta: string;
+  finishCta: string;
+  questionProgress: string;
 };
 
 const MOBILE_QUIZ_COPY: Record<MobileDailyQuizLanguageCode, MobileQuizCopy> = {
@@ -5737,6 +7776,9 @@ const MOBILE_QUIZ_COPY: Record<MobileDailyQuizLanguageCode, MobileQuizCopy> = {
     unlockedHint: 'Yorum yazma alani acildi. Istersen kalan sorulari da cozmeye devam edebilirsin.',
     commentCta: 'Bu Film Icin Yorum Yaz',
     authCta: 'Giris Yap',
+    nextCta: 'Sonraki Soru',
+    finishCta: 'Quiz Tamamlandi',
+    questionProgress: 'Soru',
   },
   en: {
     title: 'FILM QUIZ',
@@ -5755,6 +7797,9 @@ const MOBILE_QUIZ_COPY: Record<MobileDailyQuizLanguageCode, MobileQuizCopy> = {
     unlockedHint: 'Comments are unlocked. You can still finish the remaining questions.',
     commentCta: 'Write Comment',
     authCta: 'Sign In',
+    nextCta: 'Next Question',
+    finishCta: 'Quiz Complete',
+    questionProgress: 'Question',
   },
   es: {
     title: 'QUIZ DE LA PELICULA',
@@ -5773,6 +7818,9 @@ const MOBILE_QUIZ_COPY: Record<MobileDailyQuizLanguageCode, MobileQuizCopy> = {
     unlockedHint: 'Los comentarios ya estan desbloqueados. Puedes seguir con las preguntas restantes.',
     commentCta: 'Escribir comentario',
     authCta: 'Iniciar sesion',
+    nextCta: 'Siguiente Pregunta',
+    finishCta: 'Quiz Completado',
+    questionProgress: 'Pregunta',
   },
   fr: {
     title: 'QUIZ DU FILM',
@@ -5791,6 +7839,9 @@ const MOBILE_QUIZ_COPY: Record<MobileDailyQuizLanguageCode, MobileQuizCopy> = {
     unlockedHint: 'Les commentaires sont debloques. Tu peux encore terminer les questions restantes.',
     commentCta: 'Ecrire un commentaire',
     authCta: 'Se connecter',
+    nextCta: 'Question Suivante',
+    finishCta: 'Quiz Termine',
+    questionProgress: 'Question',
   },
 };
 
@@ -5841,6 +7892,15 @@ const updateMobileQuizBundleAfterAnswer = (
   })),
 });
 
+const getDailyQuizInitialQuestionIndex = (
+  questions: MobileDailyQuizBundle['questionsByMovie'][number]['questions']
+): number => {
+  if (!questions.length) return 0;
+  const firstUnansweredIndex = questions.findIndex((question) => !question.attempt);
+  if (firstUnansweredIndex >= 0) return firstUnansweredIndex;
+  return Math.max(0, questions.length - 1);
+};
+
 const MobileDailyQuizPanel = ({
   movieId,
   dateKey,
@@ -5869,7 +7929,11 @@ const MobileDailyQuizPanel = ({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submittingQuestionId, setSubmittingQuestionId] = useState<string | null>(null);
+  const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
+  const [pendingOptionKey, setPendingOptionKey] = useState<MobileDailyQuizOptionKey | null>(null);
+  const [confettiKey, setConfettiKey] = useState(0);
   const [lastXpDelta, setLastXpDelta] = useState(0);
+  const questionScopeRef = useRef<string>('');
 
   useEffect(() => {
     let active = true;
@@ -5922,11 +7986,41 @@ const MobileDailyQuizPanel = ({
   const requiredCorrectCount = movieBlock?.requiredCorrectCount || 0;
   const isUnlocked = requiredCorrectCount > 0 && correctCount >= requiredCorrectCount;
   const unlockHint = getMobileUnlockHint(language, requiredCorrectCount);
+  const questionScopeKey = `${movieId}:${dateKey || ''}:${language}`;
+  const currentQuestion =
+    questions[Math.max(0, Math.min(activeQuestionIndex, Math.max(0, questions.length - 1)))] || null;
+  const currentAttempt = currentQuestion?.attempt || null;
+  const currentQuestionNumber = currentQuestion ? activeQuestionIndex + 1 : 0;
+  const hasNextQuestion = currentQuestionNumber > 0 && currentQuestionNumber < questions.length;
+  const hasAnsweredCurrentQuestion = Boolean(currentAttempt);
+
+  useEffect(() => {
+    if (!questions.length) {
+      setActiveQuestionIndex(0);
+      return;
+    }
+
+    if (questionScopeRef.current !== questionScopeKey) {
+      questionScopeRef.current = questionScopeKey;
+      setActiveQuestionIndex(getDailyQuizInitialQuestionIndex(questions));
+      return;
+    }
+
+    setActiveQuestionIndex((current) => Math.min(current, Math.max(0, questions.length - 1)));
+  }, [questionScopeKey, questions]);
+
+  useEffect(
+    () => () => {
+      void closeDailyQuizAudioCtx();
+    },
+    []
+  );
 
   const handleAnswer = useCallback(
     async (questionId: string, selectedOption: MobileDailyQuizOptionKey) => {
       if (!bundle || submittingQuestionId || !isSignedIn) return;
 
+      setPendingOptionKey(selectedOption);
       setSubmittingQuestionId(questionId);
       setError(null);
 
@@ -5939,8 +8033,16 @@ const MobileDailyQuizPanel = ({
 
       if (!result.ok) {
         setError(result.error || copy.error);
+        setPendingOptionKey(null);
         setSubmittingQuestionId(null);
         return;
+      }
+
+      if (result.isCorrect) {
+        playDailyQuizCorrectSound();
+        setConfettiKey((current) => current + 1);
+      } else {
+        playDailyQuizWrongSound();
       }
 
       setLastXpDelta(result.xp.delta);
@@ -5961,6 +8063,7 @@ const MobileDailyQuizPanel = ({
             })
           : current
       );
+      setPendingOptionKey(null);
       setSubmittingQuestionId(null);
     },
     [bundle, copy.error, isSignedIn, language, onApplyQuizProgress, submittingQuestionId]
@@ -5994,82 +8097,176 @@ const MobileDailyQuizPanel = ({
           ) : null}
 
           <View style={styles.dailyQuizSummaryCard}>
-            <Text style={styles.dailyQuizSummaryText}>
-              {copy.progress}: {answeredCount}/{questions.length}
-            </Text>
-            <Text style={styles.dailyQuizSummaryText}>
-              {copy.correct}: {correctCount}/{requiredCorrectCount}
-            </Text>
-            <Text style={styles.dailyQuizSummaryText}>
-              {copy.xp}: {bundle?.progress?.xpAwarded || 0}
-            </Text>
-            {lastXpDelta > 0 ? <Text style={styles.dailyQuizSummaryText}>+{lastXpDelta} XP</Text> : null}
+            <View style={styles.dailyQuizSummaryMetric}>
+              <Text style={styles.dailyQuizSummaryLabel}>{copy.progress}</Text>
+              <Text style={styles.dailyQuizSummaryValue}>
+                {answeredCount}/{questions.length}
+              </Text>
+            </View>
+            <View style={styles.dailyQuizSummaryMetric}>
+              <Text style={styles.dailyQuizSummaryLabel}>{copy.correct}</Text>
+              <Text style={styles.dailyQuizSummaryValue}>
+                {correctCount}/{requiredCorrectCount}
+              </Text>
+            </View>
+            <View style={styles.dailyQuizSummaryMetric}>
+              <Text style={styles.dailyQuizSummaryLabel}>{copy.xp}</Text>
+              <Text style={styles.dailyQuizSummaryValue}>{bundle?.progress?.xpAwarded || 0}</Text>
+            </View>
+            {lastXpDelta > 0 ? (
+              <View style={[styles.dailyQuizSummaryMetric, styles.dailyQuizSummaryMetricAccent]}>
+                <Text style={styles.dailyQuizSummaryLabel}>XP</Text>
+                <Text style={styles.dailyQuizSummaryValue}>+{lastXpDelta}</Text>
+              </View>
+            ) : null}
           </View>
 
-          {questions.map((question) => {
-            const isSaving = submittingQuestionId === question.id;
-            const selectedOption = question.attempt?.selectedOption || null;
-            const isAnswered = Boolean(question.attempt);
+          {currentQuestion ? (
+            <View style={styles.dailyQuizQuestionCard}>
+              <DailyQuizConfettiBlast trigger={confettiKey} />
+              <View style={styles.dailyQuizSceneHeader}>
+                <View style={styles.dailyQuizProgressDots}>
+                  {questions.map((question, index) => (
+                    <View
+                      key={question.id}
+                      style={[
+                        styles.dailyQuizProgressDot,
+                        index === activeQuestionIndex ? styles.dailyQuizProgressDotActive : null,
+                        index < activeQuestionIndex || question.attempt
+                          ? question.attempt?.isCorrect
+                            ? styles.dailyQuizProgressDotCorrect
+                            : styles.dailyQuizProgressDotDone
+                          : null,
+                      ]}
+                    />
+                  ))}
+                </View>
+                <View style={styles.dailyQuizCounterPill}>
+                  <Text style={styles.dailyQuizCounterText}>
+                    {copy.questionProgress} {currentQuestionNumber}/{questions.length}
+                  </Text>
+                </View>
+              </View>
 
-            return (
-              <View key={question.id} style={styles.dailyQuizQuestionCard}>
-                <Text style={styles.dailyQuizQuestionText}>{question.question}</Text>
+              <View style={styles.dailyQuizQuestionStage}>
+                <Text style={styles.dailyQuizQuestionText}>{currentQuestion.question}</Text>
+              </View>
 
-                <View style={styles.dailyQuizOptionList}>
-                  {question.options.map((option) => {
-                    const isSelected = selectedOption === option.key;
-                    const isCorrectSelection = isSelected && question.attempt?.isCorrect;
-                    const isWrongSelection = isSelected && question.attempt && !question.attempt.isCorrect;
-                    const optionStateStyle = isCorrectSelection
+              <View style={styles.dailyQuizOptionList}>
+                {currentQuestion.options.map((option) => {
+                  const isSelected = currentAttempt?.selectedOption === option.key;
+                  const isPendingSelection =
+                    pendingOptionKey === option.key &&
+                    submittingQuestionId === currentQuestion.id &&
+                    !currentAttempt;
+                  const optionStateStyle = isPendingSelection
+                    ? styles.dailyQuizOptionPending
+                    : isSelected && currentAttempt?.isCorrect
                       ? styles.dailyQuizOptionCorrect
-                      : isWrongSelection
+                      : isSelected && currentAttempt && !currentAttempt.isCorrect
                         ? styles.dailyQuizOptionWrong
                         : isSelected
                           ? styles.dailyQuizOptionSelected
                           : null;
-                    const optionTextStateStyle = isCorrectSelection
-                      ? styles.dailyQuizOptionTextCorrect
-                      : isWrongSelection
-                        ? styles.dailyQuizOptionTextWrong
+                  const optionBadgeStyle = isPendingSelection
+                    ? styles.dailyQuizOptionBadgePending
+                    : isSelected && currentAttempt?.isCorrect
+                      ? styles.dailyQuizOptionBadgeCorrect
+                      : isSelected && currentAttempt && !currentAttempt.isCorrect
+                        ? styles.dailyQuizOptionBadgeWrong
                         : null;
+                  const trailingIcon: keyof typeof Ionicons.glyphMap = isPendingSelection
+                    ? 'time-outline'
+                    : isSelected && currentAttempt?.isCorrect
+                      ? 'sparkles'
+                      : isSelected && currentAttempt && !currentAttempt.isCorrect
+                        ? 'close-circle'
+                        : 'chevron-forward';
+                  const trailingColor = isPendingSelection
+                    ? '#facc15'
+                    : isSelected && currentAttempt?.isCorrect
+                      ? '#4ade80'
+                      : isSelected && currentAttempt && !currentAttempt.isCorrect
+                        ? '#f87171'
+                        : '#8A9A5B';
 
-                    return (
-                      <Pressable
-                        key={option.key}
-                        style={({ pressed }) => [
-                          styles.dailyQuizOptionButton,
-                          optionStateStyle,
-                          pressed && !isAnswered && !isSaving && isSignedIn ? styles.dailyQuizOptionPressed : null,
-                          (!isSignedIn || isAnswered || isSaving) ? styles.dailyQuizOptionDisabled : null,
-                        ]}
-                        disabled={!isSignedIn || isAnswered || isSaving}
-                        onPress={() => {
-                          void handleAnswer(question.id, option.key);
-                        }}
-                        accessibilityRole="button"
-                        accessibilityLabel={`${option.key.toUpperCase()} ${option.label}`}
-                        accessibilityState={{ disabled: !isSignedIn || isAnswered || isSaving }}
-                      >
-                        <Text style={styles.dailyQuizOptionKey}>{option.key.toUpperCase()}</Text>
-                        <Text style={[styles.dailyQuizOptionText, optionTextStateStyle]}>{option.label}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-
-                {isSaving ? <Text style={styles.dailyQuizSavingText}>{copy.saving}</Text> : null}
-
-                {question.attempt ? (
-                  <View style={styles.dailyQuizExplanationCard}>
-                    <Text style={styles.dailyQuizExplanationLabel}>
-                      {question.attempt.isCorrect ? copy.correct : copy.wrong}
-                    </Text>
-                    <Text style={styles.dailyQuizExplanationBody}>{question.attempt.explanation}</Text>
-                  </View>
-                ) : null}
+                  return (
+                    <Pressable
+                      key={option.key}
+                      style={({ pressed }) => [
+                        styles.dailyQuizOptionButton,
+                        optionStateStyle,
+                        pressed && !hasAnsweredCurrentQuestion && !submittingQuestionId && isSignedIn
+                          ? styles.dailyQuizOptionPressed
+                          : null,
+                        (!isSignedIn || hasAnsweredCurrentQuestion || Boolean(submittingQuestionId))
+                          ? styles.dailyQuizOptionDisabled
+                          : null,
+                      ]}
+                      disabled={!isSignedIn || hasAnsweredCurrentQuestion || Boolean(submittingQuestionId)}
+                      onPress={() => {
+                        void handleAnswer(currentQuestion.id, option.key);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${option.key.toUpperCase()} ${option.label}`}
+                      accessibilityState={{
+                        disabled: !isSignedIn || hasAnsweredCurrentQuestion || Boolean(submittingQuestionId),
+                      }}
+                    >
+                      <View style={[styles.dailyQuizOptionBadge, optionBadgeStyle]}>
+                        <Text style={styles.dailyQuizOptionBadgeText}>
+                          {isPendingSelection
+                            ? '...'
+                            : isSelected && currentAttempt?.isCorrect
+                              ? 'V'
+                              : isSelected && currentAttempt && !currentAttempt.isCorrect
+                                ? 'X'
+                                : option.key.toUpperCase()}
+                        </Text>
+                      </View>
+                      <Text style={styles.dailyQuizOptionText}>{option.label}</Text>
+                      <View style={styles.dailyQuizOptionTrailing}>
+                        <Ionicons name={trailingIcon} size={16} color={trailingColor} />
+                      </View>
+                    </Pressable>
+                  );
+                })}
               </View>
-            );
-          })}
+
+              {submittingQuestionId === currentQuestion.id ? (
+                <Text style={styles.dailyQuizSavingText}>{copy.saving}</Text>
+              ) : null}
+
+              {currentAttempt ? (
+                <View style={styles.dailyQuizExplanationCard}>
+                  <Text
+                    style={[
+                      styles.dailyQuizExplanationLabel,
+                      currentAttempt.isCorrect
+                        ? styles.dailyQuizExplanationLabelCorrect
+                        : styles.dailyQuizExplanationLabelWrong,
+                    ]}
+                  >
+                    {currentAttempt.isCorrect ? copy.correct : copy.wrong}
+                  </Text>
+                  <Text style={styles.dailyQuizExplanationBody}>{currentAttempt.explanation}</Text>
+                </View>
+              ) : null}
+
+              {currentAttempt && hasNextQuestion ? (
+                <UiButton
+                  label={copy.nextCta}
+                  tone="neutral"
+                  stretch
+                  onPress={() => setActiveQuestionIndex((current) => Math.min(current + 1, questions.length - 1))}
+                />
+              ) : null}
+
+              {currentAttempt && !hasNextQuestion ? (
+                <UiButton label={copy.finishCta} tone="neutral" stretch disabled onPress={() => undefined} />
+              ) : null}
+            </View>
+          ) : null}
 
           <View style={styles.dailyQuizStatusCard}>
             <Text style={styles.dailyQuizStatusBody}>{isUnlocked ? copy.unlockedHint : unlockHint}</Text>
@@ -6095,6 +8292,14 @@ const MovieDetailsModal = ({
   onApplyQuizProgress,
   language,
   isSignedIn,
+  commentFeedState,
+  currentUserAvatarUrl,
+  onEchoComment,
+  onLoadCommentReplies,
+  onSubmitCommentReply,
+  onEchoCommentReply,
+  onDeleteComment,
+  onOpenCommentAuthorProfile,
 }: {
   movie: {
     id: number;
@@ -6120,6 +8325,25 @@ const MovieDetailsModal = ({
   }) => void;
   language: MobileDailyQuizLanguageCode;
   isSignedIn: boolean;
+  commentFeedState: CommentFeedState;
+  currentUserAvatarUrl?: string | null;
+  onEchoComment?: (
+    item: CommentFeedState['items'][number]
+  ) => Promise<{ ok: boolean; message: string }>;
+  onLoadCommentReplies?: (
+    item: CommentFeedState['items'][number]
+  ) => Promise<{ ok: boolean; replies: MobileCommentReply[]; message: string }>;
+  onSubmitCommentReply?: (
+    item: CommentFeedState['items'][number],
+    text: string
+  ) => Promise<{ ok: boolean; message: string; reply?: MobileCommentReply }>;
+  onEchoCommentReply?: (
+    reply: MobileCommentReply
+  ) => Promise<{ ok: boolean; message: string }>;
+  onDeleteComment?: (
+    item: CommentFeedState['items'][number]
+  ) => Promise<{ ok: boolean; message: string }>;
+  onOpenCommentAuthorProfile?: (item: CommentFeedState['items'][number]) => void;
 }) => {
   useWebModalFocusReset(Boolean(movie));
   if (!movie) return null;
@@ -6194,6 +8418,29 @@ const MovieDetailsModal = ({
                     onStartComment={onOpenCommentComposer}
                     onRequireAuth={onRequireAuth}
                     onApplyQuizProgress={onApplyQuizProgress}
+                  />
+                </ScreenErrorBoundary>
+              ) : null}
+
+              {onOpenCommentAuthorProfile ? (
+                <ScreenErrorBoundary section="Film Yorumlari">
+                  <CommentFeedCard
+                    state={commentFeedState}
+                    language={language}
+                    currentUserAvatarUrl={currentUserAvatarUrl || undefined}
+                    showFilters={false}
+                    embedded
+                    onScopeChange={() => undefined}
+                    onSortChange={() => undefined}
+                    onQueryChange={() => undefined}
+                    onEcho={onEchoComment}
+                    onLoadReplies={onLoadCommentReplies}
+                    onSubmitReply={onSubmitCommentReply}
+                    onEchoReply={onEchoCommentReply}
+                    onDeleteItem={onDeleteComment}
+                    onOpenAuthorProfile={onOpenCommentAuthorProfile}
+                    selectedMovieTitle={movie.title}
+                    movieFilterMode="selected_movie"
                   />
                 </ScreenErrorBoundary>
               ) : null}
@@ -6566,7 +8813,13 @@ const PublicProfileMovieArchiveModal = ({
                         <Text style={styles.movieArchiveEntryGenre}>{item.year}</Text>
                       ) : null}
                     </View>
-                    <Text style={styles.movieArchiveEntryBody}>"{item.text}"</Text>
+                    <Text style={styles.movieArchiveEntryBody}>
+                      {String(item.text || '').trim()
+                        ? `"${String(item.text || '').trim()}"`
+                        : language === 'tr'
+                          ? 'Bu kayitta acik yorum yok.'
+                          : 'No public note on this record.'}
+                    </Text>
                   </View>
                 ))}
               </View>
@@ -6581,10 +8834,333 @@ const PublicProfileMovieArchiveModal = ({
     </Modal>
   );
 };
+
+const PROFILE_COMMENTS_MODAL_COPY = {
+  tr: {
+    header: 'Yorumlar',
+    close: 'Kapat',
+    eyebrow: 'Yorum Akisi',
+    loadingTitle: 'Yorumlar yukleniyor',
+    loadingBody: 'Filmlere birakilan notlar toparlaniyor.',
+    emptyTitle: 'Henuz yorum yok',
+    emptyBody: 'Film yorumlari geldiginde burada gorunecek.',
+    untitled: 'Film kaydi',
+    noteFallback: 'Bu kayit icin acik bir yorum yok.',
+  },
+  en: {
+    header: 'Comments',
+    close: 'Close',
+    eyebrow: 'Comment Feed',
+    loadingTitle: 'Loading comments',
+    loadingBody: 'Movie notes are being gathered.',
+    emptyTitle: 'No comments yet',
+    emptyBody: 'Movie comments will appear here.',
+    untitled: 'Movie record',
+    noteFallback: 'There is no visible note on this record.',
+  },
+} as const;
+
+const ProfileCommentsModal = ({
+  visible,
+  activityState,
+  language = 'tr',
+  onClose,
+}: {
+  visible: boolean;
+  activityState: ProfileActivitySurfaceState;
+  language?: MobileSettingsLanguage;
+  onClose: () => void;
+}) => {
+  useWebModalFocusReset(visible);
+  if (!visible) return null;
+
+  const copy =
+    PROFILE_COMMENTS_MODAL_COPY[language as keyof typeof PROFILE_COMMENTS_MODAL_COPY] ||
+    PROFILE_COMMENTS_MODAL_COPY.en;
+
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.modalOverlaySurface}>
+        <Pressable style={{ flex: 1 }} onPress={onClose} />
+        <View style={styles.modalSheetSurface}>
+          <View style={styles.modalNavRow}>
+            <Text style={styles.sectionHeader}>{copy.header}</Text>
+            <Pressable onPress={onClose} hitSlop={PRESSABLE_HIT_SLOP}>
+              <Text style={styles.modalCloseTextBtn}>{copy.close}</Text>
+            </Pressable>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.modalSheetScroll} showsVerticalScrollIndicator={false}>
+            {activityState.status === 'loading' && activityState.items.length === 0 ? (
+              <StatePanel
+                tone="sage"
+                variant="loading"
+                eyebrow={copy.eyebrow}
+                title={copy.loadingTitle}
+                body={copy.loadingBody}
+              />
+            ) : null}
+
+            {activityState.status !== 'loading' && activityState.items.length === 0 ? (
+              <StatePanel
+                tone="clay"
+                variant={activityState.status === 'error' ? 'error' : 'empty'}
+                eyebrow={copy.eyebrow}
+                title={copy.emptyTitle}
+                body={activityState.status === 'error' ? activityState.message || copy.emptyBody : copy.emptyBody}
+              />
+            ) : null}
+
+            {activityState.items.length > 0 ? (
+              <View style={styles.profileArchiveList}>
+                {activityState.items.map((item) => {
+                  const posterUrl = resolvePosterUrl(item.posterPath);
+                  const movieTitle = String(item.movieTitle || '').trim() || copy.untitled;
+                  const note = String(item.text || '').trim();
+                  return (
+                    <View key={item.id} style={styles.profileArchiveRow}>
+                      <View style={styles.profileArchivePosterWrap}>
+                        {posterUrl ? (
+                          <Image
+                            source={{ uri: posterUrl }}
+                            style={styles.profileArchivePosterImage}
+                            resizeMode="cover"
+                          />
+                        ) : (
+                          <Text style={styles.profileArchivePosterFallback}>
+                            {(movieTitle.slice(0, 1) || 'F').toUpperCase()}
+                          </Text>
+                        )}
+                      </View>
+
+                      <View style={styles.profileArchiveRowCopy}>
+                        <Text style={styles.profileArchiveTitle}>{movieTitle}</Text>
+                        <Text style={styles.profileArchiveMeta}>
+                          {item.year ? `${item.year} | ` : ''}
+                          {item.timestampLabel || item.dayKey || '-'}
+                        </Text>
+                        <Text style={styles.sectionLeadBody}>
+                          {note ? `"${note}"` : copy.noteFallback}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
+
+            <View style={styles.modalActionStack}>
+              <UiButton label={copy.close} tone="neutral" stretch onPress={onClose} />
+            </View>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+const PROFILE_FOLLOW_MODAL_COPY = {
+  tr: {
+    followingHeader: 'Takip',
+    followersHeader: 'Takipciler',
+    followingEyebrow: 'Takip Ettiklerin',
+    followersEyebrow: 'Takipciler',
+    close: 'Kapat',
+    loadingTitle: 'Liste yukleniyor',
+    loadingBody: 'Takip iliskileri getiriliyor.',
+    followingEmpty: 'Henuz takip edilen yok',
+    followersEmpty: 'Henuz takipci yok',
+    openProfile: 'Profili ac',
+    unknownUser: 'Bilinmeyen kullanici',
+  },
+  en: {
+    followingHeader: 'Following',
+    followersHeader: 'Followers',
+    followingEyebrow: 'Following List',
+    followersEyebrow: 'Followers List',
+    close: 'Close',
+    loadingTitle: 'Loading list',
+    loadingBody: 'Follow relationships are being fetched.',
+    followingEmpty: 'No following users yet',
+    followersEmpty: 'No followers yet',
+    openProfile: 'Open profile',
+    unknownUser: 'Unknown user',
+  },
+} as const;
+
+const ProfileFollowListModal = ({
+  visible,
+  mode,
+  state,
+  language = 'tr',
+  onOpenProfile,
+  onClose,
+}: {
+  visible: boolean;
+  mode: 'following' | 'followers';
+  state: {
+    status: 'idle' | 'loading' | 'ready' | 'error';
+    message: string;
+    items: Array<{
+      userId: string;
+      displayName: string;
+      avatarUrl?: string;
+      secondary?: string;
+    }>;
+  };
+  language?: MobileSettingsLanguage;
+  onOpenProfile?: (userId: string, displayName: string) => void;
+  onClose: () => void;
+}) => {
+  useWebModalFocusReset(visible);
+  if (!visible) return null;
+
+  const copy =
+    PROFILE_FOLLOW_MODAL_COPY[language as keyof typeof PROFILE_FOLLOW_MODAL_COPY] ||
+    PROFILE_FOLLOW_MODAL_COPY.en;
+  const header = mode === 'following' ? copy.followingHeader : copy.followersHeader;
+  const eyebrow = mode === 'following' ? copy.followingEyebrow : copy.followersEyebrow;
+  const emptyTitle = mode === 'following' ? copy.followingEmpty : copy.followersEmpty;
+
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.modalOverlaySurface}>
+        <Pressable style={{ flex: 1 }} onPress={onClose} />
+        <View style={styles.modalSheetSurface}>
+          <View style={styles.modalNavRow}>
+            <Text style={styles.sectionHeader}>{header}</Text>
+            <Pressable onPress={onClose} hitSlop={PRESSABLE_HIT_SLOP}>
+              <Text style={styles.modalCloseTextBtn}>{copy.close}</Text>
+            </Pressable>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.modalSheetScroll} showsVerticalScrollIndicator={false}>
+            {state.status === 'loading' && state.items.length === 0 ? (
+              <StatePanel
+                tone="sage"
+                variant="loading"
+                eyebrow={eyebrow}
+                title={copy.loadingTitle}
+                body={copy.loadingBody}
+              />
+            ) : null}
+
+            {state.status !== 'loading' && state.items.length === 0 ? (
+              <StatePanel
+                tone="clay"
+                variant={state.status === 'error' ? 'error' : 'empty'}
+                eyebrow={eyebrow}
+                title={emptyTitle}
+                body={state.status === 'error' ? state.message || emptyTitle : emptyTitle}
+              />
+            ) : null}
+
+            {state.items.length > 0 ? (
+              <View style={{ gap: 10 }}>
+                {state.items.map((item) => {
+                  const displayName = String(item.displayName || '').trim() || copy.unknownUser;
+                  const secondary = String(item.secondary || '').trim();
+                  return (
+                    <Pressable
+                      key={`${mode}-${item.userId}`}
+                      style={({ pressed }) => [
+                        styles.profileArchiveRow,
+                        { alignItems: 'center' },
+                        pressed ? styles.profileArchiveRowPressed : null,
+                      ]}
+                      onPress={() => onOpenProfile?.(item.userId, displayName)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${displayName} ${copy.openProfile}`}
+                    >
+                      <AvatarView
+                        avatarUrl={item.avatarUrl || ''}
+                        displayName={displayName}
+                        size={54}
+                        borderColor="rgba(138,154,91,0.35)"
+                      />
+                      <View style={styles.profileArchiveRowCopy}>
+                        <Text style={styles.profileArchiveTitle}>{displayName}</Text>
+                        {secondary ? (
+                          <Text style={styles.profileArchiveMeta}>{secondary}</Text>
+                        ) : null}
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
+
+            <View style={styles.modalActionStack}>
+              <UiButton label={copy.close} tone="neutral" stretch onPress={onClose} />
+            </View>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+const PROFILE_MARKS_MODAL_COPY = {
+  tr: {
+    header: 'Marklar',
+    close: 'Kapat',
+  },
+  en: {
+    header: 'Marks',
+    close: 'Close',
+  },
+} as const;
+
+const ProfileMarksModal = ({
+  visible,
+  state,
+  isSignedIn,
+  language = 'tr',
+  onClose,
+}: {
+  visible: boolean;
+  state: ProfileState;
+  isSignedIn: boolean;
+  language?: MobileSettingsLanguage;
+  onClose: () => void;
+}) => {
+  useWebModalFocusReset(visible);
+  if (!visible) return null;
+
+  const copy =
+    PROFILE_MARKS_MODAL_COPY[language as keyof typeof PROFILE_MARKS_MODAL_COPY] ||
+    PROFILE_MARKS_MODAL_COPY.en;
+
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.modalOverlaySurface}>
+        <Pressable style={{ flex: 1 }} onPress={onClose} />
+        <View style={styles.modalSheetSurface}>
+          <View style={styles.modalNavRow}>
+            <Text style={styles.sectionHeader}>{copy.header}</Text>
+            <Pressable onPress={onClose} hitSlop={PRESSABLE_HIT_SLOP}>
+              <Text style={styles.modalCloseTextBtn}>{copy.close}</Text>
+            </Pressable>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.modalSheetScroll} showsVerticalScrollIndicator={false}>
+            <ProfileMarksCard state={state} isSignedIn={isSignedIn} language={language} mode="unlocked" />
+            <View style={styles.modalActionStack}>
+              <UiButton label={copy.close} tone="neutral" stretch onPress={onClose} />
+            </View>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 const RitualDraftCard = ({
   targetMovie,
   draftText,
+  rating,
   onDraftTextChange,
+  onRatingChange,
   submitState,
   queueState,
   canSubmit,
@@ -6594,7 +9170,9 @@ const RitualDraftCard = ({
 }: {
   targetMovie: { title: string; genre: string | null; year?: number | null; director?: string | null } | null;
   draftText: string;
+  rating: number;
   onDraftTextChange: (value: string) => void;
+  onRatingChange: (value: number) => void;
   submitState: RitualSubmitState;
   queueState: RitualQueueState;
   canSubmit: boolean;
@@ -6605,31 +9183,26 @@ const RitualDraftCard = ({
   const textLength = draftText.length;
   const canRetryQueue = queueState.pendingCount > 0 && queueState.status !== 'syncing' && isSignedIn;
   const filmTitle = targetMovie?.title || 'Yorum Notu';
+  const filmInitial = filmTitle.trim().charAt(0).toUpperCase() || 'Y';
   const genreLabel = String(targetMovie?.genre || '').trim() || 'Tur bekleniyor';
-  const directorLabel =
-    String(targetMovie?.director || '').trim() || 'Yonetmen bilgisi bekleniyor';
   const yearLabel = targetMovie?.year ? String(targetMovie.year) : '--';
-  // eslint-disable-next-line react-hooks/refs
-  const syncedAnim = useRef(new Animated.Value(1)).current;
-  useEffect(() => {
-    if (submitState.status === 'synced') {
-      syncedAnim.setValue(0.9);
-      Animated.spring(syncedAnim, {
-        toValue: 1,
-        useNativeDriver: SUPPORTS_NATIVE_DRIVER,
-        tension: 200,
-        friction: 8,
-      }).start();
-    }
-  }, [submitState.status, syncedAnim]);
-  const readinessTone =
-    !targetMovie || !isSignedIn
-      ? 'clay'
-      : canSubmit
-        ? 'sage'
-        : submitState.status === 'submitting'
-          ? 'muted'
-          : 'muted';
+  const directorLabel = String(targetMovie?.director || '').trim();
+  const infoItems = [
+    { label: 'Tur', value: genreLabel },
+    ...(yearLabel !== '--' ? [{ label: 'Yil', value: yearLabel }] : []),
+  ];
+  const ratingDescriptor =
+    rating >= 9
+      ? 'Favori'
+      : rating >= 7
+        ? 'Guclu'
+        : rating >= 5
+          ? 'Dengeli'
+          : rating >= 3
+            ? 'Mesafeli'
+            : rating >= 1
+              ? 'Zayif'
+              : 'Sec';
   const submitTone =
     submitState.status === 'error'
       ? 'clay'
@@ -6646,78 +9219,94 @@ const RitualDraftCard = ({
         : queueState.status === 'done'
           ? 'sage'
           : 'muted';
+  const showQueueStatus =
+    queueState.pendingCount > 0 || queueState.status === 'syncing' || queueState.status === 'error';
 
   return (
-    <>
-      <SectionLeadCard
-        accent="clay"
-        eyebrow="Yorum Studio"
-        title={filmTitle}
-        body="Daily listesinden bir filme kisa, net ve tekrar okunabilir bir not birak. Baglanti kopsa bile taslak kuyrukta korunur."
-        badges={[
-          { label: genreLabel, tone: 'muted' },
-          {
-            label: isSignedIn ? 'session ready' : 'session gerekli',
-            tone: isSignedIn ? 'sage' : 'clay',
-          },
-          {
-            label: queueState.pendingCount > 0 ? `${queueState.pendingCount} kuyruk` : 'kuyruk temiz',
-            tone: queueState.pendingCount > 0 ? 'clay' : 'sage',
-          },
-        ]}
-        metrics={[
-          { label: 'Karakter', value: `${textLength}/180` },
-          { label: 'Yil', value: yearLabel },
-          { label: 'Yonetmen', value: directorLabel !== 'Yonetmen bilgisi bekleniyor' ? 'hazir' : '--' },
-        ]}
-      />
+    <ScreenCard accent="clay">
+      <View style={styles.ritualComposerHero}>
+        <View style={styles.ritualComposerMonogram}>
+          <Text style={styles.ritualComposerMonogramText}>{filmInitial}</Text>
+        </View>
+        <View style={styles.ritualComposerHeroCopy}>
+          <Text style={styles.ritualComposerEyebrow}>Yorum Notu</Text>
+          <Text style={styles.ritualComposerTitle}>{filmTitle}</Text>
+        </View>
+      </View>
 
-      <StatusStrip
-        tone={readinessTone}
-        eyebrow="Composer State"
-        title={
-          !targetMovie
-            ? 'Once bir daily filmi sec'
-            : !isSignedIn
-              ? 'Yorum kaydi icin oturum ac'
-              : canSubmit
-                ? 'Yorum gonderime hazir'
-                : 'Taslagini sekillendir'
-        }
-        body={
-          !targetMovie
-            ? 'Film secimi yapildiginda yorum composer ilgili baslik ve metadata ile dolar.'
-            : !isSignedIn
-              ? 'Yorumu yazabilirsin ama gonderim ve kuyruk tekrar denemesi icin mobil session gerekir.'
-              : canSubmit
-                ? 'Notun hazirsa kaydet; baglanti sorunu olursa otomatik olarak kuyrukta tutulur.'
-                : 'Birkac net cumle ile filmin sende biraktigi izi toparla, sonra kaydet.'
-        }
-        meta={targetMovie ? `${genreLabel}${yearLabel !== '--' ? ` | ${yearLabel}` : ''}` : undefined}
-      />
+      <View style={styles.ritualComposerInfoPanel}>
+        <View style={styles.ritualComposerInfoGrid}>
+          {infoItems.map((item) => (
+            <View key={item.label} style={styles.ritualComposerInfoCell}>
+              <Text style={styles.ritualComposerInfoLabel}>{item.label}</Text>
+              <Text style={styles.ritualComposerInfoValue} numberOfLines={1}>
+                {item.value}
+              </Text>
+            </View>
+          ))}
+        </View>
 
-      <ScreenCard accent="clay">
-        <Text style={styles.subSectionLabel}>Film Brifi</Text>
-        <View style={styles.detailInfoGrid}>
-          <View style={styles.detailInfoCard}>
-            <Text style={styles.detailInfoLabel}>Film</Text>
-            <Text style={styles.detailInfoValue}>{filmTitle}</Text>
+        {directorLabel ? (
+          <View style={styles.ritualComposerDirectorRow}>
+            <Text style={styles.ritualComposerInfoLabel}>Yonetmen</Text>
+            <Text style={styles.ritualComposerDirectorValue} numberOfLines={1}>
+              {directorLabel}
+            </Text>
           </View>
-          <View style={styles.detailInfoCard}>
-            <Text style={styles.detailInfoLabel}>Tur</Text>
-            <Text style={styles.detailInfoValue}>{genreLabel}</Text>
+        ) : null}
+      </View>
+
+      <View style={styles.ritualComposerRatingPanel}>
+        <View style={styles.ritualComposerRatingHeader}>
+          <Text style={styles.ritualComposerEditorTitle}>Puan</Text>
+          <View style={styles.ritualComposerRatingBadge}>
+            <Text style={styles.ritualComposerRatingBadgeText}>
+              {rating > 0 ? `${rating}/10 ${ratingDescriptor}` : 'Sec'}
+            </Text>
           </View>
-          <View style={styles.detailInfoCard}>
-            <Text style={styles.detailInfoLabel}>Yonetmen</Text>
-            <Text style={styles.detailInfoValue}>{directorLabel}</Text>
-          </View>
+        </View>
+        <View style={styles.ritualComposerRatingTrack}>
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((value) => {
+            const selected = rating === value;
+            const passed = rating > value;
+            return (
+              <Pressable
+                key={value}
+                onPress={() => onRatingChange(value)}
+                style={[
+                  styles.ritualComposerRatingButton,
+                  passed ? styles.ritualComposerRatingButtonPassed : null,
+                  selected ? styles.ritualComposerRatingButtonActive : null,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={`Filme ${value} puan ver`}
+              >
+                <Text
+                  style={[
+                    styles.ritualComposerRatingButtonText,
+                    passed ? styles.ritualComposerRatingButtonTextPassed : null,
+                    selected ? styles.ritualComposerRatingButtonTextActive : null,
+                  ]}
+                >
+                  {value}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      <View style={styles.ritualComposerEditor}>
+        <View style={styles.ritualComposerEditorHeader}>
+          <Text style={styles.ritualComposerEditorTitle}>Kisa yorum</Text>
+          <Text style={styles.screenMeta}>{textLength}/180</Text>
         </View>
 
         <TextInput
-          style={styles.ritualInput}
+          style={[styles.ritualInput, styles.ritualComposerInput]}
           multiline
           textAlignVertical="top"
-          placeholder="Yorum notlari..."
+          placeholder="Filmin sende biraktigi izi yaz..."
           placeholderTextColor="#8e8b84"
           value={draftText}
           maxLength={180}
@@ -6725,70 +9314,45 @@ const RitualDraftCard = ({
           editable={targetMovie !== null && submitState.status !== 'submitting'}
           accessibilityLabel="Yorum notu giris alani"
         />
+      </View>
 
-        <View style={styles.ritualMetaRow}>
-          <Text style={styles.screenMeta}>{textLength}/180</Text>
-          <Text style={styles.screenMeta}>Bekleyen kuyruk: {queueState.pendingCount}</Text>
-        </View>
+      {submitState.message ? (
+        <StatusStrip
+          tone={submitTone}
+          eyebrow="Kayit"
+          body={submitState.message}
+          meta={
+            submitState.status === 'queued'
+              ? 'Baglanti geldiginde yeniden denenir.'
+              : submitState.status === 'synced'
+                ? 'Yorum profile ve akisa islenir.'
+                : undefined
+          }
+        />
+      ) : null}
 
-        {submitState.message ? (
-          <Animated.View style={submitState.status === 'synced' ? { transform: [{ scale: syncedAnim }] } : undefined}>
-            <StatusStrip
-              tone={submitTone}
-              eyebrow="Gonderim"
-              title={
-                submitState.status === 'synced'
-                  ? 'Notun kaydedildi'
-                  : submitState.status === 'queued'
-                    ? 'Taslak beklemeye alindi'
-                    : submitState.status === 'error'
-                      ? 'Not gonderilemedi'
-                      : submitState.status === 'submitting'
-                        ? 'Not gonderiliyor'
-                        : 'Taslak beklemede'
-              }
-              body={submitState.message}
-              meta={
-                submitState.status === 'queued'
-                  ? 'Baglanti geri geldiginde kuyruktan tekrar denenebilir.'
-                  : submitState.status === 'synced'
-                    ? 'Yeni yorum sosyal akis ve profil arsivine yansir.'
-                    : undefined
-              }
-            />
-          </Animated.View>
-        ) : null}
+      {queueState.message && showQueueStatus ? (
+        <StatusStrip
+          tone={queueTone}
+          eyebrow="Kuyruk"
+          body={queueState.message}
+          meta={
+            queueState.pendingCount > 0
+              ? `${queueState.pendingCount} taslak bekliyor.`
+              : 'Bekleyen kuyruk yok.'
+          }
+        />
+      ) : null}
 
-        {queueState.message ? (
-          <StatusStrip
-            tone={queueTone}
-            eyebrow="Bekleyenler"
-            title={
-              queueState.status === 'syncing'
-                ? 'Kuyruk tekrar deneniyor'
-                : queueState.status === 'done'
-                  ? 'Kuyruk temizlendi'
-                  : queueState.status === 'error'
-                    ? 'Kuyrukta bekleyen taslak var'
-                    : 'Kuyruk beklemede'
-            }
-            body={queueState.message}
-            meta={
-              queueState.pendingCount > 0
-                ? `${queueState.pendingCount} taslak hala bekliyor.`
-                : 'Bekleyen kuyruk yok.'
-            }
-          />
-        ) : null}
-
-        <View style={styles.sectionLeadActionRow}>
-          <UiButton
-            label={submitState.status === 'submitting' ? 'Gonderiliyor...' : 'Yorumu Kaydet'}
-            tone="brand"
-            stretch
-            onPress={onSubmit}
-            disabled={submitState.status === 'submitting' || !canSubmit}
-          />
+      <View style={styles.ritualActionRow}>
+        <UiButton
+          label={submitState.status === 'submitting' ? 'Gonderiliyor...' : 'Yorumu Kaydet'}
+          tone="brand"
+          stretch
+          onPress={onSubmit}
+          disabled={submitState.status === 'submitting' || !canSubmit}
+        />
+        {canRetryQueue ? (
           <UiButton
             label={queueState.status === 'syncing' ? 'Kuyruk Senkron...' : 'Kuyrugu Tekrar Dene'}
             tone="neutral"
@@ -6796,9 +9360,9 @@ const RitualDraftCard = ({
             onPress={onFlushQueue}
             disabled={!canRetryQueue}
           />
-        </View>
-      </ScreenCard>
-    </>
+        ) : null}
+      </View>
+    </ScreenCard>
   );
 };
 
@@ -6860,6 +9424,21 @@ type MobileSettingsLocaleCopy = {
     signedOutTitle: string;
     signedOutBody: string;
   };
+  emailVerification: {
+    title: string;
+    body: string;
+    verifiedTitle: string;
+    verifiedBody: string;
+    unverifiedTitle: string;
+    unverifiedBody: string;
+    send: string;
+    sendBusy: string;
+    sentTitle: string;
+    signedOutTitle: string;
+    signedOutBody: string;
+    sectionMetaVerified: string;
+    sectionMetaPending: string;
+  };
   accountDeletion: {
     title: string;
     body: string;
@@ -6880,66 +9459,22 @@ const SETTINGS_GENDER_OPTIONS_BY_LANGUAGE: Record<
   MobileSettingsLanguage,
   Array<{ key: MobileSettingsGender; label: string }>
 > = {
-  tr: [
-    { key: '', label: 'Sec' },
-    { key: 'female', label: 'Kadin' },
-    { key: 'male', label: 'Erkek' },
-    { key: 'non_binary', label: 'Ikili olmayan' },
-    { key: 'prefer_not_to_say', label: 'Belirtmek istemiyorum' },
-  ],
-  en: [
-    { key: '', label: 'Select' },
-    { key: 'female', label: 'Female' },
-    { key: 'male', label: 'Male' },
-    { key: 'non_binary', label: 'Non-binary' },
-    { key: 'prefer_not_to_say', label: 'Prefer not to say' },
-  ],
-  es: [
-    { key: '', label: 'Elegir' },
-    { key: 'female', label: 'Mujer' },
-    { key: 'male', label: 'Hombre' },
-    { key: 'non_binary', label: 'No binario' },
-    { key: 'prefer_not_to_say', label: 'Prefiero no decirlo' },
-  ],
-  fr: [
-    { key: '', label: 'Choisir' },
-    { key: 'female', label: 'Femme' },
-    { key: 'male', label: 'Homme' },
-    { key: 'non_binary', label: 'Non binaire' },
-    { key: 'prefer_not_to_say', label: 'Je prefere ne pas le dire' },
-  ],
+  tr: [...mobileTranslations.tr.settings.genderOptions],
+  en: [...mobileTranslations.en.settings.genderOptions],
+  es: [...mobileTranslations.es.settings.genderOptions],
+  fr: [...mobileTranslations.fr.settings.genderOptions],
 };
 const MOBILE_SETTINGS_IDENTITY_FIELD_COPY: Record<MobileSettingsLanguage, string> = {
-  tr: 'Cinsiyet',
-  en: 'Gender',
-  es: 'Genero',
-  fr: 'Genre',
+  tr: mobileTranslations.tr.settings.genderFieldLabel,
+  en: mobileTranslations.en.settings.genderFieldLabel,
+  es: mobileTranslations.es.settings.genderFieldLabel,
+  fr: mobileTranslations.fr.settings.genderFieldLabel,
 };
 const SETTINGS_PLATFORM_RULES: Record<MobileSettingsLanguage, string[]> = {
-  tr: [
-    'Yorum notlari net, kisa ve konu odakli olmali.',
-    'Toksik/nefret dili ve spam icerik kaldirilir.',
-    'Ayni davet kodunu kotuye kullanma davranisi engellenir.',
-    'Tekrarlayan ihlallerde hesap aksiyonu uygulanabilir.',
-  ],
-  en: [
-    'Comment notes should stay clear, concise, and focused on the title.',
-    'Toxic or hateful language and spam content are removed.',
-    'Repeated abuse of the same invite code is blocked.',
-    'Repeated violations can trigger account action.',
-  ],
-  es: [
-    'Las notas de comentarios deben ser claras, breves y centradas en la pelicula.',
-    'Se elimina el lenguaje toxico, de odio y el spam.',
-    'Se bloquea el abuso repetido del mismo codigo de invitacion.',
-    'Las infracciones repetidas pueden activar acciones sobre la cuenta.',
-  ],
-  fr: [
-    'Les notes de commentaire doivent rester claires, courtes et centrees sur le film.',
-    'Le langage toxique, haineux et le spam sont supprimes.',
-    'L abus repete du meme code d invitation est bloque.',
-    'Les infractions repetees peuvent entrainer une action sur le compte.',
-  ],
+  tr: [...mobileTranslations.tr.settings.rules.items],
+  en: [...mobileTranslations.en.settings.rules.items],
+  es: [...mobileTranslations.es.settings.rules.items],
+  fr: [...mobileTranslations.fr.settings.rules.items],
 };
 const MOBILE_SETTINGS_RULES_CARD_COPY: Record<
   MobileSettingsLanguage,
@@ -6949,26 +9484,10 @@ const MOBILE_SETTINGS_RULES_CARD_COPY: Record<
     body: string;
   }
 > = {
-  tr: {
-    title: 'Platform Kurallari',
-    meta: 'Topluluk notlari',
-    body: 'Topluluk guvenligi ve kalite standartlari bu ayar panelinde de gorunur.',
-  },
-  en: {
-    title: 'Platform Rules',
-    meta: 'Community notes',
-    body: 'Community safety and quality standards are also visible inside this settings panel.',
-  },
-  es: {
-    title: 'Reglas de la Plataforma',
-    meta: 'Notas de la comunidad',
-    body: 'Las reglas de seguridad y calidad de la comunidad tambien aparecen en este panel de ajustes.',
-  },
-  fr: {
-    title: 'Regles de la Plateforme',
-    meta: 'Notes de la communaute',
-    body: 'Les regles de securite et de qualite de la communaute sont aussi visibles dans ce panneau de reglages.',
-  },
+  tr: mobileTranslations.tr.settings.rules,
+  en: mobileTranslations.en.settings.rules,
+  es: mobileTranslations.es.settings.rules,
+  fr: mobileTranslations.fr.settings.rules,
 };
 
 const MOBILE_SETTINGS_STATUS_COPY: Record<
@@ -6982,38 +9501,10 @@ const MOBILE_SETTINGS_STATUS_COPY: Record<
     signedOutMeta: string;
   }
 > = {
-  tr: {
-    eyebrow: 'Durum',
-    saveFailed: 'Kayit basarisiz',
-    saveCompleted: 'Kayit tamamlandi',
-    draftUpdated: 'Taslak guncellendi',
-    signedInMeta: 'Degisikliklerin hesabinla saklanir.',
-    signedOutMeta: 'Kaydetmek icin once giris yap.',
-  },
-  en: {
-    eyebrow: 'Status',
-    saveFailed: 'Save failed',
-    saveCompleted: 'Save complete',
-    draftUpdated: 'Draft updated',
-    signedInMeta: 'Your changes are saved with your account.',
-    signedOutMeta: 'Sign in first to save changes.',
-  },
-  es: {
-    eyebrow: 'Estado',
-    saveFailed: 'Guardado fallido',
-    saveCompleted: 'Guardado completo',
-    draftUpdated: 'Borrador actualizado',
-    signedInMeta: 'Tus cambios se guardan con tu cuenta.',
-    signedOutMeta: 'Inicia sesion primero para guardar cambios.',
-  },
-  fr: {
-    eyebrow: 'Etat',
-    saveFailed: 'Echec de la sauvegarde',
-    saveCompleted: 'Sauvegarde terminee',
-    draftUpdated: 'Brouillon mis a jour',
-    signedInMeta: 'Tes changements sont enregistres avec ton compte.',
-    signedOutMeta: 'Connecte-toi d abord pour sauvegarder les changements.',
-  },
+  tr: mobileTranslations.tr.settings.status,
+  en: mobileTranslations.en.settings.status,
+  es: mobileTranslations.es.settings.status,
+  fr: mobileTranslations.fr.settings.status,
 };
 
 const MOBILE_SETTINGS_IDENTITY_COPY: Record<
@@ -7035,9 +9526,11 @@ const MOBILE_SETTINGS_IDENTITY_COPY: Record<
     signedOutBody: string;
     avatarSectionTitle: string;
     avatarSectionMetaFallback: string;
-    avatarSelecting: string;
-    avatarPick: string;
+    avatarPickPreset: string;
     avatarClear: string;
+    avatarPremiumHint: string;
+    avatarFemaleLabel: string;
+    avatarMaleLabel: string;
     avatarEyebrow: string;
     avatarSelected: string;
     avatarOptional: string;
@@ -7092,9 +9585,11 @@ const MOBILE_SETTINGS_IDENTITY_COPY: Record<
     signedOutBody: 'Kaydetmek icin giris yap.',
     avatarSectionTitle: 'Avatar ve Temel Bilgiler',
     avatarSectionMetaFallback: 'Profil girisi',
-    avatarSelecting: 'Seciliyor...',
-    avatarPick: 'Cihazdan Sec',
+    avatarPickPreset: 'Avatar Sec',
     avatarClear: 'Temizle',
+    avatarPremiumHint: 'Premium uyelik gerektirir',
+    avatarFemaleLabel: 'Kadinlar',
+    avatarMaleLabel: 'Erkekler',
     avatarEyebrow: 'Avatar',
     avatarSelected: 'Avatar secildi',
     avatarOptional: 'Avatar opsiyonel',
@@ -7148,9 +9643,11 @@ const MOBILE_SETTINGS_IDENTITY_COPY: Record<
     signedOutBody: 'Sign in to save.',
     avatarSectionTitle: 'Avatar and Basic Info',
     avatarSectionMetaFallback: 'Profile entry',
-    avatarSelecting: 'Picking...',
-    avatarPick: 'Pick From Device',
+    avatarPickPreset: 'Select Avatar',
     avatarClear: 'Clear',
+    avatarPremiumHint: 'Requires premium membership',
+    avatarFemaleLabel: 'Female',
+    avatarMaleLabel: 'Male',
     avatarEyebrow: 'Avatar',
     avatarSelected: 'Avatar selected',
     avatarOptional: 'Avatar optional',
@@ -7204,9 +9701,11 @@ const MOBILE_SETTINGS_IDENTITY_COPY: Record<
     signedOutBody: 'Inicia sesion para guardar.',
     avatarSectionTitle: 'Avatar e Informacion Basica',
     avatarSectionMetaFallback: 'Entrada del perfil',
-    avatarSelecting: 'Eligiendo...',
-    avatarPick: 'Elegir Desde el Dispositivo',
+    avatarPickPreset: 'Seleccionar Avatar',
     avatarClear: 'Limpiar',
+    avatarPremiumHint: 'Requiere suscripcion premium',
+    avatarFemaleLabel: 'Mujeres',
+    avatarMaleLabel: 'Hombres',
     avatarEyebrow: 'Avatar',
     avatarSelected: 'Avatar seleccionado',
     avatarOptional: 'Avatar opcional',
@@ -7260,9 +9759,11 @@ const MOBILE_SETTINGS_IDENTITY_COPY: Record<
     signedOutBody: 'Connecte-toi pour sauvegarder.',
     avatarSectionTitle: 'Avatar et Informations de Base',
     avatarSectionMetaFallback: 'Entree du profil',
-    avatarSelecting: 'Selection...',
-    avatarPick: "Choisir Depuis l Appareil",
+    avatarPickPreset: 'Choisir un Avatar',
     avatarClear: 'Effacer',
+    avatarPremiumHint: 'Abonnement premium requis',
+    avatarFemaleLabel: 'Femmes',
+    avatarMaleLabel: 'Hommes',
     avatarEyebrow: 'Avatar',
     avatarSelected: 'Avatar selectionne',
     avatarOptional: 'Avatar optionnel',
@@ -7344,6 +9845,21 @@ const MOBILE_SETTINGS_COPY: Record<MobileSettingsLanguage, MobileSettingsLocaleC
       signedOutTitle: 'Sign in required',
       signedOutBody: 'Sign in first to change your password.',
     },
+    emailVerification: {
+      title: 'Email Verification',
+      body: 'Email confirmation is optional. You can request a verification mail whenever you want.',
+      verifiedTitle: 'Email already verified',
+      verifiedBody: 'This account is already tied to a confirmed email address.',
+      unverifiedTitle: 'Email still optional',
+      unverifiedBody: 'You can keep using your account, or send a confirmation mail from here.',
+      send: 'Send verification email',
+      sendBusy: 'Sending...',
+      sentTitle: 'Verification mail sent',
+      signedOutTitle: 'Sign in required',
+      signedOutBody: 'Sign in first to manage email verification.',
+      sectionMetaVerified: 'Verified email',
+      sectionMetaPending: 'Optional verification',
+    },
     accountDeletion: {
       title: 'Account Deletion',
       body: 'Open the published deletion page to review the request path, deleted data, and retained records.',
@@ -7394,6 +9910,21 @@ const MOBILE_SETTINGS_COPY: Record<MobileSettingsLanguage, MobileSettingsLocaleC
       saveBusy: 'Guncelleniyor...',
       signedOutTitle: 'Giris gerekli',
       signedOutBody: 'Sifre degistirmek icin once giris yap.',
+    },
+    emailVerification: {
+      title: 'E-posta Dogrulama',
+      body: 'E-posta onayi artik opsiyonel. Istersen buradan dogrulama maili isteyebilirsin.',
+      verifiedTitle: 'E-posta zaten dogrulandi',
+      verifiedBody: 'Bu hesap dogrulanmis bir e-posta adresine bagli.',
+      unverifiedTitle: 'E-posta onayi opsiyonel',
+      unverifiedBody: 'Hesabini kullanmaya devam edebilirsin; istersen buradan onay maili gonderilir.',
+      send: 'Dogrulama maili gonder',
+      sendBusy: 'Gonderiliyor...',
+      sentTitle: 'Dogrulama maili gonderildi',
+      signedOutTitle: 'Giris gerekli',
+      signedOutBody: 'E-posta durumunu yonetmek icin once giris yap.',
+      sectionMetaVerified: 'Dogrulandi',
+      sectionMetaPending: 'Opsiyonel',
     },
     accountDeletion: {
       title: 'Hesap Silme',
@@ -7446,6 +9977,21 @@ const MOBILE_SETTINGS_COPY: Record<MobileSettingsLanguage, MobileSettingsLocaleC
       signedOutTitle: 'Inicia sesion',
       signedOutBody: 'Inicia sesion primero para cambiar tu contrasena.',
     },
+    emailVerification: {
+      title: 'Verificacion de Correo',
+      body: 'La confirmacion por correo ahora es opcional. Puedes pedir un correo de verificacion cuando quieras.',
+      verifiedTitle: 'Correo ya verificado',
+      verifiedBody: 'Esta cuenta ya esta vinculada a un correo confirmado.',
+      unverifiedTitle: 'La verificacion es opcional',
+      unverifiedBody: 'Puedes seguir usando tu cuenta o pedir un correo de confirmacion desde aqui.',
+      send: 'Enviar correo de verificacion',
+      sendBusy: 'Enviando...',
+      sentTitle: 'Correo de verificacion enviado',
+      signedOutTitle: 'Inicia sesion',
+      signedOutBody: 'Inicia sesion primero para gestionar la verificacion del correo.',
+      sectionMetaVerified: 'Verificado',
+      sectionMetaPending: 'Opcional',
+    },
     accountDeletion: {
       title: 'Eliminacion de Cuenta',
       body: 'Abre la pagina publicada de eliminacion para revisar el flujo de solicitud, los datos eliminados y los registros conservados.',
@@ -7496,6 +10042,21 @@ const MOBILE_SETTINGS_COPY: Record<MobileSettingsLanguage, MobileSettingsLocaleC
       saveBusy: 'Mise a jour...',
       signedOutTitle: 'Connexion requise',
       signedOutBody: 'Connecte-toi d abord pour changer ton mot de passe.',
+    },
+    emailVerification: {
+      title: 'Verification E-mail',
+      body: 'La confirmation par e-mail est maintenant optionnelle. Tu peux demander un e-mail de verification quand tu veux.',
+      verifiedTitle: 'E-mail deja verifie',
+      verifiedBody: 'Ce compte est deja lie a une adresse e-mail confirmee.',
+      unverifiedTitle: 'La verification est optionnelle',
+      unverifiedBody: 'Tu peux continuer a utiliser ton compte ou demander un e-mail de confirmation ici.',
+      send: 'Envoyer l e-mail de verification',
+      sendBusy: 'Envoi...',
+      sentTitle: 'E-mail de verification envoye',
+      signedOutTitle: 'Connexion requise',
+      signedOutBody: 'Connecte-toi d abord pour gerer la verification de l e-mail.',
+      sectionMetaVerified: 'Verifie',
+      sectionMetaPending: 'Optionnel',
     },
     accountDeletion: {
       title: 'Suppression du Compte',
@@ -7700,7 +10261,9 @@ const RitualComposerModal = ({
   visible,
   targetMovie,
   draftText,
+  rating,
   onDraftTextChange,
+  onRatingChange,
   submitState,
   queueState,
   canSubmit,
@@ -7713,7 +10276,9 @@ const RitualComposerModal = ({
   visible: boolean;
   targetMovie: { title: string; genre: string | null; year?: number | null; director?: string | null } | null;
   draftText: string;
+  rating: number;
   onDraftTextChange: (value: string) => void;
+  onRatingChange: (value: number) => void;
   submitState: RitualSubmitState;
   queueState: RitualQueueState;
   canSubmit: boolean;
@@ -7759,7 +10324,9 @@ const RitualComposerModal = ({
               <RitualDraftCard
                 targetMovie={targetMovie}
                 draftText={draftText}
+                rating={rating}
                 onDraftTextChange={onDraftTextChange}
+                onRatingChange={onRatingChange}
                 submitState={submitState}
                 queueState={queueState}
                 canSubmit={canSubmit}
@@ -7787,11 +10354,14 @@ const MobileSettingsModal = ({
   onChangeLanguage,
   saveState,
   onSavePassword,
-  onPickAvatar,
-  onClearAvatar,
-  isPickingAvatar,
+  onSendVerificationEmail,
+  onSelectAvatar,
+  isPremium,
   activeAccountLabel,
   activeEmailLabel,
+  isEmailVerified,
+  emailConfirmedAt,
+  emailVerificationState,
   inviteCode,
   inviteLink,
   inviteStatsLabel,
@@ -7816,6 +10386,7 @@ const MobileSettingsModal = ({
   isImportingLetterboxd,
   onImportLetterboxd,
   onOpenShareHub,
+  onSignOut,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -7831,11 +10402,14 @@ const MobileSettingsModal = ({
     password: string,
     confirmPassword: string
   ) => Promise<{ ok: boolean; message: string }>;
-  onPickAvatar: () => void;
-  onClearAvatar: () => void;
-  isPickingAvatar: boolean;
+  onSendVerificationEmail: () => void;
+  onSelectAvatar: (avatarUrl: string) => void;
+  isPremium: boolean;
   activeAccountLabel: string;
   activeEmailLabel: string;
+  isEmailVerified: boolean;
+  emailConfirmedAt: string | null;
+  emailVerificationState: MobileSettingsSaveState;
   inviteCode: string;
   inviteLink: string;
   inviteStatsLabel: string;
@@ -7860,6 +10434,7 @@ const MobileSettingsModal = ({
   isImportingLetterboxd: boolean;
   onImportLetterboxd: () => void;
   onOpenShareHub: () => void;
+  onSignOut: () => void;
 }) => {
   const [activeTab, setActiveTab] = useState<'identity' | 'appearance' | 'privacy' | 'session'>('identity');
   const [passwordDraft, setPasswordDraft] = useState('');
@@ -7881,6 +10456,54 @@ const MobileSettingsModal = ({
   }, [visible]);
 
   if (!visible) return null;
+  return (
+    <MobileSettingsNavigatorModal
+      visible={visible}
+      onClose={onClose}
+      language={language}
+      themeMode={themeMode}
+      identityDraft={identityDraft}
+      onChangeIdentity={onChangeIdentity}
+      onSaveIdentity={onSaveIdentity}
+      onChangeTheme={onChangeTheme}
+      onChangeLanguage={onChangeLanguage}
+      saveState={saveState}
+      onSavePassword={onSavePassword}
+      onSendVerificationEmail={onSendVerificationEmail}
+      onSelectAvatar={onSelectAvatar}
+      isPremium={isPremium}
+      activeAccountLabel={activeAccountLabel}
+      activeEmailLabel={activeEmailLabel}
+      isEmailVerified={isEmailVerified}
+      emailConfirmedAt={emailConfirmedAt}
+      emailVerificationState={emailVerificationState}
+      inviteCode={inviteCode}
+      inviteLink={inviteLink}
+      inviteStatsLabel={inviteStatsLabel}
+      inviteRewardLabel={inviteRewardLabel}
+      invitedByCode={invitedByCode}
+      inviteCodeDraft={inviteCodeDraft}
+      onInviteCodeDraftChange={onInviteCodeDraftChange}
+      onApplyInviteCode={onApplyInviteCode}
+      onCopyInviteLink={onCopyInviteLink}
+      inviteStatus={inviteStatus}
+      isInviteActionBusy={isInviteActionBusy}
+      canCopyInviteLink={canCopyInviteLink}
+      isSignedIn={isSignedIn}
+      accountDeletionState={accountDeletionState}
+      onDeleteAccount={onDeleteAccount}
+      onOpenAccountDeletionInfo={onOpenAccountDeletionInfo}
+      privacyDraft={privacyDraft}
+      onChangePrivacy={onChangePrivacy}
+      onSavePrivacy={onSavePrivacy}
+      letterboxdSummary={letterboxdSummary}
+      letterboxdStatus={letterboxdStatus}
+      isImportingLetterboxd={isImportingLetterboxd}
+      onImportLetterboxd={onImportLetterboxd}
+      onOpenShareHub={onOpenShareHub}
+      onSignOut={onSignOut}
+    />
+  );
   const isSaving = saveState.status === 'saving';
   const saveTone =
     saveState.status === 'error' ? 'clay' : saveState.status === 'success' ? 'sage' : 'muted';
@@ -7932,6 +10555,7 @@ const MobileSettingsModal = ({
   const accountDeletionConfirmButton = accountDeletionCopy.confirmButton;
   const accountDeletionCancelButton = accountDeletionCopy.cancelButton;
   const accountDeletionSignedOutBody = accountDeletionCopy.signedOutBody;
+  const emailVerificationCopy = settingsCopy.emailVerification;
   const isPasswordSaving = passwordState.status === 'saving';
   const passwordTone =
     passwordState.status === 'error'
@@ -7945,6 +10569,14 @@ const MobileSettingsModal = ({
       : accountDeletionState.status === 'success'
         ? 'sage'
         : 'muted';
+  const emailVerificationTone = isEmailVerified
+    ? 'sage'
+    : emailVerificationState.status === 'error'
+      ? 'clay'
+      : emailVerificationState.status === 'success'
+        ? 'sage'
+        : 'muted';
+  const isSendingVerificationEmail = emailVerificationState.status === 'saving';
   const isAccountDeletionBusy = accountDeletionState.status === 'saving';
 
   const handleSavePasswordPress = async () => {
@@ -8058,38 +10690,41 @@ const MobileSettingsModal = ({
                   meta={identityUsername ? `@${identityUsername}` : identityCopy.avatarSectionMetaFallback}
                   defaultExpanded
                 >
-                  <View style={styles.settingsAvatarPickerRow}>
-                    <View style={styles.settingsAvatarPreviewWrap}>
+                  <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, gap: 14, marginBottom: 12 }}>
+                    <AvatarView
+                      avatarUrl={identityDraft.avatarUrl}
+                      displayName={identityDraft.fullName || identityDraft.username}
+                      size={64}
+                    />
+                    <View style={{ flex: 1, gap: 4 }}>
+                      <Text style={{ color: '#f5f2eb', fontSize: 14, fontWeight: '600' }}>
+                        {identityDraft.avatarUrl
+                          ? getCinemaAvatarEntry(identityDraft.avatarUrl)?.label || identityCopy.avatarSelected
+                          : identityCopy.avatarOptional}
+                      </Text>
+                      <Text style={{ color: '#8e8b84', fontSize: 11 }}>
+                        {identityDraft.avatarUrl ? identityCopy.avatarSelectedBody : identityCopy.avatarOptionalBody}
+                      </Text>
                       {identityDraft.avatarUrl ? (
-                        <Image
-                          source={{ uri: identityDraft.avatarUrl }}
-                          style={styles.settingsAvatarPreviewImage}
-                          resizeMode="cover"
-                        />
-                      ) : (
-                        <Text style={styles.settingsAvatarPreviewFallback}>
-                          {(identityDraft.fullName.slice(0, 1) || identityDraft.username.slice(0, 1) || 'A')
-                            .toUpperCase()}
-                        </Text>
-                      )}
-                    </View>
-                    <View style={styles.settingsAvatarActionRow}>
-                      <UiButton
-                        label={isPickingAvatar ? identityCopy.avatarSelecting : identityCopy.avatarPick}
-                        tone="neutral"
-                        onPress={onPickAvatar}
-                        disabled={isPickingAvatar || !isSignedIn}
-                        style={styles.exploreRouteAction}
-                      />
-                      <UiButton
-                        label={identityCopy.avatarClear}
-                        tone="neutral"
-                        onPress={onClearAvatar}
-                        disabled={isPickingAvatar || !identityDraft.avatarUrl || !isSignedIn}
-                        style={styles.exploreRouteAction}
-                      />
+                        <Pressable
+                          onPress={() => onSelectAvatar('')}
+                          hitSlop={PRESSABLE_HIT_SLOP}
+                          disabled={!isSignedIn}
+                        >
+                          <Text style={{ color: '#E07842', fontSize: 11, fontWeight: '600', marginTop: 2 }}>
+                            {identityCopy.avatarClear}
+                          </Text>
+                        </Pressable>
+                      ) : null}
                     </View>
                   </View>
+
+                  <PresetAvatarPickerGrid
+                    selectedAvatarUrl={identityDraft.avatarUrl}
+                    isPremium={isPremium}
+                    onSelect={onSelectAvatar}
+                    language={language}
+                  />
 
                   <StatusStrip
                     tone={identityDraft.avatarUrl ? 'sage' : 'muted'}
@@ -8522,6 +11157,64 @@ const MobileSettingsModal = ({
                     meta={inviteStatsLabel}
                   />
                 ) : null}
+
+                <CollapsibleSectionCard
+                  accent="sage"
+                  title={emailVerificationCopy.title}
+                  meta={
+                    isSignedIn
+                      ? isEmailVerified
+                        ? emailVerificationCopy.sectionMetaVerified
+                        : emailVerificationCopy.sectionMetaPending
+                      : emailVerificationCopy.signedOutTitle
+                  }
+                  defaultExpanded
+                >
+                  {!isSignedIn ? (
+                    <StatePanel
+                      tone="clay"
+                      variant="empty"
+                      eyebrow={emailVerificationCopy.title}
+                      title={emailVerificationCopy.signedOutTitle}
+                      body={emailVerificationCopy.signedOutBody}
+                    />
+                  ) : (
+                    <>
+                      <StatusStrip
+                        tone={emailVerificationTone}
+                        eyebrow={emailVerificationCopy.title}
+                        title={
+                          isEmailVerified
+                            ? emailVerificationCopy.verifiedTitle
+                            : emailVerificationState.status === 'success'
+                              ? emailVerificationCopy.sentTitle
+                              : emailVerificationCopy.unverifiedTitle
+                        }
+                        body={
+                          isEmailVerified
+                            ? emailVerificationCopy.verifiedBody
+                            : emailVerificationState.message || emailVerificationCopy.unverifiedBody
+                        }
+                        meta={activeEmailLabel || emailConfirmedAt || undefined}
+                      />
+
+                      <Text style={styles.screenBody}>{emailVerificationCopy.body}</Text>
+
+                      {!isEmailVerified ? (
+                        <UiButton
+                          label={
+                            isSendingVerificationEmail
+                              ? emailVerificationCopy.sendBusy
+                              : emailVerificationCopy.send
+                          }
+                          tone="neutral"
+                          onPress={onSendVerificationEmail}
+                          disabled={isSendingVerificationEmail}
+                        />
+                      ) : null}
+                    </>
+                  )}
+                </CollapsibleSectionCard>
 
                 <CollapsibleSectionCard
                   accent="clay"
@@ -9219,14 +11912,22 @@ type ArenaLeaderboardItem = {
   userId: string | null;
   displayName: string;
   avatarUrl?: string | null;
-  ritualsCount: number;
-  echoCount: number;
+  totalXp: number;
+  leagueKey: string;
+  weeklyArenaScore: number;
+  weeklyArenaActivity: number;
+  commentRewards: number;
+  quizRewards: number;
+  updatedAt: string | null;
 };
 
 type ArenaLeaderboardState = {
   status: 'loading' | 'ready' | 'error';
   source: 'live' | 'fallback';
   message: string;
+  scope?: 'league' | 'global';
+  cohortLeagueKey?: string | null;
+  weekKey?: string | null;
   entries: ArenaLeaderboardItem[];
 };
 
@@ -9440,12 +12141,14 @@ type MobileArenaCopy = {
   nameAccessibilitySuffix: string;
   buttonAccessibilitySuffix: string;
   echoLabel: string;
+  leagueLabel: string;
+  xpLabel: string;
 };
 
 const MOBILE_ARENA_COPY_EN: MobileArenaCopy = {
   pulseEyebrow: 'Arena Pulse',
-  pulseTitle: 'Weekly challenge pulse',
-  pulseBody: 'Daily comment rhythm, active streak, and social activity shape your place on the arena board.',
+  pulseTitle: 'Weekly season pulse',
+  pulseBody: 'Daily completions, rewardable notes, and quiz runs shape your place on the arena board.',
   seriesLabel: 'Streak',
   commentLabel: 'Comments',
   weeklyPace: 'weekly pace',
@@ -9453,33 +12156,35 @@ const MOBILE_ARENA_COPY_EN: MobileArenaCopy = {
   weeklyMode: 'Weekly',
   openDaily: 'Go To Daily Feed',
   rhythmEyebrow: 'Arena Rhythm',
-  rhythmTitle: 'Challenge score feeds on the daily rhythm',
-  rhythmBody: 'Leave today\'s comment, get an echo from the feed, and keep your momentum on the weekly ranking.',
-  rhythmMeta: 'The live or fallback ranking is updated in the leaderboard card below.',
+  rhythmTitle: 'Season score builds from daily momentum',
+  rhythmBody: 'Close the daily loop, leave rewardable notes, and finish quiz runs to keep climbing the weekly table.',
+  rhythmMeta: 'The leaderboard below reflects weekly arena score rather than social feed activity.',
   boardEyebrow: 'Arena Board',
   boardTitle: 'Arena Leaderboard',
-  boardBody: 'Weekly ranking generated from recent comment activity. Tap a nickname to open the profile.',
+  boardBody: 'Weekly ranking generated from arena score. Tap a nickname to open the profile.',
   playerSuffix: 'players',
   statusLabel: 'Status',
   loadingValue: 'Loading',
   loadingTitle: 'Weekly ranking is loading',
-  loadingBody: 'Live comment activity and profile transitions are being collected.',
+  loadingBody: 'Weekly arena score and league placement are being collected.',
   errorTitle: 'Arena board could not be opened',
   emptyTitle: 'No arena activity yet this week',
   errorBody: 'There was a temporary problem while loading the ranking.',
-  emptyBody: 'The arena ranking will appear here as new comments and echoes arrive.',
+  emptyBody: 'The arena ranking will appear here once this week starts collecting score.',
   profileButton: 'Profile',
   lockedButton: 'Locked',
   nameAccessibilitySuffix: 'profile',
   buttonAccessibilitySuffix: 'profile',
   echoLabel: 'Echo',
+  leagueLabel: 'League',
+  xpLabel: 'XP',
 } as const;
 
 const MOBILE_ARENA_COPY: Record<MobileSettingsLanguage, MobileArenaCopy> = {
   tr: {
     pulseEyebrow: 'Arena Nabzi',
-    pulseTitle: 'Haftalik challenge nabzi',
-    pulseBody: 'Gunluk yorum ritmi, aktif seri ve sosyal akis Arena tablosundaki yerini belirler.',
+    pulseTitle: 'Haftalik sezon nabzi',
+    pulseBody: 'Gunluk kapanislar, odul acan notlar ve quiz turlari Arena tablosundaki yerini belirler.',
     seriesLabel: 'Seri',
     commentLabel: 'Yorum',
     weeklyPace: 'haftalik tempo',
@@ -9487,26 +12192,28 @@ const MOBILE_ARENA_COPY: Record<MobileSettingsLanguage, MobileArenaCopy> = {
     weeklyMode: 'Haftalik',
     openDaily: 'Gunluk Akisa Gec',
     rhythmEyebrow: 'Arena Ritmi',
-    rhythmTitle: 'Challenge skoru gunluk ritimden beslenir',
-    rhythmBody: 'Bugunku yorumunu birak, yorum akisinda echo al ve haftalik siralamadaki ivmeni koru.',
-    rhythmMeta: 'Canli ya da fallback siralama asagidaki siralama kartinda guncellenir.',
+    rhythmTitle: 'Sezon skoru gunluk ritimden beslenir',
+    rhythmBody: 'Gunluk donguyu kapat, odul acan notunu birak ve quiz turu bitirerek haftalik tabloda yuksel.',
+    rhythmMeta: 'Asagidaki tablo sosyal akis degil, haftalik arena skorunu gosterir.',
     boardEyebrow: 'Arena Tablosu',
     boardTitle: 'Arena Siralamasi',
-    boardBody: 'Son yorum aktivitesinden uretilen haftalik siralama. Nick uzerine dokunarak profili ac.',
+    boardBody: 'Haftalik arena skorundan uretilen siralama. Isme dokunarak profili ac.',
     playerSuffix: 'oyuncu',
     statusLabel: 'Durum',
     loadingValue: 'Hazirlaniyor',
     loadingTitle: 'Haftalik siralama yukleniyor',
-    loadingBody: 'Canli yorum aktivitesi ve profil gecisleri toparlaniyor.',
+    loadingBody: 'Haftalik arena skoru ve lig yerlesimi toparlaniyor.',
     errorTitle: 'Arena tablosu acilamadi',
     emptyTitle: 'Bu hafta henuz arena izi yok',
     errorBody: 'Siralama okunurken gecici bir sorun olustu.',
-    emptyBody: 'Yeni yorum ve echo hareketleri geldikce arena siralamasi burada gorunecek.',
+    emptyBody: 'Bu hafta skor birikmeye basladiginda arena siralamasi burada gorunecek.',
     profileButton: 'Profil',
     lockedButton: 'Kilitli',
     nameAccessibilitySuffix: 'profilini ac',
     buttonAccessibilitySuffix: 'profiline git',
     echoLabel: 'Echo',
+    leagueLabel: 'Lig',
+    xpLabel: 'XP',
   },
   en: MOBILE_ARENA_COPY_EN,
   es: MOBILE_ARENA_COPY_EN,
@@ -9541,50 +12248,1179 @@ const MOBILE_ARENA_COPY: Record<MobileSettingsLanguage, MobileArenaCopy> = {
     nameAccessibilitySuffix: 'ouvrir le profil',
     buttonAccessibilitySuffix: 'aller au profil',
     echoLabel: 'Echo',
+    leagueLabel: 'Ligue',
+    xpLabel: 'XP',
   },
 };
 
+const buildArenaGapMessage = (
+  language: MobileSettingsLanguage,
+  gap: number,
+  targetName: string | null
+): string | null => {
+  if (gap <= 0 || !targetName) return null;
+  if (language === 'tr') {
+    return `${gap.toLocaleString()} puan ile ${targetName} ustune cikarsin.`;
+  }
+  return `${gap.toLocaleString()} points to pass ${targetName}.`;
+};
+
 const ArenaChallengeCard = ({
-  streakLabel,
-  ritualsLabel,
+  scoreLabel,
+  activityLabel,
+  rankLabel,
+  gapLabel,
+  leagueLabel,
+  seasonLabel,
+  groupLabel,
+  sourceMessage,
   onOpenDaily,
   language = 'tr',
 }: {
-  streakLabel: string;
-  ritualsLabel: string;
+  scoreLabel: string;
+  activityLabel: string;
+  rankLabel: string;
+  gapLabel: string;
+  leagueLabel: string;
+  seasonLabel: string;
+  groupLabel: string;
+  sourceMessage?: string | null;
   onOpenDaily?: () => void;
   language?: MobileSettingsLanguage;
 }) => {
+  const isTurkish = language === 'tr';
   const copy = MOBILE_ARENA_COPY[language] || MOBILE_ARENA_COPY.tr;
+  const seasonEyebrow = isTurkish ? 'Arena Sezonu' : 'Arena Season';
+  const seasonTitle = isTurkish ? 'Haftalik yaris merkezi' : 'Weekly race center';
+  const seasonBody = isTurkish
+    ? 'Arena, notlarin ve quiz turlarinin haftalik yaris halidir. Burada sirani, farkini ve sonraki hamleni gorursun.'
+    : 'Arena is the weekly race built from your notes and quiz runs. Open the board, see your gap, and decide your next move.';
+  const scoreSourcesTitle = isTurkish ? 'Skor kaynaklari' : 'Score sources';
+  const seasonBadge = isTurkish ? `Sezon ${seasonLabel}` : `Season ${seasonLabel}`;
+  const groupBadge = isTurkish ? `Grup ${groupLabel}` : `Group ${groupLabel}`;
+  const sources = isTurkish
+    ? [
+        {
+          title: 'Gunluk 5 film',
+          body: 'Tum gunluk film akisini kapatmak sezon skorunu en saglam sekilde biriktirir.',
+          meta: 'Gunluk ilerleme + Arena',
+        },
+        {
+          title: 'Kaliteli not',
+          body: 'Odul acan yorumlar haftalik tabloda agirlik tasir ve tempo kurar.',
+          meta: 'Yorum odulu + Arena',
+        },
+        {
+          title: 'Quiz yan gorevi',
+          body: 'Quick, Marathon, Rush ve Blur turlari haftalik yarisi hizlandirir.',
+          meta: 'Quiz kapanisi + Arena',
+        },
+      ]
+    : [
+        {
+          title: 'Daily Five',
+          body: 'Closing the full daily film loop is the most reliable way to build season score.',
+          meta: 'Daily progress + Arena',
+        },
+        {
+          title: 'Qualifying note',
+          body: 'Rewardable notes carry real weekly weight and keep your pace visible.',
+          meta: 'Comment reward + Arena',
+        },
+        {
+          title: 'Quiz side quest',
+          body: 'Quick, Marathon, Rush, and Blur runs push your weekly race forward.',
+          meta: 'Quiz completion + Arena',
+        },
+      ];
+
   return (
-    <>
-      <SectionLeadCard
-        accent="clay"
-        eyebrow={copy.pulseEyebrow}
-        title={copy.pulseTitle}
-        body={copy.pulseBody}
-        badges={[
-          { label: `${copy.seriesLabel} ${streakLabel}`, tone: 'sage' },
-          { label: `${copy.commentLabel} ${ritualsLabel}`, tone: 'muted' },
-          { label: copy.weeklyPace, tone: 'clay' },
-        ]}
-        metrics={[
-          { label: copy.seriesLabel, value: streakLabel },
-          { label: copy.commentLabel, value: ritualsLabel },
-          { label: copy.modeLabel, value: copy.weeklyMode },
-        ]}
-        actions={onOpenDaily ? [{ label: copy.openDaily, tone: 'brand', onPress: onOpenDaily }] : undefined}
-      />
+    <ScreenCard accent="clay">
+      <Text style={styles.sectionLeadEyebrow}>{seasonEyebrow}</Text>
+      <Text style={styles.sectionLeadTitle}>{seasonTitle}</Text>
+      <Text style={styles.sectionLeadBody}>{seasonBody}</Text>
+
+      <View style={styles.sectionLeadBadgeRow}>
+        <View style={[styles.sectionLeadBadge, styles.sectionLeadBadgeClay]}>
+          <Text style={styles.sectionLeadBadgeText}>{seasonBadge}</Text>
+        </View>
+        <View style={[styles.sectionLeadBadge, styles.sectionLeadBadgeSage]}>
+          <Text style={styles.sectionLeadBadgeText}>{groupBadge}</Text>
+        </View>
+      </View>
+
+      <View style={[styles.sectionLeadMetricRow, { marginTop: 12 }]}>
+        <View style={styles.sectionLeadMetricCard}>
+          <Text style={styles.sectionLeadMetricValue}>{scoreLabel}</Text>
+          <Text style={styles.sectionLeadMetricLabel}>{isTurkish ? 'Skor' : 'Score'}</Text>
+        </View>
+        <View style={styles.sectionLeadMetricCard}>
+          <Text style={styles.sectionLeadMetricValue}>{activityLabel}</Text>
+          <Text style={styles.sectionLeadMetricLabel}>{isTurkish ? 'Hamle' : 'Activity'}</Text>
+        </View>
+        <View style={styles.sectionLeadMetricCard}>
+          <Text style={styles.sectionLeadMetricValue}>{rankLabel}</Text>
+          <Text style={styles.sectionLeadMetricLabel}>{isTurkish ? 'Sira' : 'Rank'}</Text>
+        </View>
+        <View style={styles.sectionLeadMetricCard}>
+          <Text style={styles.sectionLeadMetricValue} numberOfLines={1}>
+            {gapLabel}
+          </Text>
+          <Text style={styles.sectionLeadMetricLabel}>{isTurkish ? 'Fark' : 'Gap'}</Text>
+        </View>
+      </View>
+
       <StatusStrip
         tone="clay"
-        eyebrow={copy.rhythmEyebrow}
-        title={copy.rhythmTitle}
-        body={copy.rhythmBody}
-        meta={copy.rhythmMeta}
+        eyebrow={isTurkish ? 'Lig' : 'League'}
+        title={leagueLabel}
+        body={sourceMessage || (isTurkish ? 'Bu hafta skor topladiginda tabloya girersin.' : 'Build score this week to enter the board.')}
       />
-    </>
+
+      <Text style={[styles.sectionLeadEyebrow, { marginTop: 14 }]}>{scoreSourcesTitle}</Text>
+      <View style={{ gap: 8, marginTop: 10 }}>
+        {sources.map((source) => (
+          <View
+            key={source.title}
+            style={{
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.07)',
+              backgroundColor: 'rgba(255,255,255,0.03)',
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              gap: 4,
+            }}
+          >
+            <Text style={{ color: '#f5f2eb', fontSize: 13, fontWeight: '700' }}>{source.title}</Text>
+            <Text style={{ color: '#b5b0a6', fontSize: 12, lineHeight: 18 }}>{source.body}</Text>
+            <Text style={{ color: '#8A9A5B', fontSize: 11, fontWeight: '700', letterSpacing: 0.3 }}>
+              {source.meta}
+            </Text>
+          </View>
+        ))}
+      </View>
+
+      {onOpenDaily ? (
+        <View style={{ marginTop: 14 }}>
+          <UiButton label={copy.openDaily} tone="brand" stretch onPress={onOpenDaily} />
+        </View>
+      ) : null}
+    </ScreenCard>
   );
 };
+
+type MobileSettingsRoute = 'home' | 'profile' | 'appearance' | 'privacy' | 'account';
+
+const MobileSettingsNavigatorModal = ({
+  visible,
+  onClose,
+  language = 'tr',
+  themeMode,
+  identityDraft,
+  onChangeIdentity,
+  onSaveIdentity,
+  onChangeTheme,
+  onChangeLanguage,
+  saveState,
+  onSavePassword,
+  onSendVerificationEmail,
+  onSelectAvatar,
+  isPremium,
+  activeAccountLabel,
+  activeEmailLabel,
+  isEmailVerified,
+  emailConfirmedAt,
+  emailVerificationState,
+  inviteCode,
+  inviteLink,
+  inviteStatsLabel,
+  inviteRewardLabel,
+  invitedByCode,
+  inviteCodeDraft,
+  onInviteCodeDraftChange,
+  onApplyInviteCode,
+  onCopyInviteLink,
+  inviteStatus,
+  isInviteActionBusy,
+  canCopyInviteLink,
+  isSignedIn,
+  accountDeletionState,
+  onDeleteAccount,
+  onOpenAccountDeletionInfo,
+  privacyDraft,
+  onChangePrivacy,
+  onSavePrivacy,
+  letterboxdSummary,
+  letterboxdStatus,
+  isImportingLetterboxd,
+  onImportLetterboxd,
+  onOpenShareHub,
+  onSignOut,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  language?: MobileSettingsLanguage;
+  themeMode: MobileThemeMode;
+  identityDraft: MobileSettingsIdentityDraft;
+  onChangeIdentity: (patch: Partial<MobileSettingsIdentityDraft>) => void;
+  onSaveIdentity: () => void;
+  onChangeTheme: (mode: MobileThemeMode) => void;
+  onChangeLanguage: (language: MobileSettingsLanguage) => void;
+  saveState: MobileSettingsSaveState;
+  onSavePassword: (
+    password: string,
+    confirmPassword: string
+  ) => Promise<{ ok: boolean; message: string }>;
+  onSendVerificationEmail: () => void;
+  onSelectAvatar: (avatarUrl: string) => void;
+  isPremium: boolean;
+  activeAccountLabel: string;
+  activeEmailLabel: string;
+  isEmailVerified: boolean;
+  emailConfirmedAt: string | null;
+  emailVerificationState: MobileSettingsSaveState;
+  inviteCode: string;
+  inviteLink: string;
+  inviteStatsLabel: string;
+  inviteRewardLabel: string;
+  invitedByCode: string | null;
+  inviteCodeDraft: string;
+  onInviteCodeDraftChange: (value: string) => void;
+  onApplyInviteCode: () => void;
+  onCopyInviteLink: () => void;
+  inviteStatus: string;
+  isInviteActionBusy: boolean;
+  canCopyInviteLink: boolean;
+  isSignedIn: boolean;
+  accountDeletionState: MobileSettingsSaveState;
+  onDeleteAccount: () => void;
+  onOpenAccountDeletionInfo: () => void;
+  privacyDraft: MobileSettingsPrivacyDraft;
+  onChangePrivacy: (patch: Partial<MobileSettingsPrivacyDraft>) => void;
+  onSavePrivacy: () => void;
+  letterboxdSummary: string;
+  letterboxdStatus: string;
+  isImportingLetterboxd: boolean;
+  onImportLetterboxd: () => void;
+  onOpenShareHub: () => void;
+  onSignOut: () => void;
+}) => {
+  const [activeRoute, setActiveRoute] = useState<MobileSettingsRoute>('home');
+  const [passwordDraft, setPasswordDraft] = useState('');
+  const [confirmPasswordDraft, setConfirmPasswordDraft] = useState('');
+  const [accountDeletionArmed, setAccountDeletionArmed] = useState(false);
+  const [passwordState, setPasswordState] = useState<MobileSettingsSaveState>({
+    status: 'idle',
+    message: '',
+  });
+
+  useWebModalFocusReset(visible);
+
+  useEffect(() => {
+    if (!visible) return;
+    setActiveRoute('home');
+    setPasswordDraft('');
+    setConfirmPasswordDraft('');
+    setAccountDeletionArmed(false);
+    setPasswordState({ status: 'idle', message: '' });
+  }, [visible]);
+
+  if (!visible) return null;
+
+  const mobileCopy = mobileTranslations[language] || mobileTranslations.en;
+  const settingsCopy = mobileCopy.settings;
+  const settingsStatusCopy = mobileCopy.settings.status;
+  const identityCopy = mobileCopy.identity;
+  const privacyCopy = mobileCopy.privacy;
+  const rulesCopy = mobileCopy.settings.rules;
+  const platformRules = mobileCopy.settings.rules.items;
+  const accountDeletionCopy = mobileCopy.settings.accountDeletion;
+  const settingsGenderOptions = mobileCopy.settings.genderOptions;
+
+  const identityDisplayName = String(identityDraft.fullName || '').trim();
+  const identityUsername = String(identityDraft.username || '')
+    .trim()
+    .replace(/^@+/, '');
+  const identityBirthDate = String(identityDraft.birthDate || '').trim();
+  const rawIdentityBio = String(identityDraft.bio || '').trim();
+  const identityBio = /^(a silent observer\.?|manage your profile and archive here\.?|manage your profile and league status here\.?)$/i.test(
+    rawIdentityBio
+  )
+    ? ''
+    : rawIdentityBio;
+  const identityProfileLink = String(identityDraft.profileLink || '').trim();
+  const activeGenderLabel =
+    settingsGenderOptions.find((option) => option.key === identityDraft.gender)?.label ||
+    settingsGenderOptions[0]?.label ||
+    'Select';
+  const settingsGenderLabel =
+    MOBILE_SETTINGS_IDENTITY_FIELD_COPY[language] || MOBILE_SETTINGS_IDENTITY_FIELD_COPY.en;
+  const isSaving = saveState.status === 'saving';
+  const saveTone =
+    saveState.status === 'error' ? 'clay' : saveState.status === 'success' ? 'sage' : 'muted';
+  const normalizedInviteStatus = inviteStatus.toLocaleLowerCase('tr-TR');
+  const inviteStatusTone =
+    normalizedInviteStatus.includes('hata')
+      ? 'clay'
+      : normalizedInviteStatus.includes('uygulandi') || normalizedInviteStatus.includes('kopyalandi')
+        ? 'sage'
+        : 'muted';
+  const isPasswordSaving = passwordState.status === 'saving';
+  const passwordTone =
+    passwordState.status === 'error'
+      ? 'clay'
+      : passwordState.status === 'success'
+        ? 'sage'
+        : 'muted';
+  const emailVerificationTone = isEmailVerified
+    ? 'sage'
+    : emailVerificationState.status === 'error'
+      ? 'clay'
+      : emailVerificationState.status === 'success'
+        ? 'sage'
+        : 'muted';
+  const accountDeletionTone =
+    accountDeletionState.status === 'error'
+      ? 'clay'
+      : accountDeletionState.status === 'success'
+        ? 'sage'
+        : 'muted';
+  const isSendingVerificationEmail = emailVerificationState.status === 'saving';
+  const isAccountDeletionBusy = accountDeletionState.status === 'saving';
+  const activeThemeLabel =
+    themeMode === 'dawn'
+      ? settingsCopy.appearance.themeDawn
+      : settingsCopy.appearance.themeMidnight;
+  const privacyVisibleCount = [
+    privacyDraft.showStats,
+    privacyDraft.showFollowCounts,
+    privacyDraft.showMarks,
+  ].filter(Boolean).length;
+
+  const navigatorCopy = mobileCopy.settings.navigator;
+
+  const routeTitle =
+    activeRoute === 'home'
+      ? settingsCopy.settingsTitle
+      : activeRoute === 'profile'
+        ? navigatorCopy.profileTitle
+        : activeRoute === 'appearance'
+          ? navigatorCopy.appearanceTitle
+          : activeRoute === 'privacy'
+            ? navigatorCopy.privacyTitle
+            : navigatorCopy.accountTitle;
+
+  const handleSavePasswordPress = async () => {
+    setPasswordState({ status: 'saving', message: '' });
+    const result = await onSavePassword(passwordDraft, confirmPasswordDraft);
+    setPasswordState({
+      status: result.ok ? 'success' : 'error',
+      message: result.message,
+    });
+    if (result.ok) {
+      setPasswordDraft('');
+      setConfirmPasswordDraft('');
+    }
+  };
+
+  const renderMenuRow = ({
+    key,
+    icon,
+    title,
+    body,
+    value,
+  }: {
+    key: Exclude<MobileSettingsRoute, 'home'>;
+    icon: ComponentProps<typeof Ionicons>['name'];
+    title: string;
+    body: string;
+    value: string;
+  }) => (
+    <Pressable
+      key={key}
+      onPress={() => setActiveRoute(key)}
+      hitSlop={PRESSABLE_HIT_SLOP}
+      style={({ pressed }) => [
+        {
+          borderTopWidth: 1,
+          borderTopColor: '#242424',
+          paddingVertical: 14,
+          opacity: pressed ? 0.84 : 1,
+        },
+      ]}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <View
+          style={{
+            width: 38,
+            height: 38,
+            borderRadius: 19,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#1D1D1D',
+            borderWidth: 1,
+            borderColor: '#2F2F2F',
+          }}
+        >
+          <Ionicons name={icon} size={18} color="#A8B97A" />
+        </View>
+        <View style={{ flex: 1, gap: 3 }}>
+          <Text style={{ color: '#F5F2EB', fontSize: 15, fontWeight: '700' }}>{title}</Text>
+          <Text style={{ color: '#8E8B84', fontSize: 12, lineHeight: 16 }}>{body}</Text>
+        </View>
+        <View style={{ alignItems: 'flex-end', maxWidth: 120 }}>
+          <Text style={{ color: '#CFCAC2', fontSize: 12, fontWeight: '600' }} numberOfLines={1}>
+            {value}
+          </Text>
+          <Ionicons name="chevron-forward" size={16} color="#8E8B84" />
+        </View>
+      </View>
+    </Pressable>
+  );
+
+  const renderHome = () => (
+    <>
+      <ScreenCard accent="clay">
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+          <AvatarView
+            avatarUrl={identityDraft.avatarUrl}
+            displayName={identityDraft.fullName || identityDraft.username || navigatorCopy.guestTitle}
+            size={56}
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.sectionLeadEyebrow}>{navigatorCopy.overviewEyebrow}</Text>
+            <Text style={styles.sectionLeadTitle}>
+              {identityDisplayName || activeAccountLabel || navigatorCopy.guestTitle}
+            </Text>
+            <Text style={styles.sectionLeadBody}>
+              {isSignedIn
+                ? activeEmailLabel || navigatorCopy.profileSummary
+                : navigatorCopy.overviewSignedOut}
+            </Text>
+          </View>
+        </View>
+      </ScreenCard>
+
+      <ScreenCard accent="sage">
+        {renderMenuRow({
+          key: 'profile',
+          icon: 'person-circle-outline',
+          title: navigatorCopy.profileTitle,
+          body: navigatorCopy.profileSummary,
+          value: identityUsername ? `@${identityUsername}` : identityDisplayName || identityCopy.usernamePending,
+        })}
+        {renderMenuRow({
+          key: 'appearance',
+          icon: 'color-palette-outline',
+          title: navigatorCopy.appearanceTitle,
+          body: navigatorCopy.appearanceSummary,
+          value: `${activeThemeLabel} · ${language.toUpperCase()}`,
+        })}
+        {renderMenuRow({
+          key: 'privacy',
+          icon: 'lock-closed-outline',
+          title: navigatorCopy.privacyTitle,
+          body: navigatorCopy.privacySummary,
+          value: `${privacyVisibleCount}/3`,
+        })}
+        {renderMenuRow({
+          key: 'account',
+          icon: 'shield-checkmark-outline',
+          title: navigatorCopy.accountTitle,
+          body: navigatorCopy.accountSummary,
+          value: isSignedIn ? activeEmailLabel || activeAccountLabel || 'account' : navigatorCopy.signOutHint,
+        })}
+      </ScreenCard>
+
+      {saveState.message ? (
+        <StatusStrip
+          tone={saveTone}
+          eyebrow={settingsStatusCopy.eyebrow}
+          title={
+            saveTone === 'clay'
+              ? settingsStatusCopy.saveFailed
+              : saveTone === 'sage'
+                ? settingsStatusCopy.saveCompleted
+                : settingsStatusCopy.draftUpdated
+          }
+          body={saveState.message}
+          meta={isSignedIn ? settingsStatusCopy.signedInMeta : settingsStatusCopy.signedOutMeta}
+        />
+      ) : null}
+    </>
+  );
+
+  const renderProfile = () => (
+    <>
+      {saveState.message ? (
+        <StatusStrip
+          tone={saveTone}
+          eyebrow={settingsStatusCopy.eyebrow}
+          title={
+            saveTone === 'clay'
+              ? settingsStatusCopy.saveFailed
+              : saveTone === 'sage'
+                ? settingsStatusCopy.saveCompleted
+                : settingsStatusCopy.draftUpdated
+          }
+          body={saveState.message}
+        />
+      ) : null}
+
+      {!isSignedIn ? (
+        <StatusStrip
+          tone="muted"
+          eyebrow={identityCopy.signedOutEyebrow}
+          title={identityCopy.signedOutTitle}
+          body={navigatorCopy.signOutHint}
+        />
+      ) : null}
+
+      <ScreenCard accent="clay">
+        <Text style={styles.sectionLeadEyebrow}>{identityCopy.avatarEyebrow}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 14 }}>
+          <AvatarView
+            avatarUrl={identityDraft.avatarUrl}
+            displayName={identityDraft.fullName || identityDraft.username}
+            size={64}
+          />
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={styles.sectionLeadTitle}>
+              {getCinemaAvatarEntry(identityDraft.avatarUrl)?.label ||
+                (identityDraft.avatarUrl ? identityCopy.avatarSelected : identityCopy.avatarOptional)}
+            </Text>
+            <Text style={styles.sectionLeadBody}>
+              {identityDraft.avatarUrl ? identityCopy.avatarSelectedBody : identityCopy.avatarOptionalBody}
+            </Text>
+            {identityDraft.avatarUrl ? (
+              <Pressable
+                onPress={() => onSelectAvatar('')}
+                hitSlop={PRESSABLE_HIT_SLOP}
+                disabled={!isSignedIn}
+              >
+                <Text style={{ color: '#E07842', fontSize: 12, fontWeight: '700' }}>
+                  {identityCopy.avatarClear}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+        <PresetAvatarPickerGrid
+          selectedAvatarUrl={identityDraft.avatarUrl}
+          isPremium={isPremium}
+          onSelect={onSelectAvatar}
+          language={language}
+        />
+      </ScreenCard>
+
+      <ScreenCard accent="sage">
+        <Text style={styles.sectionLeadEyebrow}>{settingsCopy.tabs.identity}</Text>
+        <Text style={styles.sectionLeadTitle}>{navigatorCopy.profileIdentityTitle}</Text>
+        <View style={{ gap: 12, marginTop: 12 }}>
+          <TextInput
+            style={styles.input}
+            value={identityDraft.fullName}
+            onChangeText={(value) => onChangeIdentity({ fullName: value })}
+            placeholder={identityCopy.fullNamePlaceholder}
+            placeholderTextColor="#8e8b84"
+            autoCapitalize="words"
+            accessibilityLabel={identityCopy.fullNameAccessibility}
+          />
+          <TextInput
+            style={styles.input}
+            value={identityDraft.username}
+            onChangeText={(value) => onChangeIdentity({ username: value.replace(/\s+/g, '').toLowerCase() })}
+            placeholder={identityCopy.usernamePlaceholder}
+            placeholderTextColor="#8e8b84"
+            autoCapitalize="none"
+            accessibilityLabel={identityCopy.usernameAccessibility}
+          />
+          <TextInput
+            style={styles.input}
+            value={identityDraft.birthDate}
+            onChangeText={(value) => onChangeIdentity({ birthDate: value })}
+            placeholder={identityCopy.birthPlaceholder}
+            placeholderTextColor="#8e8b84"
+            autoCapitalize="none"
+            accessibilityLabel={identityCopy.birthAccessibility}
+          />
+        </View>
+
+        <View style={[styles.detailInfoGrid, { marginTop: 12 }]}>
+          <View style={styles.detailInfoCard}>
+            <Text style={styles.detailInfoLabel}>{identityCopy.userDetailLabel}</Text>
+            <Text style={styles.detailInfoValue}>
+              {identityUsername ? `@${identityUsername}` : identityCopy.userDetailFallback}
+            </Text>
+          </View>
+          <View style={styles.detailInfoCard}>
+            <Text style={styles.detailInfoLabel}>{identityCopy.birthDetailLabel}</Text>
+            <Text style={styles.detailInfoValue}>
+              {identityBirthDate || identityCopy.birthDetailFallback}
+            </Text>
+          </View>
+          <View style={styles.detailInfoCard}>
+            <Text style={styles.detailInfoLabel}>{settingsGenderLabel}</Text>
+            <Text style={styles.detailInfoValue}>{activeGenderLabel}</Text>
+          </View>
+        </View>
+
+        <View style={{ marginTop: 12 }}>
+          <Text style={styles.subSectionLabel}>{settingsGenderLabel}</Text>
+          <View style={styles.settingsGenderRow}>
+            {settingsGenderOptions.map((option) => (
+              <Pressable
+                key={option.key || 'empty'}
+                style={[
+                  styles.settingsGenderChip,
+                  identityDraft.gender === option.key ? styles.settingsGenderChipActive : null,
+                ]}
+                onPress={() => onChangeIdentity({ gender: option.key })}
+                hitSlop={PRESSABLE_HIT_SLOP}
+              >
+                <Text
+                  style={[
+                    styles.settingsGenderChipText,
+                    identityDraft.gender === option.key ? styles.settingsGenderChipTextActive : null,
+                  ]}
+                >
+                  {option.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      </ScreenCard>
+
+      <ScreenCard accent="sage">
+        <Text style={styles.sectionLeadEyebrow}>{navigatorCopy.profileTitle}</Text>
+        <Text style={styles.sectionLeadTitle}>{navigatorCopy.profileBioTitle}</Text>
+        <View style={{ gap: 12, marginTop: 12 }}>
+          <TextInput
+            style={styles.ritualInput}
+            multiline
+            textAlignVertical="top"
+            value={identityBio}
+            onChangeText={(value) => onChangeIdentity({ bio: value.slice(0, 180) })}
+            placeholder={identityCopy.aboutPlaceholder}
+            placeholderTextColor="#8e8b84"
+            accessibilityLabel={identityCopy.aboutAccessibility}
+          />
+          <TextInput
+            style={styles.input}
+            value={identityDraft.profileLink}
+            onChangeText={(value) => onChangeIdentity({ profileLink: value })}
+            placeholder={identityCopy.profileLinkPlaceholder}
+            placeholderTextColor="#8e8b84"
+            autoCapitalize="none"
+            accessibilityLabel={identityCopy.profileLinkAccessibility}
+          />
+        </View>
+        <View style={[styles.sectionLeadBadgeRow, { marginTop: 12 }]}>
+          <View style={[styles.sectionLeadBadge, styles.sectionLeadBadgeMuted]}>
+            <Text style={styles.sectionLeadBadgeText}>
+              {identityCopy.characterCountMeta(identityBio.length)}
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.sectionLeadBadge,
+              identityProfileLink ? styles.sectionLeadBadgeSage : styles.sectionLeadBadgeMuted,
+            ]}
+          >
+            <Text style={styles.sectionLeadBadgeText}>
+              {identityProfileLink ? identityCopy.profileLinkReady : identityCopy.profileLinkOptional}
+            </Text>
+          </View>
+        </View>
+      </ScreenCard>
+
+      <ScreenCard accent="clay">
+        <UiButton
+          label={isSaving ? identityCopy.saveBusy : identityCopy.save}
+          tone="brand"
+          onPress={onSaveIdentity}
+          disabled={isSaving || !isSignedIn}
+        />
+      </ScreenCard>
+    </>
+  );
+
+  const renderAppearance = () => (
+    <>
+      <ScreenCard accent={themeMode === 'dawn' ? 'clay' : 'sage'}>
+        <Text style={styles.sectionLeadEyebrow}>{settingsCopy.appearance.eyebrow}</Text>
+        <Text style={styles.sectionLeadTitle}>{settingsCopy.appearance.themeTitle}</Text>
+        <View style={[styles.sectionLeadBadgeRow, { marginTop: 12 }]}>
+          <View
+            style={[
+              styles.sectionLeadBadge,
+              themeMode === 'dawn' ? styles.sectionLeadBadgeClay : styles.sectionLeadBadgeSage,
+            ]}
+          >
+            <Text style={styles.sectionLeadBadgeText}>{activeThemeLabel}</Text>
+          </View>
+        </View>
+        <View style={[styles.themeModeSegmentContainer, { marginTop: 12 }]}>
+          <Pressable
+            style={[
+              styles.themeModeSegmentOption,
+              themeMode === 'midnight' ? styles.themeModeSegmentActiveMidnight : null,
+            ]}
+            onPress={() => onChangeTheme('midnight')}
+            accessibilityRole="button"
+            accessibilityLabel={settingsCopy.appearance.themeMidnight}
+          >
+            <Text
+              style={[
+                styles.themeModeSegmentText,
+                themeMode === 'midnight' ? styles.themeModeSegmentTextActiveMidnight : null,
+              ]}
+            >
+              {settingsCopy.appearance.themeMidnight}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.themeModeSegmentOption,
+              themeMode === 'dawn' ? styles.themeModeSegmentActiveDawn : null,
+            ]}
+            onPress={() => onChangeTheme('dawn')}
+            accessibilityRole="button"
+            accessibilityLabel={settingsCopy.appearance.themeDawn}
+          >
+            <Text
+              style={[
+                styles.themeModeSegmentText,
+                themeMode === 'dawn' ? styles.themeModeSegmentTextActiveDawn : null,
+              ]}
+            >
+              {settingsCopy.appearance.themeDawn}
+            </Text>
+          </Pressable>
+        </View>
+      </ScreenCard>
+
+      <ScreenCard accent="sage">
+        <Text style={styles.sectionLeadEyebrow}>{settingsCopy.appearance.languageTitle}</Text>
+        <Text style={styles.sectionLeadTitle}>{language.toUpperCase()}</Text>
+        <View style={[styles.settingsGenderRow, { marginTop: 12 }]}>
+          {([
+            { code: 'tr', label: 'TR' },
+            { code: 'en', label: 'EN' },
+            { code: 'es', label: 'ES' },
+            { code: 'fr', label: 'FR' },
+          ] as const).map((option) => (
+            <Pressable
+              key={option.code}
+              style={[
+                styles.settingsGenderChip,
+                language === option.code ? styles.settingsGenderChipActive : null,
+              ]}
+              onPress={() => onChangeLanguage(option.code)}
+              hitSlop={PRESSABLE_HIT_SLOP}
+            >
+              <Text
+                style={[
+                  styles.settingsGenderChipText,
+                  language === option.code ? styles.settingsGenderChipTextActive : null,
+                ]}
+              >
+                {option.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </ScreenCard>
+
+    </>
+  );
+  const renderPrivacy = () => (
+    <>
+      {saveState.message ? (
+        <StatusStrip
+          tone={saveTone}
+          eyebrow={settingsStatusCopy.eyebrow}
+          title={
+            saveTone === 'clay'
+              ? settingsStatusCopy.saveFailed
+              : saveTone === 'sage'
+                ? settingsStatusCopy.saveCompleted
+                : settingsStatusCopy.draftUpdated
+          }
+          body={saveState.message}
+        />
+      ) : null}
+
+      <ScreenCard accent="sage">
+        <Text style={styles.sectionLeadEyebrow}>{privacyCopy.eyebrow}</Text>
+        <Text style={styles.sectionLeadTitle}>{privacyCopy.title}</Text>
+        <View style={[styles.sectionLeadBadgeRow, { marginTop: 12 }]}>
+          <View style={[styles.sectionLeadBadge, styles.sectionLeadBadgeMuted]}>
+            <Text style={styles.sectionLeadBadgeText}>{`${privacyVisibleCount}/3`}</Text>
+          </View>
+        </View>
+
+        <View style={{ marginTop: 12, gap: 10 }}>
+          {([
+            { key: 'showStats', title: privacyCopy.showStatsTitle, body: privacyCopy.showStatsBody },
+            {
+              key: 'showFollowCounts',
+              title: privacyCopy.showFollowsTitle,
+              body: privacyCopy.showFollowsBody,
+            },
+            { key: 'showMarks', title: privacyCopy.showMarksTitle, body: privacyCopy.showMarksBody },
+          ] as const).map((item) => {
+            const isEnabled = privacyDraft[item.key];
+            return (
+              <Pressable
+                key={item.key}
+                style={({ pressed }) => [
+                  styles.settingsPrivacyRow,
+                  pressed ? styles.settingsPrivacyRowPressed : null,
+                ]}
+                onPress={() =>
+                  onChangePrivacy({ [item.key]: !isEnabled } as Partial<MobileSettingsPrivacyDraft>)
+                }
+                hitSlop={PRESSABLE_HIT_SLOP}
+                accessibilityRole="switch"
+                accessibilityLabel={item.title}
+                accessibilityState={{ checked: isEnabled }}
+              >
+                <View style={styles.settingsPrivacyCopy}>
+                  <Text style={styles.settingsPrivacyTitle}>{item.title}</Text>
+                  <Text style={styles.settingsPrivacyBody}>{item.body}</Text>
+                </View>
+                <View
+                  style={[
+                    styles.settingsPrivacyToggle,
+                    isEnabled ? styles.settingsPrivacyToggleActive : null,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.settingsPrivacyKnob,
+                      isEnabled ? styles.settingsPrivacyKnobActive : null,
+                    ]}
+                  />
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+      </ScreenCard>
+
+      <ScreenCard accent="clay">
+        <UiButton
+          style={styles.settingsPrimaryAction}
+          label={isSaving ? privacyCopy.saveBusy : privacyCopy.save}
+          tone="brand"
+          onPress={onSavePrivacy}
+          disabled={isSaving || !isSignedIn}
+        />
+      </ScreenCard>
+    </>
+  );
+
+  const renderAccount = () => (
+    <>
+      {inviteStatus ? (
+        <StatusStrip
+          tone={inviteStatusTone}
+          eyebrow={navigatorCopy.inviteTitle}
+          title={
+            inviteStatusTone === 'clay'
+              ? (language === 'tr' ? 'Davet islemi tamamlanamadi' : 'Invite update failed')
+              : (language === 'tr' ? 'Davet bilgisi guncellendi' : 'Invite updated')
+          }
+          body={inviteStatus}
+          meta={inviteStatsLabel}
+        />
+      ) : null}
+
+      <ScreenCard accent="sage">
+        <Text style={styles.sectionLeadEyebrow}>{settingsCopy.emailVerification.title}</Text>
+        <Text style={styles.sectionLeadTitle}>
+          {activeEmailLabel || activeAccountLabel || navigatorCopy.accountTitle}
+        </Text>
+        <StatusStrip
+          tone={emailVerificationTone}
+          eyebrow={settingsCopy.emailVerification.title}
+          title={
+            isSignedIn
+              ? isEmailVerified
+                ? settingsCopy.emailVerification.verifiedTitle
+                : emailVerificationState.status === 'success'
+                  ? settingsCopy.emailVerification.sentTitle
+                  : settingsCopy.emailVerification.unverifiedTitle
+              : settingsCopy.emailVerification.signedOutTitle
+          }
+          body={
+            isSignedIn
+              ? isEmailVerified
+                ? settingsCopy.emailVerification.verifiedBody
+                : emailVerificationState.message || settingsCopy.emailVerification.unverifiedBody
+              : settingsCopy.emailVerification.signedOutBody
+          }
+          meta={isSignedIn ? activeEmailLabel || emailConfirmedAt || undefined : undefined}
+        />
+        {!isEmailVerified ? (
+          <UiButton
+            label={
+              isSendingVerificationEmail
+                ? settingsCopy.emailVerification.sendBusy
+                : settingsCopy.emailVerification.send
+            }
+            tone="neutral"
+            onPress={onSendVerificationEmail}
+            disabled={isSendingVerificationEmail || !isSignedIn}
+          />
+        ) : null}
+      </ScreenCard>
+
+      <ScreenCard accent="clay">
+        <Text style={styles.sectionLeadEyebrow}>{settingsCopy.password.title}</Text>
+        <Text style={styles.sectionLeadTitle}>{settingsCopy.password.title}</Text>
+        <StatusStrip
+          tone={passwordTone}
+          eyebrow={settingsCopy.password.title}
+          body={
+            isSignedIn
+              ? passwordState.message || settingsCopy.password.body
+              : settingsCopy.password.signedOutBody
+          }
+        />
+        <View style={{ gap: 12 }}>
+          <TextInput
+            style={styles.input}
+            value={passwordDraft}
+            onChangeText={setPasswordDraft}
+            placeholder={settingsCopy.password.newPasswordPlaceholder}
+            placeholderTextColor="#8e8b84"
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            accessibilityLabel={settingsCopy.password.newPasswordLabel}
+          />
+          <TextInput
+            style={styles.input}
+            value={confirmPasswordDraft}
+            onChangeText={setConfirmPasswordDraft}
+            placeholder={settingsCopy.password.confirmPasswordPlaceholder}
+            placeholderTextColor="#8e8b84"
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            accessibilityLabel={settingsCopy.password.confirmPasswordLabel}
+          />
+        </View>
+        <UiButton
+          label={isPasswordSaving ? settingsCopy.password.saveBusy : settingsCopy.password.save}
+          tone="brand"
+          onPress={() => {
+            void handleSavePasswordPress();
+          }}
+          disabled={isPasswordSaving || !isSignedIn}
+        />
+      </ScreenCard>
+
+      <ScreenCard accent="sage">
+        <Text style={styles.sectionLeadEyebrow}>{navigatorCopy.inviteTitle}</Text>
+        <Text style={styles.sectionLeadTitle}>
+          {inviteCode ? `Kod ${inviteCode}` : navigatorCopy.inviteTitle}
+        </Text>
+        <View style={styles.detailInfoGrid}>
+          <View style={styles.detailInfoCard}>
+            <Text style={styles.detailInfoLabel}>Kod</Text>
+            <Text style={styles.detailInfoValue}>{inviteCode || '-'}</Text>
+          </View>
+          <View style={styles.detailInfoCard}>
+            <Text style={styles.detailInfoLabel}>Link</Text>
+            <Text style={styles.detailInfoValue} numberOfLines={3}>
+              {inviteLink || '...'}
+            </Text>
+          </View>
+        </View>
+
+        <UiButton
+          label={isInviteActionBusy ? navigatorCopy.inviteBusy : navigatorCopy.inviteCopy}
+          tone="neutral"
+          onPress={onCopyInviteLink}
+          disabled={!canCopyInviteLink || isInviteActionBusy || !isSignedIn}
+        />
+
+        <StatusStrip
+          tone="sage"
+          eyebrow={navigatorCopy.inviteTitle}
+          body={inviteRewardLabel}
+          meta={inviteStatsLabel}
+        />
+
+        {invitedByCode ? (
+          <StatusStrip
+            tone="sage"
+            eyebrow={navigatorCopy.inviteInputLabel}
+            title={invitedByCode}
+            body={navigatorCopy.inviteMatchedBody}
+          />
+        ) : (
+          <>
+            <Text style={styles.subSectionLabel}>{navigatorCopy.inviteInputLabel}</Text>
+            <TextInput
+              style={styles.input}
+              value={inviteCodeDraft}
+              onChangeText={(value) =>
+                onInviteCodeDraftChange(value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase())
+              }
+              autoCapitalize="characters"
+              maxLength={12}
+              placeholder={navigatorCopy.inviteInputPlaceholder}
+              placeholderTextColor="#8e8b84"
+              accessibilityLabel={navigatorCopy.inviteInputLabel}
+            />
+            <UiButton
+              label={isInviteActionBusy ? navigatorCopy.inviteBusy : navigatorCopy.inviteApply}
+              tone="brand"
+              onPress={onApplyInviteCode}
+              disabled={isInviteActionBusy || !inviteCodeDraft.trim() || !isSignedIn}
+            />
+          </>
+        )}
+      </ScreenCard>
+
+      <ScreenCard accent="sage">
+        <Text style={styles.sectionLeadEyebrow}>{navigatorCopy.shareTitle}</Text>
+        <Text style={styles.sectionLeadTitle}>{navigatorCopy.shareTitle}</Text>
+        <Text style={styles.screenBody}>{navigatorCopy.shareBody}</Text>
+        <UiButton
+          label={navigatorCopy.shareAction}
+          tone="brand"
+          onPress={onOpenShareHub}
+          disabled={!isSignedIn}
+        />
+      </ScreenCard>
+
+      <ScreenCard accent="clay">
+        <Text style={styles.sectionLeadEyebrow}>{navigatorCopy.signOutTitle}</Text>
+        <Text style={styles.sectionLeadTitle}>{navigatorCopy.signOutTitle}</Text>
+        <Text style={styles.screenBody}>
+          {isSignedIn ? navigatorCopy.signOutBody : navigatorCopy.signOutHint}
+        </Text>
+        <UiButton
+          label={navigatorCopy.signOutAction}
+          tone="danger"
+          onPress={onSignOut}
+          disabled={!isSignedIn}
+        />
+      </ScreenCard>
+
+      <ScreenCard accent="clay">
+        <Text style={styles.sectionLeadEyebrow}>{accountDeletionCopy.eyebrow}</Text>
+        <Text style={styles.sectionLeadTitle}>{settingsCopy.accountDeletion.title}</Text>
+        <StatusStrip
+          tone={accountDeletionTone}
+          eyebrow={accountDeletionCopy.eyebrow}
+          body={
+            accountDeletionState.message ||
+            (isSignedIn ? accountDeletionCopy.body : accountDeletionCopy.signedOutBody)
+          }
+          meta={accountDeletionCopy.meta}
+        />
+        <View style={{ gap: 10 }}>
+          {isSignedIn && accountDeletionArmed ? (
+            <>
+              <StatusStrip
+                tone="clay"
+                eyebrow={accountDeletionCopy.eyebrow}
+                title={accountDeletionCopy.confirmTitle}
+                body={accountDeletionCopy.confirmBody}
+              />
+              <UiButton
+                label={
+                  isAccountDeletionBusy
+                    ? `${accountDeletionCopy.confirmButton}...`
+                    : accountDeletionCopy.confirmButton
+                }
+                tone="danger"
+                onPress={onDeleteAccount}
+                disabled={isAccountDeletionBusy}
+              />
+              <UiButton
+                label={accountDeletionCopy.cancelButton}
+                tone="neutral"
+                onPress={() => setAccountDeletionArmed(false)}
+                disabled={isAccountDeletionBusy}
+              />
+            </>
+          ) : (
+            <UiButton
+              label={accountDeletionCopy.button}
+              tone="danger"
+              onPress={() => setAccountDeletionArmed(true)}
+              disabled={isAccountDeletionBusy || !isSignedIn}
+            />
+          )}
+          <UiButton
+            label={accountDeletionCopy.infoButton}
+            tone="neutral"
+            onPress={onOpenAccountDeletionInfo}
+            disabled={isAccountDeletionBusy}
+          />
+        </View>
+      </ScreenCard>
+
+      <ScreenCard accent="clay">
+        <Text style={styles.sectionLeadEyebrow}>{navigatorCopy.communityTitle}</Text>
+        <Text style={styles.sectionLeadTitle}>{rulesCopy.title}</Text>
+        <Text style={styles.screenBody}>{navigatorCopy.communityBody}</Text>
+        <View style={styles.rulesList}>
+          {platformRules.map((rule, index) => (
+            <View key={`settings-rule-${index}`} style={styles.rulesRow}>
+              <View style={styles.rulesDot} />
+              <Text style={styles.rulesText}>{rule}</Text>
+            </View>
+          ))}
+        </View>
+      </ScreenCard>
+    </>
+  );
+
+  const renderActiveRoute = () => {
+    if (activeRoute === 'profile') return renderProfile();
+    if (activeRoute === 'appearance') return renderAppearance();
+    if (activeRoute === 'privacy') return renderPrivacy();
+    if (activeRoute === 'account') return renderAccount();
+    return renderHome();
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.modalOverlaySurface}>
+        <View style={styles.modalSheetSurface}>
+          <View style={styles.modalNavRow}>
+            <View style={{ minWidth: 54 }}>
+              {activeRoute !== 'home' ? (
+                <Pressable onPress={() => setActiveRoute('home')} hitSlop={PRESSABLE_HIT_SLOP}>
+                  <Text style={styles.modalCloseTextBtn}>{navigatorCopy.back}</Text>
+                </Pressable>
+              ) : null}
+            </View>
+            <Text style={styles.screenTitle}>{routeTitle}</Text>
+            <Pressable onPress={onClose} hitSlop={PRESSABLE_HIT_SLOP}>
+              <Text style={styles.modalCloseTextBtn}>{settingsCopy.close}</Text>
+            </Pressable>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.modalSheetScroll} showsVerticalScrollIndicator={false}>
+            {renderActiveRoute()}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 const ArenaLeaderboardCard = ({
   state,
   onOpenProfile,
@@ -9600,22 +13436,11 @@ const ArenaLeaderboardCard = ({
 
   return (
     <>
-      <SectionLeadCard
-        accent="sage"
-        eyebrow={copy.boardEyebrow}
-        title={copy.boardTitle}
-        body={copy.boardBody}
-        badges={[
-          { label: `${state.entries.length} ${copy.playerSuffix}`, tone: 'muted' },
-        ]}
-        metrics={[{ label: copy.statusLabel, value: state.status === 'loading' ? copy.loadingValue : copy.weeklyMode }]}
-      />
-
       {state.status === 'loading' && state.entries.length === 0 ? (
         <StatePanel
           tone="sage"
           variant="loading"
-          eyebrow={copy.boardEyebrow}
+          eyebrow={language === 'tr' ? 'Arena' : 'Arena'}
           title={copy.loadingTitle}
           body={copy.loadingBody}
         />
@@ -9625,52 +13450,83 @@ const ArenaLeaderboardCard = ({
         <StatePanel
           tone={state.status === 'error' ? 'clay' : 'sage'}
           variant={state.status === 'error' ? 'error' : 'empty'}
-          eyebrow={copy.boardEyebrow}
+          eyebrow={language === 'tr' ? 'Arena' : 'Arena'}
           title={state.status === 'error' ? copy.errorTitle : copy.emptyTitle}
           body={state.status === 'error' ? copy.errorBody : copy.emptyBody}
         />
       ) : null}
 
       {state.entries.length > 0 ? (
-        <View style={styles.arenaLeaderboardList}>
+        <ScreenCard accent="sage">
+          <View style={{ gap: 8 }}>
           {state.entries.map((item) => {
+            const leagueData = (MOBILE_LEAGUES_DATA as Record<string, { name: string; color: string }>)[item.leagueKey];
+            const leagueColor = leagueData ? leagueData.color : '#CD7F32';
             const canOpenProfile = Boolean(
               String(item.userId || '').trim() || String(item.displayName || '').trim()
+            );
+            const isCurrentUser = Boolean(
+              currentDisplayName &&
+              String(item.displayName || '').trim().toLowerCase() === currentDisplayName.trim().toLowerCase()
             );
             return (
               <Pressable
                 key={`${item.rank}-${item.displayName}`}
-                style={({ pressed }) => [
-                  styles.arenaLeaderboardRow,
-                  canOpenProfile && pressed && { opacity: 0.7 },
-                ]}
+                style={({ pressed }) => ({
+                  backgroundColor: isCurrentUser ? 'rgba(138,154,91,0.14)' : 'rgba(255,255,255,0.04)',
+                  borderRadius: 12,
+                  borderLeftWidth: 3,
+                  borderLeftColor: leagueColor,
+                  borderWidth: isCurrentUser ? 1 : 0,
+                  borderColor: isCurrentUser ? 'rgba(138,154,91,0.34)' : 'transparent',
+                  padding: 12,
+                  flexDirection: 'row' as const,
+                  alignItems: 'center' as const,
+                  opacity: canOpenProfile && pressed ? 0.7 : 1,
+                  gap: 10,
+                })}
                 onPress={() => canOpenProfile && onOpenProfile(item)}
                 disabled={!canOpenProfile}
                 accessibilityRole="button"
                 accessibilityLabel={`${item.displayName} ${copy.nameAccessibilitySuffix}`}
               >
-                <View style={styles.arenaLeaderboardRankWrap}>
-                  <Text style={styles.arenaLeaderboardRank}>{item.rank}</Text>
-                </View>
-                <View style={styles.arenaLeaderboardAvatarWrap}>
-                  {item.avatarUrl ? (
-                    <Image
-                      source={{ uri: item.avatarUrl }}
-                      style={styles.arenaLeaderboardAvatarImage}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    <Text style={styles.arenaLeaderboardAvatarFallback}>
-                      {(String(item.displayName || '').trim().slice(0, 1) || 'U').toUpperCase()}
-                    </Text>
-                  )}
-                </View>
-                <View style={[styles.arenaLeaderboardContent, { flex: 1 }]}>
-                  <Text style={styles.arenaLeaderboardName}>{item.displayName}</Text>
-                  <Text style={styles.arenaLeaderboardMeta}>
-                    {copy.commentLabel} {item.ritualsCount} | {copy.echoLabel} {item.echoCount}
+                <View style={{ width: 24, alignItems: 'center' as const }}>
+                  <Text style={{ color: item.rank <= 3 ? '#FFD700' : '#8e8b84', fontSize: 15, fontWeight: '700' }}>
+                    {item.rank}
                   </Text>
                 </View>
+
+                <AvatarView
+                  avatarUrl={item.avatarUrl}
+                  displayName={item.displayName}
+                  size={38}
+                  borderColor={leagueColor}
+                />
+
+                <View style={{ flex: 1, gap: 4 }}>
+                  <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6, flexWrap: 'wrap' as const }}>
+                    <Text style={{ color: '#f5f2eb', fontSize: 15, fontWeight: '700', flexShrink: 1 }} numberOfLines={1}>
+                      {item.displayName}
+                    </Text>
+                    {isCurrentUser ? (
+                      <View style={{ backgroundColor: 'rgba(138,154,91,0.16)', borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 }}>
+                        <Text style={{ color: '#8A9A5B', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>
+                          {language === 'tr' ? 'SEN' : 'YOU'}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                </View>
+
+                <View style={{ alignItems: 'flex-end' as const, gap: 2 }}>
+                  <Text style={{ color: '#f5f2eb', fontSize: 16, fontWeight: '800' }}>
+                    {item.weeklyArenaScore.toLocaleString()}
+                  </Text>
+                  <Text style={{ color: '#8e8b84', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 }}>
+                    {language === 'tr' ? 'PUAN' : 'POINTS'}
+                  </Text>
+                </View>
+
                 {canOpenProfile ? (
                   <Ionicons name="chevron-forward" size={14} color="#8e8b84" style={{ marginLeft: 4 }} />
                 ) : null}
@@ -9678,33 +13534,39 @@ const ArenaLeaderboardCard = ({
             );
           })}
           {(() => {
+            return null;
             if (!currentDisplayName || state.entries.length < 2) return null;
             const normalizedName = currentDisplayName.trim().toLowerCase();
             const myIdx = state.entries.findIndex(
               (e) => String(e.displayName || '').trim().toLowerCase() === normalizedName
             );
-            if (myIdx < 1) return null; // rank 1 or not found
+            if (myIdx < 1) return null;
             const myEntry = state.entries[myIdx];
             const above = state.entries[myIdx - 1];
-            const commentDiff = above.ritualsCount - myEntry.ritualsCount;
-            if (commentDiff <= 0) return null;
-            const aboveName = String(above.displayName || '').trim();
-            const msg =
-              language === 'tr'
-                ? `${aboveName}'e ${commentDiff} yorum kaldi — simdi yaz!`
+            const arenaGapMessage = buildArenaGapMessage(
+              language,
+              above.weeklyArenaScore - myEntry.weeklyArenaScore,
+              String(above.displayName || '').trim()
+            );
+            if (!arenaGapMessage) return null;
+            
+            /*
+                ? `${aboveName}'i geçmek için ${xpDiff.toLocaleString()} XP kaldı.`
                 : language === 'fr'
-                  ? `${commentDiff} commentaire(s) pour depasser ${aboveName} !`
+                  ? `${xpDiff.toLocaleString()} XP pour dépasser ${aboveName} !`
                   : language === 'es'
-                    ? `Te faltan ${commentDiff} comentarios para superar a ${aboveName}`
-                    : `${commentDiff} comment(s) to overtake ${aboveName} — write now!`;
+                    ? `Te faltan ${xpDiff.toLocaleString()} XP para superar a ${aboveName}`
+                    : `${xpDiff.toLocaleString()} XP to overtake ${aboveName}.`;
+            */
             return (
-              <View style={{ marginTop: 10, backgroundColor: 'rgba(255,149,0,0.10)', borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,149,0,0.25)', paddingHorizontal: 12, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Text style={{ fontSize: 16 }}>🏆</Text>
-                <Text style={{ color: '#FF9500', fontSize: 12, fontWeight: '600', flex: 1 }}>{msg}</Text>
+              <View style={{ marginTop: 6, backgroundColor: 'rgba(138,154,91,0.10)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(138,154,91,0.28)', paddingHorizontal: 12, paddingVertical: 8, flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8 }}>
+                <Text style={{ fontSize: 16 }}>{'🏆'}</Text>
+                <Text style={{ color: '#DDE6BE', fontSize: 12, fontWeight: '600', flex: 1 }}>{arenaGapMessage}</Text>
               </View>
             );
           })()}
         </View>
+        </ScreenCard>
       ) : null}
     </>
   );
@@ -9808,6 +13670,137 @@ const PublicProfileDetailCard = ({
   const followingCount = Math.max(0, Number(profile?.followingCount || 0));
   const followersCount = Math.max(0, Number(profile?.followersCount || 0));
   const isFollowBusy = followStatus === 'loading';
+  const stateBadge = isSelfProfile
+    ? 'Bu profil sana ait'
+    : followsYou
+      ? 'Seni takip ediyor'
+      : isFollowing
+        ? 'Takip ediyorsun'
+        : '';
+
+  if (status === 'loading' && !profile) {
+    return (
+      <StatePanel tone="sage" variant="loading" eyebrow="Profil" title="Profil yukleniyor" body="Biraz bekle." />
+    );
+  }
+
+  if (status === 'error' && !profile) {
+    return (
+      <StatePanel tone="clay" variant="error" eyebrow="Profil" title="Profil acilamadi" body={message} />
+    );
+  }
+
+  return (
+    <ScreenCard accent="sage">
+      <View style={{ position: 'absolute', top: 16, right: 16, zIndex: 1 }}>
+        <Pressable
+          onPress={onBack}
+          hitSlop={PRESSABLE_HIT_SLOP}
+          accessibilityRole="button"
+          accessibilityLabel="Kapat"
+          style={({ pressed }) => [
+            {
+              width: 32,
+              height: 32,
+              borderRadius: 16,
+              backgroundColor: 'rgba(255,255,255,0.06)',
+              alignItems: 'center',
+              justifyContent: 'center',
+            },
+            pressed ? { opacity: 0.55, transform: [{ scale: 0.88 }] } : null,
+          ]}
+        >
+          <Ionicons name="close" size={16} color="#E5E4E2" />
+        </Pressable>
+      </View>
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingRight: 40 }}>
+        <AvatarView avatarUrl={normalizedAvatarUrl} displayName={profileDisplayName} size={72} />
+        <View style={{ flex: 1, gap: 4 }}>
+          <Text style={styles.sectionLeadEyebrow}>Profil</Text>
+          <Text style={styles.sectionLeadTitle} numberOfLines={1}>
+            {profileDisplayName}
+          </Text>
+          {stateBadge ? (
+            <View style={[styles.sectionLeadBadgeRow, { marginTop: 2 }]}>
+              <View style={[styles.sectionLeadBadge, followsYou ? styles.sectionLeadBadgeSage : styles.sectionLeadBadgeMuted]}>
+                <Text style={styles.sectionLeadBadgeText}>{stateBadge}</Text>
+              </View>
+            </View>
+          ) : null}
+        </View>
+      </View>
+
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 16 }}>
+        {[
+          { label: 'YORUM', value: String(ritualsCount) },
+          { label: 'TAKIP', value: String(followingCount) },
+          { label: 'TAKIPCI', value: String(followersCount) },
+        ].map((item) => (
+          <View key={item.label} style={[styles.detailInfoCard, { flex: 1 }]}>
+            <Text style={[styles.detailInfoLabel, { textAlign: 'center' }]}>{item.label}</Text>
+            <Text style={styles.detailInfoValue}>{item.value}</Text>
+          </View>
+        ))}
+      </View>
+
+      <View style={[styles.sectionLeadActionRow, { marginTop: 14 }]}>
+        {!isSelfProfile && isSignedIn ? (
+          <UiButton
+            label={isFollowBusy ? 'Isleniyor...' : isFollowing ? 'Takipten cik' : 'Takip et'}
+            tone={isFollowing ? 'danger' : 'brand'}
+            onPress={onToggleFollow}
+            disabled={isFollowBusy || !profile}
+          />
+        ) : null}
+        <UiButton label="Profili ac" tone="neutral" onPress={onOpenFullProfile} />
+      </View>
+
+      {followStatus === 'error' && followMessage ? (
+        <Text style={[styles.screenMeta, { marginTop: 8 }]}>{followMessage}</Text>
+      ) : null}
+      {status === 'error' && message ? (
+        <Text style={[styles.screenMeta, { marginTop: 4 }]}>{message}</Text>
+      ) : null}
+    </ScreenCard>
+  );
+};
+
+const LegacyPublicProfileDetailCard = ({
+  status,
+  message,
+  displayNameHint,
+  profile,
+  isSignedIn,
+  followStatus,
+  isFollowing,
+  followsYou,
+  isSelfProfile,
+  followMessage,
+  onToggleFollow,
+  onOpenFullProfile,
+  onBack,
+}: {
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  message: string;
+  displayNameHint?: string;
+  profile?: PublicProfileDetail | null;
+  isSignedIn: boolean;
+  followStatus: 'idle' | 'loading' | 'ready' | 'error';
+  isFollowing: boolean;
+  followsYou: boolean;
+  isSelfProfile: boolean;
+  followMessage: string;
+  onToggleFollow: () => void;
+  onOpenFullProfile: () => void;
+  onBack: () => void;
+}) => {
+  const profileDisplayName = String(profile?.displayName || displayNameHint || '@bilinmeyen').trim();
+  const normalizedAvatarUrl = String(profile?.avatarUrl || '').trim();
+  const ritualsCount = Math.max(0, Number(profile?.ritualsCount || 0));
+  const followingCount = Math.max(0, Number(profile?.followingCount || 0));
+  const followersCount = Math.max(0, Number(profile?.followersCount || 0));
+  const isFollowBusy = followStatus === 'loading';
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _followTone =
     followStatus === 'error' ? 'clay' : followStatus === 'ready' ? 'sage' : 'muted';
@@ -9843,15 +13836,11 @@ const PublicProfileDetailCard = ({
 
       {/* Hero row */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingTop: 4 }}>
-        <View style={[styles.profileIdentityAvatarWrap, { width: 72, height: 72 }]}>
-          {normalizedAvatarUrl ? (
-            <Image source={{ uri: normalizedAvatarUrl }} style={[styles.profileIdentityAvatarImage, { width: 72, height: 72, borderRadius: 36 }]} resizeMode="cover" />
-          ) : (
-            <Text style={[styles.profileIdentityAvatarFallback, { fontSize: 26 }]}>
-              {(profileDisplayName.slice(0, 1) || 'O').toUpperCase()}
-            </Text>
-          )}
-        </View>
+        <AvatarView
+          avatarUrl={normalizedAvatarUrl}
+          displayName={profileDisplayName}
+          size={72}
+        />
         <View style={{ flex: 1, gap: 3, paddingRight: 40 }}>
           <Text style={styles.sectionLeadTitle} numberOfLines={1}>{profileDisplayName}</Text>
           {followsYou && !isSelfProfile ? (
@@ -9899,7 +13888,7 @@ const PublicProfileDetailCard = ({
         />
       </View>
 
-      {followMessage ? (
+      {followStatus === 'error' && followMessage ? (
         <Text style={{ color: '#8e8b84', fontSize: 11, marginTop: 8, textAlign: 'center' }}>{followMessage}</Text>
       ) : null}
     </ScreenCard>
@@ -9953,8 +13942,329 @@ const PlatformRulesCard = () => {
   );
 };
 
+// ---------------------------------------------------------------------------
+// MarkUnlockModal — celebration bottom sheet when a mark is earned
+// ---------------------------------------------------------------------------
+
+const MARK_CATEGORY_ACCENT: Record<string, string> = {
+  Presence: '#A57164',
+  Writing: '#8A9A5B',
+  Rhythm: '#e07842',
+  Discovery: '#50C878',
+  Ritual: '#9400D3',
+  Social: '#0F52BA',
+  Legacy: '#B68B4C',
+  Knowledge: '#0096FF',
+  Unknown: '#666',
+};
+
+export type MarkUnlockModalProps = {
+  event: MobileMarkUnlockEvent | null;
+  language?: MobileSettingsLanguage;
+  onClose: () => void;
+};
+
+export const MarkUnlockModal = ({
+  event,
+  language = 'tr',
+  onClose,
+}: MarkUnlockModalProps) => {
+  const slideY = useRef(new Animated.Value(320)).current;
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const iconScale = useRef(new Animated.Value(0.4)).current;
+  const iconRing = useRef(new Animated.Value(0.8)).current;
+
+  useEffect(() => {
+    if (!event) {
+      Animated.parallel([
+        Animated.timing(slideY, { toValue: 320, duration: 200, useNativeDriver: true }),
+        Animated.timing(backdropOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+      ]).start();
+      return;
+    }
+
+    slideY.setValue(320);
+    backdropOpacity.setValue(0);
+    iconScale.setValue(0.4);
+    iconRing.setValue(0.8);
+
+    Animated.parallel([
+      Animated.spring(slideY, { toValue: 0, speed: 14, bounciness: 6, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 1, duration: 260, useNativeDriver: true }),
+      Animated.spring(iconScale, { toValue: 1, speed: 10, bounciness: 14, useNativeDriver: true }),
+    ]).start();
+
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(iconRing, { toValue: 1.18, duration: 1000, useNativeDriver: true }),
+        Animated.timing(iconRing, { toValue: 0.8, duration: 1000, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event]);
+
+  if (!event) return null;
+
+  const lang = (language as string) === 'tr' ? 'tr' : (language as string) === 'es' ? 'es' : (language as string) === 'fr' ? 'fr' : 'en';
+  const surfaceCopy = resolveMarkUnlockSurfaceCopy(lang as 'en' | 'tr' | 'es' | 'fr');
+  const markMeta = resolveMobileMarkMeta(event.markId, lang as 'en' | 'tr' | 'es' | 'fr');
+  const accent = MARK_CATEGORY_ACCENT[markMeta.category] ?? '#8A9A5B';
+
+  return (
+    <Modal visible transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+      <Animated.View style={[markModalStyles.backdrop, { opacity: backdropOpacity }]} pointerEvents="none" />
+      <Pressable style={markModalStyles.backdropTap} onPress={onClose} />
+      <Animated.View style={[markModalStyles.card, { transform: [{ translateY: slideY }] }]}>
+        <View style={[markModalStyles.strip, { backgroundColor: accent }]} />
+        <View style={markModalStyles.topRow}>
+          <View style={markModalStyles.iconWrapper}>
+            <Animated.View style={[markModalStyles.iconRing, { borderColor: accent, transform: [{ scale: iconRing }] }]} />
+            <Animated.View style={[markModalStyles.iconDisc, { backgroundColor: `${accent}1a`, borderColor: `${accent}44`, transform: [{ scale: iconScale }] }]}>
+              <MobileMarkIcon markId={event.markId} color={accent} size={36} />
+            </Animated.View>
+          </View>
+          <View style={{ flex: 1 }}>
+            <View style={[markModalStyles.eyebrowPill, { borderColor: `${accent}44`, backgroundColor: `${accent}14` }]}>
+              <Text style={[markModalStyles.eyebrowText, { color: accent }]}>{surfaceCopy.eyebrow}</Text>
+            </View>
+            <Text style={markModalStyles.categoryLabel}>{markMeta.categoryLabel}</Text>
+          </View>
+        </View>
+        <Text style={markModalStyles.title}>{markMeta.title}</Text>
+        <Text style={[markModalStyles.whisper, { color: `${accent}cc` }]}>"{markMeta.whisper}"</Text>
+        <Text style={markModalStyles.description}>{markMeta.description}</Text>
+        <Pressable
+          style={({ pressed }) => [markModalStyles.actionBtn, { backgroundColor: accent, opacity: pressed ? 0.82 : 1 }]}
+          onPress={onClose}
+          accessibilityRole="button"
+        >
+          <Text style={markModalStyles.actionText}>{surfaceCopy.action}</Text>
+        </Pressable>
+      </Animated.View>
+    </Modal>
+  );
+};
+
+const markModalStyles = {
+  backdrop: { ...{ position: 'absolute' as const, top: 0, left: 0, right: 0, bottom: 0 }, backgroundColor: 'rgba(0,0,0,0.62)' },
+  backdropTap: { position: 'absolute' as const, top: 0, left: 0, right: 0, bottom: 0 },
+  card: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    backgroundColor: '#131210', borderTopLeftRadius: 22, borderTopRightRadius: 22,
+    paddingHorizontal: 24, paddingTop: 0, paddingBottom: Platform.OS === 'ios' ? 46 : 30, overflow: 'hidden',
+  },
+  strip: { height: 3, marginHorizontal: -24, marginBottom: 24, opacity: 0.75 },
+  topRow: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 18 },
+  iconWrapper: { width: 80, height: 80, alignItems: 'center', justifyContent: 'center' },
+  iconRing: { position: 'absolute', width: 72, height: 72, borderRadius: 36, borderWidth: 1, opacity: 0.22 },
+  iconDisc: { width: 60, height: 60, borderRadius: 30, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  eyebrowPill: { alignSelf: 'flex-start', borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, marginBottom: 6 },
+  eyebrowText: { fontSize: 10, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase' },
+  categoryLabel: { color: '#6b6560', fontSize: 11, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase' },
+  title: { color: '#f2ede7', fontSize: 26, fontWeight: '800', lineHeight: 32, marginBottom: 8 },
+  whisper: { fontSize: 14, fontStyle: 'italic', lineHeight: 20, marginBottom: 10 },
+  description: { color: '#a09890', fontSize: 14, lineHeight: 22, marginBottom: 28 },
+  actionBtn: { borderRadius: 999, paddingVertical: 15, alignItems: 'center' },
+  actionText: { color: '#111', fontSize: 15, fontWeight: '800', letterSpacing: 0.3 },
+};
+
+// ---------------------------------------------------------------------------
+// XpGainToast — brief animated pill showing "+X XP" after a reward
+// ---------------------------------------------------------------------------
+
+export type XpGainToastProps = {
+  xpDelta: number | null;
+  onDone: () => void;
+};
+
+export const XpGainToast = ({ xpDelta, onDone }: XpGainToastProps) => {
+  const translateY = useRef(new Animated.Value(60)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (xpDelta === null || xpDelta <= 0) return;
+    translateY.setValue(60);
+    opacity.setValue(0);
+    const show = Animated.parallel([
+      Animated.spring(translateY, { toValue: 0, speed: 20, bounciness: 10, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+    ]);
+    const hide = Animated.parallel([
+      Animated.timing(translateY, { toValue: -20, duration: 300, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 0, duration: 300, useNativeDriver: true }),
+    ]);
+    show.start(() => {
+      const timer = setTimeout(() => { hide.start(() => onDone()); }, 1800);
+      return () => clearTimeout(timer);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [xpDelta]);
+
+  if (xpDelta === null || xpDelta <= 0) return null;
+
+  return (
+    <Animated.View style={[xpToastStyles.pill, { transform: [{ translateY }], opacity }]} pointerEvents="none">
+      <Text style={xpToastStyles.plus}>+</Text>
+      <Text style={xpToastStyles.value}>{xpDelta}</Text>
+      <Text style={xpToastStyles.label}> XP</Text>
+    </Animated.View>
+  );
+};
+
+const xpToastStyles = {
+  pill: {
+    position: 'absolute', bottom: 120, alignSelf: 'center',
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: 'rgba(20,18,16,0.92)', borderWidth: 1,
+    borderColor: 'rgba(180,150,80,0.55)', borderRadius: 999,
+    paddingHorizontal: 20, paddingVertical: 10, gap: 2, zIndex: 9999,
+  },
+  plus: { color: '#c9a84c', fontSize: 17, fontWeight: '700' },
+  value: { color: '#f2e6c8', fontSize: 20, fontWeight: '800', letterSpacing: 0.5 },
+  label: { color: '#c9a84c', fontSize: 14, fontWeight: '700', letterSpacing: 1 },
+};
+
+// ---------------------------------------------------------------------------
+// TierAdvancementModal — celebration when user advances a tier within a league
+// ---------------------------------------------------------------------------
+
+export type TierAdvancementEvent = {
+  leagueKey: string;
+  tier: 1 | 2 | 3;
+  tierLabel: string;
+  color: string;
+};
+
+type TierAdvancementCopy = {
+  eyebrow: string;
+  title: (tierLabel: string) => string;
+  body: string;
+  action: string;
+};
+
+const TIER_ADVANCEMENT_COPY: Record<MobileSettingsLanguage, TierAdvancementCopy> = {
+  tr: { eyebrow: 'YENİ KAT', title: (t) => `${t}'a ulaştın!`, body: 'XP kazanmaya devam et, bir sonraki kata çık.', action: 'Devam Et' },
+  en: { eyebrow: 'TIER UP', title: (t) => `You reached ${t}!`, body: 'Keep earning XP to advance to the next tier.', action: 'Keep Going' },
+  es: { eyebrow: 'NUEVO NIVEL', title: (t) => `¡Alcanzaste ${t}!`, body: 'Sigue ganando XP para avanzar al siguiente nivel.', action: 'Continuar' },
+  fr: { eyebrow: 'NIVEAU SUPÉRIEUR', title: (t) => `Tu as atteint ${t} !`, body: 'Continue à gagner des XP pour passer au niveau suivant.', action: 'Continuer' },
+};
+
+const TIER_ROMAN: Record<1 | 2 | 3, string> = { 1: 'I', 2: 'II', 3: 'III' };
+
+export type TierAdvancementModalProps = {
+  event: TierAdvancementEvent | null;
+  language?: MobileSettingsLanguage;
+  onClose: () => void;
+};
+
+export const TierAdvancementModal = ({
+  event,
+  language = 'tr',
+  onClose,
+}: TierAdvancementModalProps) => {
+  const slideY = useRef(new Animated.Value(300)).current;
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const dot1Scale = useRef(new Animated.Value(0.3)).current;
+  const dot2Scale = useRef(new Animated.Value(0.3)).current;
+  const dot3Scale = useRef(new Animated.Value(0.3)).current;
+
+  useEffect(() => {
+    if (!event) {
+      Animated.parallel([
+        Animated.timing(slideY, { toValue: 300, duration: 220, useNativeDriver: true }),
+        Animated.timing(backdropOpacity, { toValue: 0, duration: 220, useNativeDriver: true }),
+      ]).start();
+      return;
+    }
+    slideY.setValue(300);
+    backdropOpacity.setValue(0);
+    dot1Scale.setValue(0.3);
+    dot2Scale.setValue(0.3);
+    dot3Scale.setValue(0.3);
+
+    const dotScales = [dot1Scale, dot2Scale, dot3Scale];
+    const dotAnims = dotScales.slice(0, event.tier).map((scale, i) =>
+      Animated.sequence([
+        Animated.delay(i * 80),
+        Animated.spring(scale, { toValue: 1, speed: 14, bounciness: 12, useNativeDriver: true }),
+      ])
+    );
+
+    Animated.parallel([
+      Animated.spring(slideY, { toValue: 0, speed: 14, bounciness: 6, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 1, duration: 260, useNativeDriver: true }),
+      ...dotAnims,
+    ]).start();
+  }, [event, slideY, backdropOpacity, dot1Scale, dot2Scale, dot3Scale]);
+
+  if (!event) return null;
+
+  const copy = TIER_ADVANCEMENT_COPY[language] ?? TIER_ADVANCEMENT_COPY.tr;
+  const accent = event.color;
+  const dotScaleValues = [dot1Scale, dot2Scale, dot3Scale];
+
+  return (
+    <Modal visible transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+      <Animated.View style={[tierModalStyles.backdrop, { opacity: backdropOpacity }]} pointerEvents="none" />
+      <Pressable style={tierModalStyles.backdropTap} onPress={onClose} />
+      <Animated.View style={[tierModalStyles.card, { borderTopColor: accent, transform: [{ translateY: slideY }] }]}>
+        <View style={[tierModalStyles.strip, { backgroundColor: accent }]} />
+        <View style={[tierModalStyles.eyebrowPill, { borderColor: `${accent}44`, backgroundColor: `${accent}14` }]}>
+          <Text style={[tierModalStyles.eyebrowText, { color: accent }]}>{copy.eyebrow}</Text>
+        </View>
+        <Text style={tierModalStyles.title}>{copy.title(event.tierLabel)}</Text>
+        <View style={tierModalStyles.dotsRow}>
+          {([0, 1, 2] as const).map((i) => {
+            const tierNum = (i + 1) as 1 | 2 | 3;
+            const isDone = tierNum <= event.tier;
+            return (
+              <View key={i} style={tierModalStyles.dotWrap}>
+                <Animated.View style={[tierModalStyles.dot, { backgroundColor: isDone ? accent : 'rgba(255,255,255,0.1)', transform: [{ scale: isDone ? dotScaleValues[i] : new Animated.Value(1) }] }]} />
+                <Text style={[tierModalStyles.dotLabel, isDone && { color: accent }]}>{TIER_ROMAN[tierNum]}</Text>
+              </View>
+            );
+          })}
+        </View>
+        <Text style={tierModalStyles.body}>{copy.body}</Text>
+        <Pressable
+          style={({ pressed }) => [tierModalStyles.actionBtn, { backgroundColor: accent, opacity: pressed ? 0.82 : 1 }]}
+          onPress={onClose}
+          accessibilityRole="button"
+        >
+          <Text style={tierModalStyles.actionText}>{copy.action}</Text>
+        </Pressable>
+      </Animated.View>
+    </Modal>
+  );
+};
+
+const tierModalStyles = {
+  backdrop: { ...{ position: 'absolute' as const, top: 0, left: 0, right: 0, bottom: 0 }, backgroundColor: 'rgba(0,0,0,0.58)' },
+  backdropTap: { position: 'absolute' as const, top: 0, left: 0, right: 0, bottom: 0 },
+  card: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    backgroundColor: '#131210', borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    paddingHorizontal: 24, paddingTop: 0, paddingBottom: Platform.OS === 'ios' ? 44 : 28,
+    borderTopWidth: 3, overflow: 'hidden',
+  },
+  strip: { height: 3, marginHorizontal: -24, marginBottom: 22, opacity: 0.7 },
+  eyebrowPill: { alignSelf: 'flex-start', borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, marginBottom: 14 },
+  eyebrowText: { fontSize: 11, fontWeight: '700', letterSpacing: 1.2 },
+  title: { color: '#f2ede7', fontSize: 22, fontWeight: '800', lineHeight: 30, marginBottom: 22 },
+  dotsRow: { flexDirection: 'row', gap: 28, marginBottom: 22 },
+  dotWrap: { alignItems: 'center', gap: 6 },
+  dot: { width: 22, height: 22, borderRadius: 11 },
+  dotLabel: { color: '#555', fontSize: 11, fontWeight: '700', letterSpacing: 0.8 },
+  body: { color: '#a09890', fontSize: 14, lineHeight: 22, marginBottom: 24 },
+  actionBtn: { borderRadius: 999, paddingVertical: 15, alignItems: 'center' },
+  actionText: { color: '#111', fontSize: 15, fontWeight: '800', letterSpacing: 0.3 },
+};
+
 export {
   setAppScreensThemeMode,
+  AvatarView,
   AuthModal,
   AuthCard,
   AuthGateScreen,
@@ -9972,9 +14282,13 @@ export {
   ProfileGenreDistributionCard,
   ProfileSnapshotCard,
   ProfileMarksCard,
+  ProfileCommentsModal,
+  ProfileFollowListModal,
+  ProfileMarksModal,
   PushStatusCard,
   PushInboxCard,
   WatchedMoviesCard,
+  buildDailyGreetingCard,
   CommentFeedCard,
   DailyHomeScreen,
   RitualDraftCard,

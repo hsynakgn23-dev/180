@@ -24,6 +24,7 @@ const { resolveMobileWebPromptDecision } = promptModule;
 const { ANALYTICS_EVENT_NAMES } = analyticsModule;
 const {
   normalizeBaseUrl,
+  resolveMobileApiBaseUrl,
   resolveMobileDailyApiUrl,
   resolveMobileReferralApiBase,
   resolveMobilePushApiBase,
@@ -252,6 +253,32 @@ runCase('mobile env resolver supports default Expo public env reads', () => {
       process.env.EXPO_PUBLIC_WEB_APP_URL = previousWebAppUrl;
     } else {
       delete process.env.EXPO_PUBLIC_WEB_APP_URL;
+    }
+  }
+});
+
+runCase('mobile env resolver prefers local node api base during loopback preview', () => {
+  const originalLocation = globalThis.location;
+  Object.defineProperty(globalThis, 'location', {
+    configurable: true,
+    value: { href: 'http://127.0.0.1:19006/' },
+  });
+  try {
+    const env = {
+      EXPO_PUBLIC_WEB_APP_URL: 'https://cinema.example.com/runtime',
+      EXPO_PUBLIC_DAILY_API_URL: 'https://cinema.example.com/api/daily',
+      EXPO_PUBLIC_REFERRAL_API_BASE: 'http://10.0.2.2:5173',
+    };
+    assert.equal(resolveMobileApiBaseUrl(env), 'http://127.0.0.1:8080');
+    assert.equal(resolveMobileDailyApiUrl(env), 'http://127.0.0.1:8080/api/daily');
+  } finally {
+    if (typeof originalLocation === 'undefined') {
+      delete globalThis.location;
+    } else {
+      Object.defineProperty(globalThis, 'location', {
+        configurable: true,
+        value: originalLocation,
+      });
     }
   }
 });

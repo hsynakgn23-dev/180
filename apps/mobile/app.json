@@ -44,7 +44,9 @@
         "react-native-google-mobile-ads",
         {
           "androidAppId": "ca-app-pub-5762109870281582~1906612293",
-          "iosAppId": "ca-app-pub-5762109870281582~4032146981"
+          "iosAppId": "ca-app-pub-5762109870281582~4032146981",
+          "delayAppMeasurementInit": true,
+          "userTrackingUsageDescription": "This identifier will be used to deliver more relevant ads to you."
         }
       ],
       [
@@ -57,7 +59,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Avatar secmek icin fotograflarina erisim gerekiyor."
+          "photosPermission": "Avatar seçmek için fotoğraflarına erişim gerekiyor."
         }
       ],
       "expo-dev-client",

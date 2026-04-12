@@ -1,3 +1,5 @@
+import { isCinemaAvatarId, isPresetAvatarId } from './mobileAvatarCatalog';
+
 export const MAX_MOBILE_AVATAR_BYTES = 768 * 1024;
 export const MAX_MOBILE_AVATAR_URL_LENGTH =
   Math.ceil((MAX_MOBILE_AVATAR_BYTES * 4) / 3) + 512;
@@ -11,6 +13,8 @@ const normalizeAvatarText = (value: unknown): string => {
 export const normalizeMobileAvatarUrl = (value: unknown): string => {
   const normalized = normalizeAvatarText(value);
   if (!normalized) return '';
+  if (isCinemaAvatarId(normalized)) return normalized;
+  if (isPresetAvatarId(normalized)) return normalized;
   if (/^https?:\/\//i.test(normalized)) return normalized;
   if (/^data:image\//i.test(normalized)) return normalized;
   return '';

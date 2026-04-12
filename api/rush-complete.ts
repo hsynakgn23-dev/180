@@ -1,5 +1,7 @@
 import { createCorsHeaders } from './lib/cors.js';
 import { createSupabaseServiceClient } from './lib/supabaseServiceClient.js';
+import { applyRushCompleteMarks } from './lib/markUnlock.js';
+import { applyProgressionReward } from './lib/progressionProfile.js';
 
 export const config = { runtime: 'nodejs' };
 
@@ -136,7 +138,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     }
 
     // Update session
-    await supabase
+    const { error: sessionUpdateError } = await supabase
         .from('quiz_rush_sessions')
         .update({
             status: finalStatus,
@@ -144,25 +146,36 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
             completed_at: now.toISOString()
         })
         .eq('id', sessionId);
+    if (sessionUpdateError) {
+        console.error('rush-complete: session update failed', { code: sessionUpdateError.code });
+        return sendJson(res, 500, { ok: false, error: 'Failed to complete session.' }, cors);
+    }
 
-    // Update profile XP
+    // Update profile XP through the shared progression writer so wallet/ticket
+    // state is preserved and `xp` / `totalXP` stay in sync.
     if (xpEarned > 0) {
-        const { data: profile } = await supabase
-            .from('profiles')
-            .select('xp_state')
-            .eq('user_id', user.id)
-            .single();
-
-        if (profile) {
-            const xpState = (profile.xp_state || {}) as Record<string, unknown>;
-            const currentXp = Number(xpState.xp || 0);
-            await supabase
-                .from('profiles')
-                .update({
-                    xp_state: { ...xpState, xp: currentXp + xpEarned },
-                    updated_at: new Date().toISOString()
-                })
-                .eq('user_id', user.id);
+        try {
+            await applyProgressionReward({
+                supabase,
+                userId: user.id,
+                fallbackEmail: user.email || null,
+                fallbackDisplayName: user.email ? String(user.email).split('@')[0] : null,
+                reward: {
+                    xp: xpEarned,
+                    tickets: 0,
+                    arenaScore: 0,
+                    arenaActivity: 0,
+                },
+                isQuizReward: true,
+            });
+        } catch (xpError) {
+            // Session was already marked completed — log for manual reconciliation
+            console.error('rush-complete: XP grant failed after session completion', {
+                userId: user.id,
+                sessionId,
+                xpEarned,
+                error: xpError instanceof Error ? xpError.message : String(xpError),
+            });
         }
     }
 
@@ -191,6 +204,14 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     const threshold = mode === 'endless' ? RUSH_XP_CONFIG.endless.threshold : (modeConfig as { threshold: number }).threshold;
     const passedThreshold = (session.correct_count || 0) >= threshold;
 
+    // Unlock rush/knowledge marks and return newly earned ones
+    const newlyUnlockedMarks = await applyRushCompleteMarks(
+        supabase,
+        user.id,
+        mode,
+        session.correct_count || 0
+    );
+
     return sendJson(res, 200, {
         ok: true,
         sessionId,
@@ -203,6 +224,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         passedThreshold,
         threshold,
         shouldShowAd,
+        new_marks: newlyUnlockedMarks,
         summary: {
             accuracy: session.total_questions > 0
                 ? Math.round(((session.correct_count || 0) / session.total_questions) * 100)

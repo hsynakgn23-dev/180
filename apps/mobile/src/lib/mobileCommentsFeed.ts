@@ -7,6 +7,7 @@ import {
   resolveMobileLeagueInfoFromXp,
 } from './mobileLeagueSystem';
 import { resolveMobileAvatarFromXpState } from './mobileAvatar';
+import { TMDB_SEEDS } from '../../../../src/data/tmdbSeeds';
 
 type SupabaseErrorLike = {
   code?: string | null;
@@ -18,6 +19,7 @@ type RitualRow = {
   user_id?: string | null;
   author?: string | null;
   movie_title?: string | null;
+  poster_path?: string | null;
   text?: string | null;
   league?: string | null;
   timestamp?: string | null;
@@ -32,6 +34,7 @@ type RitualLiteItem = {
   leagueKey: string;
   leagueColor: string;
   movieTitle: string;
+  posterPath: string | null;
   text: string;
   rawTimestamp: string;
   createdAtMs: number | null;
@@ -68,6 +71,7 @@ export type MobileCommentFeedItem = {
   leagueKey: string;
   leagueColor: string;
   movieTitle: string;
+  posterPath: string | null;
   text: string;
   timestampLabel: string;
   dayKey: string;
@@ -104,6 +108,30 @@ const MOBILE_COMMENT_FEED_MAX_PAGE_SIZE = 80;
 const MOBILE_COMMENT_FEED_MAX_PAGE = 200;
 
 const FEED_FETCH_VARIANTS: FeedFetchVariant[] = [
+  {
+    select: 'id,user_id,author,movie_title,poster_path,text,league,timestamp',
+    orderBy: 'timestamp',
+  },
+  {
+    select: 'id,user_id,author,movie_title,poster_path,text,league,created_at',
+    orderBy: 'created_at',
+  },
+  {
+    select: 'id,user_id,author,movie_title,poster_path,text,timestamp',
+    orderBy: 'timestamp',
+  },
+  {
+    select: 'id,user_id,author,movie_title,poster_path,text,created_at',
+    orderBy: 'created_at',
+  },
+  {
+    select: 'id,author,movie_title,poster_path,text,timestamp',
+    orderBy: 'timestamp',
+  },
+  {
+    select: 'id,author,movie_title,poster_path,text,created_at',
+    orderBy: 'created_at',
+  },
   {
     select: 'id,user_id,author,movie_title,text,league,timestamp',
     orderBy: 'timestamp',
@@ -227,6 +255,7 @@ const normalizeRitualRows = (rows: RitualRow[]): RitualLiteItem[] => {
       const leagueInfo = resolveMobileLeagueInfo(leagueKey);
       const dayKey = toDayKeyFromTimestamp(rawTimestamp);
       const createdAtMs = parseTimestampToMs(rawTimestamp);
+      const inferredPosterPath = inferPosterPathFromTitle(movieTitle);
 
       return {
         id,
@@ -236,6 +265,7 @@ const normalizeRitualRows = (rows: RitualRow[]): RitualLiteItem[] => {
         leagueKey,
         leagueColor: leagueInfo.color,
         movieTitle,
+        posterPath: normalizeText(row.poster_path, 500) || inferredPosterPath,
         text,
         rawTimestamp,
         createdAtMs,
@@ -271,6 +301,94 @@ type ProfileAvatarRow = {
   xp_state?: unknown;
 };
 
+type PoolMoviePosterRow = {
+  title?: string | null;
+  poster_path?: string | null;
+};
+
+const SEED_POSTER_BY_TITLE = new Map(
+  TMDB_SEEDS.map((movie) => {
+    const titleKey = normalizeText(movie.title, 180).toLowerCase();
+    const posterPath = normalizeText((movie as { posterPath?: string | null }).posterPath, 600);
+    return [titleKey, posterPath] as const;
+  }).filter(([titleKey, posterPath]) => Boolean(titleKey && posterPath))
+);
+
+const inferPosterPathFromTitle = (movieTitle: string): string | null => {
+  const normalizedTitle = normalizeText(movieTitle, 180).toLowerCase();
+  if (!normalizedTitle) return null;
+  return SEED_POSTER_BY_TITLE.get(normalizedTitle) || null;
+};
+
+const enrichItemsWithPosterMetadata = async <
+  T extends {
+    movieTitle: string;
+    posterPath: string | null;
+  },
+>(
+  items: T[]
+): Promise<T[]> => {
+  if (items.length === 0) return items;
+
+  const withSeedFallback = items.map((item) => {
+    if (item.posterPath) return item;
+    const inferredPosterPath = inferPosterPathFromTitle(item.movieTitle);
+    return inferredPosterPath ? ({ ...item, posterPath: inferredPosterPath } as T) : item;
+  });
+
+  if (!supabase) return withSeedFallback;
+
+  const unresolvedTitles = Array.from(
+    new Set(
+      withSeedFallback
+        .filter((item) => !item.posterPath)
+        .map((item) => normalizeText(item.movieTitle, 180))
+        .filter(Boolean)
+    )
+  );
+  if (unresolvedTitles.length === 0) return withSeedFallback;
+
+  const metadataByTitle = new Map<string, string>();
+  const selectVariants = ['title,poster_path', 'title'];
+
+  for (let index = 0; index < unresolvedTitles.length; index += 24) {
+    const titleBatch = unresolvedTitles.slice(index, index + 24);
+    let batchRows: PoolMoviePosterRow[] = [];
+
+    for (const select of selectVariants) {
+      const { data, error } = await supabase
+        .from('question_pool_movies')
+        .select(select)
+        .in('title', titleBatch)
+        .limit(titleBatch.length);
+
+      if (error) {
+        if (isSupabaseCapabilityError(error)) continue;
+        return withSeedFallback;
+      }
+
+      batchRows = Array.isArray(data) ? (data as PoolMoviePosterRow[]) : [];
+      break;
+    }
+
+    for (const row of batchRows) {
+      const titleKey = normalizeText(row.title, 180).toLowerCase();
+      const posterPath = normalizeText(row.poster_path, 600);
+      if (!titleKey || !posterPath || metadataByTitle.has(titleKey)) continue;
+      metadataByTitle.set(titleKey, posterPath);
+    }
+  }
+
+  if (metadataByTitle.size === 0) return withSeedFallback;
+
+  return withSeedFallback.map((item) => {
+    if (item.posterPath) return item;
+    const nextPosterPath =
+      metadataByTitle.get(normalizeText(item.movieTitle, 180).toLowerCase()) || null;
+    return nextPosterPath ? ({ ...item, posterPath: nextPosterPath } as T) : item;
+  });
+};
+
 const readAvatarRowsByUserIds = async (userIds: string[]): Promise<ProfileAvatarRow[]> => {
   if (!supabase) return [];
 
@@ -280,7 +398,7 @@ const readAvatarRowsByUserIds = async (userIds: string[]): Promise<ProfileAvatar
   if (normalizedUserIds.length === 0) return [];
 
   const { data, error } = await supabase
-    .from('profiles')
+    .from('profiles_public')
     .select('user_id,xp_state')
     .in('user_id', normalizedUserIds);
   if (error) return [];
@@ -302,7 +420,9 @@ const hydrateAuthorAvatars = async (items: RitualLiteItem[]): Promise<RitualLite
 
     if (!leagueMap.has(userId) && row.xp_state && typeof row.xp_state === 'object' && !Array.isArray(row.xp_state)) {
       const xpState = row.xp_state as Record<string, unknown>;
-      const { leagueKey, leagueInfo } = resolveMobileLeagueInfoFromXp(toSafeInt(xpState.totalXP));
+      const { leagueKey, leagueInfo } = resolveMobileLeagueInfoFromXp(
+        Math.max(toSafeInt(xpState.totalXP), toSafeInt(xpState.xp))
+      );
       leagueMap.set(userId, { leagueKey, leagueColor: leagueInfo.color });
     }
 
@@ -527,6 +647,7 @@ const toFeedItem = (
   leagueKey: ritual.leagueKey,
   leagueColor: ritual.leagueColor,
   movieTitle: ritual.movieTitle,
+  posterPath: ritual.posterPath,
   text: ritual.text,
   timestampLabel: toRelativeTimestamp(ritual.rawTimestamp),
   dayKey: ritual.dayKey,
@@ -578,6 +699,11 @@ const readFallbackFromXpState = async (): Promise<MobileCommentFeedItem[]> => {
       if (!text) return null;
 
       const movieTitle = normalizeText(ritual.movieTitle, 120) || 'Untitled film';
+      const inferredPosterPath = inferPosterPathFromTitle(movieTitle);
+      const posterPath =
+        normalizeText(ritual.posterPath, 500) ||
+        normalizeText(ritual.poster_path, 500) ||
+        inferredPosterPath;
       const dateKey = normalizeText(ritual.date, 40);
       const rawTimestamp = dateKey ? `${dateKey}T12:00:00` : '';
       const dayKey = dateKey || toDayKeyFromTimestamp(rawTimestamp);
@@ -592,6 +718,7 @@ const readFallbackFromXpState = async (): Promise<MobileCommentFeedItem[]> => {
         leagueKey: fallbackLeagueKey,
         leagueColor: fallbackLeagueInfo.color,
         movieTitle,
+        posterPath,
         text,
         timestampLabel: dateKey || 'unknown',
         dayKey,
@@ -604,7 +731,8 @@ const readFallbackFromXpState = async (): Promise<MobileCommentFeedItem[]> => {
     })
     .filter((item): item is MobileCommentFeedItem => Boolean(item));
 
-  return mapped.sort((a, b) => b.timestampLabel.localeCompare(a.timestampLabel));
+  const hydrated = await enrichItemsWithPosterMetadata(mapped);
+  return hydrated.sort((a, b) => b.timestampLabel.localeCompare(a.timestampLabel));
 };
 
 export const fetchMobileCommentFeed = async (
@@ -683,8 +811,8 @@ export const fetchMobileCommentFeed = async (
     };
   }
 
-  const normalizedRows = await hydrateAuthorAvatars(
-    await hydrateMissingUserIds(normalizeRitualRows(feedFetch.rows))
+  const normalizedRows = await enrichItemsWithPosterMetadata(
+    await hydrateAuthorAvatars(await hydrateMissingUserIds(normalizeRitualRows(feedFetch.rows)))
   );
   const ritualIds = normalizedRows.map((row) => row.id);
   const { echoMap, replyMap, echoedByMe } = await readEngagementMaps(ritualIds, currentUserId);

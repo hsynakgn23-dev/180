@@ -1,30 +1,27 @@
-import { isSupabaseLive, supabase } from './supabase';
-import { resolveUserIdsByAuthorNames, toAuthorIdentityKey } from './mobileAuthorUserMap';
+import { getCurrentWeekKey, normalizeWeeklyArenaState } from '../../../../src/domain/progressionRewards';
 import { resolveMobileAvatarFromXpState } from './mobileAvatar';
+import { resolveMobileLeagueKeyFromXp } from './mobileLeagueSystem';
+import { isSupabaseLive, readSupabaseSessionSafe, supabase } from './supabase';
 
 type SupabaseErrorLike = {
   code?: string | null;
   message?: string | null;
 };
 
-type RitualRow = {
-  id?: string | null;
-  user_id?: string | null;
-  author?: string | null;
-  timestamp?: string | null;
-  created_at?: string | null;
+type ProfileArenaRow = {
+  user_id?: unknown;
+  display_name?: unknown;
+  xp_state?: unknown;
+  total_xp?: unknown;
 };
 
-type EchoRow = {
-  ritual_id?: string | null;
-};
-
-type ArenaAccumulator = {
-  userId: string | null;
-  displayName: string;
-  ritualsCount: number;
-  echoCount: number;
-  latestMs: number;
+type ParsedWeeklyArena = {
+  cohortLeagueKey: string | null;
+  score: number;
+  activityCount: number;
+  commentRewards: number;
+  quizRewards: number;
+  updatedAt: string | null;
 };
 
 export type MobileArenaEntry = {
@@ -32,36 +29,39 @@ export type MobileArenaEntry = {
   userId: string | null;
   displayName: string;
   avatarUrl: string | null;
-  ritualsCount: number;
-  echoCount: number;
+  totalXp: number;
+  leagueKey: string;
+  weeklyArenaScore: number;
+  weeklyArenaActivity: number;
+  commentRewards: number;
+  quizRewards: number;
+  updatedAt: string | null;
 };
 
 export type MobileArenaSnapshotResult = {
   ok: boolean;
   source: 'live' | 'fallback';
   message: string;
+  scope: 'league' | 'global';
+  weekKey: string;
+  cohortLeagueKey: string | null;
   entries: MobileArenaEntry[];
 };
 
-const FALLBACK_ARENA_ENTRIES: MobileArenaEntry[] = [
-  { rank: 1, userId: null, displayName: 'Cineast_Pro', avatarUrl: null, ritualsCount: 9, echoCount: 31 },
-  { rank: 2, userId: null, displayName: 'Silent_Walker', avatarUrl: null, ritualsCount: 7, echoCount: 22 },
-  { rank: 3, userId: null, displayName: 'User_4421', avatarUrl: null, ritualsCount: 6, echoCount: 18 },
-  { rank: 4, userId: null, displayName: 'Ghibli_Stan', avatarUrl: null, ritualsCount: 5, echoCount: 15 },
-  { rank: 5, userId: null, displayName: 'Novice_Watcher', avatarUrl: null, ritualsCount: 4, echoCount: 9 },
-];
-
-const normalizeText = (value: unknown, maxLength = 120): string => {
+const normalizeText = (value: unknown, maxLength = 160): string => {
   const text = String(value ?? '').trim();
   if (!text) return '';
   return text.length > maxLength ? text.slice(0, maxLength) : text;
 };
 
-const normalizeArenaName = (value: unknown): string =>
-  normalizeText(value, 64).replace(/\s+/g, ' ').trim();
+const toSafeInt = (value: unknown): number => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
+  return Math.max(0, Math.floor(num));
+};
 
-const parseTimestampMs = (row: RitualRow): number => {
-  const raw = normalizeText(row.timestamp || row.created_at, 80);
+const parseIsoMs = (value: unknown): number => {
+  const raw = normalizeText(value, 80);
   if (!raw) return 0;
   const parsed = Date.parse(raw);
   return Number.isNaN(parsed) ? 0 : parsed;
@@ -83,217 +83,245 @@ const isSupabaseCapabilityError = (error: SupabaseErrorLike | null | undefined):
   );
 };
 
-const getFallbackResult = (message: string): MobileArenaSnapshotResult => ({
+const getFallbackResult = (
+  weekKey: string,
+  message: string,
+  entries: MobileArenaEntry[] = [],
+  scope: 'league' | 'global' = 'global',
+  cohortLeagueKey: string | null = null
+): MobileArenaSnapshotResult => ({
   ok: true,
   source: 'fallback',
   message,
-  entries: FALLBACK_ARENA_ENTRIES,
+  scope,
+  weekKey,
+  cohortLeagueKey,
+  entries,
 });
 
-const readRitualRows = async (): Promise<{
-  rows: RitualRow[];
+const resolveXpStateRecord = (value: unknown): Record<string, unknown> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+};
+
+const resolveDisplayName = (row: ProfileArenaRow): string => {
+  const xpState = resolveXpStateRecord(row.xp_state);
+  return (
+    normalizeText(row.display_name, 80) ||
+    normalizeText(xpState.username, 80) ||
+    normalizeText(xpState.fullName, 80) ||
+    'Observer'
+  );
+};
+
+const resolveTotalXp = (row: ProfileArenaRow): number => {
+  const xpState = resolveXpStateRecord(row.xp_state);
+  return Math.max(
+    toSafeInt(row.total_xp),
+    toSafeInt(xpState.totalXP),
+    toSafeInt(xpState.xp)
+  );
+};
+
+const resolveWeeklyArena = (row: ProfileArenaRow, weekKey: string): ParsedWeeklyArena => {
+  const xpState = resolveXpStateRecord(row.xp_state);
+  const weeklyArena = normalizeWeeklyArenaState(xpState.weeklyArena, weekKey);
+  return {
+    cohortLeagueKey: normalizeText(weeklyArena.cohortLeagueKey, 40) || null,
+    score: toSafeInt(weeklyArena.score),
+    activityCount: toSafeInt(weeklyArena.activityCount),
+    commentRewards: toSafeInt(weeklyArena.commentRewards),
+    quizRewards: toSafeInt(weeklyArena.quizRewards),
+    updatedAt: normalizeText(weeklyArena.updatedAt, 80) || null,
+  };
+};
+
+const readProfileRows = async (): Promise<{
+  rows: ProfileArenaRow[];
   error: SupabaseErrorLike | null;
 }> => {
   if (!supabase) {
     return { rows: [], error: { message: 'Supabase unavailable.' } };
   }
 
-  const variants: Array<{ select: string; orderBy: 'timestamp' | 'created_at' }> = [
-    { select: 'id,user_id,author,timestamp', orderBy: 'timestamp' },
-    { select: 'id,user_id,author,created_at', orderBy: 'created_at' },
-    { select: 'id,author,timestamp', orderBy: 'timestamp' },
-    { select: 'id,author,created_at', orderBy: 'created_at' },
-  ];
-
-  let lastError: SupabaseErrorLike | null = null;
-  for (const variant of variants) {
-    const { data, error } = await supabase
-      .from('rituals')
-      .select(variant.select)
-      .order(variant.orderBy, { ascending: false })
-      .limit(280);
-
-    if (error) {
-      lastError = error;
-      if (isSupabaseCapabilityError(error)) {
-        continue;
-      }
-      return { rows: [], error };
-    }
-
-    const rows = Array.isArray(data) ? (data as RitualRow[]) : [];
-    return { rows, error: null };
-  }
-
-  return { rows: [], error: lastError };
-};
-
-const readEchoCounts = async (ritualIds: string[]): Promise<Map<string, number>> => {
-  const counts = new Map<string, number>();
-  if (!supabase || ritualIds.length === 0) return counts;
-
   const { data, error } = await supabase
-    .from('ritual_echoes')
-    .select('ritual_id')
-    .in('ritual_id', ritualIds);
+    .from('profiles_public')
+    .select('user_id,display_name,xp_state,total_xp')
+    .limit(240);
 
-  if (error) return counts;
-
-  const rows = Array.isArray(data) ? (data as EchoRow[]) : [];
-  for (const row of rows) {
-    const ritualId = normalizeText(row.ritual_id, 80);
-    if (!ritualId) continue;
-    counts.set(ritualId, (counts.get(ritualId) || 0) + 1);
-  }
-  return counts;
+  if (error) return { rows: [], error };
+  return {
+    rows: Array.isArray(data) ? (data as ProfileArenaRow[]) : [],
+    error: null,
+  };
 };
 
-const buildEntries = (rows: RitualRow[], echoByRitual: Map<string, number>): MobileArenaEntry[] => {
-  const byAuthor = new Map<string, ArenaAccumulator>();
-
-  for (const row of rows) {
-    const displayName = normalizeArenaName(row.author) || 'Observer';
-    const authorKey = displayName.toLowerCase();
-    const userId = normalizeText(row.user_id, 80) || null;
-    const ritualId = normalizeText(row.id, 80);
-    const echoCount = ritualId ? echoByRitual.get(ritualId) || 0 : 0;
-    const timestampMs = parseTimestampMs(row);
-
-    const current = byAuthor.get(authorKey) || {
-      userId: null,
-      displayName,
-      ritualsCount: 0,
-      echoCount: 0,
-      latestMs: 0,
-    };
-
-    current.displayName = current.displayName || displayName;
-    current.userId = current.userId || userId;
-    current.ritualsCount += 1;
-    current.echoCount += echoCount;
-    current.latestMs = Math.max(current.latestMs, timestampMs);
-    byAuthor.set(authorKey, current);
-  }
-
-  return Array.from(byAuthor.values())
-    .sort((a, b) => {
-      const scoreA = a.ritualsCount * 100 + a.echoCount * 5;
-      const scoreB = b.ritualsCount * 100 + b.echoCount * 5;
-      if (scoreB !== scoreA) return scoreB - scoreA;
-      if (b.latestMs !== a.latestMs) return b.latestMs - a.latestMs;
-      return a.displayName.localeCompare(b.displayName);
+const buildEntries = (rows: ProfileArenaRow[], weekKey: string): MobileArenaEntry[] =>
+  rows
+    .map((row) => {
+      const userId = normalizeText(row.user_id, 120) || null;
+      const displayName = resolveDisplayName(row);
+      const totalXp = resolveTotalXp(row);
+      const weeklyArena = resolveWeeklyArena(row, weekKey);
+      return {
+        rank: 0,
+        userId,
+        displayName,
+        avatarUrl: resolveMobileAvatarFromXpState(row.xp_state),
+        totalXp,
+        leagueKey: weeklyArena.cohortLeagueKey || resolveMobileLeagueKeyFromXp(totalXp),
+        weeklyArenaScore: weeklyArena.score,
+        weeklyArenaActivity: weeklyArena.activityCount,
+        commentRewards: weeklyArena.commentRewards,
+        quizRewards: weeklyArena.quizRewards,
+        updatedAt: weeklyArena.updatedAt,
+      };
     })
-    .slice(0, 5)
-    .map((entry, index) => ({
-      rank: index + 1,
-      userId: entry.userId,
-      displayName: entry.displayName,
-      avatarUrl: null,
-      ritualsCount: entry.ritualsCount,
-      echoCount: entry.echoCount,
-    }));
-};
+    .filter((entry) => Boolean(entry.displayName));
 
-const hydrateArenaEntryUserIds = async (
-  entries: MobileArenaEntry[]
-): Promise<MobileArenaEntry[]> => {
-  const unresolvedNames = entries
-    .filter((entry) => !entry.userId)
-    .map((entry) => entry.displayName)
-    .filter(Boolean);
-  if (unresolvedNames.length === 0) return entries;
-
-  const authorUserMap = await resolveUserIdsByAuthorNames(unresolvedNames);
-  if (authorUserMap.size === 0) return entries;
-
-  return entries.map((entry) => {
-    if (entry.userId) return entry;
-    const resolvedUserId = authorUserMap.get(toAuthorIdentityKey(entry.displayName)) || null;
-    if (!resolvedUserId) return entry;
-    return {
-      ...entry,
-      userId: resolvedUserId,
-    };
+const sortArenaEntries = (entries: MobileArenaEntry[]): MobileArenaEntry[] =>
+  [...entries].sort((a, b) => {
+    if (b.weeklyArenaScore !== a.weeklyArenaScore) return b.weeklyArenaScore - a.weeklyArenaScore;
+    if (b.weeklyArenaActivity !== a.weeklyArenaActivity) return b.weeklyArenaActivity - a.weeklyArenaActivity;
+    if (b.commentRewards !== a.commentRewards) return b.commentRewards - a.commentRewards;
+    if (b.quizRewards !== a.quizRewards) return b.quizRewards - a.quizRewards;
+    if (b.totalXp !== a.totalXp) return b.totalXp - a.totalXp;
+    const updatedDiff = parseIsoMs(b.updatedAt) - parseIsoMs(a.updatedAt);
+    if (updatedDiff !== 0) return updatedDiff;
+    return a.displayName.localeCompare(b.displayName);
   });
-};
 
-type ProfileAvatarRow = {
-  user_id?: string | null;
-  xp_state?: unknown;
-};
-
-const readAvatarRowsByUserIds = async (userIds: string[]): Promise<ProfileAvatarRow[]> => {
-  if (!supabase) return [];
-
-  const normalizedUserIds = Array.from(
-    new Set(userIds.map((userId) => normalizeText(userId, 120)).filter(Boolean))
+const selectScopedEntries = (input: {
+  entries: MobileArenaEntry[];
+  currentUserId: string | null;
+  currentLeagueKey: string | null;
+}): {
+  scope: 'league' | 'global';
+  cohortLeagueKey: string | null;
+  entries: MobileArenaEntry[];
+} => {
+  const activeEntries = input.entries.filter(
+    (entry) =>
+      entry.weeklyArenaScore > 0 ||
+      entry.weeklyArenaActivity > 0 ||
+      (input.currentUserId && entry.userId === input.currentUserId)
   );
-  if (normalizedUserIds.length === 0) return [];
 
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('user_id,xp_state')
-    .in('user_id', normalizedUserIds);
-  if (error) return [];
-  return Array.isArray(data) ? (data as ProfileAvatarRow[]) : [];
-};
-
-const hydrateArenaEntryAvatars = async (
-  entries: MobileArenaEntry[]
-): Promise<MobileArenaEntry[]> => {
-  const userIds = entries.map((entry) => entry.userId || '').filter(Boolean);
-  if (userIds.length === 0) return entries;
-
-  const avatarRows = await readAvatarRowsByUserIds(userIds);
-  if (avatarRows.length === 0) return entries;
-
-  const avatarMap = new Map<string, string>();
-  for (const row of avatarRows) {
-    const userId = normalizeText(row.user_id, 120);
-    if (!userId || avatarMap.has(userId)) continue;
-    const avatarUrl = resolveMobileAvatarFromXpState(row.xp_state);
-    if (!avatarUrl) continue;
-    avatarMap.set(userId, avatarUrl);
-  }
-  if (avatarMap.size === 0) return entries;
-
-  return entries.map((entry) => {
-    const userId = entry.userId || '';
-    if (!userId) return entry;
-    const avatarUrl = avatarMap.get(userId) || '';
-    if (!avatarUrl) return entry;
+  if (activeEntries.length === 0) {
     return {
-      ...entry,
-      avatarUrl,
+      scope: 'global',
+      cohortLeagueKey: null,
+      entries: [],
     };
-  });
+  }
+
+  const sameLeagueEntries =
+    input.currentLeagueKey
+      ? activeEntries.filter(
+          (entry) =>
+            entry.leagueKey === input.currentLeagueKey ||
+            (input.currentUserId && entry.userId === input.currentUserId)
+        )
+      : [];
+
+  if (sameLeagueEntries.length >= 3) {
+    const sortedLeagueEntries = sortArenaEntries(sameLeagueEntries);
+    const topLeagueEntries = sortedLeagueEntries.slice(0, 10);
+    const currentUserEntry =
+      input.currentUserId
+        ? sortedLeagueEntries.find((entry) => entry.userId === input.currentUserId) || null
+        : null;
+    const scopedEntries =
+      currentUserEntry &&
+      topLeagueEntries.length >= 10 &&
+      !topLeagueEntries.some((entry) => entry.userId === currentUserEntry.userId)
+        ? [...topLeagueEntries.slice(0, 9), currentUserEntry]
+        : topLeagueEntries;
+    return {
+      scope: 'league',
+      cohortLeagueKey: input.currentLeagueKey,
+      entries: scopedEntries,
+    };
+  }
+
+  const sortedActiveEntries = sortArenaEntries(activeEntries);
+  const topActiveEntries = sortedActiveEntries.slice(0, 10);
+  const currentUserEntry =
+    input.currentUserId
+      ? sortedActiveEntries.find((entry) => entry.userId === input.currentUserId) || null
+      : null;
+  const scopedEntries =
+    currentUserEntry &&
+    topActiveEntries.length >= 10 &&
+    !topActiveEntries.some((entry) => entry.userId === currentUserEntry.userId)
+      ? [...topActiveEntries.slice(0, 9), currentUserEntry]
+      : topActiveEntries;
+  return {
+    scope: 'global',
+    cohortLeagueKey: null,
+    entries: scopedEntries,
+  };
 };
 
 export const fetchMobileArenaSnapshot = async (): Promise<MobileArenaSnapshotResult> => {
+  const weekKey = getCurrentWeekKey(new Date());
+
   if (!isSupabaseLive() || !supabase) {
-    return getFallbackResult('Arena fallback listesi gosteriliyor.');
+    return getFallbackResult(weekKey, 'Arena sezonu icin canli baglanti bekleniyor.');
   }
 
-  const { rows, error } = await readRitualRows();
-  if (error || rows.length === 0) {
-    return getFallbackResult('Arena canli verisi yok, fallback listesi gosteriliyor.');
+  const sessionResult = await readSupabaseSessionSafe();
+  const currentUserId = normalizeText(sessionResult.session?.user?.id, 120) || null;
+  const { rows, error } = await readProfileRows();
+
+  if (error) {
+    if (isSupabaseCapabilityError(error)) {
+      return getFallbackResult(weekKey, 'Arena sezonu icin profil verisi okunamadi.');
+    }
+    return getFallbackResult(
+      weekKey,
+      normalizeText(error.message, 220) || 'Arena tablosu guncellenemedi.'
+    );
   }
 
-  const ritualIds = rows
-    .map((row) => normalizeText(row.id, 80))
-    .filter((value): value is string => Boolean(value));
-  const echoByRitual = await readEchoCounts(ritualIds);
-  const entries = await hydrateArenaEntryAvatars(
-    await hydrateArenaEntryUserIds(buildEntries(rows, echoByRitual))
-  );
-  if (entries.length === 0) {
-    return getFallbackResult('Arena canli verisi bos, fallback listesi gosteriliyor.');
+  if (rows.length === 0) {
+    return {
+      ok: true,
+      source: 'live',
+      message: 'Bu hafta henuz arena skoru birikmedi.',
+      scope: 'global',
+      weekKey,
+      cohortLeagueKey: null,
+      entries: [],
+    };
   }
+
+  const builtEntries = buildEntries(rows, weekKey);
+  const currentEntry =
+    currentUserId ? builtEntries.find((entry) => entry.userId === currentUserId) || null : null;
+  const scoped = selectScopedEntries({
+    entries: builtEntries,
+    currentUserId,
+    currentLeagueKey: currentEntry?.leagueKey || null,
+  });
+
+  const rankedEntries = scoped.entries.map((entry, index) => ({
+    ...entry,
+    rank: index + 1,
+  }));
 
   return {
     ok: true,
     source: 'live',
-    message: 'Arena leaderboard guncellendi.',
-    entries,
+    message:
+      rankedEntries.length > 0
+        ? scoped.scope === 'league' && scoped.cohortLeagueKey
+          ? `${scoped.cohortLeagueKey} grubu arena tablosu guncellendi.`
+          : 'Arena sezon tablosu guncellendi.'
+        : 'Bu hafta henuz arena skoru birikmedi.',
+    scope: scoped.scope,
+    weekKey,
+    cohortLeagueKey: scoped.cohortLeagueKey,
+    entries: rankedEntries,
   };
 };

@@ -1,5 +1,6 @@
 import { createCorsHeaders } from './lib/cors.js';
 import { createSupabaseServiceClient } from './lib/supabaseServiceClient.js';
+import { applyPoolAnswerMarks } from './lib/markUnlock.js';
 import {
     DAILY_QUIZ_CORRECT_XP
 } from '../src/domain/dailyQuizRewards.js';
@@ -122,7 +123,6 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         return sendJson(res, 400, { ok: false, error: 'Invalid selected_option.' }, cors);
     }
 
-    // Get question with correct answer
     const { data: question, error: questionError } = await supabase
         .from('question_pool_questions')
         .select('id, movie_id, tmdb_movie_id, correct_option, explanation_translations, question_order')
@@ -138,76 +138,51 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     const explanations = (question.explanation_translations || {}) as Record<string, string>;
     const explanation = explanations[validLang] || explanations.tr || explanations.en || '';
 
-    // Upsert user progress for this movie
-    const { data: existingProgress } = await supabase
-        .from('movie_pool_user_progress')
-        .select('id, questions_answered, correct_count, xp_earned, completed')
-        .eq('user_id', user.id)
-        .eq('movie_id', question.movie_id)
-        .single();
+    const fallbackDisplayName = user.email ? String(user.email).split('@')[0] : null;
+    const { data: rpcData, error: rpcError } = await supabase.rpc('record_pool_answer', {
+        p_user_id: user.id,
+        p_question_id: questionId,
+        p_movie_id: question.movie_id,
+        p_is_correct: isCorrect,
+        p_correct_xp: POOL_CORRECT_XP,
+        p_perfect_bonus_xp: POOL_PERFECT_BONUS_XP,
+        p_email: user.email || null,
+        p_display_name: fallbackDisplayName,
+    });
 
-    const newAnswered = (existingProgress?.questions_answered || 0) + 1;
-    const newCorrect = (existingProgress?.correct_count || 0) + (isCorrect ? 1 : 0);
-    const xpDelta = isCorrect ? POOL_CORRECT_XP : 0;
-    const newXp = (existingProgress?.xp_earned || 0) + xpDelta;
-
-    // Get total question count for this movie
-    const { count: totalQuestions } = await supabase
-        .from('question_pool_questions')
-        .select('*', { count: 'exact', head: true })
-        .eq('movie_id', question.movie_id);
-
-    const isCompleted = newAnswered >= (totalQuestions || 5);
-    const isPerfect = isCompleted && newCorrect === (totalQuestions || 5);
-    const totalXp = isPerfect ? newXp + POOL_PERFECT_BONUS_XP : newXp;
-
-    if (existingProgress?.id) {
-        await supabase
-            .from('movie_pool_user_progress')
-            .update({
-                questions_answered: newAnswered,
-                correct_count: newCorrect,
-                xp_earned: totalXp,
-                completed: isCompleted,
-                updated_at: new Date().toISOString()
-            })
-            .eq('id', existingProgress.id);
-    } else {
-        await supabase
-            .from('movie_pool_user_progress')
-            .insert({
-                user_id: user.id,
-                movie_id: question.movie_id,
-                questions_answered: newAnswered,
-                correct_count: newCorrect,
-                xp_earned: totalXp,
-                completed: isCompleted
-            });
+    if (rpcError) {
+        console.error('pool-answer: record_pool_answer failed', {
+            code: rpcError.code,
+            message: rpcError.message,
+            userId: user.id,
+            questionId,
+        });
+        return sendJson(res, 500, { ok: false, error: 'Failed to save answer.' }, cors);
     }
 
-    // Update profile XP
-    if (xpDelta > 0 || (isPerfect && POOL_PERFECT_BONUS_XP > 0)) {
-        const finalXpDelta = isPerfect ? xpDelta + POOL_PERFECT_BONUS_XP : xpDelta;
-        const { data: profile } = await supabase
-            .from('profiles')
-            .select('xp_state')
-            .eq('user_id', user.id)
-            .single();
+    const rpcRow =
+        Array.isArray(rpcData)
+            ? (rpcData[0] as Record<string, unknown> | undefined)
+            : (rpcData as Record<string, unknown> | null | undefined);
 
-        if (profile) {
-            const xpState = (profile.xp_state || {}) as Record<string, unknown>;
-            const currentXp = Number(xpState.xp || 0);
-            await supabase
-                .from('profiles')
-                .update({
-                    xp_state: { ...xpState, xp: currentXp + finalXpDelta },
-                    updated_at: new Date().toISOString()
-                })
-                .eq('user_id', user.id);
-        }
+    if (!rpcRow) {
+        console.error('pool-answer: record_pool_answer returned no data', {
+            userId: user.id,
+            questionId,
+        });
+        return sendJson(res, 500, { ok: false, error: 'Failed to save answer.' }, cors);
     }
 
-    // Check subscription for ad trigger
+    const duplicate = rpcRow.duplicate === true;
+    const recordedIsCorrect = rpcRow.recorded_is_correct === true;
+    const answered = Number(rpcRow.questions_answered || 0);
+    const correct = Number(rpcRow.correct_count || 0);
+    const total = Number(rpcRow.total_questions || 5) || 5;
+    const completed = rpcRow.completed === true;
+    const isPerfect = rpcRow.is_perfect === true;
+    const xpEarned = Number(rpcRow.xp_earned || 0);
+    const bonusXp = Number(rpcRow.bonus_xp || 0);
+
     const { data: profile } = await supabase
         .from('profiles')
         .select('subscription_tier')
@@ -215,27 +190,36 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         .single();
 
     const isFreeUser = !profile?.subscription_tier || profile.subscription_tier === 'free';
-    const shouldShowAd = isFreeUser && isCompleted;
+    const shouldShowAd = !duplicate && isFreeUser && completed;
 
-    const xpEarned = isPerfect ? (xpDelta + POOL_PERFECT_BONUS_XP) : xpDelta;
-    const bonusXp = isPerfect ? POOL_PERFECT_BONUS_XP : 0;
+    const newlyUnlockedMarks = duplicate
+        ? []
+        : await applyPoolAnswerMarks(
+            supabase,
+            user.id,
+            isCorrect,
+            isPerfect,
+            null
+        );
 
     return sendJson(res, 200, {
         ok: true,
         question_id: questionId,
         selected_option: selectedOption,
         correct_option: question.correct_option,
-        is_correct: isCorrect,
+        is_correct: recordedIsCorrect,
         explanation,
         xp_earned: xpEarned,
         bonus_xp: bonusXp,
+        duplicate,
         progress: {
-            answered: newAnswered,
-            correct: newCorrect,
-            total: totalQuestions || 5,
-            completed: isCompleted,
+            answered,
+            correct,
+            total,
+            completed,
             is_perfect: isPerfect
         },
-        should_show_ad: shouldShowAd
+        should_show_ad: shouldShowAd,
+        new_marks: newlyUnlockedMarks,
     }, cors);
 }

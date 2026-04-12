@@ -671,19 +671,59 @@ export const Arena: React.FC = () => {
     };
 
     return (
-        <section className="max-w-4xl mx-auto px-0 sm:px-6 mb-32 animate-slide-up overflow-x-hidden">
-            <div className="flex flex-col items-center mb-10 opacity-70 px-4 sm:px-0">
-                <div className="w-px h-12 bg-sage/20 mb-4" />
-                <h2 className="text-xs font-bold tracking-[0.3em] text-sage uppercase">
+        <section className="max-w-3xl mx-auto px-4 sm:px-6 mb-32 animate-slide-up overflow-x-hidden">
+
+            {/* Hero Header */}
+            <div className="relative flex flex-col items-center mb-10 pt-2">
+                {/* Decorative top line */}
+                <div className="w-px h-10 bg-gradient-to-b from-transparent to-sage/30 mb-5" />
+
+                {/* Icon */}
+                <div className="w-10 h-10 rounded-full bg-sage/10 border border-sage/20 flex items-center justify-center mb-4 shadow-[0_0_24px_rgba(138,154,91,0.15)]">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="text-sage">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />
+                        <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.5" />
+                        <circle cx="12" cy="4.5" r="1" fill="currentColor" />
+                        <circle cx="12" cy="19.5" r="1" fill="currentColor" />
+                        <circle cx="4.5" cy="12" r="1" fill="currentColor" />
+                        <circle cx="19.5" cy="12" r="1" fill="currentColor" />
+                    </svg>
+                </div>
+
+                <h2 className="text-[11px] font-bold tracking-[0.4em] text-sage uppercase mb-2">
                     {text.arena.title}
                 </h2>
-                <p className="mt-2 text-[10px] tracking-[0.18em] uppercase text-[#E5E4E2]/40">
+                <p className="text-[10px] tracking-[0.2em] uppercase text-[#E5E4E2]/30">
                     {text.arena.subtitle}
                 </p>
+
+                {/* Stats row */}
+                {!isRemoteLoading && (
+                    <div className="mt-5 flex items-center gap-6">
+                        <div className="text-center">
+                            <div className="text-[15px] font-bold text-[#E5E4E2]/70 tabular-nums">
+                                {filteredRituals.length}
+                            </div>
+                            <div className="text-[9px] uppercase tracking-[0.18em] text-[#E5E4E2]/25 mt-0.5">
+                                {text.arena.all}
+                            </div>
+                        </div>
+                        <div className="w-px h-6 bg-white/10" />
+                        <div className="text-center">
+                            <div className="text-[15px] font-bold text-[#E5E4E2]/70 tabular-nums">
+                                {hotStreakAuthors.size}
+                            </div>
+                            <div className="text-[9px] uppercase tracking-[0.18em] text-[#E5E4E2]/25 mt-0.5">
+                                {text.arena.hotStreakBadge}
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
 
-            <div className="mb-4 px-4 sm:px-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <p className="text-[10px] uppercase tracking-[0.16em] text-sage/85 break-all">
+            {/* Self handle + find my posts */}
+            <div className="mb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-1">
+                <p className="text-[10px] uppercase tracking-[0.16em] text-[#E5E4E2]/40 break-all">
                     {format(text.arena.selfHandleLabel, { handle: selfHandle })}
                 </p>
                 <button
@@ -692,71 +732,100 @@ export const Arena: React.FC = () => {
                         setQuery(user?.name || selfHandle);
                         setSortMode('latest');
                     }}
-                    className="text-[10px] uppercase tracking-[0.16em] text-gray-400 hover:text-sage transition-colors self-start sm:self-auto"
+                    className="text-[10px] uppercase tracking-[0.16em] text-[#E5E4E2]/30 hover:text-sage transition-colors self-start sm:self-auto"
                 >
                     {text.arena.findMyComments}
                 </button>
             </div>
 
-            <div className="sticky top-14 sm:top-20 z-30 pt-4 pb-3 mb-6 px-4 sm:px-2 -mx-4 sm:mx-0 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 border-b border-sage/10 bg-[#121212]/85 backdrop-blur-md transition-all">
-                <div className="flex flex-wrap gap-4 sm:gap-6">
-                    <button
-                        onClick={() => setFilter('all')}
-                        className={`text-[10px] uppercase tracking-widest transition-all duration-300 ${filter === 'all' ? 'text-sage font-bold drop-shadow-[0_0_8px_rgba(138,154,91,0.4)] relative after:content-[""] after:absolute after:-bottom-1 after:left-0 after:w-full after:h-[2px] after:bg-sage after:rounded-t-sm' : 'text-gray-500 hover:text-gray-300'}`}
-                    >
-                        {text.arena.all}
-                    </button>
-                    <button
-                        onClick={() => setFilter('today')}
-                        className={`text-[10px] uppercase tracking-widest transition-all duration-300 ${filter === 'today' ? 'text-sage font-bold drop-shadow-[0_0_8px_rgba(138,154,91,0.4)] relative after:content-[""] after:absolute after:-bottom-1 after:left-0 after:w-full after:h-[2px] after:bg-sage after:rounded-t-sm' : 'text-gray-500 hover:text-gray-300'}`}
-                    >
-                        {text.arena.today}
-                    </button>
-                </div>
+            {/* Sticky filter + search bar */}
+            <div className="sticky top-14 sm:top-20 z-30 mb-5 -mx-4 sm:mx-0 px-4 sm:px-0">
+                <div className="rounded-2xl border border-white/[0.07] bg-[#0d0d0d]/90 backdrop-blur-xl shadow-[0_4px_24px_rgba(0,0,0,0.5)] px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
+                    {/* Filter tabs */}
+                    <div className="flex items-center gap-1 bg-white/[0.04] rounded-xl p-1">
+                        <button
+                            onClick={() => setFilter('all')}
+                            className={`px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-widest transition-all duration-200 ${
+                                filter === 'all'
+                                    ? 'bg-sage/20 text-sage font-bold shadow-[0_0_12px_rgba(138,154,91,0.2)]'
+                                    : 'text-[#E5E4E2]/40 hover:text-[#E5E4E2]/70'
+                            }`}
+                        >
+                            {text.arena.all}
+                        </button>
+                        <button
+                            onClick={() => setFilter('today')}
+                            className={`px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-widest transition-all duration-200 ${
+                                filter === 'today'
+                                    ? 'bg-sage/20 text-sage font-bold shadow-[0_0_12px_rgba(138,154,91,0.2)]'
+                                    : 'text-[#E5E4E2]/40 hover:text-[#E5E4E2]/70'
+                            }`}
+                        >
+                            {text.arena.today}
+                        </button>
+                    </div>
 
-                <div className="flex w-full lg:w-auto flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
-                    <input
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        placeholder={text.arena.searchPlaceholder}
-                        className="w-full sm:w-60 md:w-48 bg-[#141414]/90 border border-white/10 text-[11px] text-[#E5E4E2] px-4 py-2 rounded-full outline-none focus:border-sage/50 focus:ring-1 focus:ring-sage/30 transition-all shadow-inner"
-                    />
-                    <select
-                        value={sortMode}
-                        onChange={(e) => setSortMode(e.target.value as 'latest' | 'echoes')}
-                        className="w-full sm:w-auto bg-[#141414]/90 border border-white/10 text-[11px] text-[#E5E4E2] px-3 py-2 rounded-full outline-none focus:border-sage/50 focus:ring-1 focus:ring-sage/30 transition-all shadow-inner cursor-pointer appearance-none"
-                    >
-                        <option value="latest">{text.arena.sortLatest}</option>
-                        <option value="echoes">{text.arena.sortMostLiked}</option>
-                    </select>
+                    <div className="flex items-center gap-2 flex-1">
+                        {/* Search */}
+                        <div className="relative flex-1">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="absolute left-3 top-1/2 -translate-y-1/2 text-[#E5E4E2]/30">
+                                <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2" />
+                                <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                            </svg>
+                            <input
+                                value={query}
+                                onChange={(e) => setQuery(e.target.value)}
+                                placeholder={text.arena.searchPlaceholder}
+                                className="w-full bg-white/[0.04] border border-white/[0.06] text-[11px] text-[#E5E4E2]/80 placeholder-[#E5E4E2]/20 pl-8 pr-4 py-2 rounded-xl outline-none focus:border-sage/30 focus:ring-1 focus:ring-sage/15 transition-all"
+                            />
+                        </div>
+
+                        {/* Sort */}
+                        <select
+                            value={sortMode}
+                            onChange={(e) => setSortMode(e.target.value as 'latest' | 'echoes')}
+                            className="bg-white/[0.04] border border-white/[0.06] text-[10px] text-[#E5E4E2]/60 px-3 py-2 rounded-xl outline-none focus:border-sage/30 transition-all cursor-pointer appearance-none shrink-0"
+                        >
+                            <option value="latest">{text.arena.sortLatest}</option>
+                            <option value="echoes">{text.arena.sortMostLiked}</option>
+                        </select>
+                    </div>
                 </div>
             </div>
 
-            <div className="flex flex-col">
+            {/* Feed */}
+            <div className="flex flex-col gap-0">
                 {feedError && (
-                    <div className="mb-3 text-center py-3 px-3 text-[10px] text-red-300 uppercase tracking-[0.14em] border border-red-400/30 rounded bg-red-500/5">
+                    <div className="mb-4 py-3 px-4 text-[10px] text-red-300/80 uppercase tracking-[0.14em] border border-red-400/20 rounded-2xl bg-red-500/5 text-center">
                         {feedError}
                     </div>
                 )}
+
                 {isRemoteLoading && canUseRemoteFeed ? (
-                    <div className="flex flex-col gap-6 animate-pulse px-4 sm:px-0 mt-4">
+                    <div className="flex flex-col gap-3 mt-2">
                         {[1, 2, 3].map((i) => (
-                            <div key={i} className="flex flex-col sm:flex-row gap-4">
-                                <div className="w-10 h-14 bg-[#1a1a1a]/80 border border-white/5 rounded shrink-0" />
-                                <div className="grow space-y-3 py-2">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-24 h-3 bg-[#1a1a1a]/80 rounded" />
-                                        <div className="w-32 h-2 bg-[#1a1a1a]/40 rounded" />
+                            <div key={i} className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f]/80 p-5 animate-pulse">
+                                <div className="flex gap-4">
+                                    <div className="w-11 h-[62px] rounded-lg bg-white/[0.04] shrink-0" />
+                                    <div className="grow space-y-2.5 pt-1">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-28 h-3 bg-white/[0.06] rounded-full" />
+                                            <div className="w-8 h-3 bg-white/[0.04] rounded-full" />
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-14 h-4 bg-white/[0.04] rounded-full" />
+                                            <div className="w-20 h-3 bg-white/[0.03] rounded-full" />
+                                        </div>
                                     </div>
-                                    <div className="space-y-1.5">
-                                        <div className="w-full h-2.5 bg-[#1a1a1a]/50 rounded" />
-                                        <div className="w-11/12 h-2.5 bg-[#1a1a1a]/50 rounded" />
-                                        <div className="w-4/5 h-2.5 bg-[#1a1a1a]/50 rounded" />
-                                    </div>
-                                    <div className="flex gap-4 pt-2">
-                                        <div className="w-12 h-2 bg-[#1a1a1a]/60 rounded" />
-                                        <div className="w-12 h-2 bg-[#1a1a1a]/60 rounded" />
-                                    </div>
+                                </div>
+                                <div className="mt-4 space-y-2 pl-[60px]">
+                                    <div className="w-full h-2.5 bg-white/[0.04] rounded-full" />
+                                    <div className="w-11/12 h-2.5 bg-white/[0.04] rounded-full" />
+                                    <div className="w-3/4 h-2.5 bg-white/[0.03] rounded-full" />
+                                </div>
+                                <div className="mt-4 pt-3 border-t border-white/[0.03] pl-[60px] flex gap-5">
+                                    <div className="w-16 h-2.5 bg-white/[0.04] rounded-full" />
+                                    <div className="w-12 h-2.5 bg-white/[0.04] rounded-full" />
                                 </div>
                             </div>
                         ))}
@@ -781,14 +850,24 @@ export const Arena: React.FC = () => {
                         />
                     ))
                 ) : (
-                    <div className="text-center py-10 text-[10px] text-gray-500 uppercase tracking-[0.18em] border border-white/5 rounded">
-                        {text.arena.empty}
+                    <div className="flex flex-col items-center py-16 gap-3">
+                        <div className="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-[#E5E4E2]/20">
+                                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />
+                                <path d="M12 8v4M12 16h.01" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                            </svg>
+                        </div>
+                        <span className="text-[10px] text-[#E5E4E2]/25 uppercase tracking-[0.2em]">
+                            {text.arena.empty}
+                        </span>
                     </div>
                 )}
             </div>
 
-            <div className="mt-12 text-center">
-                <span className="text-[10px] tracking-[0.2em] text-[#E5E4E2]/20 uppercase">
+            {/* End of feed */}
+            <div className="mt-12 flex flex-col items-center gap-3">
+                <div className="w-px h-8 bg-gradient-to-b from-white/10 to-transparent" />
+                <span className="text-[9px] tracking-[0.3em] text-[#E5E4E2]/15 uppercase">
                     {text.arena.end}
                 </span>
             </div>

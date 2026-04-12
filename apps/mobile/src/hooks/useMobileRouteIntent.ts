@@ -17,6 +17,7 @@ type UseMobileRouteIntentOptions = {
 
 type UseMobileRouteIntentResult = {
   activeIntent: MobileRouteIntent;
+  clearIncomingIntent: () => void;
   deepLink: string;
   handleIncomingUrl: (url: string | null) => void;
   lastIncomingIntent: MobileRouteIntent | null;
@@ -45,6 +46,11 @@ export const useMobileRouteIntent = (
 
   const setManualIntent = useCallback((intent: MobileRouteIntent | null) => {
     setManualIntentState(intent);
+  }, []);
+
+  const clearIncomingIntent = useCallback(() => {
+    setLastIncomingIntent(null);
+    setLastIncomingUrl(null);
   }, []);
 
   const trackEntryIntent = useCallback((intent: MobileRouteIntent, rawUrl: string) => {
@@ -89,6 +95,7 @@ export const useMobileRouteIntent = (
 
   return {
     activeIntent,
+    clearIncomingIntent,
     deepLink,
     handleIncomingUrl,
     lastIncomingIntent,

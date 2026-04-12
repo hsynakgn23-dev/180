@@ -41,6 +41,19 @@ const normalizeOrigin = (value: string): string => {
     }
 };
 
+const isLoopbackOrigin = (value: string): boolean => {
+    const normalized = normalizeOrigin(value);
+    if (!normalized) return false;
+
+    try {
+        const parsed = new URL(normalized);
+        const hostname = String(parsed.hostname || '').trim().toLowerCase();
+        return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+    } catch {
+        return false;
+    }
+};
+
 const resolveConfiguredOrigins = (): string[] =>
     [
         process.env.PUBLIC_APP_URL,
@@ -58,7 +71,7 @@ export const resolveAllowedOrigin = (req: ApiRequestLike): string => {
     const allowedOrigins = getAllowedOrigins();
     const requestOrigin = normalizeOrigin(readHeader(req.headers, 'origin'));
 
-    if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
+    if (requestOrigin && (allowedOrigins.includes(requestOrigin) || isLoopbackOrigin(requestOrigin))) {
         return requestOrigin;
     }
 
@@ -74,4 +87,7 @@ export const createCorsHeaders = (
     'access-control-allow-headers': options.headers,
     'access-control-max-age': '86400',
     vary: 'Origin',
+    'x-content-type-options': 'nosniff',
+    'x-frame-options': 'SAMEORIGIN',
+    'referrer-policy': 'strict-origin-when-cross-origin',
 });

@@ -20,6 +20,19 @@ export type PoolMovie = {
     questionCount: number;
 };
 
+type DailyPoolMovieMetadata = {
+    title: string | null;
+    posterPath: string | null;
+    releaseYear: number | null;
+    genre: string | null;
+    era: string | null;
+    overview: string | null;
+    voteAverage: number | null;
+    originalLanguage: string | null;
+    castNames: string[];
+    director: string | null;
+};
+
 type TmdbDiscoverResult = {
     id?: number;
     title?: string;
@@ -136,6 +149,141 @@ const getServiceSupabase = () => {
 // ============================================================
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const normalizeText = (value: unknown): string => {
+    if (typeof value !== 'string') return '';
+    return value.trim();
+};
+
+const normalizeStringArray = (value: unknown): string[] => {
+    if (!Array.isArray(value)) return [];
+    return Array.from(
+        new Set(
+            value
+                .map((item) => normalizeText(item))
+                .filter(Boolean)
+        )
+    );
+};
+
+const normalizeVoteAverage = (value: unknown): number | null => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+};
+
+const normalizeReleaseYear = (value: unknown): number | null => {
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed > 1850 ? parsed : null;
+};
+
+const readDailyPoolMetadataMovie = (value: unknown): { tmdbId: number; metadata: DailyPoolMovieMetadata } | null => {
+    if (!value || typeof value !== 'object') return null;
+    const movie = value as Record<string, unknown>;
+    const tmdbId = Number(movie.id ?? movie.movieId ?? movie.tmdb_id ?? movie.tmdbId);
+    if (!Number.isInteger(tmdbId) || tmdbId <= 0) return null;
+
+    const releaseYear = normalizeReleaseYear(movie.year ?? movie.releaseYear ?? movie.release_year);
+    const genre = normalizeText(movie.genre) || null;
+
+    return {
+        tmdbId,
+        metadata: {
+            title: normalizeText(movie.title) || null,
+            posterPath: normalizeText(movie.posterPath ?? movie.poster_path) || null,
+            releaseYear,
+            genre,
+            era: normalizeText(movie.era) || classifyEra(releaseYear),
+            overview: normalizeText(movie.overview) || null,
+            voteAverage: normalizeVoteAverage(movie.voteAverage ?? movie.vote_average),
+            originalLanguage: normalizeText(movie.originalLanguage ?? movie.original_language) || null,
+            castNames: normalizeStringArray(movie.cast ?? movie.castNames ?? movie.cast_names).slice(0, TMDB_CAST_LIMIT),
+            director: normalizeText(movie.director) || null,
+        }
+    };
+};
+
+const mergeDailyPoolMetadata = (
+    current: DailyPoolMovieMetadata | undefined,
+    incoming: DailyPoolMovieMetadata
+): DailyPoolMovieMetadata => {
+    if (!current) return incoming;
+    return {
+        title: current.title || incoming.title,
+        posterPath: current.posterPath || incoming.posterPath,
+        releaseYear: current.releaseYear || incoming.releaseYear,
+        genre: current.genre || incoming.genre,
+        era: current.era || incoming.era,
+        overview: current.overview || incoming.overview,
+        voteAverage: current.voteAverage ?? incoming.voteAverage,
+        originalLanguage: current.originalLanguage || incoming.originalLanguage,
+        castNames: current.castNames.length > 0 ? current.castNames : incoming.castNames,
+        director: current.director || incoming.director,
+    };
+};
+
+const buildDailyPoolMetadataMap = async (
+    supabase: ReturnType<typeof getServiceSupabase>,
+    batchDate: string
+): Promise<Map<number, DailyPoolMovieMetadata>> => {
+    const metadataByMovieId = new Map<number, DailyPoolMovieMetadata>();
+
+    const [{ data: batchRow }, { data: showcaseRow }] = await Promise.all([
+        supabase
+            .from('daily_quiz_batches')
+            .select('movies')
+            .eq('date', batchDate)
+            .maybeSingle(),
+        supabase
+            .from('daily_showcase')
+            .select('movies')
+            .eq('date', batchDate)
+            .maybeSingle()
+    ]);
+
+    for (const sourceRow of [batchRow, showcaseRow]) {
+        const movies = Array.isArray((sourceRow as { movies?: unknown[] } | null)?.movies)
+            ? ((sourceRow as { movies?: unknown[] }).movies || [])
+            : [];
+        for (const movie of movies) {
+            const parsed = readDailyPoolMetadataMovie(movie);
+            if (!parsed) continue;
+            metadataByMovieId.set(
+                parsed.tmdbId,
+                mergeDailyPoolMetadata(metadataByMovieId.get(parsed.tmdbId), parsed.metadata)
+            );
+        }
+    }
+
+    return metadataByMovieId;
+};
+
+const buildPoolMovieMetadataPatch = (
+    existingMovie: Record<string, unknown> | null | undefined,
+    metadata: DailyPoolMovieMetadata | undefined,
+    fallbackTitle: string
+): Record<string, unknown> => {
+    const patch: Record<string, unknown> = {};
+    const normalizedTitle = metadata?.title || normalizeText(existingMovie?.title) || fallbackTitle;
+
+    if (!normalizeText(existingMovie?.title) && normalizedTitle) patch.title = normalizedTitle;
+    if (!normalizeText(existingMovie?.poster_path) && metadata?.posterPath) patch.poster_path = metadata.posterPath;
+    if (!normalizeReleaseYear(existingMovie?.release_year) && metadata?.releaseYear) patch.release_year = metadata.releaseYear;
+    if (!normalizeText(existingMovie?.genre) && metadata?.genre) patch.genre = metadata.genre;
+    if (!normalizeText(existingMovie?.era) && metadata?.era) patch.era = metadata.era;
+    if (!normalizeText(existingMovie?.overview) && metadata?.overview) patch.overview = metadata.overview;
+    if (normalizeVoteAverage(existingMovie?.vote_average) === null && metadata?.voteAverage !== null && metadata?.voteAverage !== undefined) {
+        patch.vote_average = metadata.voteAverage;
+    }
+    if (!normalizeText(existingMovie?.original_language) && metadata?.originalLanguage) patch.original_language = metadata.originalLanguage;
+    if (normalizeStringArray(existingMovie?.cast_names).length === 0 && metadata?.castNames?.length) patch.cast_names = metadata.castNames;
+    if (!normalizeText(existingMovie?.director) && metadata?.director) patch.director = metadata.director;
+
+    if (Object.keys(patch).length > 0) {
+        patch.updated_at = new Date().toISOString();
+    }
+
+    return patch;
+};
 
 // ============================================================
 // TMDB: Fetch popular movies
@@ -702,6 +850,7 @@ export const fetchAndProcessBatchResults = async (
 
 export const syncDailyQuestionsToPool = async (batchDate: string): Promise<{ synced: number }> => {
     const supabase = getServiceSupabase();
+    const metadataByMovieId = await buildDailyPoolMetadataMap(supabase, batchDate);
 
     // Fetch daily questions for this date
     const { data: dailyQuestions } = await supabase
@@ -723,25 +872,42 @@ export const syncDailyQuestionsToPool = async (batchDate: string): Promise<{ syn
     }
 
     for (const [tmdbId, questions] of movieGroups) {
-        const movieTitle = String(questions[0]?.movie_title || '').trim();
+        const metadata = metadataByMovieId.get(tmdbId);
+        const movieTitle = metadata?.title || String(questions[0]?.movie_title || '').trim();
 
         // Ensure movie exists in pool
         const { data: existingMovie } = await supabase
             .from('question_pool_movies')
-            .select('id')
+            .select('id, title, poster_path, release_year, genre, era, overview, vote_average, original_language, cast_names, director')
             .eq('tmdb_id', tmdbId)
-            .single();
+            .maybeSingle();
 
         let poolMovieId: string;
 
         if (existingMovie?.id) {
             poolMovieId = existingMovie.id;
+            const metadataPatch = buildPoolMovieMetadataPatch(existingMovie, metadata, movieTitle);
+            if (Object.keys(metadataPatch).length > 0) {
+                await supabase
+                    .from('question_pool_movies')
+                    .update(metadataPatch)
+                    .eq('id', poolMovieId);
+            }
         } else {
             const { data: newMovie } = await supabase
                 .from('question_pool_movies')
                 .insert({
                     tmdb_id: tmdbId,
                     title: movieTitle,
+                    poster_path: metadata?.posterPath || null,
+                    release_year: metadata?.releaseYear || null,
+                    genre: metadata?.genre || null,
+                    era: metadata?.era || null,
+                    overview: metadata?.overview || null,
+                    vote_average: metadata?.voteAverage ?? null,
+                    original_language: metadata?.originalLanguage || null,
+                    cast_names: metadata?.castNames || [],
+                    director: metadata?.director || null,
                     added_from: 'daily_sync',
                     question_count: 0
                 })

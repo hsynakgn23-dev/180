@@ -116,7 +116,7 @@ export const resolveUserIdsByAuthorNames = async (
 
   for (const chunk of chunkArray(unresolvedNames, QUERY_CHUNK_SIZE)) {
     const { data, error } = await supabase
-      .from('profiles')
+      .from('profiles_public')
       .select('display_name,user_id')
       .in('display_name', chunk)
       .limit(900);
@@ -138,4 +138,3 @@ export const resolveUserIdsByAuthorNames = async (
 
   return resolved;
 };
-

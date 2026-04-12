@@ -463,3 +463,19 @@ export const buildLeagueNotificationCopy = (
     body: `${leagueName}. ${copy.body}`,
   };
 };
+
+export type MarkUnlockSurfaceCopy = {
+  eyebrow: string;
+  action: string;
+  categoryLabel: string;
+};
+
+export const MARK_UNLOCK_SURFACE_COPY: Record<CelebrationLanguage, MarkUnlockSurfaceCopy> = {
+  en: { eyebrow: 'Mark Unlocked', action: 'Nice', categoryLabel: 'Category' },
+  tr: { eyebrow: 'Mark Kazanildi', action: 'Harika', categoryLabel: 'Kategori' },
+  es: { eyebrow: 'Insignia Desbloqueada', action: 'Genial', categoryLabel: 'Categoria' },
+  fr: { eyebrow: 'Insigne Debloquee', action: 'Super', categoryLabel: 'Categorie' },
+};
+
+export const resolveMarkUnlockSurfaceCopy = (language: CelebrationLanguage): MarkUnlockSurfaceCopy =>
+  MARK_UNLOCK_SURFACE_COPY[language] || MARK_UNLOCK_SURFACE_COPY.en;
