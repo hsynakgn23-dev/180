@@ -1,4 +1,4 @@
-import type { Movie } from './mockMovies';
+import type { Movie } from './mockMovies.js';
 
 export const TMDB_SEEDS: Movie[] = [
     {

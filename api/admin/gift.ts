@@ -1,6 +1,5 @@
 import {
     clampInteger,
-    normalizeUuid,
     parseBody,
     requireAdminAccess,
     sendJson,

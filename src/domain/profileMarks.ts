@@ -1,5 +1,5 @@
-import { MARK_CATALOG } from './marksCatalog';
-import { TMDB_SEEDS } from '../data/tmdbSeeds';
+import { MARK_CATALOG } from './marksCatalog.js';
+import { TMDB_SEEDS } from '../data/tmdbSeeds.js';
 
 type ProfileXpState = Record<string, unknown>;
 
