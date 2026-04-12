@@ -512,9 +512,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onHome }) => {
                                             </button>
                                             <button
                                                 type="button"
-                                                onClick={() => {
-                                            <button
-                                                type="button"
                                                 onClick={() =>
                                                     void handleUserAction(
                                                         item.userId,
