@@ -7,7 +7,7 @@ export type PoolOptionKey = 'a' | 'b' | 'c' | 'd';
 export type RushMode = 'rush_15' | 'rush_30' | 'endless';
 export type SwipeDirection = 'left' | 'right';
 export type JokerSource = 'wallet' | 'bonus';
-const POOL_OPTION_KEYS: PoolOptionKey[] = ['a', 'b', 'c', 'd'];
+const _POOL_OPTION_KEYS: PoolOptionKey[] = ['a', 'b', 'c', 'd'];
 
 // --- Pool Movies ---
 
@@ -762,7 +762,7 @@ export const verifyBlurGuess = async (input: {
   }
 };
 
-export const useBlurQuizJoker = async (input: {
+export const applyBlurQuizJoker = async (input: {
   session_id: string;
   joker_key: BlurQuizJokerKey;
 }): Promise<BlurQuizJokerResponse> => {

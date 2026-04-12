@@ -50,7 +50,7 @@ const isEmulatorHostname = (value: string): boolean => {
   return normalized === '10.0.2.2' || normalized === '10.0.3.2';
 };
 
-const isEnvFlagEnabled = (value: string | undefined, defaultValue = true): boolean => {
+const _isEnvFlagEnabled = (value: string | undefined, defaultValue = true): boolean => {
   const normalized = normalizeText(value, 60).toLowerCase();
   if (!normalized) return defaultValue;
   return !['0', 'false', 'off', 'no', 'disabled'].includes(normalized);

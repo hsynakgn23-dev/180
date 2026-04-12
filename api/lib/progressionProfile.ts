@@ -17,6 +17,7 @@ import { resolveStoredProfileMarks } from '../../src/domain/profileMarks.js';
 // Supabase's generated builder types vary across local and deployed contexts.
 // This helper only needs the `from(...)` entrypoint, so keep the contract broad.
 type SupabaseClientLike = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   from: (table: string) => any;
 };
 

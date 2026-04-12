@@ -787,7 +787,7 @@ UI_DICTIONARY.es = {
         following: 'Siguiendo',
         you: 'Usted',
         openProfile: 'Abrir perfil',
-        replyNotification: 'Respuesta enviada a {author}: \"{text}\"',
+        replyNotification: 'Respuesta enviada a {author}: "{text}"',
         now: 'Ahora'
     },
     notifications: {

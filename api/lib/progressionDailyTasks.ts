@@ -12,6 +12,7 @@ import {
 } from './progressionWallet.js';
 
 type SupabaseClientLike = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   from: (table: string) => any;
 };
 

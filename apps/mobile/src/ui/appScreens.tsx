@@ -103,7 +103,9 @@ const MOBILE_SUPABASE_STORAGE_BUCKET =
     .replace(/^\/+|\/+$/g, '') || 'posters';
 let APP_SCREENS_THEME_MODE: MobileThemeMode = 'midnight';
 const DAWN_TEXT_COLOR_STYLE = { color: '#A45E4A' } as const;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const DAILY_QUIZ_SOUND_CORRECT = require('../../assets/sounds/correct.wav') as number;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const DAILY_QUIZ_SOUND_WRONG = require('../../assets/sounds/wrong.wav') as number;
 const DAILY_QUIZ_CONFETTI_COLORS = ['#4ade80', '#facc15', '#60a5fa', '#f472b6', '#fb923c', '#a78bfa'];
 const DAILY_QUIZ_CONFETTI_COUNT = 28;
@@ -2993,7 +2995,7 @@ const ProfileUnifiedCard = ({
   isShareHubActive = false,
   displayName,
   avatarUrl,
-  username,
+  _username,
   bio,
   birthDateLabel,
   genderLabel,
@@ -3012,7 +3014,7 @@ const ProfileUnifiedCard = ({
   isShareHubActive?: boolean;
   displayName: string;
   avatarUrl?: string;
-  username?: string;
+  _username?: string;
   bio?: string;
   birthDateLabel?: string;
   genderLabel?: string;
@@ -3396,6 +3398,7 @@ const ProfileUnifiedCard = ({
   );
 };
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const LegacyProfileUnifiedCard = ({
   state,
   isSignedIn,
@@ -4058,6 +4061,7 @@ const ProfileCinematicCard = ({
   );
 };
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const LegacyProfileCinematicCard = ({
   state,
   isSignedIn,
@@ -4102,7 +4106,7 @@ const LegacyProfileCinematicCard = ({
       }),
     [exact180Count, genreSignals.length, hiddenGemCount, streakValue, topGenres]
   );
-  const unlockedCount = dnaSegments.filter((segment) => segment.unlocked).length;
+  const _unlockedCount = dnaSegments.filter((segment) => segment.unlocked).length;
 
   if (!isSignedIn) {
     return (
@@ -4649,6 +4653,7 @@ const ProfileMarksCard = ({
   );
 };
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const LegacyProfileMarksCard = ({
   state,
   isSignedIn,
@@ -7321,7 +7326,7 @@ const DailyHomeScreen = ({
   };
   const msgs = msgSets[language] ?? msgSets.tr;
   // Pick message index based on hour + completed + streak
-  const retentionMsg: string = (() => {
+  const _retentionMsg: string = (() => {
     if (hour < 6) return msgs[0];
     if (hour < 10) return completed ? msgs[3] : sv > 0 ? msgs[1] : msgs[2];
     if (hour < 14) return completed ? msgs[5] : msgs[4];
@@ -12451,10 +12456,10 @@ const MobileSettingsNavigatorModal = ({
   privacyDraft,
   onChangePrivacy,
   onSavePrivacy,
-  letterboxdSummary,
-  letterboxdStatus,
-  isImportingLetterboxd,
-  onImportLetterboxd,
+  _letterboxdSummary,
+  _letterboxdStatus,
+  _isImportingLetterboxd,
+  _onImportLetterboxd,
   onOpenShareHub,
   onSignOut,
 }: {
@@ -12499,10 +12504,10 @@ const MobileSettingsNavigatorModal = ({
   privacyDraft: MobileSettingsPrivacyDraft;
   onChangePrivacy: (patch: Partial<MobileSettingsPrivacyDraft>) => void;
   onSavePrivacy: () => void;
-  letterboxdSummary: string;
-  letterboxdStatus: string;
-  isImportingLetterboxd: boolean;
-  onImportLetterboxd: () => void;
+  _letterboxdSummary: string;
+  _letterboxdStatus: string;
+  _isImportingLetterboxd: boolean;
+  _onImportLetterboxd: () => void;
   onOpenShareHub: () => void;
   onSignOut: () => void;
 }) => {
@@ -13766,6 +13771,7 @@ const PublicProfileDetailCard = ({
   );
 };
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const LegacyPublicProfileDetailCard = ({
   status,
   message,

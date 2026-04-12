@@ -57,10 +57,10 @@ export const ProfileWidget: React.FC<ProfileWidgetProps> = ({ onClick, onOpenSet
                                 <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                             ) : (
                                 (() => {
-                                    const { icon, bg } = resolveAvatarDisplay(avatarId);
+                                    const { svgPaths, bg, color } = resolveAvatarDisplay(avatarId);
                                     return (
-                                        <div className={`w-full h-full flex items-center justify-center text-xl ${bg}`}>
-                                            {icon}
+                                        <div className={`w-full h-full flex items-center justify-center ${bg}`}>
+                                            <svg viewBox="0 0 100 100" className="w-7 h-7" fill={color}><path d={svgPaths} /></svg>
                                         </div>
                                     );
                                 })()

@@ -24,7 +24,7 @@ const COPY: Record<PoolLanguageCode, {
     title: string; meta: string; start: string; inputPlaceholder: string;
     submit: string; timeUp: string; correct: string; wrong: string;
     xpEarned: string; correctTitle: string; playAgain: string; loading: string;
-    jokers: { director: string; year: string; cast: string; genre: string };
+    jokers: Record<BlurQuizJokerKey, string>;
     hint: string; potentialXp: string; jokerCost: string; guessLabel: string;
     desc: string; retryBody: string;
 }> = {
@@ -498,7 +498,7 @@ export function BlurQuizPanel() {
 
                         {/* Joker buttons */}
                         <div className="grid grid-cols-4 gap-2">
-                            {(['director', 'year', 'cast', 'genre'] as JokerKey[]).map((key) => {
+                            {(['director', 'year', 'cast', 'genre'] as BlurQuizJokerKey[]).map((key) => {
                                 const used = state.jokers.has(key);
                                 return (
                                     <button

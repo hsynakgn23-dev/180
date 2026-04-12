@@ -11,7 +11,6 @@ import {
   ActivityIndicator,
   Animated,
   KeyboardAvoidingView,
-  Image,
   Linking,
   Modal,
   Platform,
@@ -40,7 +39,6 @@ import {
 } from './src/lib/mobileRitualQueue';
 import {
   LEVEL_THRESHOLD,
-  MOBILE_LEAGUES_DATA,
   MOBILE_LEAGUE_NAMES,
   getLeagueIndexFromXp,
   getMobileLeagueTierInfo,
@@ -4265,11 +4263,11 @@ export default function App() {
             String(entry.displayName || '').trim().toLowerCase() === arenaIdentityLabel.toLowerCase()
         ) || null
       : null;
-  const arenaScoreSummary =
+  const _arenaScoreSummary =
     profileState.status === 'success' ? profileState.weeklyArenaScore.toLocaleString() : '--';
-  const arenaActivitySummary =
+  const _arenaActivitySummary =
     profileState.status === 'success' ? String(profileState.weeklyArenaActivity) : '--';
-  const arenaRankSummary = arenaCurrentEntry ? `#${arenaCurrentEntry.rank}` : '--';
+  const _arenaRankSummary = arenaCurrentEntry ? `#${arenaCurrentEntry.rank}` : '--';
   const arenaAboveEntry =
     arenaCurrentEntry && arenaCurrentEntry.rank > 1
       ? arenaState.entries[arenaCurrentEntry.rank - 2] || null
@@ -4278,7 +4276,7 @@ export default function App() {
     arenaAboveEntry && arenaCurrentEntry
       ? Math.max(0, arenaAboveEntry.weeklyArenaScore - arenaCurrentEntry.weeklyArenaScore)
       : 0;
-  const arenaGapSummary =
+  const _arenaGapSummary =
     arenaCurrentEntry && arenaCurrentEntry.rank === 1
       ? isTurkishUi
         ? 'Lider'
@@ -4286,20 +4284,20 @@ export default function App() {
       : arenaGapValue > 0
         ? `-${arenaGapValue}`
         : '--';
-  const arenaSeasonSummary = arenaState.weekKey || '--';
-  const arenaGroupSummary =
+  const _arenaSeasonSummary = arenaState.weekKey || '--';
+  const _arenaGroupSummary =
     arenaState.scope === 'league' && arenaState.cohortLeagueKey
       ? arenaState.cohortLeagueKey
       : isTurkishUi
         ? 'Genel'
         : 'Global';
-  const arenaLeagueSummary =
+  const _arenaLeagueSummary =
     profileState.status === 'success'
       ? `${profileState.leagueName}${isTurkishUi ? ' ligi' : ' league'}`
       : isTurkishUi
         ? 'Lig bekleniyor'
         : 'League pending';
-  const arenaSourceSummary =
+  const _arenaSourceSummary =
     arenaCurrentEntry && arenaCurrentEntry.rank === 1
       ? isTurkishUi
         ? 'Bu tabloda liderlik sende.'
@@ -4446,7 +4444,7 @@ export default function App() {
       },
     [settingsLanguage]
   );
-  const mobileHeroCopy = useMemo(
+  const _mobileHeroCopy = useMemo(
     () =>
       ({
         tr: {

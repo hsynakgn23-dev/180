@@ -295,13 +295,32 @@ export const appendPushInboxItem = async (input: {
   }
 
   if (item.source === 'opened') {
-    if (item.notificationId) {
-      await dismissNotificationIds([item.notificationId]);
-      const next = current.filter((entry) => entry.notificationId !== item.notificationId);
+    const existingIndex = item.notificationId
+      ? current.findIndex((entry) => entry.notificationId === item.notificationId)
+      : findDuplicateIndex(current, item);
+
+    if (existingIndex >= 0) {
+      const merged: PushInboxItem = {
+        ...current[existingIndex],
+        source: 'opened',
+        opened: true,
+        openedAt: current[existingIndex].openedAt || item.receivedAt || new Date().toISOString(),
+      };
+      const next = current
+        .map((entry, i) => (i === existingIndex ? merged : entry))
+        .sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt))
+        .slice(0, MAX_ITEMS);
       await saveInbox(next);
-      return { item, items: next };
+      return { item: merged, items: next };
     }
-    return { item, items: current };
+
+    // No existing row — store as opened directly
+    const openedItem: PushInboxItem = { ...item, opened: true, openedAt: item.receivedAt };
+    const next = [openedItem, ...current]
+      .sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt))
+      .slice(0, MAX_ITEMS);
+    await saveInbox(next);
+    return { item: openedItem, items: next };
   }
 
   const duplicateIndex = findDuplicateIndex(current, item);

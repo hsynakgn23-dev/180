@@ -248,6 +248,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                 return;
             }
 
+            const sb = supabase;
             setIsLoading(true);
             setError(null);
             try {
@@ -260,7 +261,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                         let lastError: { code?: string | null; message?: string | null } | null = null;
 
                         for (const variant of RITUAL_SELECT_VARIANTS) {
-                            let query = supabase
+                            let query = sb
                                 .from('rituals')
                                 .select(variant.select)
                                 .abortSignal(signal)
@@ -340,7 +341,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                         let visibility = getDefaultProfileVisibility();
 
                         if (resolvedUserId) {
-                            const { data: profileRow, error: profileError } = await supabase
+                            const { data: profileRow, error: profileError } = await sb
                                 .from('profiles_public')
                                 .select('display_name, xp_state')
                                 .abortSignal(signal)
@@ -377,12 +378,12 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                             }
 
                             const [followingCountRes, followersCountRes] = await Promise.all([
-                                supabase
+                                sb
                                     .from('user_follows')
                                     .select('*', { head: true, count: 'exact' })
                                     .abortSignal(signal)
                                     .eq('follower_user_id', resolvedUserId),
-                                supabase
+                                sb
                                     .from('user_follows')
                                     .select('*', { head: true, count: 'exact' })
                                     .abortSignal(signal)
@@ -702,10 +703,10 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                                             <img src={profile.avatarUrl} alt={profile.displayName} className="w-full h-full object-cover" />
                                         ) : (
                                             (() => {
-                                                const { icon, bg } = resolveAvatarDisplay(profile.avatarId);
+                                                const { svgPaths, bg, color } = resolveAvatarDisplay(profile.avatarId);
                                                 return (
-                                                    <div className={`w-20 h-20 rounded-full flex items-center justify-center text-3xl ${bg}`}>
-                                                        {icon}
+                                                    <div className={`w-20 h-20 rounded-full flex items-center justify-center ${bg}`}>
+                                                        <svg viewBox="0 0 100 100" className="w-14 h-14" fill={color}><path d={svgPaths} /></svg>
                                                     </div>
                                                 );
                                             })()

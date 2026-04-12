@@ -34,7 +34,7 @@ import {
   requestRushJoker,
   fetchBlurMovie,
   verifyBlurGuess,
-  useBlurQuizJoker,
+  applyBlurQuizJoker,
   fetchSubscriptionStatus,
   type PoolMovie,
   type PoolQuestion,
@@ -2175,7 +2175,7 @@ const BlurQuizModal = ({
       setBonusJokerCredits((prev) => prev + 1);
     }
 
-    const result = await useBlurQuizJoker({
+    const result = await applyBlurQuizJoker({
       session_id: activeState.sessionId,
       joker_key: key as BlurQuizJokerKey,
     });
@@ -2669,7 +2669,7 @@ export const QuizHomeScreen = ({
   onRefreshWallet,
   onRequireAuth,
   onRequirePaywall,
-  onNewMarks: _onNewMarks,
+  onNewMarks: _onNewMarks, // eslint-disable-line @typescript-eslint/no-unused-vars
 }: {
   language: QuizLanguage;
   isDawn: boolean;
