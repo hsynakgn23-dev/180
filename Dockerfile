@@ -8,6 +8,7 @@ RUN npm ci
 COPY api ./api
 COPY server ./server
 COPY src/domain ./src/domain
+COPY src/data ./src/data
 COPY tsconfig.cloudrun.json ./tsconfig.cloudrun.json
 
 RUN npm run build:cloudrun
