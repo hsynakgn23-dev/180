@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { execSync } from 'node:child_process';
 
 const ROOT_DIR = process.cwd();
 const ROOT_ENV_PATH = path.join(ROOT_DIR, '.env');
@@ -137,11 +138,30 @@ for (const key of REQUIRED_SERVER_KEYS.concat(PRE_DEPLOY_WEB_KEYS, POST_DEPLOY_K
   }
 }
 
+// IAP keys: check local .env first, then fall back to verifying live Cloud Run env vars.
+const cloudRunService = normalizeText(process.env.CLOUD_RUN_SERVICE || 'absolute-cinema-api');
+const cloudRunRegion  = normalizeText(process.env.CLOUD_RUN_REGION  || 'europe-west1');
+
+let cloudRunEnvNames = new Set();
+try {
+  const raw = execSync(
+    `gcloud run services describe ${cloudRunService} --region ${cloudRunRegion} ` +
+    `--format="value(spec.template.spec.containers[0].env[].name)"`,
+    { stdio: 'pipe', timeout: 10_000 }
+  ).toString();
+  raw.split(/[;\n,]+/).map((s) => s.trim()).filter(Boolean).forEach((n) => cloudRunEnvNames.add(n));
+} catch {
+  // gcloud unavailable or service not deployed yet — fall back to local-only check.
+}
+
 for (const key of MOBILE_IAP_KEYS) {
-  const value = normalizeText(rootEnv[key]);
-  if (!value) {
-    showWarn(`${key} eksik. Wallet ticket satin alma dogrulamasi (Apple/Google) bu olmadan calismiyor.`);
-  }
+  const localValue = normalizeText(rootEnv[key]);
+  if (localValue) continue; // set locally — fine
+  if (cloudRunEnvNames.has(key)) continue; // confirmed in deployed service — fine
+  showWarn(
+    `${key} eksik (ne local .env ne de Cloud Run'da). ` +
+    `Wallet ticket satin alma dogrulamasi (Apple/Google) bu olmadan calismiyor.`
+  );
 }
 
 if (failed) {

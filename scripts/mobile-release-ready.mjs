@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { execSync } from 'node:child_process';
 
 const ROOT_DIR = process.cwd();
 const ROOT_ENV_PATH = path.join(ROOT_DIR, '.env');
@@ -141,6 +142,32 @@ const easJsonRaw = readFileSafe(EAS_JSON_PATH);
 
 const appJson = appJsonRaw ? JSON.parse(appJsonRaw) : {};
 const easJson = easJsonRaw ? JSON.parse(easJsonRaw) : {};
+
+// ── Build gate checks (run actual compiler/linter to catch real blockers) ────
+
+const skipBuildChecks = process.argv.includes('--skip-build-checks');
+
+const runBuildCheck = (label, command) => {
+  if (skipBuildChecks) {
+    showWarn(`${label} skipped (--skip-build-checks)`);
+    return;
+  }
+  try {
+    execSync(command, { cwd: ROOT_DIR, stdio: 'pipe' });
+    showItem(label, true);
+  } catch (err) {
+    const output = (err.stdout?.toString() || '') + (err.stderr?.toString() || '');
+    const firstError = output.split('\n').find((l) => l.includes('error')) || 'build failed';
+    showItem(label, false, firstError.trim().slice(0, 120));
+  }
+};
+
+runBuildCheck('web build (tsc + vite)', 'npm run build:ci');
+runBuildCheck('lint (0 errors)', 'npm run lint');
+runBuildCheck('cloudrun tsc', 'npx tsc --noEmit -p tsconfig.cloudrun.json');
+runBuildCheck('mobile tsc', 'npm --prefix apps/mobile exec -- tsc --noEmit');
+
+// ── Config/env checks ─────────────────────────────────────────────────────────
 
 showItem('root .env exists', fs.existsSync(ROOT_ENV_PATH));
 showItem(
