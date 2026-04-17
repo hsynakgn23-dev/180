@@ -9,6 +9,7 @@ type NotificationEventRow = {
   body?: unknown;
   deep_link?: unknown;
   created_at?: unknown;
+  read_at?: unknown;
   metadata?: unknown;
 };
 
@@ -43,6 +44,14 @@ const normalizeIsoDate = (value: unknown): string => {
   return new Date(parsed).toISOString();
 };
 
+const normalizeNullableIsoDate = (value: unknown): string | null => {
+  const text = normalizeText(value, 80);
+  if (!text) return null;
+  const parsed = Date.parse(text);
+  if (!Number.isFinite(parsed)) return null;
+  return new Date(parsed).toISOString();
+};
+
 const normalizeKind = (value: unknown): PushNotificationSnapshot['kind'] => {
   const raw = normalizeText(value, 40).toLowerCase();
   if (raw === 'reply' || raw === 'comment') return 'comment';
@@ -70,6 +79,7 @@ const toSnapshot = (row: NotificationEventRow): PushNotificationSnapshot | null 
     deepLink: deepLink || null,
     kind: normalizeKind(row.kind),
     receivedAt: normalizeIsoDate(row.created_at),
+    readAt: normalizeNullableIsoDate(row.read_at),
   };
 };
 
@@ -96,7 +106,7 @@ export const fetchRecentMobileNotificationEvents = async (input?: {
     const limit = clampLimit(input?.limit, 20);
     const { data, error } = await supabase
       .from('notification_events')
-      .select('id,kind,title,body,deep_link,created_at,metadata')
+      .select('id,kind,title,body,deep_link,created_at,read_at,metadata')
       .eq('recipient_user_id', userId)
       .order('created_at', { ascending: false })
       .limit(limit);
@@ -158,4 +168,41 @@ export const subscribeToMobileNotificationEvents = (
     channel = null;
     removeRealtimeChannel(activeChannel);
   };
+};
+
+export const markMobileNotificationEventsRead = async (input?: {
+  notificationIds?: string[];
+}): Promise<number> => {
+  if (!isSupabaseLive() || !supabase) return 0;
+
+  const userId = await readCurrentUserId();
+  if (!userId) return 0;
+
+  const normalizedIds = Array.from(
+    new Set(
+      (input?.notificationIds || [])
+        .map((value) => normalizeText(value, 120))
+        .filter(Boolean)
+    )
+  );
+
+  if (input?.notificationIds && normalizedIds.length === 0) return 0;
+
+  try {
+    let query = supabase
+      .from('notification_events')
+      .update({ read_at: new Date().toISOString() })
+      .eq('recipient_user_id', userId)
+      .is('read_at', null);
+
+    if (normalizedIds.length > 0) {
+      query = query.in('id', normalizedIds);
+    }
+
+    const { data, error } = await query.select('id');
+    if (error) return 0;
+    return Array.isArray(data) ? data.length : 0;
+  } catch {
+    return 0;
+  }
 };

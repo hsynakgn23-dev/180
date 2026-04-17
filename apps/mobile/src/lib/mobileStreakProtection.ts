@@ -1,5 +1,6 @@
 import { isSupabaseLive, readSupabaseSessionSafe, supabase } from './supabase';
 import { resolveSupabaseUserEmail } from './supabaseUser';
+import { readProfileTotalXp, withMirroredProfileXp } from '../../../../src/domain/profileXpState';
 
 type SupabaseErrorLike = {
   code?: string | null;
@@ -436,9 +437,9 @@ export const claimMobileStreakProtectionReward = async (
   );
   const displayName = resolveDisplayName(profileRow, currentState, input.fallbackDisplayName, userEmail);
   const nowIso = new Date().toISOString();
-  const nextState: Record<string, unknown> = {
+  const nextTotalXp = Math.max(readProfileTotalXp(currentState), toSafeInt(input.fallbackTotalXp));
+  const nextState: Record<string, unknown> = withMirroredProfileXp({
     ...currentState,
-    totalXP: Math.max(toSafeInt(currentState.totalXP), toSafeInt(input.fallbackTotalXp)),
     activeDays: nextActiveDays,
     streak: nextStreak,
     lastStreakDate: resolveLatestDateKey(normalizeDateKey(currentState.lastStreakDate), targetDate),
@@ -460,7 +461,7 @@ export const claimMobileStreakProtectionReward = async (
       normalizeText(currentState.fullName, 120) ||
       displayName,
     username: normalizeText(currentState.username, 80) || normalizeText(displayName, 80).replace(/\s+/g, '').toLowerCase(),
-  };
+  }, nextTotalXp);
 
   const { error: writeError } = await supabase.from('profiles').upsert(
     {

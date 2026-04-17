@@ -59,6 +59,7 @@ import {
   type MobilePublicProfileActivityItem,
 } from './src/lib/mobilePublicProfileActivity';
 import { resolveStoredProfileMarks } from '../../src/domain/profileMarks';
+import { readProfileTotalXp } from '../../src/domain/profileXpState';
 import {
   fetchMobileProfileActivity,
   type MobileProfileActivityItem,
@@ -117,6 +118,7 @@ import {
 import type { PushNotificationSnapshot } from './src/lib/mobilePush';
 import {
   fetchRecentMobileNotificationEvents,
+  markMobileNotificationEventsRead,
   subscribeToMobileNotificationEvents,
 } from './src/lib/mobileNotificationEvents';
 import {
@@ -713,7 +715,7 @@ const AnimatedTabBar = ({
   const { width: screenWidth } = useWindowDimensions();
   // 32 = left:16 + right:16 margins of navTabBar
   const tabWidth = (screenWidth - 32) / tabCount;
-  // eslint-disable-next-line react-hooks/refs
+   
   const pillLeft = useRef(new Animated.Value(state.index * tabWidth)).current;
   const pressAnims = useRef(state.routes.map(() => new Animated.Value(1))).current;
 
@@ -740,7 +742,7 @@ const AnimatedTabBar = ({
           borderRadius: 22,
         }}
       />
-      {// eslint-disable-next-line react-hooks/refs
+      { 
       state.routes.map((route, index) => {
         const isFocused = state.index === index;
         const tabKey = MAIN_KEY_BY_TAB[route.name as keyof typeof MAIN_KEY_BY_TAB];
@@ -1097,7 +1099,7 @@ export default function App() {
     claimCount: 0,
   });
   const [selectedShareGoal, setSelectedShareGoal] = useState<ShareGoal>('comment');
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   const [_shareHubState, setShareHubState] = useState<{
     status: 'idle' | 'loading' | 'ready' | 'error';
     message: string;
@@ -1220,7 +1222,7 @@ export default function App() {
     source: PublicProfileOpenOrigin;
   } | null>(null);
   const profileScrollRef = useRef<ScrollView | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   const [_profileShareHubOffsetY, _setProfileShareHubOffsetY] = useState(0);
   const [activeTab, setActiveTab] = useState<MainTabKey>('daily');
   useBackHandler(activeTab === 'daily');
@@ -1648,7 +1650,7 @@ export default function App() {
     }));
   }, []);
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   const _handleOpenProfileMovieArchive = useCallback(async (movie: MobileWatchedMovie) => {
     const movieTitle = String(movie.movieTitle || '').trim();
     if (!movieTitle) return;
@@ -2068,10 +2070,7 @@ export default function App() {
           normalizeProfileSheetText(xpState?.username, 80).replace(/^@+/, '') ||
           (isTurkishUi ? 'Bilinmeyen kullanici' : 'Unknown user');
         const username = normalizeProfileSheetText(xpState?.username, 80).replace(/^@+/, '');
-        const totalXp = Math.max(
-          0,
-          Math.floor(Number(xpState?.totalXP ?? xpState?.xp ?? 0) || 0)
-        );
+        const totalXp = readProfileTotalXp(xpState);
         const leagueName = totalXp > 0 ? resolveMobileLeagueInfoFromXp(totalXp).leagueInfo.name : '';
         const secondary = [username ? `@${username}` : '', leagueName].filter(Boolean).join(' | ');
         return {
@@ -2404,10 +2403,9 @@ export default function App() {
         : -1;
       const pendingSnapshots =
         lastSeenIndex >= 0 ? snapshots.slice(lastSeenIndex + 1) : snapshots;
-      if (pendingSnapshots.length === 0) return 0;
 
       let items: PushInboxItem[] = [];
-      for (const snapshot of pendingSnapshots) {
+      for (const snapshot of snapshots) {
         const result = await appendPushInboxItem({
           notificationId: snapshot.notificationId,
           title: snapshot.title,
@@ -2415,9 +2413,23 @@ export default function App() {
           deepLink: snapshot.deepLink,
           kind: snapshot.kind,
           receivedAt: snapshot.receivedAt,
-          source: 'received',
+          source: snapshot.readAt ? 'opened' : 'received',
         });
         items = result.items;
+      }
+
+      if (pendingSnapshots.length === 0) {
+        if (items.length > 0) {
+          setPushInboxState({
+            status: 'ready',
+            message:
+              reason === 'initial'
+                ? (isTurkishUi ? 'Cloud bildirimleri inbox ile senkronlandi.' : 'Cloud notifications synced with the inbox.')
+                : (isTurkishUi ? 'Cloud bildirimleri guncellendi.' : 'Cloud notifications updated.'),
+            items,
+          });
+        }
+        return 0;
       }
 
       const latestSnapshot = pendingSnapshots[pendingSnapshots.length - 1];
@@ -2449,6 +2461,12 @@ export default function App() {
       status: 'loading',
       message: isTurkishUi ? 'Inbox temizleniyor...' : 'Clearing inbox...',
     }));
+    const notificationIds = pushInboxState.items
+      .map((item) => String(item.notificationId || '').trim())
+      .filter(Boolean);
+    if (notificationIds.length > 0) {
+      await markMobileNotificationEventsRead({ notificationIds });
+    }
     await clearPushInbox();
     setPushInboxState({
       status: 'ready',
@@ -2464,6 +2482,10 @@ export default function App() {
     async (item: PushInboxItem) => {
       if (!item.deepLink) return;
       handleIncomingUrl(item.deepLink);
+      const notificationId = String(item.notificationId || '').trim();
+      if (notificationId) {
+        await markMobileNotificationEventsRead({ notificationIds: [notificationId] });
+      }
       const removed = await removePushInboxItems([item.id]);
       setPushInboxState((prev) => ({
         ...prev,
@@ -2482,6 +2504,10 @@ export default function App() {
   );
 
   const handlePressPushInboxItem = useCallback(async (item: PushInboxItem) => {
+    const notificationId = String(item.notificationId || '').trim();
+    if (notificationId) {
+      await markMobileNotificationEventsRead({ notificationIds: [notificationId] });
+    }
     const removed = await removePushInboxItems([item.id]);
     setPushInboxState((prev) => ({
       ...prev,
@@ -2491,7 +2517,7 @@ export default function App() {
         : (isTurkishUi ? 'Bildirim zaten kapatilmisti.' : 'Notification was already dismissed.'),
       items: removed.items,
     }));
-  }, [isTurkishUi]);
+  }, [isTurkishUi, pushInboxState.items]);
 
   const syncPushTokenCloud = useCallback(
     async (token: string, permissionStatus: string, projectId: string | null) => {
@@ -3401,7 +3427,7 @@ export default function App() {
     if (authState.status === 'signed_in') {
       void syncMobileUserSettingsToCloud({ language: settingsLanguage, themeMode });
     }
-  }, [themeMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [themeMode]);  
 
   useEffect(() => {
     let active = true;
@@ -3440,7 +3466,7 @@ export default function App() {
     if (authState.status === 'signed_in') {
       void syncMobileUserSettingsToCloud({ language: settingsLanguage, themeMode });
     }
-  }, [settingsLanguage]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [settingsLanguage]);  
 
   useEffect(() => {
     if (profileState.status !== 'success') return;
@@ -3861,6 +3887,10 @@ export default function App() {
           lastNotification: describePushNotification(snapshot),
         }));
         void appendPushInbox(snapshot, 'opened');
+        const notificationId = String(snapshot.notificationId || '').trim();
+        if (notificationId) {
+          void markMobileNotificationEventsRead({ notificationIds: [notificationId] });
+        }
         void trackMobileEvent('page_view', {
           reason: 'mobile_push_opened',
           hasDeepLink: Boolean(snapshot.deepLink),
@@ -4253,7 +4283,7 @@ export default function App() {
     activeIntent.target === 'invite' || activeIntent.target === 'share'
       ? activeIntent.invite
       : undefined;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   const _sharePlatform = activeIntent.target === 'share' ? activeIntent.platform : undefined;
   const shareGoal = activeIntent.target === 'share' ? activeIntent.goal : undefined;
   const canSubmitRitualDraft = Boolean(
@@ -4355,7 +4385,7 @@ export default function App() {
           ? `${arenaGapValue.toLocaleString()} puan sonra ${arenaAboveEntry.displayName} ustune cikarsin.`
           : `${arenaGapValue.toLocaleString()} points to pass ${arenaAboveEntry.displayName}.`
         : arenaState.message;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   const _commentFeedSummary =
     commentFeedState.status === 'ready'
       ? localizedUiCopy.explore.commentReady(commentFeedState.items.length)
@@ -4716,7 +4746,7 @@ export default function App() {
   const publicProfileLeague = publicSnapshot
     ? resolveMobileLeagueInfoFromXp(publicSnapshot.totalXp)
     : null;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   const _publicProfileLeadMetrics = [
     ...(publicProfileVisibility.showStats
       ? [
@@ -4874,7 +4904,7 @@ export default function App() {
     });
   }, [authState.status, canShareStreak, effectiveShareInviteCode, openAuthModal, setManualIntent]);
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   const _handleCommentFeedScopeChange = useCallback((scope: CommentFeedScope) => {
     setCommentFeedScope(scope);
     setCommentFeedState((prev) => ({
@@ -4883,7 +4913,7 @@ export default function App() {
     }));
   }, []);
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   const _handleCommentFeedQueryChange = useCallback((query: string) => {
     setCommentFeedQuery(query);
     setCommentFeedState((prev) => ({
@@ -4892,7 +4922,7 @@ export default function App() {
     }));
   }, []);
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   const _handleCommentFeedSortChange = useCallback((sort: CommentFeedSort) => {
     setCommentFeedSort(sort);
     setCommentFeedState((prev) => ({
@@ -6178,7 +6208,7 @@ export default function App() {
   ]);
 
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   const _handleShareHubShare = useCallback(
     async (platform: SharePlatform) => {
       const goal: ShareGoal = selectedShareGoal;

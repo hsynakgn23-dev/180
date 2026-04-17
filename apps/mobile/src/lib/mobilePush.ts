@@ -33,6 +33,7 @@ export type PushNotificationSnapshot = {
   deepLink: string | null;
   kind: 'comment' | 'like' | 'follow' | 'daily_drop' | 'streak' | 'generic';
   receivedAt: string;
+  readAt?: string | null;
 };
 
 export type LocalPushSimulationResult =

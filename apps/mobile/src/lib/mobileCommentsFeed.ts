@@ -8,6 +8,7 @@ import {
 } from './mobileLeagueSystem';
 import { resolveMobileAvatarFromXpState } from './mobileAvatar';
 import { TMDB_SEEDS } from '../../../../src/data/tmdbSeeds';
+import { readProfileTotalXp } from '../../../../src/domain/profileXpState';
 
 type SupabaseErrorLike = {
   code?: string | null;
@@ -162,12 +163,6 @@ const normalizeText = (value: unknown, maxLength = 220): string => {
   const text = String(value ?? '').trim();
   if (!text) return '';
   return text.length > maxLength ? text.slice(0, maxLength) : text;
-};
-
-const toSafeInt = (value: unknown): number => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return 0;
-  return Math.max(0, Math.floor(parsed));
 };
 
 const clampInteger = (value: unknown, min: number, max: number, fallback: number): number => {
@@ -421,7 +416,7 @@ const hydrateAuthorAvatars = async (items: RitualLiteItem[]): Promise<RitualLite
     if (!leagueMap.has(userId) && row.xp_state && typeof row.xp_state === 'object' && !Array.isArray(row.xp_state)) {
       const xpState = row.xp_state as Record<string, unknown>;
       const { leagueKey, leagueInfo } = resolveMobileLeagueInfoFromXp(
-        Math.max(toSafeInt(xpState.totalXP), toSafeInt(xpState.xp))
+        readProfileTotalXp(xpState)
       );
       leagueMap.set(userId, { leagueKey, leagueColor: leagueInfo.color });
     }
@@ -677,7 +672,7 @@ const readFallbackFromXpState = async (): Promise<MobileCommentFeedItem[]> => {
     profileData && typeof profileData === 'object' && !Array.isArray(profileData)
       ? (profileData as Record<string, unknown>).xp_state
       : null;
-  const xpTotal = toSafeInt((xpState as Record<string, unknown> | null)?.totalXP);
+  const xpTotal = readProfileTotalXp(xpState);
   const { leagueKey: fallbackLeagueKey, leagueInfo: fallbackLeagueInfo } =
     resolveMobileLeagueInfoFromXp(xpTotal);
   const fallbackAvatarUrl = resolveMobileAvatarFromXpState(xpState);

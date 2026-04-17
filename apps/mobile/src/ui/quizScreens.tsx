@@ -2669,7 +2669,7 @@ export const QuizHomeScreen = ({
   onRefreshWallet,
   onRequireAuth,
   onRequirePaywall,
-  onNewMarks: _onNewMarks, // eslint-disable-line @typescript-eslint/no-unused-vars
+  onNewMarks: _onNewMarks,  
 }: {
   language: QuizLanguage;
   isDawn: boolean;

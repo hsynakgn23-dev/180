@@ -12,6 +12,12 @@ import {
     readProfileVisibilityFromXpState,
     type ProfileVisibility
 } from '../../lib/profileVisibility';
+import { readProfileTotalXp } from '../../domain/profileXpState';
+import {
+    readProfileDaysPresentCount,
+    readProfileFollowersCount,
+    readProfileFollowingCount
+} from '../../domain/profileSocialState';
 
 export interface PublicProfileTarget {
     userId?: string | null;
@@ -365,10 +371,14 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({ target, on
                                         : typeof xpState.avatar_url === 'string' && xpState.avatar_url.trim()
                                             ? xpState.avatar_url
                                             : undefined;
-                                xp = typeof xpState.totalXP === 'number' ? xpState.totalXP : 0;
+                                xp = readProfileTotalXp(xpState);
                                 streak = typeof xpState.streak === 'number' ? xpState.streak : 0;
-                                daysPresent = Array.isArray(xpState.activeDays) ? xpState.activeDays.length : daysPresent;
-                                followingCount = Array.isArray(xpState.following) ? xpState.following.length : 0;
+                                daysPresent = Math.max(
+                                    daysPresent,
+                                    readProfileDaysPresentCount(xpState)
+                                );
+                                followingCount = readProfileFollowingCount(xpState);
+                                followersCount = readProfileFollowersCount(xpState);
                                 if (typeof profileRow.display_name === 'string' && profileRow.display_name.trim()) {
                                     displayName = profileRow.display_name.trim();
                                     username = username || profileRow.display_name;

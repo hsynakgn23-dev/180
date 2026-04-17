@@ -1,5 +1,7 @@
 import { createCorsHeaders } from './cors.js';
+import { applyProgressionReward } from './progressionProfile.js';
 import { createSupabaseServiceHeaders } from './supabaseServiceHeaders.js';
+import { createSupabaseServiceClient } from './supabaseServiceClient.js';
 
 export const config = {
     runtime: 'nodejs'
@@ -37,6 +39,26 @@ type ClaimSuccessData = {
 type ClaimFallbackResult =
     | { ok: true; data: ClaimSuccessData }
     | { ok: false; status: number; errorCode: string; message: string };
+
+type ReferralClaimRow = {
+    id: string;
+    code: string;
+    inviteeUserId: string;
+    inviteeEmail: string;
+    inviterRewardXp: number;
+    inviteeRewardXp: number;
+    inviterRewardAppliedAt: string | null;
+    inviteeRewardAppliedAt: string | null;
+};
+
+type ReferralInviteRow = {
+    code: string;
+    inviterUserId: string | null;
+    inviterEmail: string | null;
+    claimCount: number;
+};
+
+type ServiceSupabase = ReturnType<typeof createSupabaseServiceClient>;
 
 const INVITE_CODE_REGEX = /^[A-Z0-9]{6,12}$/;
 const DEVICE_KEY_REGEX = /^[a-zA-Z0-9:_-]{8,80}$/;
@@ -229,6 +251,221 @@ const serviceHeaders = (config: { serviceRoleKey: string }, extra: Record<string
         ...extra
     });
 
+const parseReferralClaimRow = (value: unknown): ReferralClaimRow | null => {
+    const row = toObject(value);
+    const id = toText(row?.id, 80);
+    const code = normalizeInviteCode(row?.code);
+    const inviteeUserId = toText(row?.invitee_user_id, 80);
+    if (!id || !code || !inviteeUserId) return null;
+
+    const inviterRewardXp = Number(row?.inviter_reward_xp);
+    const inviteeRewardXp = Number(row?.invitee_reward_xp);
+
+    return {
+        id,
+        code,
+        inviteeUserId,
+        inviteeEmail: normalizeEmail(toText(row?.invitee_email, 240), inviteeUserId),
+        inviterRewardXp: Number.isFinite(inviterRewardXp) ? Math.max(0, inviterRewardXp) : 0,
+        inviteeRewardXp: Number.isFinite(inviteeRewardXp) ? Math.max(0, inviteeRewardXp) : 0,
+        inviterRewardAppliedAt: toText(row?.inviter_reward_applied_at, 80) || null,
+        inviteeRewardAppliedAt: toText(row?.invitee_reward_applied_at, 80) || null
+    };
+};
+
+const parseReferralInviteRow = (value: unknown): ReferralInviteRow | null => {
+    const row = toObject(value);
+    const code = normalizeInviteCode(row?.code);
+    if (!code) return null;
+
+    const claimCount = Number(row?.claim_count);
+
+    return {
+        code,
+        inviterUserId: toText(row?.inviter_user_id, 80) || null,
+        inviterEmail: toText(row?.inviter_email, 240) || null,
+        claimCount: Number.isFinite(claimCount) ? Math.max(0, claimCount) : 0
+    };
+};
+
+const readReferralClaimRecord = async (
+    supabase: ServiceSupabase,
+    input: { inviteeUserId: string; inviteCode?: string | null }
+): Promise<ReferralClaimRow | null> => {
+    const inviteeUserId = toText(input.inviteeUserId, 80);
+    const inviteCode = normalizeInviteCode(input.inviteCode);
+    let query = supabase
+        .from('referral_claims')
+        .select(
+            'id,code,invitee_user_id,invitee_email,inviter_reward_xp,invitee_reward_xp,inviter_reward_applied_at,invitee_reward_applied_at'
+        )
+        .eq('invitee_user_id', inviteeUserId);
+
+    if (inviteCode) {
+        query = query.eq('code', inviteCode);
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false }).limit(1).maybeSingle();
+    if (error) {
+        throw new Error(error.message || 'Failed to read referral claim.');
+    }
+
+    return parseReferralClaimRow(data);
+};
+
+const readReferralInviteRecord = async (
+    supabase: ServiceSupabase,
+    inviteCode: string
+): Promise<ReferralInviteRow | null> => {
+    const normalizedCode = normalizeInviteCode(inviteCode);
+    if (!normalizedCode) return null;
+
+    const { data, error } = await supabase
+        .from('referral_invites')
+        .select('code,inviter_user_id,inviter_email,claim_count')
+        .eq('code', normalizedCode)
+        .maybeSingle();
+
+    if (error) {
+        throw new Error(error.message || 'Failed to read referral invite.');
+    }
+
+    return parseReferralInviteRow(data);
+};
+
+const markReferralRewardApplied = async (
+    supabase: ServiceSupabase,
+    input: {
+        claimId: string;
+        column: 'inviter_reward_applied_at' | 'invitee_reward_applied_at';
+    }
+): Promise<void> => {
+    const { error } = await supabase
+        .from('referral_claims')
+        .update({
+            [input.column]: new Date().toISOString()
+        })
+        .eq('id', input.claimId)
+        .is(input.column, null);
+
+    if (error) {
+        throw new Error(error.message || 'Failed to persist referral reward settlement.');
+    }
+};
+
+const settleReferralClaimRewards = async (
+    supabase: ServiceSupabase,
+    input: {
+        claim: ReferralClaimRow;
+        invite: ReferralInviteRow | null;
+        inviteeEmail: string;
+    }
+): Promise<void> => {
+    const invite = input.invite;
+    if (!invite?.inviterUserId) {
+        throw new Error('Referral invite record is missing inviter metadata.');
+    }
+
+    if (!input.claim.inviteeRewardAppliedAt) {
+        if (input.claim.inviteeRewardXp > 0) {
+            await applyProgressionReward({
+                supabase,
+                userId: input.claim.inviteeUserId,
+                fallbackEmail: input.claim.inviteeEmail || input.inviteeEmail,
+                reward: {
+                    xp: input.claim.inviteeRewardXp,
+                    tickets: 0,
+                    arenaScore: 0,
+                    arenaActivity: 0
+                },
+                idempotencyKey: `referral:invitee:${input.claim.id}`,
+                ledger: {
+                    source: 'referral_invite',
+                    sourceId: input.claim.id,
+                    reason: 'referral_invitee_reward',
+                    metadata: {
+                        code: input.claim.code,
+                        role: 'invitee',
+                        inviterUserId: invite.inviterUserId,
+                    },
+                }
+            });
+        }
+
+        await markReferralRewardApplied(supabase, {
+            claimId: input.claim.id,
+            column: 'invitee_reward_applied_at'
+        });
+    }
+
+    if (!input.claim.inviterRewardAppliedAt) {
+        if (input.claim.inviterRewardXp > 0) {
+            await applyProgressionReward({
+                supabase,
+                userId: invite.inviterUserId,
+                fallbackEmail: invite.inviterEmail,
+                reward: {
+                    xp: input.claim.inviterRewardXp,
+                    tickets: 0,
+                    arenaScore: 0,
+                    arenaActivity: 0
+                },
+                idempotencyKey: `referral:inviter:${input.claim.id}`,
+                ledger: {
+                    source: 'referral_invite',
+                    sourceId: input.claim.id,
+                    reason: 'referral_inviter_reward',
+                    metadata: {
+                        code: input.claim.code,
+                        role: 'inviter',
+                        inviteeUserId: input.claim.inviteeUserId,
+                    },
+                }
+            });
+        }
+
+        await markReferralRewardApplied(supabase, {
+            claimId: input.claim.id,
+            column: 'inviter_reward_applied_at'
+        });
+    }
+};
+
+const finalizeReferralClaim = async (
+    supabase: ServiceSupabase,
+    input: {
+        inviteeUserId: string;
+        inviteeEmail: string;
+        inviteCode?: string | null;
+    }
+): Promise<ClaimSuccessData | null> => {
+    const claim = await readReferralClaimRecord(supabase, {
+        inviteeUserId: input.inviteeUserId,
+        inviteCode: input.inviteCode || null
+    });
+    if (!claim) return null;
+
+    const normalizedExpectedCode = normalizeInviteCode(input.inviteCode);
+    if (normalizedExpectedCode && claim.code !== normalizedExpectedCode) {
+        return null;
+    }
+
+    const invite = await readReferralInviteRecord(supabase, claim.code);
+    await settleReferralClaimRewards(supabase, {
+        claim,
+        invite,
+        inviteeEmail: input.inviteeEmail
+    });
+
+    return {
+        code: claim.code,
+        inviterUserId: invite?.inviterUserId || null,
+        inviterRewardXp: claim.inviterRewardXp,
+        inviteeRewardXp: claim.inviteeRewardXp,
+        claimCount: invite ? Math.max(0, invite.claimCount) : 0
+    };
+};
+
 const fallbackClaimReferralInvite = async (
     config: { url: string; serviceRoleKey: string },
     input: {
@@ -263,8 +500,6 @@ const fallbackClaimReferralInvite = async (
 
     const inviterUserId = toText(inviteRow.inviter_user_id, 80) || null;
     const inviterEmail = normalizeEmail(toText(inviteRow.inviter_email, 240), inviterUserId || 'unknown');
-    const currentClaimCount = Number(inviteRow.claim_count || 0);
-
     if (inviterUserId && inviterUserId === inviteeUserId) {
         return { ok: false, status: 400, errorCode: 'SELF_INVITE', message: 'Self invite is not allowed.' };
     }
@@ -395,26 +630,21 @@ const fallbackClaimReferralInvite = async (
         return { ok: false, status: 500, errorCode: 'SERVER_ERROR', message: 'Invite claim failed.' };
     }
 
-    const nextClaimCount = (Number.isFinite(currentClaimCount) ? Math.max(0, currentClaimCount) : 0) + 1;
-    const patchInviteResp = await fetch(
-        `${config.url}/rest/v1/referral_invites?code=eq.${encodeURIComponent(inviteCode)}&select=claim_count`,
+    let finalClaimCount = 1;
+    const refreshInviteResp = await fetch(
+        `${config.url}/rest/v1/referral_invites?code=eq.${encodeURIComponent(inviteCode)}&select=claim_count&limit=1`,
         {
-            method: 'PATCH',
-            headers: serviceHeaders(config, { Prefer: 'return=representation' }),
-            body: JSON.stringify({
-                claim_count: nextClaimCount,
-                updated_at: new Date().toISOString()
-            })
+            method: 'GET',
+            headers: serviceHeaders(config)
         }
     );
 
-    let finalClaimCount = nextClaimCount;
-    if (patchInviteResp.ok) {
-        const patchedRows = (await patchInviteResp.json().catch(() => [])) as unknown;
-        const patchedRow = Array.isArray(patchedRows) ? toObject(patchedRows[0]) : null;
-        const patchedClaimCount = Number(patchedRow?.claim_count);
-        if (Number.isFinite(patchedClaimCount)) {
-            finalClaimCount = Math.max(0, patchedClaimCount);
+    if (refreshInviteResp.ok) {
+        const refreshedRows = (await refreshInviteResp.json().catch(() => [])) as unknown;
+        const refreshedRow = Array.isArray(refreshedRows) ? toObject(refreshedRows[0]) : null;
+        const refreshedClaimCount = Number(refreshedRow?.claim_count);
+        if (Number.isFinite(refreshedClaimCount)) {
+            finalClaimCount = Math.max(0, refreshedClaimCount);
         }
     }
 
@@ -454,6 +684,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         );
     }
 
+    const supabase = createSupabaseServiceClient(config.url, config.serviceRoleKey);
     const token = getBearerToken(req);
     if (!token) {
         return sendJson(
@@ -536,18 +767,71 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
                 );
             }
 
-            return sendJson(
-                res,
-                200,
-                {
-                    ok: true,
-                    data: fallback.data
-                },
-                corsHeaders
-            );
+            try {
+                const settled = await finalizeReferralClaim(supabase, {
+                    inviteeUserId: authUser.id,
+                    inviteeEmail: authUser.email,
+                    inviteCode: fallback.data.code
+                });
+
+                if (!settled) {
+                    return sendJson(
+                        res,
+                        500,
+                        { ok: false, errorCode: 'SERVER_ERROR', message: 'Invite reward settlement failed.' },
+                        corsHeaders
+                    );
+                }
+
+                return sendJson(
+                    res,
+                    200,
+                    {
+                        ok: true,
+                        data: settled
+                    },
+                    corsHeaders
+                );
+            } catch {
+                return sendJson(
+                    res,
+                    500,
+                    { ok: false, errorCode: 'SERVER_ERROR', message: 'Invite reward settlement failed.' },
+                    corsHeaders
+                );
+            }
         }
 
         const mapped = mapClaimError(rawMessage);
+        if (mapped.errorCode === 'ALREADY_CLAIMED') {
+            try {
+                const recovered = await finalizeReferralClaim(supabase, {
+                    inviteeUserId: authUser.id,
+                    inviteeEmail: authUser.email,
+                    inviteCode
+                });
+
+                if (recovered) {
+                    return sendJson(
+                        res,
+                        200,
+                        {
+                            ok: true,
+                            data: recovered
+                        },
+                        corsHeaders
+                    );
+                }
+            } catch {
+                return sendJson(
+                    res,
+                    500,
+                    { ok: false, errorCode: 'SERVER_ERROR', message: 'Invite reward settlement failed.' },
+                    corsHeaders
+                );
+            }
+        }
+
         return sendJson(
             res,
             mapped.status,
@@ -562,10 +846,6 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
     const row = parseRpcRow(rawPayload);
     const responseCode = normalizeInviteCode(row?.code);
-    const inviterUserId = toText(row?.inviter_user_id ?? row?.inviterUserId, 80) || null;
-    const inviterRewardXp = Number(row?.inviter_reward_xp ?? row?.inviterRewardXp ?? 40);
-    const inviteeRewardXp = Number(row?.invitee_reward_xp ?? row?.inviteeRewardXp ?? 24);
-    const claimCount = Number(row?.claim_count ?? row?.claimCount ?? 0);
 
     if (!INVITE_CODE_REGEX.test(responseCode)) {
         return sendJson(
@@ -576,19 +856,37 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         );
     }
 
-    return sendJson(
-        res,
-        200,
-        {
-            ok: true,
-            data: {
-                code: responseCode,
-                inviterUserId,
-                inviterRewardXp: Number.isFinite(inviterRewardXp) ? Math.max(0, inviterRewardXp) : 40,
-                inviteeRewardXp: Number.isFinite(inviteeRewardXp) ? Math.max(0, inviteeRewardXp) : 24,
-                claimCount: Number.isFinite(claimCount) ? Math.max(0, claimCount) : 0
-            }
-        },
-        corsHeaders
-    );
+    try {
+        const settled = await finalizeReferralClaim(supabase, {
+            inviteeUserId: authUser.id,
+            inviteeEmail: authUser.email,
+            inviteCode: responseCode
+        });
+
+        if (!settled) {
+            return sendJson(
+                res,
+                500,
+                { ok: false, errorCode: 'SERVER_ERROR', message: 'Invite reward settlement failed.' },
+                corsHeaders
+            );
+        }
+
+        return sendJson(
+            res,
+            200,
+            {
+                ok: true,
+                data: settled
+            },
+            corsHeaders
+        );
+    } catch {
+        return sendJson(
+            res,
+            500,
+            { ok: false, errorCode: 'SERVER_ERROR', message: 'Invite reward settlement failed.' },
+            corsHeaders
+        );
+    }
 }

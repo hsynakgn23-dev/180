@@ -46,6 +46,22 @@ type SyncUserSettingsResult =
 
 const USER_SETTINGS_SELECT = 'language, theme_mode';
 
+/**
+ * Returns true when the pending settings differ from the last-synced snapshot
+ * (or when no snapshot exists yet). Used by UserSettingsSyncBridge to avoid
+ * redundant upserts when nothing has changed.
+ */
+export const shouldSyncUserSettings = (
+  lastSynced: { language: string; themeMode: string } | null | undefined,
+  next: { language: string; themeMode: string }
+): boolean => {
+  if (!lastSynced) return true;
+  return (
+    lastSynced.language !== next.language ||
+    lastSynced.themeMode !== next.themeMode
+  );
+};
+
 const resolveUserSettingsErrorMessage = (error: unknown): string => {
   if (error instanceof Error) {
     return error.message;

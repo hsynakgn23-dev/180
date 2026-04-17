@@ -8,6 +8,7 @@ import { LeagueTransition } from './components/LeagueTransition'
 import { StreakCelebration } from './components/StreakCelebration'
 import { InfoFooter } from './components/InfoFooter'
 import { SectionErrorBoundary } from './components/SectionErrorBoundary'
+import { UserSettingsSyncBridge } from './components/UserSettingsSyncBridge'
 import type { Movie } from './data/mockMovies'
 import { LanguageProvider, useLanguage } from './context/LanguageContext'
 import type { PublicProfileTarget } from './features/profile/PublicProfileView'
@@ -278,6 +279,8 @@ const AppContent = () => {
 
   return (
     <>
+      <UserSettingsSyncBridge />
+
       {levelUpEvent && (
         <LeagueTransition
           color={levelUpEvent.color}
@@ -499,5 +502,4 @@ function App() {
 }
 
 export default App
-
 

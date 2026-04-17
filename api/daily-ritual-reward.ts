@@ -231,6 +231,16 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       text,
     },
     isCommentReward: true,
+    ledger: {
+      source: 'daily_comment_reward',
+      sourceId: `${dateKey}:${normalizeProgressionMovieKey(matchingTitle)}`,
+      reason: 'daily_ritual_reward',
+      metadata: {
+        dateKey,
+        movieTitle: matchingTitle,
+        completionBonusAwarded: rewardResult.completionBonusAwarded,
+      },
+    },
   });
 
   return sendJson(res, 200, {

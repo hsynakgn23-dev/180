@@ -1,4 +1,5 @@
 import { MARK_CATALOG } from './marksCatalog.js';
+import { readProfileFollowingCount } from './profileSocialState.js';
 import { TMDB_SEEDS } from '../data/tmdbSeeds.js';
 
 type ProfileXpState = Record<string, unknown>;
@@ -284,7 +285,7 @@ export const resolveStoredProfileMarks = (
     marks = applyMark(marks, 'hidden_gem');
   }
 
-  const followingCount = sanitizeStringList(xpState.following, 420, 120).length;
+  const followingCount = readProfileFollowingCount(xpState);
   if (followingCount >= 5) marks = applyMark(marks, 'quiet_following');
 
   const echoesGiven = toSafeInt(xpState.echoesGiven);

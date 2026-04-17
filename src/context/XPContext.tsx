@@ -7,6 +7,8 @@ import { trackEvent } from '../lib/analytics';
 import { MAX_AVATAR_DATA_URL_LENGTH, normalizeAvatarUrl } from '../lib/avatarUpload';
 import { STREAK_MILESTONE_SET } from '../domain/celebrations';
 import { buildApiUrl } from '../lib/apiBase';
+import { sendEngagementNotification } from '../lib/engagementNotificationApi';
+import { claimInviteCodeViaApi, ensureInviteCodeViaApi, getReferralDeviceKey } from '../lib/referralApi';
 export { getLeagueKeyByIndex, resolveLeagueInfo, resolveLeagueKey, resolveLeagueKeyFromXp } from '../domain/leagueSystem';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
@@ -201,8 +203,8 @@ const SHARE_REWARD_XP = 18;
 const USER_XP_STORAGE_KEY_PREFIX = '180_xp_data_';
 const USER_RITUAL_BACKUP_KEY_PREFIX = '180_ritual_backup_';
 const STORAGE_RECOVERY_KEYS = ['DAILY_CANDIDATE_POOL_V2', 'DAILY_SELECTION_V18'] as const;
-const INVITER_REWARD_XP = 0;
-const INVITEE_REWARD_XP = 50;
+const INVITER_REWARD_XP = 40;
+const INVITEE_REWARD_XP = 24;
 export const LEAGUE_NAMES = Object.keys(LEAGUES_DATA);
 type PendingRegistrationProfile = RegistrationProfileInput & { email: string };
 const getLeagueIndexFromXp = (xp: number): number =>
@@ -548,6 +550,11 @@ type UserFollowRow = {
     followed_user_id: string | null;
 };
 
+type CloudRitualReadResult = {
+    rituals: RitualLog[];
+    didRead: boolean;
+};
+
 const RITUAL_READ_VARIANTS = [
     {
         select: 'id, movie_title, poster_path, text, timestamp',
@@ -567,8 +574,10 @@ const RITUAL_READ_VARIANTS = [
     }
 ] as const;
 
-const readUserRitualsFromCloud = async (userId: string): Promise<RitualLog[]> => {
-    if (!userId || !isSupabaseLive() || !supabase) return [];
+const readUserRitualsFromCloud = async (userId: string): Promise<CloudRitualReadResult> => {
+    if (!userId || !isSupabaseLive() || !supabase) {
+        return { rituals: [], didRead: false };
+    }
 
     let rows: RitualBackupRow[] = [];
     let queryError: { code?: string | null; message?: string | null } | null = null;
@@ -587,7 +596,7 @@ const readUserRitualsFromCloud = async (userId: string): Promise<RitualLog[]> =>
                 continue;
             }
             console.error('[XP] failed to read ritual backups', error);
-            return [];
+            return { rituals: [], didRead: false };
         }
 
         rows = Array.isArray(data) ? (data as unknown as RitualBackupRow[]) : [];
@@ -596,7 +605,7 @@ const readUserRitualsFromCloud = async (userId: string): Promise<RitualLog[]> =>
     }
 
     if (queryError) {
-        return [];
+        return { rituals: [], didRead: false };
     }
 
     const mapped: RitualLog[] = rows
@@ -620,7 +629,10 @@ const readUserRitualsFromCloud = async (userId: string): Promise<RitualLog[]> =>
         })
         .filter((item): item is RitualLog => Boolean(item));
 
-    return mergeRitualLogs(mapped);
+    return {
+        rituals: mergeRitualLogs(mapped),
+        didRead: true
+    };
 };
 
 const maxDateKey = (values: Array<string | null | undefined>): string | null => {
@@ -1070,8 +1082,10 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             let remoteState: XPState | null = null;
             let localState: XPState | null = null;
             let cloudRituals: RitualLog[] = [];
+            let didReadCloudRituals = false;
             let localRitualBackup: RitualLog[] = [];
             let cloudFollowingKeys: string[] = [];
+            let didReadCloudFollowing = false;
 
             if (isSupabaseLive() && supabase && user.id && canReadProfileStateRef.current) {
                 const { data, error } = await supabase
@@ -1090,7 +1104,9 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                     }
                 }
 
-                cloudRituals = await readUserRitualsFromCloud(user.id);
+                const cloudRitualResult = await readUserRitualsFromCloud(user.id);
+                cloudRituals = cloudRitualResult.rituals;
+                didReadCloudRituals = cloudRitualResult.didRead;
 
                 if (canReadFollowRef.current) {
                     const { data: followData, error: followError } = await supabase
@@ -1104,6 +1120,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                         cloudFollowingKeys = rows
                             .map((row) => buildFollowUserIdKey(row.followed_user_id))
                             .filter((value): value is string => Boolean(value));
+                        didReadCloudFollowing = true;
                     } else if (isSupabaseCapabilityError(followError)) {
                         canReadFollowRef.current = false;
                     } else {
@@ -1140,11 +1157,34 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 birthDate: resolvedState.birthDate || user.birthDate || ''
             };
 
-            const mergedRituals = mergeRitualLogs(
-                resolvedState.dailyRituals || [],
-                localRitualBackup,
-                cloudRituals
+            const cloudRitualFingerprints = new Set(
+                cloudRituals.map((ritual) => ritualFingerprint(ritual))
             );
+            const cloudRitualIds = new Set(
+                cloudRituals
+                    .map((ritual) => String(ritual.id || '').trim())
+                    .filter((value): value is string => Boolean(value))
+            );
+            const filterToCloudKnownRituals = (rituals: RitualLog[]): RitualLog[] =>
+                (rituals || []).filter((ritual) => {
+                    const ritualId = String(ritual.id || '').trim();
+                    return (
+                        (ritualId && cloudRitualIds.has(ritualId)) ||
+                        cloudRitualFingerprints.has(ritualFingerprint(ritual))
+                    );
+                });
+
+            const mergedRituals = didReadCloudRituals
+                ? mergeRitualLogs(
+                    cloudRituals,
+                    filterToCloudKnownRituals(resolvedState.dailyRituals || []),
+                    filterToCloudKnownRituals(localRitualBackup)
+                )
+                : mergeRitualLogs(
+                    resolvedState.dailyRituals || [],
+                    localRitualBackup,
+                    cloudRituals
+                );
             const ritualGenres = mergedRituals
                 .map((ritual) => (ritual.genre || '').trim())
                 .filter((genre): genre is string => Boolean(genre));
@@ -1154,7 +1194,9 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 activeDays: mergeStringLists(resolvedState.activeDays || [], mergedRituals.map((ritual) => ritual.date))
                     .sort((a, b) => a.localeCompare(b)),
                 uniqueGenres: mergeStringLists(resolvedState.uniqueGenres || [], ritualGenres),
-                following: mergeStringLists(resolvedState.following || [], cloudFollowingKeys)
+                following: didReadCloudFollowing
+                    ? cloudFollowingKeys
+                    : mergeStringLists(resolvedState.following || [], cloudFollowingKeys)
             };
 
             if (!active) return;
@@ -1171,6 +1213,51 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             active = false;
         };
     }, [user?.email, user?.id]);
+
+    useEffect(() => {
+        if (!isXpHydrated || !user?.email || !isSupabaseLive() || !supabase) {
+            return;
+        }
+
+        let active = true;
+
+        const syncInviteProgram = async () => {
+            const seed = user.email || user.id || `web-${Date.now().toString(36)}`;
+            const result = await ensureInviteCodeViaApi(seed);
+            if (!active || !result.ok || !result.data) {
+                return;
+            }
+
+            const referralCode = String(result.data.code || '').trim().toUpperCase();
+            const referralCount = Math.max(0, Number(result.data.claimCount || 0));
+            if (!referralCode) {
+                return;
+            }
+
+            setState((prev) => {
+                if (
+                    String(prev.referralCode || '').trim().toUpperCase() === referralCode &&
+                    Math.max(0, Number(prev.referralCount || 0)) === referralCount
+                ) {
+                    return prev;
+                }
+
+                const updated = {
+                    ...prev,
+                    referralCode,
+                    referralCount
+                };
+                persistUserXpStateToLocal(user.email, updated);
+                return updated;
+            });
+        };
+
+        void syncInviteProgram();
+
+        return () => {
+            active = false;
+        };
+    }, [isXpHydrated, user?.email, user?.id]);
 
     const getToday = () => getLocalDateKey();
 
@@ -1194,6 +1281,44 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             }
             return updated;
         });
+    };
+
+    const getInviteCodeValidationMessage = (code: string): string | null => {
+        const normalizedCode = code.trim().toUpperCase();
+        if (!normalizedCode || normalizedCode.length < 4) {
+            return 'Gecersiz davet kodu.';
+        }
+        if (state.invitedBy) {
+            return 'Zaten bir davet kodu kullandiniz.';
+        }
+        if (normalizedCode === String(state.referralCode || '').trim().toUpperCase()) {
+            return 'Kendi kodunu kullanamazsin.';
+        }
+        return null;
+    };
+
+    const resolveInviteClaimFailureMessage = (
+        errorCode?: string,
+        fallbackMessage?: string
+    ): string => {
+        switch (String(errorCode || '').toUpperCase()) {
+            case 'UNAUTHORIZED':
+                return 'Davet kodu kullanmak icin once giris yapmalisin.';
+            case 'INVALID_CODE':
+                return 'Gecersiz davet kodu.';
+            case 'INVITE_NOT_FOUND':
+                return 'Davet kodu bulunamadi.';
+            case 'SELF_INVITE':
+                return 'Kendi kodunu kullanamazsin.';
+            case 'ALREADY_CLAIMED':
+                return 'Zaten bir davet kodu kullandiniz.';
+            case 'DEVICE_DAILY_LIMIT':
+                return 'Bu cihaz bugun cok fazla deneme yapti.';
+            case 'DEVICE_CODE_REUSE':
+                return 'Bu cihaz bu kodu zaten kullandi.';
+            default:
+                return fallbackMessage || 'Davet kodu uygulanamadi.';
+        }
     };
 
     const applyQuizProgress = (input: {
@@ -1524,6 +1649,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
         const userIdKey = buildFollowUserIdKey(target.userId);
         let didFollow = false;
+        let didSyncFollowInsert = false;
 
         setState((prev) => {
             const prevFollowing = [...(prev.following || [])];
@@ -1592,6 +1718,8 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                         console.error('[XP] failed to sync follow insert', error);
                         syncWarning = 'Takip kaydedildi, cloud senkronu basarisiz.';
                     }
+                } else {
+                    didSyncFollowInsert = true;
                 }
             } else {
                 const { error } = await supabase
@@ -1612,6 +1740,20 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         }
 
         if (didFollow) {
+            if (didSyncFollowInsert && target.userId) {
+                const actorLabel =
+                    (user?.name || user?.fullName || user?.username || user?.email.split('@')[0] || '').trim() ||
+                    normalizedUsername;
+                void sendEngagementNotification({
+                    kind: 'follow',
+                    targetUserId: target.userId,
+                    actorLabel
+                }).then((result) => {
+                    if (!result.ok) {
+                        console.warn('[XP] follow notification failed', result.message);
+                    }
+                });
+            }
             triggerWhisper(`Shadowing ${normalizedUsername}.`);
             return { ok: true, message: syncWarning || `${normalizedUsername} takip edildi.` };
         }
@@ -2251,22 +2393,15 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     };
 
     const redeemInviteCode = (code: string): AuthResult => {
-        const normalizedCode = code.trim().toUpperCase();
-        if (!normalizedCode || normalizedCode.length < 4) {
-            return { ok: false, message: 'Gecersiz davet kodu.' };
-        }
-        if (state.invitedBy) {
-            return { ok: false, message: 'Zaten bir davet kodu kullandiniz.' };
-        }
-        if (normalizedCode === state.referralCode) {
-            return { ok: false, message: 'Kendi kodunu kullanamazsin.' };
+        const validationMessage = getInviteCodeValidationMessage(code);
+        if (validationMessage) {
+            return { ok: false, message: validationMessage };
         }
 
-        // In a real scenario, we would verify the code against DB here.
-        // For local-first/MVP, we accept it and grant a small boost.
-        updateState({ invitedBy: normalizedCode, totalXP: state.totalXP + 50 });
-        triggerWhisper("Invite accepted. +50 XP");
-        return { ok: true, message: 'Davet kodu kabul edildi.' };
+        return {
+            ok: false,
+            message: 'Davet kodu icin sunucu onayi gerekiyor.'
+        };
     };
 
     const inviteCode = String(state.referralCode || '').trim().toUpperCase();
@@ -2274,7 +2409,61 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     const invitedByCode = state.invitedBy || null;
     const inviteClaimsCount = state.referralCount || 0;
     const inviteRewardsEarned = inviteClaimsCount * INVITER_REWARD_XP;
-    const claimInviteCode = async (code: string): Promise<AuthResult> => redeemInviteCode(code);
+    const claimInviteCode = async (code: string): Promise<AuthResult> => {
+        const normalizedCode = code.trim().toUpperCase();
+        const validationMessage = getInviteCodeValidationMessage(normalizedCode);
+        if (validationMessage) {
+            return { ok: false, message: validationMessage };
+        }
+
+        if (!isSupabaseLive() || !supabase) {
+            return {
+                ok: false,
+                message: 'Davet kodu su anda kullanilamiyor.'
+            };
+        }
+
+        try {
+            const result = await claimInviteCodeViaApi(normalizedCode, getReferralDeviceKey());
+            if (!result.ok || !result.data) {
+                return {
+                    ok: false,
+                    message: resolveInviteClaimFailureMessage(result.errorCode, result.message)
+                };
+            }
+
+            const inviteeRewardXp = Math.max(
+                0,
+                Number(result.data.inviteeRewardXp || INVITEE_REWARD_XP)
+            );
+
+            setState((prev) => {
+                const updated = {
+                    ...prev,
+                    invitedBy: normalizedCode,
+                    totalXP: prev.totalXP + inviteeRewardXp
+                };
+                if (user) {
+                    persistUserXpStateToLocal(user.email, updated);
+                }
+                return updated;
+            });
+
+            triggerWhisper(`Invite accepted. +${inviteeRewardXp} XP`);
+            return {
+                ok: true,
+                message: 'Davet kodu kabul edildi.'
+            };
+        } catch (error) {
+            return {
+                ok: false,
+                message: resolveInviteClaimFailureMessage(
+                    'SERVER_ERROR',
+                    error instanceof Error ? error.message : undefined
+                )
+            };
+        }
+    };
 
     const leagueIndex = getLeagueIndexFromXp(state.totalXP);
     const leagueName = LEAGUE_NAMES[leagueIndex];
@@ -2360,9 +2549,6 @@ export const useXP = () => {
     }
     return context;
 };
-
-
-
 
 
 

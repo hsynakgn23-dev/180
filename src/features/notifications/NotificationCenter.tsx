@@ -3,15 +3,101 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { type Notification, useNotifications } from '../../context/NotificationContext';
 import { useLanguage } from '../../context/LanguageContext';
+import { parseMobileDeepLink } from '../../domain/deepLinks';
 
 const isHashRoute = (value: string): boolean =>
-    value.startsWith('#/') || value.startsWith('/u/') || value === '/admin' || value.startsWith('/admin?');
+    value === '/' ||
+    value === '#/' ||
+    value.startsWith('#/') ||
+    value.startsWith('/u/') ||
+    value === '/admin' ||
+    value.startsWith('/admin?');
+
+const resolveMobileNotificationLink = (
+    rawLink: string
+): { kind: 'hash' | 'assign'; href: string } | null => {
+    const routeIntent = parseMobileDeepLink(rawLink);
+    if (!routeIntent) return null;
+
+    // Public profile — /u/<key>?name=<username>
+    if (routeIntent.target === 'public_profile') {
+        const routeKey = routeIntent.userId
+            ? `id:${routeIntent.userId}`
+            : routeIntent.username
+                ? `name:${routeIntent.username}`
+                : '';
+        if (!routeKey) {
+            return { kind: 'hash', href: '/' };
+        }
+
+        const query = new URLSearchParams();
+        if (routeIntent.userId && routeIntent.username) {
+            query.set('name', routeIntent.username);
+        }
+
+        const suffix = query.toString();
+        return {
+            kind: 'hash',
+            href: `/u/${encodeURIComponent(routeKey)}${suffix ? `?${suffix}` : ''}`
+        };
+    }
+
+    // Own profile — /#/profile
+    if (routeIntent.target === 'profile') {
+        return { kind: 'hash', href: '/profile' };
+    }
+
+    // Daily rollover — /#/daily
+    if (routeIntent.target === 'daily') {
+        return { kind: 'hash', href: '/daily' };
+    }
+
+    // Invite / referral — /#/invite?code=<invite>
+    if (routeIntent.target === 'invite') {
+        const query = new URLSearchParams();
+        if (routeIntent.invite) query.set('code', routeIntent.invite);
+        const suffix = query.toString();
+        return {
+            kind: 'hash',
+            href: `/invite${suffix ? `?${suffix}` : ''}`
+        };
+    }
+
+    // Share — /#/share?invite=...&platform=...&goal=...
+    if (routeIntent.target === 'share') {
+        const query = new URLSearchParams();
+        if (routeIntent.invite) query.set('invite', routeIntent.invite);
+        if (routeIntent.platform) query.set('platform', routeIntent.platform);
+        if (routeIntent.goal) query.set('goal', routeIntent.goal);
+        const suffix = query.toString();
+        return {
+            kind: 'hash',
+            href: `/share${suffix ? `?${suffix}` : ''}`
+        };
+    }
+
+    // Discover — /#/discover?route=<route>
+    if (routeIntent.target === 'discover') {
+        const query = new URLSearchParams();
+        if (routeIntent.route) query.set('route', routeIntent.route);
+        const suffix = query.toString();
+        return {
+            kind: 'hash',
+            href: `/discover${suffix ? `?${suffix}` : ''}`
+        };
+    }
+
+    return { kind: 'hash', href: '/' };
+};
 
 const resolveNotificationLink = (
     rawLink: string
 ): { kind: 'hash' | 'assign'; href: string } | null => {
     const normalized = String(rawLink || '').trim();
     if (!normalized) return null;
+
+    const mobileLink = resolveMobileNotificationLink(normalized);
+    if (mobileLink) return mobileLink;
 
     if (isHashRoute(normalized)) {
         return {
@@ -55,7 +141,7 @@ export const NotificationCenter: React.FC = () => {
     const [isOpen, setIsOpen] = useState(false);
     const scrollContainerRef = useRef<HTMLDivElement | null>(null);
     const notificationItemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-    const { notifications, unreadCount, markAsRead } = useNotifications();
+    const { notifications, unreadCount, markAsRead, markManyAsRead } = useNotifications();
     const { text } = useLanguage();
     const unreadNotificationIds = useMemo(
         () => notifications.filter((notification) => !notification.read).map((notification) => notification.id),
@@ -68,16 +154,20 @@ export const NotificationCenter: React.FC = () => {
         if (!container) return;
 
         const containerRect = container.getBoundingClientRect();
+        const visibleUnreadNotificationIds: string[] = [];
         unreadNotificationIds.forEach((notificationId) => {
             const element = notificationItemRefs.current[notificationId];
             if (!element) return;
             const itemRect = element.getBoundingClientRect();
             const isVisible = itemRect.bottom > containerRect.top && itemRect.top < containerRect.bottom;
             if (isVisible) {
-                markAsRead(notificationId);
+                visibleUnreadNotificationIds.push(notificationId);
             }
         });
-    }, [isOpen, markAsRead, unreadNotificationIds]);
+        if (visibleUnreadNotificationIds.length > 0) {
+            markManyAsRead(visibleUnreadNotificationIds);
+        }
+    }, [isOpen, markManyAsRead, unreadNotificationIds]);
 
     useEffect(() => {
         if (!isOpen) return;

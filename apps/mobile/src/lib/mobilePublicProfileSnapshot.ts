@@ -5,6 +5,14 @@ import {
 } from './mobileProfileVisibility';
 import { resolveMobileAvatarFromXpState } from './mobileAvatar';
 import { resolveStoredProfileMarks } from '../../../../src/domain/profileMarks';
+import { readProfileTotalXp } from '../../../../src/domain/profileXpState';
+import {
+  readProfileDaysPresentCount,
+  readProfileFollowersCount,
+  readProfileFollowingCount,
+  readProfileLastRitualDate,
+  readProfileRitualCount,
+} from '../../../../src/domain/profileSocialState';
 
 type SupabaseErrorLike = {
   code?: string | null;
@@ -62,27 +70,6 @@ const sanitizeStringList = (value: unknown, maxItems = 120): string[] => {
     .map((entry) => normalizeText(entry, 80))
     .filter(Boolean);
   return Array.from(new Set(cleaned)).slice(0, maxItems);
-};
-
-const resolveStoredFollowCounts = (
-  xpState: ProfileXpState | null | undefined
-): { followersCount: number; followingCount: number } => {
-  if (!xpState || typeof xpState !== 'object' || Array.isArray(xpState)) {
-    return { followersCount: 0, followingCount: 0 };
-  }
-
-  return {
-    followersCount: Math.max(
-      toSafeInt(xpState.followers),
-      toSafeInt(xpState.followersCount),
-      toSafeInt(xpState.followerCount)
-    ),
-    followingCount: Math.max(
-      sanitizeStringList(xpState.following, 420).length,
-      toSafeInt(xpState.followingCount),
-      toSafeInt(xpState.following_count)
-    ),
-  };
 };
 
 const sortDateKeysDesc = (dateKeys: string[]): string[] =>
@@ -179,13 +166,8 @@ const parseStatsFromXpState = (
 
   const displayNameCandidate =
     normalizeText(xpState.username, 80) || normalizeText(xpState.fullName, 80) || '';
-  const totalXp = Math.max(toSafeInt(xpState.totalXP), toSafeInt(xpState.xp));
+  const totalXp = readProfileTotalXp(xpState);
   const dailyRituals = Array.isArray(xpState.dailyRituals) ? xpState.dailyRituals : [];
-  const storedRitualCount = Math.max(toSafeInt(xpState.ritualCount), toSafeInt(xpState.ritualsCount));
-  const storedDaysPresentCount = Math.max(
-    toSafeInt(xpState.daysPresentCount),
-    toSafeInt(xpState.activeDaysCount)
-  );
   const dailyRitualDates = sortDateKeysDesc(
     dailyRituals
       .map((entry) => {
@@ -197,32 +179,17 @@ const parseStatsFromXpState = (
   const activeDays = sortDateKeysDesc(sanitizeStringList(xpState.activeDays, 420));
   const streakSeed = activeDays.length > 0 ? activeDays : dailyRitualDates;
   const streak = Math.max(toSafeInt(xpState.streak), computeCurrentStreak(streakSeed));
-  const ritualsCount = Math.max(storedRitualCount, dailyRituals.length);
-  const daysPresent = Math.max(
-    storedDaysPresentCount,
-    activeDays.length > 0 ? activeDays.length : dailyRitualDates.length
-  );
-  const followCounts = resolveStoredFollowCounts(xpState);
   const { marks, featuredMarks } = resolveStoredProfileMarks(xpState);
-  const lastRitualDate = sortDateKeysDesc(
-    [
-      dailyRitualDates[0] || null,
-      activeDays[0] || null,
-      normalizeText(xpState.lastRitualDate ?? xpState.last_ritual_date, 40) || null,
-      normalizeText(xpState.lastStreakProtectionDate, 40) || null
-    ].filter(
-      (value): value is string => Boolean(value)
-    )
-  )[0] || null;
+  const lastRitualDate = readProfileLastRitualDate(xpState);
 
   return {
     displayNameCandidate,
     totalXp,
     streak,
-    ritualsCount,
-    daysPresent,
-    followersCount: followCounts.followersCount,
-    followingCount: followCounts.followingCount,
+    ritualsCount: readProfileRitualCount(xpState),
+    daysPresent: readProfileDaysPresentCount(xpState),
+    followersCount: readProfileFollowersCount(xpState),
+    followingCount: readProfileFollowingCount(xpState),
     marks,
     featuredMarks,
     lastRitualDate,
@@ -231,8 +198,8 @@ const parseStatsFromXpState = (
 
 const readFollowCounts = async (
   userId: string
-): Promise<{ followersCount: number; followingCount: number }> => {
-  if (!supabase) return { followersCount: 0, followingCount: 0 };
+): Promise<{ followersCount: number | null; followingCount: number | null }> => {
+  if (!supabase) return { followersCount: null, followingCount: null };
 
   const [followersRes, followingRes] = await Promise.all([
     supabase
@@ -247,11 +214,11 @@ const readFollowCounts = async (
 
   const followersCount =
     followersRes.error && isSupabaseCapabilityError(followersRes.error)
-      ? 0
+      ? null
       : Math.max(0, Number(followersRes.count || 0));
   const followingCount =
     followingRes.error && isSupabaseCapabilityError(followingRes.error)
-      ? 0
+      ? null
       : Math.max(0, Number(followingRes.count || 0));
 
   return { followersCount, followingCount };
@@ -259,13 +226,14 @@ const readFollowCounts = async (
 
 const readRitualTimeline = async (
   userId: string
-): Promise<{ dateKeys: string[]; ritualsCount: number; lastRitualDate: string | null }> => {
-  if (!supabase) return { dateKeys: [], ritualsCount: 0, lastRitualDate: null };
+): Promise<{ dateKeys: string[]; ritualsCount: number | null; lastRitualDate: string | null }> => {
+  if (!supabase) return { dateKeys: [], ritualsCount: null, lastRitualDate: null };
 
-  const { count } = await supabase
+  const { count, error: countError } = await supabase
     .from('rituals')
     .select('id', { head: true, count: 'exact' })
     .eq('user_id', userId);
+  const countAvailable = !countError;
 
   const variants: Array<{ select: string; orderBy: 'timestamp' | 'created_at' }> = [
     { select: 'timestamp', orderBy: 'timestamp' },
@@ -273,6 +241,7 @@ const readRitualTimeline = async (
   ];
 
   let rows: RitualTimestampRow[] = [];
+  let rowsAvailable = false;
   for (const variant of variants) {
     const { data, error } = await supabase
       .from('rituals')
@@ -287,17 +256,18 @@ const readRitualTimeline = async (
     }
 
     rows = Array.isArray(data) ? (data as RitualTimestampRow[]) : [];
+    rowsAvailable = true;
     break;
   }
 
   const dateKeys = rows
     .map((row) => parseIsoToDateKey(row.timestamp || row.created_at))
     .filter((value): value is string => Boolean(value));
-  const lastRitualDate = dateKeys[0] || null;
+  const lastRitualDate = rowsAvailable ? dateKeys[0] || null : null;
 
   return {
     dateKeys,
-    ritualsCount: Math.max(0, Number(count || 0)),
+    ritualsCount: countAvailable ? Math.max(0, Number(count || 0)) : rowsAvailable ? dateKeys.length : null,
     lastRitualDate,
   };
 };
@@ -342,6 +312,7 @@ export const fetchMobilePublicProfileSnapshot = async ({
   const avatarUrl = resolveMobileAvatarFromXpState(profileRow?.xp_state);
   const visibility = readMobileProfileVisibilityFromXpState(profileRow?.xp_state);
   const followCounts = await readFollowCounts(normalizedUserId);
+  const timeline = await readRitualTimeline(normalizedUserId);
 
   const displayNameBase =
     (xpStats && xpStats.displayNameCandidate) ||
@@ -350,6 +321,25 @@ export const fetchMobilePublicProfileSnapshot = async ({
     'Observer';
 
   if (xpStats) {
+    const resolvedFollowersCount =
+      typeof followCounts.followersCount === 'number'
+        ? followCounts.followersCount
+        : xpStats.followersCount;
+    const resolvedFollowingCount =
+      typeof followCounts.followingCount === 'number'
+        ? followCounts.followingCount
+        : xpStats.followingCount;
+    const uniqueTimelineDays = Array.from(new Set(timeline.dateKeys));
+    const resolvedRitualsCount =
+      typeof timeline.ritualsCount === 'number'
+        ? timeline.ritualsCount
+        : xpStats.ritualsCount;
+    const resolvedDaysPresent =
+      uniqueTimelineDays.length > 0 || timeline.ritualsCount === 0
+        ? uniqueTimelineDays.length
+        : xpStats.daysPresent;
+    const resolvedLastRitualDate = timeline.lastRitualDate || xpStats.lastRitualDate;
+
     return {
       ok: true,
       message: 'Profil verisi guncellendi.',
@@ -359,20 +349,19 @@ export const fetchMobilePublicProfileSnapshot = async ({
         avatarUrl,
         totalXp: visibility.showStats ? xpStats.totalXp : 0,
         streak: visibility.showStats ? xpStats.streak : 0,
-        ritualsCount: visibility.showStats ? xpStats.ritualsCount : 0,
-        daysPresent: visibility.showStats ? xpStats.daysPresent : 0,
-        followersCount: visibility.showFollowCounts ? Math.max(followCounts.followersCount, xpStats.followersCount) : 0,
-        followingCount: visibility.showFollowCounts ? Math.max(followCounts.followingCount, xpStats.followingCount) : 0,
+        ritualsCount: visibility.showStats ? resolvedRitualsCount : 0,
+        daysPresent: visibility.showStats ? resolvedDaysPresent : 0,
+        followersCount: visibility.showFollowCounts ? resolvedFollowersCount : 0,
+        followingCount: visibility.showFollowCounts ? resolvedFollowingCount : 0,
         marks: visibility.showMarks ? xpStats.marks : [],
         featuredMarks: visibility.showMarks ? xpStats.featuredMarks : [],
-        lastRitualDate: visibility.showActivity ? xpStats.lastRitualDate : null,
+        lastRitualDate: visibility.showActivity ? resolvedLastRitualDate : null,
         source: 'xp_state',
         visibility,
       },
     };
   }
 
-  const timeline = await readRitualTimeline(normalizedUserId);
   const uniqueDays = Array.from(new Set(timeline.dateKeys));
   return {
     ok: true,
@@ -383,10 +372,10 @@ export const fetchMobilePublicProfileSnapshot = async ({
       avatarUrl,
       totalXp: 0,
       streak: visibility.showStats ? computeCurrentStreak(uniqueDays) : 0,
-      ritualsCount: visibility.showStats ? timeline.ritualsCount : 0,
+      ritualsCount: visibility.showStats ? Math.max(0, Number(timeline.ritualsCount || 0)) : 0,
       daysPresent: visibility.showStats ? uniqueDays.length : 0,
-      followersCount: visibility.showFollowCounts ? followCounts.followersCount : 0,
-      followingCount: visibility.showFollowCounts ? followCounts.followingCount : 0,
+      followersCount: visibility.showFollowCounts ? Math.max(0, Number(followCounts.followersCount || 0)) : 0,
+      followingCount: visibility.showFollowCounts ? Math.max(0, Number(followCounts.followingCount || 0)) : 0,
       marks: [],
       featuredMarks: [],
       lastRitualDate: visibility.showActivity ? timeline.lastRitualDate : null,

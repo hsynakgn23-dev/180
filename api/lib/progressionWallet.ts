@@ -8,6 +8,12 @@ import {
   WALLET_STARTER_TICKETS,
   type WalletInventory,
 } from '../../src/domain/progressionEconomy.js';
+import {
+  hasProfileXpMirrorDrift,
+  hasStoredProfileXp,
+  withMirroredProfileXp,
+} from '../../src/domain/profileXpState.js';
+import { recordWalletLedgerEntry } from './progressionLedger.js';
 
 type ProfileRow = {
   user_id: string;
@@ -268,6 +274,25 @@ const mergeWalletInventory = (
   streak_shield: toSafeInt(current.streak_shield) + toSafeInt(delta.streak_shield),
 });
 
+const buildInventoryDelta = (
+  itemKey: string,
+  quantity: number
+): Partial<WalletInventory> => {
+  const normalizedQuantity = Math.trunc(quantity);
+  switch (normalizeText(itemKey, 80)) {
+    case 'joker_fifty_fifty':
+      return { joker_fifty_fifty: normalizedQuantity };
+    case 'joker_freeze':
+      return { joker_freeze: normalizedQuantity };
+    case 'joker_pass':
+      return { joker_pass: normalizedQuantity };
+    case 'streak_shield':
+      return { streak_shield: normalizedQuantity };
+    default:
+      return {};
+  }
+};
+
 const serializeWallet = (wallet: ProgressionWalletState): Record<string, unknown> => ({
   balance: wallet.balance,
   inventory: wallet.inventory,
@@ -319,7 +344,11 @@ export const toWalletSnapshot = (
 
 const toLoadedWalletProfile = (data: unknown): LoadedWalletProfile => {
   const profile = (data || null) as ProfileRow | null;
-  const xpState = sanitizeRecord(profile?.xp_state);
+  const rawXpState = sanitizeRecord(profile?.xp_state);
+  const xpState =
+    hasStoredProfileXp(rawXpState) || hasProfileXpMirrorDrift(rawXpState)
+      ? withMirroredProfileXp(rawXpState)
+      : rawXpState;
   const wallet = normalizeWallet(xpState.wallet);
   return {
     profile,
@@ -375,8 +404,11 @@ const persistWalletProfileIfUnchanged = async (input: {
   xpState: Record<string, unknown>;
   wallet: ProgressionWalletState;
 }): Promise<LoadedWalletProfile | null> => {
+  const baseXpState = hasStoredProfileXp(input.xpState) || hasProfileXpMirrorDrift(input.xpState)
+    ? withMirroredProfileXp(input.xpState)
+    : { ...input.xpState };
   const nextXpState = {
-    ...input.xpState,
+    ...baseXpState,
     wallet: serializeWallet(input.wallet),
   };
   const nowIso = new Date().toISOString();
@@ -483,8 +515,11 @@ export const persistWalletProfile = async (input: {
   xpState: Record<string, unknown>;
   wallet: ProgressionWalletState;
 }): Promise<void> => {
+  const baseXpState = hasStoredProfileXp(input.xpState) || hasProfileXpMirrorDrift(input.xpState)
+    ? withMirroredProfileXp(input.xpState)
+    : { ...input.xpState };
   const nextXpState = {
-    ...input.xpState,
+    ...baseXpState,
     wallet: serializeWallet(input.wallet),
   };
   const { error } = await input.supabase
@@ -549,6 +584,21 @@ export const grantStarterTicketsIfNeeded = async (input: {
     throw new Error('Failed to seed starter tickets.');
   }
 
+  if (mutation.result.granted) {
+    await recordWalletLedgerEntry({
+      supabase: input.supabase,
+      userId: input.userId,
+      source: 'starter_tickets',
+      reason: 'starter_seed',
+      delta: WALLET_STARTER_TICKETS,
+      balanceAfter: mutation.wallet.balance,
+      metadata: {
+        starterTickets: WALLET_STARTER_TICKETS,
+      },
+      eventKey: 'starter_tickets',
+    });
+  }
+
   return {
     granted: mutation.result.granted,
     wallet: mutation.wallet,
@@ -594,6 +644,93 @@ export const grantPremiumStarterBundle = async (input: {
 
   if (!mutation.ok) {
     throw new Error('Failed to grant premium starter bundle.');
+  }
+
+  if (mutation.result.granted) {
+    await recordWalletLedgerEntry({
+      supabase: input.supabase,
+      userId: input.userId,
+      source: 'premium_starter_bundle',
+      sourceId: normalizeText(input.productId, 120) || null,
+      reason: 'inventory_grant',
+      delta: 0,
+      balanceAfter: mutation.wallet.balance,
+      metadata: {
+        inventoryDelta: PREMIUM_STARTER_BUNDLE,
+        productId: normalizeText(input.productId, 120) || null,
+      },
+      eventKey: 'premium_starter_bundle',
+      allowZeroDelta: true,
+    });
+  }
+
+  return {
+    granted: mutation.result.granted,
+    wallet: mutation.wallet,
+  };
+};
+
+export const grantWalletTickets = async (input: {
+  supabase: SupabaseClientLike;
+  userId: string;
+  fallbackEmail?: string | null;
+  fallbackDisplayName?: string | null;
+  amount: number;
+  ledger?: {
+    source?: string | null;
+    sourceId?: string | null;
+    reason?: string | null;
+    metadata?: Record<string, unknown> | null;
+    eventKey?: string | null;
+  } | null;
+}): Promise<{ granted: number; wallet: ProgressionWalletState }> => {
+  const grantedAmount = Math.max(0, Math.floor(Number(input.amount) || 0));
+  const mutation = await mutateWalletProfile<{ granted: number }, never>({
+    supabase: input.supabase,
+    userId: input.userId,
+    fallbackEmail: input.fallbackEmail || null,
+    fallbackDisplayName: input.fallbackDisplayName || null,
+    mutate: (loaded) => {
+      if (grantedAmount <= 0) {
+        return {
+          ok: true,
+          wallet: loaded.wallet,
+          result: { granted: 0 },
+          persist: false,
+        };
+      }
+
+      return {
+        ok: true,
+        wallet: {
+          ...loaded.wallet,
+          balance: loaded.wallet.balance + grantedAmount,
+          lifetimeEarned: loaded.wallet.lifetimeEarned + grantedAmount,
+        },
+        result: { granted: grantedAmount },
+      };
+    },
+  });
+
+  if (!mutation.ok) {
+    throw new Error('Failed to grant wallet tickets.');
+  }
+
+  if (mutation.result.granted > 0) {
+    await recordWalletLedgerEntry({
+      supabase: input.supabase,
+      userId: input.userId,
+      source: normalizeText(input.ledger?.source, 80) || 'wallet_grant',
+      sourceId: normalizeText(input.ledger?.sourceId, 160) || null,
+      reason: normalizeText(input.ledger?.reason, 160) || 'ticket_grant',
+      delta: mutation.result.granted,
+      balanceAfter: mutation.wallet.balance,
+      metadata: {
+        grantedTickets: mutation.result.granted,
+        ...(input.ledger?.metadata || {}),
+      },
+      eventKey: normalizeText(input.ledger?.eventKey, 240) || null,
+    });
   }
 
   return {
@@ -669,6 +806,23 @@ export const claimRewardedReels = async (input: {
     };
   }
 
+  await recordWalletLedgerEntry({
+    supabase: input.supabase,
+    userId: input.userId,
+    source: 'rewarded_ad',
+    reason: 'claim_rewarded',
+    delta: mutation.result,
+    balanceAfter: mutation.wallet.balance,
+    metadata: {
+      rewardedClaimsToday: mutation.wallet.rewardedClaimsToday,
+      rewardedDate: mutation.wallet.rewardedDate,
+      lastRewardedClaimAt: mutation.wallet.lastRewardedClaimAt,
+    },
+    eventKey: mutation.wallet.lastRewardedClaimAt
+      ? `rewarded_ad:${mutation.wallet.lastRewardedClaimAt}`
+      : null,
+  });
+
   return {
     ok: true,
     wallet: mutation.wallet,
@@ -730,6 +884,23 @@ export const purchaseWalletStoreItem = async (input: {
     };
   }
 
+  const purchasedItem = findWalletStoreItem(input.itemKey);
+  await recordWalletLedgerEntry({
+    supabase: input.supabase,
+    userId: input.userId,
+    source: 'wallet_store_purchase',
+    sourceId: normalizeText(input.itemKey, 80) || null,
+    reason: 'spend_item',
+    delta: -mutation.result,
+    balanceAfter: mutation.wallet.balance,
+    metadata: {
+      itemKey: normalizeText(input.itemKey, 80) || null,
+      inventoryKey: purchasedItem?.inventoryKey || null,
+      quantity: purchasedItem?.quantity || null,
+      cost: mutation.result,
+    },
+  });
+
   return {
     ok: true,
     wallet: mutation.wallet,
@@ -770,6 +941,21 @@ export const consumeWalletInventoryItem = async (input: {
       wallet,
     };
   }
+
+  await recordWalletLedgerEntry({
+    supabase: input.supabase,
+    userId: input.userId,
+    source: 'wallet_inventory_consume',
+    sourceId: normalizeText(input.itemKey, 80) || null,
+    reason: 'consume_item',
+    delta: 0,
+    balanceAfter: wallet.balance,
+    metadata: {
+      itemKey: normalizeText(input.itemKey, 80) || null,
+      inventoryDelta: buildInventoryDelta(input.itemKey, -1),
+    },
+    allowZeroDelta: true,
+  });
 
   return { ok: true, wallet };
 };
@@ -819,6 +1005,24 @@ export const grantTopupPack = async (input: {
       wallet,
     };
   }
+
+  await recordWalletLedgerEntry({
+    supabase: input.supabase,
+    userId: input.userId,
+    source: 'wallet_topup',
+    sourceId: normalizeText(input.transactionRef, 240) || null,
+    reason: 'grant_topup',
+    delta: Math.max(0, Number(row.reels) || 0),
+    balanceAfter: wallet.balance,
+    metadata: {
+      productId: normalizeText(input.productId, 160) || null,
+      provider: normalizeText(input.provider, 20) || null,
+      verificationKind: normalizeText(input.verificationKind, 80) || null,
+      purchaseDate: normalizeText(input.purchaseDate, 80) || null,
+      transactionId: normalizeText(input.transactionId, 240) || null,
+    },
+    eventKey: normalizeText(input.transactionRef, 240) || null,
+  });
 
   return {
     ok: true,

@@ -167,6 +167,19 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
                     arenaActivity: 0,
                 },
                 isQuizReward: true,
+                ledger: {
+                    source: 'rush_quiz',
+                    sourceId: sessionId,
+                    reason: 'rush_complete',
+                    metadata: {
+                        mode,
+                        finalStatus,
+                        correctCount: session.correct_count || 0,
+                        totalQuestions: session.total_questions || 0,
+                        xpEarned,
+                    },
+                    eventKey: `rush_quiz:${sessionId}`,
+                },
             });
         } catch (xpError) {
             // Session was already marked completed — log for manual reconciliation

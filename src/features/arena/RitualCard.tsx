@@ -7,6 +7,7 @@ import { useNotifications } from '../../context/NotificationContext';
 import { resolvePosterCandidates } from '../../lib/posterCandidates';
 import { searchPosterPath } from '../../lib/tmdbApi';
 import { moderateComment } from '../../lib/commentModeration';
+import { sendEngagementNotification } from '../../lib/engagementNotificationApi';
 import { supabase, isSupabaseLive } from '../../lib/supabase';
 import { useLanguage } from '../../context/LanguageContext';
 
@@ -83,6 +84,12 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, isHotStreak = fa
     const leagueInfo = resolveLeagueInfo(ritual.league);
     const isFollowing = isFollowingUser(ritual.userId, ritual.author);
     const normalizedAuthor = (ritual.author || '').trim().toLowerCase();
+    const notificationActorLabel = useMemo(() => {
+        const displayName = String(user?.name || '').trim();
+        if (displayName) return displayName;
+        const emailPrefix = String(user?.email || '').split('@')[0]?.trim() || '';
+        return emailPrefix || ui.ritualCard.you;
+    }, [ui.ritualCard.you, user?.email, user?.name]);
     const isOwnAuthor = Boolean(
         user &&
         (
@@ -223,6 +230,19 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, isHotStreak = fa
                                 ? ui.ritualCard.rateLimitReached
                                 : ui.ritualCard.reactionSyncFailed
                         });
+                        return;
+                    }
+
+                    if (!isOwnAuthor) {
+                        void sendEngagementNotification({
+                            kind: 'like',
+                            ritualId: ritual.id,
+                            actorLabel: notificationActorLabel
+                        }).then((result) => {
+                            if (!result.ok) {
+                                console.warn('[Ritual] engagement notification failed for echo', result.message);
+                            }
+                        });
                     }
                 });
         }
@@ -322,6 +342,18 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, isHotStreak = fa
                     };
 
                     updateReplies((prev) => prev.map((reply) => (reply.id === tempId ? syncedReply : reply)));
+
+                    if (!isOwnAuthor) {
+                        void sendEngagementNotification({
+                            kind: 'comment',
+                            ritualId: ritual.id,
+                            actorLabel: notificationActorLabel
+                        }).then((result) => {
+                            if (!result.ok) {
+                                console.warn('[Ritual] engagement notification failed for reply', result.message);
+                            }
+                        });
+                    }
                 } catch (error: unknown) {
                     console.error('[Ritual] failed to sync replies', error);
                     updateReplies((prev) => prev.filter((reply) => reply.id !== tempId));
@@ -337,14 +369,6 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, isHotStreak = fa
         } else {
             updateReplies((prev) => prev.map((reply) => (reply.id === tempId ? { ...reply, id: Date.now().toString() } : reply)));
         }
-
-        addNotification({
-            type: 'reply',
-            message: format(ui.ritualCard.replyNotification, {
-                author: ritual.author,
-                text: `${text.substring(0, 20)}...`
-            })
-        });
     };
 
     const toggleReplyExpansion = (replyId: string) => {

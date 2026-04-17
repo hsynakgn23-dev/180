@@ -3574,7 +3574,7 @@ const LegacyProfileUnifiedCard = ({
     : copy.pending;
   const progressPercentLabel = Math.round(progress.progressPercentage);
   const fillHeadColor = getProgressHeadColor(progress.progressPercentage);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   const _fillTailColor = getProgressTailColor(progress.progressPercentage);
   const effectiveProgressWidth =
     progress.progressPercentage > 0 ? Math.max(progress.progressPercentage, 3) : 0;
@@ -3590,7 +3590,7 @@ const LegacyProfileUnifiedCard = ({
       ? `${rawLeagueColor}CC`
       : 'rgba(255,255,255,0.12)';
   // XP bar entrance animation
-  // eslint-disable-next-line react-hooks/refs
+   
   const xpBarOpacity = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.timing(xpBarOpacity, {
@@ -7062,7 +7062,7 @@ const DailyHomeScreen = ({
   const railInteractionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const railMovies = state.status === 'success' ? state.movies.slice(0, 5) : [];
   // Streak badge pulse
-  // eslint-disable-next-line react-hooks/refs
+   
   const streakPulse = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     if (!streak || streak <= 0) return;
@@ -7505,7 +7505,7 @@ const DailyHomeScreen = ({
   });
   const greetingAccentColor =
     dailyGreeting.tone === 'sage' ? '#8A9A5B' : dailyGreeting.tone === 'clay' ? '#A57164' : '#B68B4C';
-  // eslint-disable-next-line react-hooks/refs
+   
   const railGestureProps = railResponderHandlers || {};
 
   return (
@@ -13807,7 +13807,7 @@ const LegacyPublicProfileDetailCard = ({
   const followingCount = Math.max(0, Number(profile?.followingCount || 0));
   const followersCount = Math.max(0, Number(profile?.followersCount || 0));
   const isFollowBusy = followStatus === 'loading';
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   const _followTone =
     followStatus === 'error' ? 'clay' : followStatus === 'ready' ? 'sage' : 'muted';
 
@@ -14008,7 +14008,7 @@ export const MarkUnlockModal = ({
     );
     loop.start();
     return () => loop.stop();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [event]);
 
   if (!event) return null;
@@ -14105,7 +14105,7 @@ export const XpGainToast = ({ xpDelta, onDone }: XpGainToastProps) => {
       const timer = setTimeout(() => { hide.start(() => onDone()); }, 1800);
       return () => clearTimeout(timer);
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [xpDelta]);
 
   if (xpDelta === null || xpDelta <= 0) return null;

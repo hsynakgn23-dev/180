@@ -974,7 +974,20 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
                     arenaScore: rewardGrant.arenaScore,
                     arenaActivity: rewardGrant.arenaActivity
                 },
-                isQuizReward: true
+                isQuizReward: true,
+                ledger: {
+                    source: 'blur_quiz',
+                    sourceId: session.id,
+                    reason: 'blur_quiz_complete',
+                    metadata: {
+                        blurStep,
+                        jokersUsed,
+                        correct,
+                        matchScore: evaluation.best ? Number(evaluation.best.score.toFixed(3)) : 0,
+                        movieId: session.movie_id,
+                    },
+                    eventKey: `blur_quiz:${session.id}`,
+                }
             });
         }
 

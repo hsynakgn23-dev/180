@@ -1,6 +1,7 @@
 import { isSupabaseLive, readSupabaseSessionSafe, supabase } from './supabase';
 import { normalizeMobileAvatarUrl } from './mobileAvatar';
 import { resolveSupabaseUserEmail } from './supabaseUser';
+import { readProfileTotalXp, withMirroredProfileXp } from '../../../../src/domain/profileXpState';
 
 type SupabaseErrorLike = {
   code?: string | null;
@@ -406,7 +407,7 @@ export const claimMobileShareReward = async (
 
   const profileRow = (profileData || null) as ProfileRow | null;
   const currentState = sanitizeRecord(profileRow?.xp_state);
-  const currentTotalXp = Math.max(toSafeInt(currentState.totalXP), toSafeInt(input.fallbackTotalXp));
+  const currentTotalXp = Math.max(readProfileTotalXp(currentState), toSafeInt(input.fallbackTotalXp));
   const currentRewardDate = normalizeText(currentState.lastShareRewardDate, 40);
   if (currentRewardDate === today) {
     return {
@@ -438,9 +439,8 @@ export const claimMobileShareReward = async (
   const displayName = resolveDisplayName(profileRow, currentState, input.fallbackDisplayName, userEmail);
   const nextTotalXp = currentTotalXp + MOBILE_SHARE_REWARD_XP;
   const identity = input.fallbackIdentity || {};
-  const nextState: Record<string, unknown> = {
+  const nextState: Record<string, unknown> = withMirroredProfileXp({
     ...currentState,
-    totalXP: nextTotalXp,
     dailyRituals,
     marks: nextMarks,
     featuredMarks: nextFeaturedMarks,
@@ -479,7 +479,7 @@ export const claimMobileShareReward = async (
       normalizeText(currentState.referralCode, 120) || normalizeText(input.fallbackReferralCode, 120),
     referralCount: toSafeInt(currentState.referralCount),
     lastShareRewardDate: today,
-  };
+  }, nextTotalXp);
 
   const nowIso = new Date().toISOString();
   const { error: writeError } = await supabase.from('profiles').upsert(

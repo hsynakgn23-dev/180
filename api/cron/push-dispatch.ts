@@ -18,7 +18,7 @@
 //
 // Suggested schedule: every 5 minutes.
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 import { createSupabaseServiceClient } from '../lib/supabaseServiceClient.js';
 import { sendExpoPushMessages } from '../lib/push.js';

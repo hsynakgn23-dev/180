@@ -92,6 +92,11 @@ type RitualRow = {
     timestamp: string | null;
 };
 
+type RitualTimelineRow = {
+    timestamp?: string | null;
+    created_at?: string | null;
+};
+
 type ReplyRow = {
     id: string;
     ritual_id: string;
@@ -146,6 +151,12 @@ const toRelativeTimestamp = (
         return labels.timeHoursAgo.replace('{count}', String(diffHours));
     }
     return labels.timeDaysAgo.replace('{count}', String(Math.floor(diffMs / dayMs)));
+};
+
+const toDateKey = (value: string | null | undefined): string | null => {
+    const normalized = String(value || '').trim();
+    if (normalized.length < 10) return null;
+    return normalized.slice(0, 10);
 };
 
 const isSupabaseCapabilityError = (
@@ -207,9 +218,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
     const [selectedMovieId, setSelectedMovieId] = useState<number | null>(null);
     const [repliesByCommentKey, setRepliesByCommentKey] = useState<Record<string, FilmReplyEntry[]>>({});
     const [isRepliesLoading, setIsRepliesLoading] = useState(false);
-    const [followCounts, setFollowCounts] = useState<{ followers: number; following: number }>({
+    const [profileCounts, setProfileCounts] = useState<{
+        followers: number;
+        following: number;
+        daysPresent: number;
+        ritualsCount: number;
+    }>({
         followers: 0,
-        following: Array.isArray(following) ? following.length : 0
+        following: Array.isArray(following) ? following.length : 0,
+        daysPresent,
+        ritualsCount: dailyRituals.length
     });
     const progressFill = getProgressFill(progressPercentage);
     const progressTransitionMs = getProgressTransitionMs(progressPercentage);
@@ -795,20 +813,24 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
     useEffect(() => {
         let active = true;
         const fallbackFollowingCount = Array.isArray(following) ? following.length : 0;
+        const fallbackDaysPresent = daysPresent;
+        const fallbackRitualsCount = dailyRituals.length;
         const client = supabase;
 
         if (!user?.id || !isSupabaseLive() || !client) {
-            setFollowCounts({
+            setProfileCounts({
                 followers: 0,
-                following: fallbackFollowingCount
+                following: fallbackFollowingCount,
+                daysPresent: fallbackDaysPresent,
+                ritualsCount: fallbackRitualsCount
             });
             return () => {
                 active = false;
             };
         }
 
-        const fetchFollowCounts = async () => {
-            const [followingRes, followersRes] = await Promise.all([
+        const fetchProfileCounts = async () => {
+            const [followingRes, followersRes, ritualsCountRes] = await Promise.all([
                 client
                     .from('user_follows')
                     .select('*', { head: true, count: 'exact' })
@@ -816,35 +838,69 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                 client
                     .from('user_follows')
                     .select('*', { head: true, count: 'exact' })
-                    .eq('followed_user_id', user.id)
+                    .eq('followed_user_id', user.id),
+                client
+                    .from('rituals')
+                    .select('id', { head: true, count: 'exact' })
+                    .eq('user_id', user.id)
             ]);
 
             if (!active) return;
 
-            if (
-                followingRes.error ||
-                followersRes.error ||
-                typeof followingRes.count !== 'number' ||
-                typeof followersRes.count !== 'number'
-            ) {
-                setFollowCounts({
-                    followers: 0,
-                    following: fallbackFollowingCount
-                });
-                return;
+            const ritualReadVariants = [
+                { select: 'timestamp', orderBy: 'timestamp' },
+                { select: 'created_at', orderBy: 'created_at' }
+            ] as const;
+
+            let ritualDateKeys: string[] = [];
+            let ritualTimelineResolved = false;
+            for (const variant of ritualReadVariants) {
+                const { data, error } = await client
+                    .from('rituals')
+                    .select(variant.select)
+                    .eq('user_id', user.id)
+                    .order(variant.orderBy, { ascending: false })
+                    .limit(420);
+
+                if (error) {
+                    if (isSupabaseCapabilityError(error)) {
+                        continue;
+                    }
+                    break;
+                }
+
+                const rows = Array.isArray(data) ? (data as RitualTimelineRow[]) : [];
+                ritualDateKeys = rows
+                    .map((row) => toDateKey(row.timestamp || row.created_at))
+                    .filter((value): value is string => Boolean(value));
+                ritualTimelineResolved = true;
+                break;
             }
 
-            setFollowCounts({
-                followers: followersRes.count,
-                following: followingRes.count
+            setProfileCounts({
+                followers:
+                    followersRes.error || typeof followersRes.count !== 'number'
+                        ? 0
+                        : followersRes.count,
+                following:
+                    followingRes.error || typeof followingRes.count !== 'number'
+                        ? fallbackFollowingCount
+                        : followingRes.count,
+                daysPresent: ritualTimelineResolved
+                    ? Array.from(new Set(ritualDateKeys)).length
+                    : fallbackDaysPresent,
+                ritualsCount:
+                    ritualsCountRes.error || typeof ritualsCountRes.count !== 'number'
+                        ? fallbackRitualsCount
+                        : ritualsCountRes.count
             });
         };
 
-        void fetchFollowCounts();
+        void fetchProfileCounts();
         return () => {
             active = false;
         };
-    }, [following, user?.id]);
+    }, [dailyRituals, daysPresent, following, user?.id]);
 
     const handleHome = () => {
         setSelectedMovieId(null);
@@ -991,12 +1047,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
 
                                 <div className="mb-5 flex items-center gap-5 text-[10px] uppercase tracking-[0.14em]">
                                     <div className="flex flex-col items-center gap-0.5">
-                                        <span className="text-[#E5E4E2]/90 font-bold text-sm">{followCounts.following}</span>
+                                        <span className="text-[#E5E4E2]/90 font-bold text-sm">{profileCounts.following}</span>
                                         <span className="text-gray-500">{text.profile.following}</span>
                                     </div>
                                     <div className="w-px h-6 bg-white/10" />
                                     <div className="flex flex-col items-center gap-0.5">
-                                        <span className="text-[#E5E4E2]/90 font-bold text-sm">{followCounts.followers}</span>
+                                        <span className="text-[#E5E4E2]/90 font-bold text-sm">{profileCounts.followers}</span>
                                         <span className="text-gray-500">{text.profile.followers}</span>
                                     </div>
                                 </div>
@@ -1154,19 +1210,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
                                     <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profileWidget.streak}</span>
                                 </div>
                                 <div className="flex flex-col gap-1.5">
-                                    <span className="text-3xl sm:text-4xl font-bold text-sage">{daysPresent}</span>
+                                    <span className="text-3xl sm:text-4xl font-bold text-sage">{profileCounts.daysPresent}</span>
                                     <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profile.days}</span>
                                 </div>
                                 <div className="flex flex-col gap-1.5">
-                                    <span className="text-3xl sm:text-4xl font-bold text-sage">{dailyRituals.length}</span>
+                                    <span className="text-3xl sm:text-4xl font-bold text-sage">{profileCounts.ritualsCount}</span>
                                     <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profile.rituals}</span>
                                 </div>
                                 <div className="flex flex-col gap-1.5">
-                                    <span className="text-3xl sm:text-4xl font-bold text-sage">{followCounts.following}</span>
+                                    <span className="text-3xl sm:text-4xl font-bold text-sage">{profileCounts.following}</span>
                                     <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profile.following}</span>
                                 </div>
                                 <div className="flex flex-col gap-1.5">
-                                    <span className="text-3xl sm:text-4xl font-bold text-sage">{followCounts.followers}</span>
+                                    <span className="text-3xl sm:text-4xl font-bold text-sage">{profileCounts.followers}</span>
                                     <span className="text-[9px] tracking-wider text-gray-500 uppercase">{text.profile.followers}</span>
                                 </div>
                             </div>
@@ -1543,5 +1599,3 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onClose, onHome, start
         </div>
     );
 };
-
-

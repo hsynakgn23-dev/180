@@ -1,6 +1,7 @@
 export type ThemeMode = 'midnight' | 'dawn';
 
 export const THEME_STORAGE_KEY = '180_theme_pref';
+export const THEME_CHANGE_EVENT = '180_theme_change';
 
 export const isThemeMode = (value: unknown): value is ThemeMode => {
     return value === 'midnight' || value === 'dawn';
@@ -22,5 +23,5 @@ export const applyThemeMode = (mode: ThemeMode): void => {
     document.body.classList.toggle('light-mode', isDawn);
     document.body.dataset.theme = mode;
     window.localStorage.setItem(THEME_STORAGE_KEY, mode);
+    window.dispatchEvent(new CustomEvent(THEME_CHANGE_EVENT, { detail: mode }));
 };
-

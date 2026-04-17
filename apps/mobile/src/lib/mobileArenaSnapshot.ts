@@ -1,4 +1,5 @@
 import { getCurrentWeekKey, normalizeWeeklyArenaState } from '../../../../src/domain/progressionRewards';
+import { readProfileTotalXp } from '../../../../src/domain/profileXpState';
 import { resolveMobileAvatarFromXpState } from './mobileAvatar';
 import { resolveMobileLeagueKeyFromXp } from './mobileLeagueSystem';
 import { isSupabaseLive, readSupabaseSessionSafe, supabase } from './supabase';
@@ -118,8 +119,7 @@ const resolveTotalXp = (row: ProfileArenaRow): number => {
   const xpState = resolveXpStateRecord(row.xp_state);
   return Math.max(
     toSafeInt(row.total_xp),
-    toSafeInt(xpState.totalXP),
-    toSafeInt(xpState.xp)
+    readProfileTotalXp(xpState)
   );
 };
 

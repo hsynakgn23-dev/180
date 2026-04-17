@@ -1702,7 +1702,18 @@ const updateProfileXpStateForQuiz = async (input: {
             arenaActivity: Math.max(0, input.reward.arenaActivity),
         },
         markActiveDateKey: input.shouldProtectStreak ? input.dateKey : null,
-        isQuizReward: true
+        isQuizReward: true,
+        ledger: {
+            source: 'daily_quiz',
+            reason: 'daily_quiz_answer',
+            metadata: {
+                dateKey: input.dateKey,
+                shouldProtectStreak: input.shouldProtectStreak,
+                xpDelta: Math.max(0, input.xpDelta),
+                tickets: Math.max(0, input.reward.tickets),
+                arenaScore: Math.max(0, input.reward.arenaScore),
+            },
+        }
     });
 
     return {
