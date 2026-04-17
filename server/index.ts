@@ -51,6 +51,12 @@ import poolFetchChunkHandler from '../api/internal/pool-fetch-chunk.js';
 import poolGenerateMissingHandler from '../api/internal/pool-generate-missing.js';
 import poolTopupHandler from '../api/internal/pool-topup.js';
 import blurQuizHandler from '../api/blur-quiz.js';
+import arenaLeaderboardHandler from '../api/arena-leaderboard.js';
+import cronArenaFinalizeHandler from '../api/cron/arena-finalize.js';
+import cronPushDispatchHandler from '../api/cron/push-dispatch.js';
+import userSearchHandler from '../api/user-search.js';
+import userBlockHandler from '../api/user-block.js';
+import userReportHandler from '../api/user-report.js';
 
 type QueryValue = string | string[] | undefined;
 
@@ -121,7 +127,13 @@ const ROUTES: RouteEntry[] = [
     { path: '/api/internal/pool-fetch-chunk', handler: poolFetchChunkHandler as ApiRouteHandler },
     { path: '/api/internal/pool-generate-missing', handler: poolGenerateMissingHandler as ApiRouteHandler },
     { path: '/api/internal/pool-topup', handler: poolTopupHandler as ApiRouteHandler },
-    { path: '/api/blur-quiz', handler: blurQuizHandler as ApiRouteHandler }
+    { path: '/api/blur-quiz', handler: blurQuizHandler as ApiRouteHandler },
+    { path: '/api/arena-leaderboard', handler: arenaLeaderboardHandler as ApiRouteHandler },
+    { path: '/api/cron/arena-finalize', handler: cronArenaFinalizeHandler as ApiRouteHandler },
+    { path: '/api/cron/push-dispatch', handler: cronPushDispatchHandler as ApiRouteHandler },
+    { path: '/api/user-search', handler: userSearchHandler as ApiRouteHandler },
+    { path: '/api/user-block', handler: userBlockHandler as ApiRouteHandler },
+    { path: '/api/user-report', handler: userReportHandler as ApiRouteHandler }
 ];
 
 const trimTrailingSlash = (value: string): string => {

@@ -29,7 +29,15 @@ type ExpoPushMessageInput = {
     data?: Record<string, unknown>;
 };
 
-type NotificationEventKind = 'comment' | 'like' | 'follow' | 'daily_drop' | 'streak' | 'generic';
+type NotificationEventKind =
+    | 'comment'
+    | 'like'
+    | 'follow'
+    | 'daily_drop'
+    | 'streak'
+    | 'streak_milestone'
+    | 'arena'
+    | 'generic';
 
 type NotificationEventInsertInput = {
     recipientUserId: string;
@@ -87,7 +95,9 @@ const normalizeNotificationEventKind = (value: unknown): NotificationEventKind =
         normalized === 'like' ||
         normalized === 'follow' ||
         normalized === 'daily_drop' ||
-        normalized === 'streak'
+        normalized === 'streak' ||
+        normalized === 'streak_milestone' ||
+        normalized === 'arena'
     ) {
         return normalized;
     }

@@ -94,6 +94,10 @@ import {
 } from './src/lib/mobileProfilePrivacySync';
 import { applyMobileAuthCallbackFromUrl } from './src/lib/mobileAuthCallback';
 import {
+  readMobileUserSettingsFromCloud,
+  syncMobileUserSettingsToCloud,
+} from './src/lib/mobileUserSettingsCloud';
+import {
   resolveMobileAuthCallbackUrl,
   resolveMobileAuthReturnUrl,
 } from './src/lib/mobileAuthRedirect';
@@ -126,7 +130,7 @@ import {
   sendEngagementPushNotification,
   sendPushTestNotification,
 } from './src/lib/mobilePushApi';
-import { claimInviteCodeViaApi, ensureInviteCodeViaApi } from './src/lib/mobileReferralApi';
+import { claimInviteCodeViaApi, ensureInviteCodeViaApi, persistClaimedInviteCode, readPersistedClaimedInviteCode } from './src/lib/mobileReferralApi';
 import {
   claimMobileShareReward,
   MOBILE_SHARE_REWARD_XP,
@@ -829,6 +833,25 @@ export default function App() {
   });
   const [dailyState, setDailyState] = useState<DailyState>({ status: 'idle' });
   const [inviteClaimState, setInviteClaimState] = useState<InviteClaimState>({ status: 'idle' });
+
+  // Load persisted claimed invite code on mount
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const persistedCode = await readPersistedClaimedInviteCode();
+      if (active && persistedCode) {
+        setInviteClaimState({
+          status: 'success',
+          inviteCode: persistedCode,
+          message: '',
+          inviteeRewardXp: 0,
+          inviterRewardXp: 0,
+          claimCount: 0,
+        });
+      }
+    })();
+    return () => { active = false; };
+  }, []);
   const [authEmail, setAuthEmail] = useState('');
   const [authFullName, setAuthFullName] = useState('');
   const [authUsername, setAuthUsername] = useState('');
@@ -1215,6 +1238,7 @@ export default function App() {
   const { pageEntrance, pageEnterTranslateY } = usePageEntranceAnimation();
   const hasCloudIdentityHydratedRef = useRef(false);
   const hasCloudPrivacyHydratedRef = useRef(false);
+  const hasCloudUserSettingsHydratedRef = useRef(false);
   const publicProfileReturnTabRef = useRef<keyof MainTabParamList | null>(null);
   const lastObservedLeagueIndexRef = useRef<number | null>(null);
   const lastObservedStreakRef = useRef<number | null>(null);
@@ -1514,6 +1538,14 @@ export default function App() {
     void trackMobileEvent('page_view', {
       reason: 'mobile_profile_privacy_cloud_loaded',
     });
+  }, []);
+
+  const refreshUserSettingsFromCloud = useCallback(async () => {
+    const result = await readMobileUserSettingsFromCloud();
+    if (!result.ok || !result.settings) return;
+    setSettingsLanguage(result.settings.language as MobileSettingsLanguage);
+    setThemeMode(result.settings.themeMode as MobileThemeMode);
+    void writeStoredMobileThemeMode(result.settings.themeMode as MobileThemeMode);
   }, []);
 
   const hydrateSettingsIdentityFromSession = useCallback(async () => {
@@ -3366,7 +3398,10 @@ export default function App() {
 
   useEffect(() => {
     void writeStoredMobileThemeMode(themeMode);
-  }, [themeMode]);
+    if (authState.status === 'signed_in') {
+      void syncMobileUserSettingsToCloud({ language: settingsLanguage, themeMode });
+    }
+  }, [themeMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let active = true;
@@ -3402,7 +3437,10 @@ export default function App() {
     void AsyncStorage.setItem(MOBILE_PROFILE_LANGUAGE_STORAGE_KEY, settingsLanguage).catch(
       () => undefined
     );
-  }, [settingsLanguage]);
+    if (authState.status === 'signed_in') {
+      void syncMobileUserSettingsToCloud({ language: settingsLanguage, themeMode });
+    }
+  }, [settingsLanguage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (profileState.status !== 'success') return;
@@ -3723,6 +3761,16 @@ export default function App() {
     if (authState.status !== 'signed_in') return;
     void hydrateSettingsIdentityFromSession();
   }, [authState.status, hydrateSettingsIdentityFromSession]);
+
+  useEffect(() => {
+    if (authState.status !== 'signed_in') {
+      hasCloudUserSettingsHydratedRef.current = false;
+      return;
+    }
+    if (hasCloudUserSettingsHydratedRef.current) return;
+    hasCloudUserSettingsHydratedRef.current = true;
+    void refreshUserSettingsFromCloud();
+  }, [authState.status, refreshUserSettingsFromCloud]);
 
   useEffect(() => {
     void syncLetterboxdImportState();
@@ -5930,6 +5978,7 @@ export default function App() {
           inviterRewardXp,
           claimCount: Math.max(0, Number(result.data.claimCount || 0)),
         });
+        void persistClaimedInviteCode(inviteCodeText);
 
         void trackMobileEvent('invite_accepted', {
           inviteCode: inviteCodeText,
@@ -6017,6 +6066,7 @@ export default function App() {
           inviterRewardXp,
           claimCount,
         });
+        void persistClaimedInviteCode(inviteCodeText);
         setInviteStatus(successMessage);
         setInviteCodeDraft('');
         void refreshProfileStats();
@@ -7328,6 +7378,7 @@ export default function App() {
             onRestore={() => void subscription.restore()}
             purchasing={subscription.purchasing}
             error={subscription.error}
+            language={settingsLanguage as 'tr' | 'en' | 'es' | 'fr'}
           />
 
           <AuthModal
