@@ -216,8 +216,10 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
           supabase,
           userId: entry.user_id,
           reward: toProgressionReward(reward),
-          source: 'arena_season',
-          sourceId: `${weekKey}:${entry.cohort_league_key}:${entry.rank}`,
+          ledger: {
+            source: 'arena_season',
+            sourceId: `${weekKey}:${entry.cohort_league_key}:${entry.rank}`,
+          },
         });
       }
 

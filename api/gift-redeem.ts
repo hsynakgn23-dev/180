@@ -1,4 +1,5 @@
 import { createCorsHeaders } from './lib/cors.js';
+import { applyProgressionReward } from './lib/progressionProfile.js';
 import { createSupabaseServiceClient } from './lib/supabaseServiceClient.js';
 
 export const config = { runtime: 'nodejs' };
@@ -55,6 +56,106 @@ const parseBody = async (req: ApiRequest): Promise<unknown> => {
 const normalizeCode = (value: unknown): string =>
     String(value ?? '').trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
 
+const normalizeText = (value: unknown, maxLength = 200): string => {
+    const text = String(value ?? '').trim();
+    if (!text) return '';
+    return text.length > maxLength ? text.slice(0, maxLength) : text;
+};
+
+type GiftRedemptionClaimRow = {
+    redemptionId: string;
+    code: string;
+    giftType: 'tickets' | 'premium';
+    value: number;
+    status: 'pending' | 'fulfilled';
+};
+
+const normalizeGiftClaimRow = (value: unknown): GiftRedemptionClaimRow | null => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const row = value as Record<string, unknown>;
+    const redemptionId = normalizeText(row.redemption_id ?? row.redemptionId, 120);
+    const code = normalizeCode(row.code);
+    const giftType = normalizeText(row.gift_type ?? row.giftType, 40);
+    const valueNumber = Number(row.value);
+    const status = normalizeText(row.status, 40);
+    if (!redemptionId || !code || !Number.isFinite(valueNumber)) return null;
+    if (giftType !== 'tickets' && giftType !== 'premium') return null;
+    if (status !== 'pending' && status !== 'fulfilled') return null;
+    return {
+        redemptionId,
+        code,
+        giftType,
+        value: Math.max(0, Math.floor(valueNumber)),
+        status,
+    };
+};
+
+const normalizeGiftClaimResponse = (value: unknown): GiftRedemptionClaimRow | null => {
+    if (Array.isArray(value)) return normalizeGiftClaimRow(value[0] ?? null);
+    return normalizeGiftClaimRow(value);
+};
+
+const mapGiftClaimError = (message: string): string => {
+    const normalized = normalizeText(message, 200).toUpperCase();
+    if (!normalized) return 'GIFT_REDEEM_FAILED';
+    if (normalized.includes('INVALID_CODE')) return 'INVALID_CODE';
+    if (normalized.includes('CODE_NOT_FOUND')) return 'CODE_NOT_FOUND';
+    if (normalized.includes('CODE_REVOKED')) return 'CODE_REVOKED';
+    if (normalized.includes('CODE_EXPIRED')) return 'CODE_EXPIRED';
+    if (normalized.includes('CODE_EXHAUSTED')) return 'CODE_EXHAUSTED';
+    if (normalized.includes('UNAUTHORIZED')) return 'UNAUTHORIZED';
+    return 'GIFT_REDEEM_FAILED';
+};
+
+const claimGiftRedemption = async (
+    supabase: ReturnType<typeof createSupabaseServiceClient>,
+    code: string,
+    userId: string
+): Promise<GiftRedemptionClaimRow> => {
+    const { data, error } = await supabase.rpc('claim_gift_code_redemption', {
+        p_code: code,
+        p_user_id: userId,
+    });
+    if (error) throw new Error(mapGiftClaimError(error.message));
+    const normalized = normalizeGiftClaimResponse(data);
+    if (!normalized) throw new Error('GIFT_REDEEM_FAILED');
+    return normalized;
+};
+
+const markGiftRedemptionFulfilled = async (
+    supabase: ReturnType<typeof createSupabaseServiceClient>,
+    redemptionId: string,
+    userId: string
+): Promise<void> => {
+    const { error } = await supabase.rpc('mark_gift_code_redemption_fulfilled', {
+        p_redemption_id: redemptionId,
+        p_user_id: userId,
+    });
+    if (error) {
+        throw new Error(normalizeText(error.message, 200) || 'MARK_REDEMPTION_FULFILLED_FAILED');
+    }
+};
+
+const markGiftRedemptionFailed = async (
+    supabase: ReturnType<typeof createSupabaseServiceClient>,
+    redemptionId: string,
+    userId: string,
+    errorMessage: string
+): Promise<void> => {
+    const { error } = await supabase.rpc('mark_gift_code_redemption_failed', {
+        p_redemption_id: redemptionId,
+        p_user_id: userId,
+        p_last_error: normalizeText(errorMessage, 500) || null,
+    });
+    if (error) {
+        console.warn('[gift-redeem] failed to record redemption failure', {
+            redemptionId,
+            userId,
+            message: normalizeText(error.message, 200),
+        });
+    }
+};
+
 export default async function handler(req: ApiRequest, res: ApiResponse) {
     const cors = createCorsHeaders(req, {
         headers: 'authorization, content-type',
@@ -84,144 +185,98 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         return sendJson(res, 400, { ok: false, error: 'Invalid code format.' }, cors);
     }
 
-    // ── Fetch the gift code ──────────────────────────────────────────────────
-    const { data: giftCode, error: codeError } = await supabase
-        .from('gift_codes')
-        .select('id,code,gift_type,value,max_uses,use_count,expires_at,is_revoked')
-        .eq('code', code)
-        .maybeSingle();
-
-    if (codeError || !giftCode) {
-        return sendJson(res, 404, { ok: false, error: 'CODE_NOT_FOUND' }, cors);
+    let claim: GiftRedemptionClaimRow;
+    try {
+        claim = await claimGiftRedemption(supabase, code, user.id);
+    } catch (error) {
+        const mappedError = mapGiftClaimError(error instanceof Error ? error.message : '');
+        const status =
+            mappedError === 'INVALID_CODE' ? 400
+                : mappedError === 'CODE_NOT_FOUND' ? 404
+                    : mappedError === 'UNAUTHORIZED' ? 401
+                        : mappedError === 'GIFT_REDEEM_FAILED' ? 500
+                            : 410;
+        return sendJson(res, status, { ok: false, error: mappedError }, cors);
     }
 
-    if (giftCode.is_revoked) {
-        return sendJson(res, 410, { ok: false, error: 'CODE_REVOKED' }, cors);
-    }
-
-    if (giftCode.expires_at && new Date(giftCode.expires_at) < new Date()) {
-        return sendJson(res, 410, { ok: false, error: 'CODE_EXPIRED' }, cors);
-    }
-
-    if (giftCode.use_count >= giftCode.max_uses) {
-        return sendJson(res, 410, { ok: false, error: 'CODE_EXHAUSTED' }, cors);
-    }
-
-    // ── Check if user already redeemed this code ─────────────────────────────
-    const { data: existingRedemption } = await supabase
-        .from('gift_code_redemptions')
-        .select('id')
-        .eq('code', code)
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-    if (existingRedemption) {
+    if (claim.status === 'fulfilled') {
         return sendJson(res, 409, { ok: false, error: 'ALREADY_REDEEMED' }, cors);
     }
 
-    // ── Apply the gift ────────────────────────────────────────────────────────
-    const giftType = giftCode.gift_type as 'tickets' | 'premium';
-    const value = Number(giftCode.value);
+    const giftType = claim.giftType;
+    const value = claim.value;
+    const fallbackDisplayName = (user.email ?? '').split('@')[0] || null;
 
-    if (giftType === 'tickets') {
-        // Read-modify-write wallet with optimistic retry
-        const MAX_RETRIES = 5;
-        let granted = false;
-
-        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-            const { data: profileRow } = await supabase
-                .from('profiles')
-                .select('xp_state, updated_at')
-                .eq('user_id', user.id)
-                .maybeSingle();
-
-            if (!profileRow) break;
-
-            const xpState = (
-                profileRow.xp_state && typeof profileRow.xp_state === 'object' && !Array.isArray(profileRow.xp_state)
-                    ? profileRow.xp_state : {}
-            ) as Record<string, unknown>;
-
-            const wallet = (
-                xpState.wallet && typeof xpState.wallet === 'object' && !Array.isArray(xpState.wallet)
-                    ? xpState.wallet : {}
-            ) as Record<string, unknown>;
-
-            const { error: writeError } = await supabase
-                .from('profiles')
-                .update({
-                    xp_state: {
-                        ...xpState,
-                        wallet: {
-                            ...wallet,
-                            balance: Math.max(0, Number(wallet.balance) || 0) + value,
-                            lifetimeEarned: Math.max(0, Number(wallet.lifetimeEarned) || 0) + value
-                        }
+    try {
+        if (giftType === 'tickets') {
+            await applyProgressionReward({
+                supabase,
+                userId: user.id,
+                fallbackEmail: user.email,
+                fallbackDisplayName,
+                reward: { xp: 0, tickets: value, arenaScore: 0, arenaActivity: 0 },
+                idempotencyKey: `gift_code:${claim.redemptionId}`,
+                ledger: {
+                    source: 'gift_code',
+                    sourceId: claim.redemptionId,
+                    reason: 'gift_redeem',
+                    metadata: {
+                        code: claim.code,
+                        giftType,
+                        value,
                     },
-                    updated_at: new Date().toISOString()
-                })
-                .eq('user_id', user.id)
-                .eq('updated_at', profileRow.updated_at);
+                    eventKey: `gift_code:${claim.redemptionId}`,
+                }
+            });
+        } else {
+            const now = new Date();
+            const expiresAt = new Date(now.getTime() + value * 24 * 60 * 60 * 1000).toISOString();
 
-            if (!writeError) { granted = true; break; }
-            if (attempt === MAX_RETRIES - 1) {
-                return sendJson(res, 500, { ok: false, error: 'WALLET_UPDATE_FAILED' }, cors);
+            const { error: subError } = await supabase.from('subscriptions').upsert(
+                {
+                    user_id: user.id,
+                    plan: 'premium',
+                    provider: 'gift_code',
+                    status: 'active',
+                    starts_at: now.toISOString(),
+                    expires_at: expiresAt,
+                    metadata: {
+                        source: 'gift_code',
+                        code: claim.code,
+                        redemption_id: claim.redemptionId,
+                        granted_at: now.toISOString(),
+                    }
+                },
+                { onConflict: 'user_id' }
+            );
+
+            if (subError) {
+                throw new Error('SUBSCRIPTION_UPDATE_FAILED');
             }
+
+            await supabase
+                .from('profiles')
+                .update({ subscription_tier: 'premium', updated_at: new Date().toISOString() })
+                .eq('user_id', user.id);
         }
 
-        if (!granted) {
-            return sendJson(res, 500, { ok: false, error: 'WALLET_UPDATE_FAILED' }, cors);
-        }
-
-    } else if (giftType === 'premium') {
-        const now = new Date();
-        const expiresAt = new Date(now.getTime() + value * 24 * 60 * 60 * 1000).toISOString();
-
-        const { error: subError } = await supabase.from('subscriptions').upsert(
-            {
-                user_id: user.id,
-                plan: 'premium',
-                provider: 'gift_code',
-                status: 'active',
-                starts_at: now.toISOString(),
-                expires_at: expiresAt,
-                metadata: { source: 'gift_code', code, granted_at: now.toISOString() }
-            },
-            { onConflict: 'user_id' }
-        );
-
-        if (subError) {
+        await markGiftRedemptionFulfilled(supabase, claim.redemptionId, user.id);
+    } catch (error) {
+        const message = normalizeText(error instanceof Error ? error.message : 'GIFT_REDEEM_FAILED', 200);
+        await markGiftRedemptionFailed(supabase, claim.redemptionId, user.id, message);
+        if (message === 'SUBSCRIPTION_UPDATE_FAILED') {
             return sendJson(res, 500, { ok: false, error: 'SUBSCRIPTION_UPDATE_FAILED' }, cors);
         }
-
-        await supabase
-            .from('profiles')
-            .update({ subscription_tier: 'premium', updated_at: new Date().toISOString() })
-            .eq('user_id', user.id);
-    }
-
-    // ── Record redemption & increment use_count atomically ───────────────────
-    const { error: redemptionError } = await supabase
-        .from('gift_code_redemptions')
-        .insert({ code, user_id: user.id, gift_type: giftType, value });
-
-    if (redemptionError) {
-        // Unique constraint violation = already redeemed (race condition)
-        if (redemptionError.code === '23505') {
-            return sendJson(res, 409, { ok: false, error: 'ALREADY_REDEEMED' }, cors);
+        if (giftType === 'tickets') {
+            return sendJson(res, 500, { ok: false, error: 'WALLET_UPDATE_FAILED' }, cors);
         }
-        return sendJson(res, 500, { ok: false, error: 'REDEMPTION_LOG_FAILED' }, cors);
+        return sendJson(res, 500, { ok: false, error: 'GIFT_REDEEM_FAILED' }, cors);
     }
-
-    await supabase
-        .from('gift_codes')
-        .update({ use_count: giftCode.use_count + 1 })
-        .eq('code', code);
 
     return sendJson(res, 200, {
         ok: true,
         giftType,
         value,
-        code
+        code: claim.code
     }, cors);
 }

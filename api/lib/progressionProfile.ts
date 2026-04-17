@@ -6,6 +6,10 @@ import {
   type ProgressionRewardGrant,
   type WeeklyArenaState,
 } from '../../src/domain/progressionRewards.js';
+import {
+  readProfileTotalXp,
+  withMirroredProfileXp,
+} from '../../src/domain/profileXpState.js';
 import { resolveLeagueKeyFromXp } from '../../src/domain/leagueSystem.js';
 import {
   loadWalletProfile,
@@ -13,6 +17,7 @@ import {
   type ProgressionWalletState,
 } from './progressionWallet.js';
 import { resolveStoredProfileMarks } from '../../src/domain/profileMarks.js';
+import { recordProgressionRewardLedger } from './progressionLedger.js';
 
 // Supabase's generated builder types vary across local and deployed contexts.
 // This helper only needs the `from(...)` entrypoint, so keep the contract broad.
@@ -71,6 +76,26 @@ const sanitizeDateKeys = (value: unknown, maxItems = 420): string[] =>
     .sort()
     .slice(-maxItems);
 
+const MAX_REWARD_MUTATION_KEYS = 120;
+
+const normalizeRewardMutationKey = (value: unknown): string =>
+  normalizeText(value, 160);
+
+const readProcessedRewardKeys = (
+  xpState: Record<string, unknown>,
+  maxItems = MAX_REWARD_MUTATION_KEYS
+): string[] =>
+  Array.from(
+    new Set(
+      (Array.isArray(xpState.rewardMutationKeys) ? xpState.rewardMutationKeys : [])
+        .map((entry) => normalizeRewardMutationKey(entry))
+        .filter((entry): entry is string => Boolean(entry))
+    )
+  ).slice(-maxItems);
+
+const appendProcessedRewardKey = (keys: string[], key: string): string[] =>
+  Array.from(new Set([...keys, key])).slice(-MAX_REWARD_MUTATION_KEYS);
+
 const deriveNextStreak = (currentStreak: number, previousDateKey: string | null, nextDateKey: string): number => {
   if (previousDateKey === nextDateKey) return Math.max(1, currentStreak);
   const currentDayIndex = parseDateKeyToDayIndex(nextDateKey);
@@ -83,7 +108,19 @@ const deriveNextStreak = (currentStreak: number, previousDateKey: string | null,
 };
 
 const readCurrentXp = (xpState: Record<string, unknown>): number =>
-  toSafeInt(xpState.totalXP ?? xpState.xp);
+  readProfileTotalXp(xpState);
+
+const resolveProgressionLedgerSource = (input: {
+  isCommentReward?: boolean;
+  isQuizReward?: boolean;
+  source?: string | null;
+}): string => {
+  const explicit = normalizeText(input.source, 80);
+  if (explicit) return explicit;
+  if (input.isCommentReward) return 'daily_comment_reward';
+  if (input.isQuizReward) return 'quiz_reward';
+  return 'progression_reward';
+};
 
 export const readDailyCommentRewardTracker = (
   xpState: Record<string, unknown>,
@@ -121,18 +158,28 @@ export const applyProgressionReward = async (input: {
   dailyRitualEntry?: { date: string; movieTitle: string; text: string } | null;
   isCommentReward?: boolean;
   isQuizReward?: boolean;
+  idempotencyKey?: string | null;
+  ledger?: {
+    source?: string | null;
+    sourceId?: string | null;
+    reason?: string | null;
+    metadata?: Record<string, unknown> | null;
+    eventKey?: string | null;
+  } | null;
 }): Promise<{
   totalXP: number;
   streak: number;
   wallet: ProgressionWalletState;
   xpState: Record<string, unknown>;
   weeklyArena: WeeklyArenaState;
+  applied: boolean;
 }> => {
   const now = input.now || new Date();
   const mutation = await mutateWalletProfile<{
     totalXP: number;
     streak: number;
     weeklyArena: WeeklyArenaState;
+    applied: boolean;
   }, never>({
     supabase: input.supabase,
     userId: input.userId,
@@ -142,6 +189,25 @@ export const applyProgressionReward = async (input: {
       const currentState = { ...loaded.xpState };
       const currentTotalXp = readCurrentXp(currentState);
       const weeklyArena = readWeeklyArenaState(currentState, now);
+      const currentStreak = toSafeInt(currentState.streak);
+      const rewardMutationKey = normalizeRewardMutationKey(input.idempotencyKey);
+      const processedRewardKeys = readProcessedRewardKeys(currentState);
+
+      if (rewardMutationKey && processedRewardKeys.includes(rewardMutationKey)) {
+        return {
+          ok: true,
+          wallet: loaded.wallet,
+          xpState: currentState,
+          result: {
+            totalXP: currentTotalXp,
+            streak: currentStreak,
+            weeklyArena,
+            applied: false,
+          },
+          persist: false,
+        };
+      }
+
       const nextWeeklyArena: WeeklyArenaState = {
         ...weeklyArena,
         cohortLeagueKey: weeklyArena.cohortLeagueKey || resolveLeagueKeyFromXp(currentTotalXp),
@@ -158,7 +224,7 @@ export const applyProgressionReward = async (input: {
         lifetimeEarned: loaded.wallet.lifetimeEarned + toSafeInt(input.reward.tickets),
       };
 
-      let nextStreak = toSafeInt(currentState.streak);
+      let nextStreak = currentStreak;
       let nextLastStreakDate = normalizeDateKey(currentState.lastStreakDate);
       let nextActiveDays = sanitizeDateKeys(currentState.activeDays);
       const activeDateKey = normalizeDateKey(input.markActiveDateKey);
@@ -194,15 +260,14 @@ export const applyProgressionReward = async (input: {
         }
       }
 
-      const nextXpState: Record<string, unknown> = {
+      let nextXpState: Record<string, unknown> = {
         ...currentState,
-        totalXP: currentTotalXp + toSafeInt(input.reward.xp),
-        xp: currentTotalXp + toSafeInt(input.reward.xp),
         streak: nextStreak,
         lastStreakDate: nextLastStreakDate,
         activeDays: nextActiveDays,
         weeklyArena: nextWeeklyArena,
       };
+      nextXpState = withMirroredProfileXp(nextXpState, currentTotalXp + toSafeInt(input.reward.xp));
 
       if (nextDailyRituals.length > 0) {
         nextXpState.dailyRituals = nextDailyRituals;
@@ -216,6 +281,10 @@ export const applyProgressionReward = async (input: {
       nextXpState.marks = resolvedMarks.marks;
       nextXpState.featuredMarks = resolvedMarks.featuredMarks;
 
+      if (rewardMutationKey) {
+        nextXpState.rewardMutationKeys = appendProcessedRewardKey(processedRewardKeys, rewardMutationKey);
+      }
+
       return {
         ok: true,
         wallet: nextWallet,
@@ -224,6 +293,7 @@ export const applyProgressionReward = async (input: {
           totalXP: readCurrentXp(nextXpState),
           streak: nextStreak,
           weeklyArena: nextWeeklyArena,
+          applied: true,
         },
       };
     },
@@ -233,11 +303,48 @@ export const applyProgressionReward = async (input: {
     throw new Error('Failed to apply progression reward.');
   }
 
+  if (mutation.result.applied) {
+    const ledgerMetadata = {
+      ...(input.ledger?.metadata || {}),
+      isCommentReward: input.isCommentReward ? true : undefined,
+      isQuizReward: input.isQuizReward ? true : undefined,
+      markActiveDateKey: normalizeDateKey(input.markActiveDateKey) || undefined,
+      dailyRitualDate: normalizeDateKey(input.dailyRitualEntry?.date) || undefined,
+      dailyRitualMovieTitle: normalizeText(input.dailyRitualEntry?.movieTitle, 220) || undefined,
+    };
+
+    await recordProgressionRewardLedger({
+      supabase: input.supabase,
+      userId: input.userId,
+      source: resolveProgressionLedgerSource({
+        isCommentReward: input.isCommentReward,
+        isQuizReward: input.isQuizReward,
+        source: input.ledger?.source,
+      }),
+      sourceId: normalizeText(input.ledger?.sourceId, 160) || null,
+      reason: normalizeText(input.ledger?.reason, 160) || null,
+      xpDelta: toSafeInt(input.reward.xp),
+      totalXpAfter: mutation.result.totalXP,
+      ticketDelta: toSafeInt(input.reward.tickets),
+      walletBalanceAfter: mutation.wallet.balance,
+      arenaDelta: toSafeInt(input.reward.arenaScore),
+      arenaActivityDelta: toSafeInt(input.reward.arenaActivity),
+      arenaTotalAfter: mutation.result.weeklyArena.score,
+      arenaWeekKey: mutation.result.weeklyArena.weekKey ?? '',
+      metadata: ledgerMetadata,
+      eventKey:
+        normalizeText(input.ledger?.eventKey, 240) ||
+        normalizeRewardMutationKey(input.idempotencyKey) ||
+        null,
+    });
+  }
+
   return {
     totalXP: mutation.result.totalXP,
     streak: mutation.result.streak,
     wallet: mutation.wallet,
     xpState: mutation.xpState,
     weeklyArena: mutation.result.weeklyArena,
+    applied: mutation.result.applied,
   };
 };
