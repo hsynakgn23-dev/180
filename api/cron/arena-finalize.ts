@@ -115,13 +115,14 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return sendJson(res, 405, { ok: false, error: 'Method not allowed.' });
   }
 
-  // Auth
+  // Auth — CRON_SECRET must always be set; missing env = server misconfiguration
   const secret = getCronSecret();
-  if (secret) {
-    const auth = getHeader(req, 'authorization');
-    if (auth !== `Bearer ${secret}`) {
-      return sendJson(res, 401, { ok: false, error: 'Unauthorized' });
-    }
+  if (!secret) {
+    return sendJson(res, 500, { ok: false, error: 'CRON_SECRET not configured.' });
+  }
+  const auth = getHeader(req, 'authorization');
+  if (auth !== `Bearer ${secret}`) {
+    return sendJson(res, 401, { ok: false, error: 'Unauthorized' });
   }
 
   const supabaseUrl = getSupabaseUrl();
@@ -160,8 +161,13 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return sendJson(res, 200, {
       ok: true,
       weekKey,
+      dryRun,
       message: 'No scores for this week — nothing to finalize.',
-      processedCount: 0,
+      winnersRewarded: 0,
+      skippedAlreadyFinalized: 0,
+      alreadyFinalized: false,
+      errorCount: 0,
+      errors: [],
     });
   }
 
@@ -275,8 +281,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     dryRun,
     totalEntries: rows.length,
     qualified: ranked.length,
-    processedCount: processed,
+    winnersRewarded: processed,
     skippedAlreadyFinalized: skipped,
+    alreadyFinalized: processed === 0 && skipped > 0 && errors.length === 0,
     errorCount: errors.length,
     errors: errors.slice(0, 20),
   });

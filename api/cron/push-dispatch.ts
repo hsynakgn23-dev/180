@@ -115,13 +115,14 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return sendJson(res, 405, { ok: false, error: 'Method not allowed.' });
   }
 
-  // Auth
+  // Auth — CRON_SECRET must always be set; missing env = server misconfiguration
   const secret = getCronSecret();
-  if (secret) {
-    const auth = getHeader(req, 'authorization');
-    if (auth !== `Bearer ${secret}`) {
-      return sendJson(res, 401, { ok: false, error: 'Unauthorized' });
-    }
+  if (!secret) {
+    return sendJson(res, 500, { ok: false, error: 'CRON_SECRET not configured.' });
+  }
+  const auth = getHeader(req, 'authorization');
+  if (auth !== `Bearer ${secret}`) {
+    return sendJson(res, 401, { ok: false, error: 'Unauthorized' });
   }
 
   const supabaseUrl = getSupabaseUrl();
@@ -157,10 +158,12 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return sendJson(res, 200, {
       ok: true,
       message: 'No pending events.',
-      dispatchedCount: 0,
+      processedEvents: 0,
+      recipientsWithTokens: 0,
       tokenCount: 0,
       ticketCount: 0,
       errorCount: 0,
+      markError: null,
     });
   }
 

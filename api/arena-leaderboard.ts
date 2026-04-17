@@ -1,17 +1,21 @@
 // GET /api/arena-leaderboard
 //
-// Returns the top 50 users in the caller's weekly arena cohort for either
+// Returns the top N users in the caller's weekly arena cohort for either
 // the current ISO week (default) or a specified past week. The caller's own
-// rank is always included in the response even if outside the top 50.
+// rank is always included in the response even if outside the top N.
+//
+// Query params:
+//   weekKey?: "YYYY-Www"  — defaults to current ISO week
+//   limit?:   1-100       — defaults to 50
 //
 // Response shape:
 // {
 //   ok: true,
 //   weekKey: "2026-W16",
 //   cohortLeagueKey: "Gold",
-//   leaderboard: [{ userId, displayName, score, activityCount, rank }],
-//   myRank: number | null,
-//   myRow: { userId, displayName, score, activityCount, rank } | null
+//   entries: [{ userId, displayName, score, activityCount, rank }],
+//   callerRank: number | null,
+//   callerRow: { userId, displayName, score, activityCount, rank } | null
 // }
 
 import { createCorsHeaders } from './lib/cors.js';
@@ -85,7 +89,8 @@ const getSupabaseServiceRoleKey = (): string =>
   String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 
 const WEEK_KEY_RE = /^\d{4}-W\d{2}$/;
-const LEADERBOARD_LIMIT = 50;
+const DEFAULT_LIMIT = 50;
+const MAX_LIMIT = 100;
 
 type ArenaScoreRow = {
   user_id: string;
@@ -122,11 +127,15 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   const { data: { user }, error: authError } = await supabase.auth.getUser(accessToken);
   if (authError || !user) return sendJson(res, 401, { ok: false, error: 'Invalid token.' }, cors);
 
-  // Week key — either from ?week=YYYY-Www query, or current
-  const requestedWeek = getQueryValue(req, 'week');
+  // Week key — either from ?weekKey=YYYY-Www query, or current
+  const requestedWeek = getQueryValue(req, 'weekKey');
   const weekKey = requestedWeek && WEEK_KEY_RE.test(requestedWeek)
     ? requestedWeek
     : getCurrentWeekKey();
+
+  // Limit — 1-100, default 50
+  const limitRaw = parseInt(getQueryValue(req, 'limit') || String(DEFAULT_LIMIT), 10);
+  const limit = Math.min(Math.max(1, isNaN(limitRaw) ? DEFAULT_LIMIT : limitRaw), MAX_LIMIT);
 
   // Determine the caller's cohort for this week.
   // Priority: (a) row in arena_weekly_scores for this week, (b) fallback to
@@ -169,7 +178,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     .order('score', { ascending: false })
     .order('activity_count', { ascending: false })
     .order('user_id', { ascending: true })
-    .limit(LEADERBOARD_LIMIT);
+    .limit(limit);
 
   if (topError) {
     console.error('arena-leaderboard: failed to fetch top rows', { code: topError.code });
@@ -197,7 +206,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     if (p.display_name) displayNameByUserId.set(p.user_id, p.display_name);
   }
 
-  const leaderboard = topRows.map((row, idx) => ({
+  const entries = topRows.map((row, idx) => ({
     userId: row.user_id,
     displayName: displayNameByUserId.get(row.user_id) || 'Anonymous',
     score: row.score,
@@ -205,10 +214,10 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     rank: idx + 1,
   }));
 
-  // Determine caller's rank. If they're in the top 50, use that. Otherwise
+  // Determine caller's rank. If they're in the top N, use that. Otherwise
   // run a COUNT query to find out how many users outrank them in this cohort.
-  let myRank: number | null = null;
-  let myResponseRow: {
+  let callerRank: number | null = null;
+  let callerRow: {
     userId: string;
     displayName: string;
     score: number;
@@ -216,10 +225,10 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     rank: number;
   } | null = null;
 
-  const inTop = leaderboard.find((r) => r.userId === user.id);
+  const inTop = entries.find((r) => r.userId === user.id);
   if (inTop) {
-    myRank = inTop.rank;
-    myResponseRow = inTop;
+    callerRank = inTop.rank;
+    callerRow = inTop;
   } else if (myRow) {
     const { count } = await supabase
       .from('arena_weekly_scores')
@@ -227,13 +236,13 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       .eq('week_key', weekKey)
       .eq('cohort_league_key', cohortLeagueKey)
       .gt('score', myRow.score);
-    myRank = (count || 0) + 1;
-    myResponseRow = {
+    callerRank = (count || 0) + 1;
+    callerRow = {
       userId: user.id,
       displayName: displayNameByUserId.get(user.id) || 'You',
       score: myRow.score,
       activityCount: myRow.activity_count,
-      rank: myRank,
+      rank: callerRank,
     };
   }
 
@@ -241,8 +250,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     ok: true,
     weekKey,
     cohortLeagueKey,
-    leaderboard,
-    myRank,
-    myRow: myResponseRow,
+    entries,
+    callerRank,
+    callerRow,
   }, cors);
 }
