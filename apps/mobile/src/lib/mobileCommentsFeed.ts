@@ -460,6 +460,7 @@ const fetchRitualRows = async (options: {
   pageSize: number;
   scope: CommentFeedScope;
   query: string;
+  excludeUserIds?: string[];
 }): Promise<FeedFetchResult> => {
   if (!supabase) return { rows: [], error: null, hasMore: false };
 
@@ -476,6 +477,8 @@ const fetchRitualRows = async (options: {
   const searchFilter = buildServerSearchFilter(options.query);
   const todayRange = options.scope === 'today' ? getTodayRangeIso() : null;
 
+  const excludeIds = (options.excludeUserIds || []).filter(Boolean);
+
   let lastError: SupabaseErrorLike | null = null;
   for (const variant of FEED_FETCH_VARIANTS) {
     let request = supabase
@@ -490,6 +493,11 @@ const fetchRitualRows = async (options: {
 
     if (searchFilter) {
       request = request.or(searchFilter);
+    }
+
+    // Filter out blocked users (both directions)
+    if (excludeIds.length > 0) {
+      request = request.not('user_id', 'in', `(${excludeIds.join(',')})`);
     }
 
     const { data, error } = await request;
@@ -767,11 +775,26 @@ export const fetchMobileCommentFeed = async (
   const sessionResult = await readSupabaseSessionSafe();
   const currentUserId = normalizeText(sessionResult.session?.user?.id, 80);
 
+  // Build blocked-user set (both directions) so their rituals are hidden
+  const blockedUserIds: string[] = [];
+  if (currentUserId && supabase) {
+    const { data: blockRows } = await supabase
+      .from('user_blocks')
+      .select('blocker_user_id, blocked_user_id')
+      .or(`blocker_user_id.eq.${currentUserId},blocked_user_id.eq.${currentUserId}`);
+    for (const row of Array.isArray(blockRows) ? blockRows : []) {
+      const r = row as { blocker_user_id: string; blocked_user_id: string };
+      if (r.blocker_user_id !== currentUserId) blockedUserIds.push(r.blocker_user_id);
+      if (r.blocked_user_id !== currentUserId) blockedUserIds.push(r.blocked_user_id);
+    }
+  }
+
   const feedFetch = await fetchRitualRows({
     page,
     pageSize,
     scope,
     query,
+    excludeUserIds: blockedUserIds,
   });
   if (feedFetch.error) {
     const fallbackItems = await readFallbackFromXpState();

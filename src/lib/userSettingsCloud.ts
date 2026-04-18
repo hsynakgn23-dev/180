@@ -44,7 +44,7 @@ type SyncUserSettingsResult =
       message: string;
     };
 
-const USER_SETTINGS_SELECT = 'language, theme_mode';
+const USER_SETTINGS_SELECT = 'language, theme_mode, push_prefs';
 
 /**
  * Returns true when the pending settings differ from the last-synced snapshot
@@ -73,6 +73,7 @@ const buildUserSettingsPayload = (userId: string, settings: UserSettingsSnapshot
   user_id: userId,
   language: settings.language,
   theme_mode: settings.themeMode,
+  push_prefs: settings.pushPrefs ?? {},
 });
 
 export const readUserSettingsFromCloud = async (
