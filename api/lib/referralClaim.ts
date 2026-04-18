@@ -231,6 +231,30 @@ const mapClaimError = (
     return { errorCode: 'SERVER_ERROR', status: 500, message: 'Invite claim failed.' };
 };
 
+// Grant XP reward to a user after a successful referral claim.
+// Wrapped in try/catch so reward failure never blocks the claim response.
+const grantReferralXpSafe = async (
+    config: { url: string; serviceRoleKey: string },
+    userId: string,
+    xpAmount: number,
+    label: string
+): Promise<void> => {
+    if (!userId || xpAmount <= 0) return;
+    try {
+        const supabase = createSupabaseServiceClient(config.url, config.serviceRoleKey);
+        await applyProgressionReward({
+            supabase,
+            userId,
+            reward: { xp: xpAmount, tickets: 0, arenaScore: 0, arenaActivity: 0 },
+        });
+    } catch (err) {
+        console.error(`referralClaim: grantReferralXpSafe failed for ${label} userId=${userId}`, {
+            xpAmount,
+            error: err instanceof Error ? err.message : String(err),
+        });
+    }
+};
+
 const isAmbiguousClaimCountError = (rawMessage: string): boolean => {
     const text = rawMessage.toLowerCase();
     return text.includes('claim_count') && text.includes('ambiguous');

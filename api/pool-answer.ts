@@ -4,6 +4,8 @@ import { applyPoolAnswerMarks } from './lib/markUnlock.js';
 import {
     DAILY_QUIZ_CORRECT_XP
 } from '../src/domain/dailyQuizRewards.js';
+import { getPoolQuizReward } from '../src/domain/progressionRewards.js';
+import { applyProgressionReward } from './lib/progressionProfile.js';
 
 export const config = { runtime: 'nodejs' };
 
@@ -202,6 +204,38 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
             null
         );
 
+    // Calculate pool quiz reward (tickets + arena score) and persist to profile.
+    // XP is already handled by the RPC, so we pass xp: 0 to avoid double-counting.
+    let ticketsEarned = 0;
+    let arenaScoreEarned = 0;
+    if (!duplicate && completed) {
+        try {
+            const poolReward = getPoolQuizReward({ isCompleted: true, isPerfect });
+            ticketsEarned = poolReward.tickets;
+            arenaScoreEarned = poolReward.arenaScore;
+
+            await applyProgressionReward({
+                supabase,
+                userId: user.id,
+                fallbackEmail: user.email || null,
+                fallbackDisplayName: fallbackDisplayName,
+                reward: {
+                    xp: 0,
+                    tickets: poolReward.tickets,
+                    arenaScore: poolReward.arenaScore,
+                    arenaActivity: poolReward.arenaActivity,
+                },
+                source: 'pool_quiz',
+                sourceId: String(question.movie_id || ''),
+            });
+        } catch (rewardError) {
+            console.error('pool-answer: applyProgressionReward failed', {
+                userId: user.id,
+                error: rewardError instanceof Error ? rewardError.message : 'unknown',
+            });
+        }
+    }
+
     return sendJson(res, 200, {
         ok: true,
         question_id: questionId,
@@ -211,6 +245,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         explanation,
         xp_earned: xpEarned,
         bonus_xp: bonusXp,
+        tickets_earned: ticketsEarned,
+        arena_score_earned: arenaScoreEarned,
         duplicate,
         progress: {
             answered,

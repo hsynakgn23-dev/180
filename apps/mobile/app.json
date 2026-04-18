@@ -2,7 +2,7 @@
   "expo": {
     "name": "180 Absolute Cinema",
     "slug": "absolute-cinema-mobile",
-    "version": "1.0.0",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "absolutecinema",
@@ -22,7 +22,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.absolutecinema",
-      "buildNumber": "1",
+      "buildNumber": "19",
       "usesAppleSignIn": true,
       "config": {
         "usesNonExemptEncryption": false
@@ -30,7 +30,7 @@
     },
     "android": {
       "package": "com.hsyna.absolutecinema",
-      "versionCode": 1,
+      "versionCode": 32,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -63,7 +63,8 @@
         }
       ],
       "expo-dev-client",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-iap"
     ],
     "web": {
       "favicon": "./assets/favicon.png"

@@ -606,7 +606,7 @@ export const WalletModal = ({
 const walletStyles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#090909',
+    backgroundColor: '#121212',
     paddingTop: 28,
     paddingHorizontal: 18,
     paddingBottom: 18,

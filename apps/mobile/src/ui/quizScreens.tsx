@@ -4118,7 +4118,7 @@ export const QuizHomeScreen = ({
 const qs = StyleSheet.create({
   quizPage: {
     flex: 1,
-    backgroundColor: '#090909',
+    backgroundColor: '#121212',
   },
   quizPageContent: {
     paddingTop: 18,

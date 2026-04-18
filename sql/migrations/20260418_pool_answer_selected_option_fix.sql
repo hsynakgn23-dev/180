@@ -1,12 +1,25 @@
--- Make pool answers duplicate-safe and atomic.
--- The answer insert, per-movie progress update, and quiz XP grant now happen
--- inside a single security-definer RPC so concurrent retries cannot double-pay.
+-- Fix record_pool_answer RPC to include selected_option column.
+--
+-- The movie_pool_answers table has selected_option NOT NULL (schema drift —
+-- added directly in Supabase, never captured in a migration). The previous
+-- version of record_pool_answer omitted it, so every INSERT failed with
+-- 23502 not-null violation ("null value in column selected_option").
+--
+-- This migration:
+-- 1. Drops the old function signature (7 args, without p_selected_option).
+-- 2. Recreates it with p_selected_option as a required parameter.
+-- 3. Includes selected_option in the INSERT.
+--
+-- Safe to re-run.
+
+drop function if exists public.record_pool_answer(uuid, uuid, uuid, boolean, integer, integer, text, text);
 
 create or replace function public.record_pool_answer(
   p_user_id uuid,
   p_question_id uuid,
   p_movie_id uuid,
   p_is_correct boolean,
+  p_selected_option text,
   p_correct_xp integer default 10,
   p_perfect_bonus_xp integer default 25,
   p_email text default null,
@@ -27,6 +40,7 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+#variable_conflict use_variable
 declare
   v_now timestamptz := timezone('utc'::text, now());
   v_total_questions integer := 0;
@@ -51,9 +65,13 @@ declare
   v_weekly_activity integer := 0;
   v_weekly_comment_rewards integer := 0;
   v_weekly_quiz_rewards integer := 0;
+  v_selected_option text := lower(coalesce(p_selected_option, ''));
 begin
   if p_user_id is null or p_question_id is null or p_movie_id is null then
     raise exception 'INVALID_INPUT';
+  end if;
+  if v_selected_option not in ('a', 'b', 'c', 'd') then
+    raise exception 'INVALID_SELECTED_OPTION';
   end if;
 
   select greatest(count(*), 5)
@@ -65,13 +83,13 @@ begin
     insert into public.movie_pool_answers (
       user_id,
       question_id,
-      movie_id,
+      selected_option,
       is_correct
     )
     values (
       p_user_id,
       p_question_id,
-      p_movie_id,
+      v_selected_option,
       coalesce(p_is_correct, false)
     );
   exception
@@ -264,6 +282,5 @@ begin
 end;
 $$;
 
-revoke all on function public.record_pool_answer(uuid, uuid, uuid, boolean, integer, integer, text, text) from public;
-grant execute on function public.record_pool_answer(uuid, uuid, uuid, boolean, integer, integer, text, text) to authenticated;
-grant execute on function public.record_pool_answer(uuid, uuid, uuid, boolean, integer, integer, text, text) to service_role;
+revoke all on function public.record_pool_answer(uuid, uuid, uuid, boolean, text, integer, integer, text, text) from public;
+grant execute on function public.record_pool_answer(uuid, uuid, uuid, boolean, text, integer, integer, text, text) to authenticated;

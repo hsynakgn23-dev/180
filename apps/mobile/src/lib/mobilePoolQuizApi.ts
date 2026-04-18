@@ -177,11 +177,22 @@ const toNullableNumber = (value: unknown): number | null => {
   return Number.isFinite(num) ? num : null;
 };
 
+const AUTH_HEADER_TIMEOUT_MS = 3000;
+
 const buildAuthHeaders = async (): Promise<Record<string, string>> => {
-  const sessionResult = await readSupabaseSessionSafe();
-  const accessToken = String(sessionResult.session?.access_token || '').trim();
-  if (!accessToken) return {};
-  return { Authorization: `Bearer ${accessToken}` };
+  try {
+    const sessionResult = await Promise.race([
+      readSupabaseSessionSafe(),
+      new Promise<{ session: null; clearedInvalidSession: false; error: null }>((resolve) =>
+        setTimeout(() => resolve({ session: null, clearedInvalidSession: false, error: null }), AUTH_HEADER_TIMEOUT_MS)
+      ),
+    ]);
+    const accessToken = String(sessionResult.session?.access_token || '').trim();
+    if (!accessToken) return {};
+    return { Authorization: `Bearer ${accessToken}` };
+  } catch {
+    return {};
+  }
 };
 
 const MOBILE_QUIZ_REQUEST_TIMEOUT_MS = 10000;

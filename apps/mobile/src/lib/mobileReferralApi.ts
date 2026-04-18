@@ -36,6 +36,7 @@ type EnsureInviteCodePayload = {
 };
 
 const REFERRAL_DEVICE_KEY_STORAGE = '180_referral_device_key_v1';
+const REFERRAL_CLAIMED_CODE_STORAGE = '180_referral_claimed_code_v1';
 
 const normalizeText = (value: unknown, maxLength: number): string => {
   const text = String(value ?? '').trim();
@@ -55,10 +56,17 @@ const getApiUrl = (path: string): string => {
   return `${base}${normalizedPath}`;
 };
 
+const AUTH_TOKEN_TIMEOUT_MS = 3000;
+
 const getAuthToken = async (): Promise<string | null> => {
   if (!isSupabaseLive() || !supabase) return null;
   try {
-    const sessionResult = await readSupabaseSessionSafe();
+    const sessionResult = await Promise.race([
+      readSupabaseSessionSafe(),
+      new Promise<{ session: null; clearedInvalidSession: false; error: null }>((resolve) =>
+        setTimeout(() => resolve({ session: null, clearedInvalidSession: false, error: null }), AUTH_TOKEN_TIMEOUT_MS)
+      ),
+    ]);
     return sessionResult.session?.access_token || null;
   } catch {
     return null;
@@ -178,4 +186,25 @@ export const ensureInviteCodeViaApi = async (
 ): Promise<ReferralApiResponse<EnsureInviteCodePayload>> => {
   const seed = normalizeText(rawSeed, 120) || `mobile-${Date.now().toString(36)}`;
   return postReferralApi<EnsureInviteCodePayload>('/api/referral?action=create', { seed });
+};
+
+export const persistClaimedInviteCode = async (code: string): Promise<void> => {
+  try {
+    const normalized = normalizeInviteCode(code);
+    if (normalized) {
+      await AsyncStorage.setItem(REFERRAL_CLAIMED_CODE_STORAGE, normalized);
+    }
+  } catch {
+    // ignore storage failures
+  }
+};
+
+export const readPersistedClaimedInviteCode = async (): Promise<string | null> => {
+  try {
+    const stored = await AsyncStorage.getItem(REFERRAL_CLAIMED_CODE_STORAGE);
+    const normalized = normalizeInviteCode(stored);
+    return normalized || null;
+  } catch {
+    return null;
+  }
 };

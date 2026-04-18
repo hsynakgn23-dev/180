@@ -100,11 +100,29 @@ const deriveNextStreak = (currentStreak: number, previousDateKey: string | null,
   if (previousDateKey === nextDateKey) return Math.max(1, currentStreak);
   const currentDayIndex = parseDateKeyToDayIndex(nextDateKey);
   const previousDayIndex = previousDateKey ? parseDateKeyToDayIndex(previousDateKey) : null;
-  if (currentDayIndex === null) return Math.max(1, currentStreak);
-  if (previousDayIndex === null) return 1;
-  if (currentDayIndex - previousDayIndex === 1) return Math.max(1, currentStreak) + 1;
-  if (currentDayIndex === previousDayIndex) return Math.max(1, currentStreak);
-  return 1;
+  if (currentDayIndex === null) {
+    return { nextStreak: Math.max(1, currentStreak), shieldConsumed: false, gapDays: 0 };
+  }
+  if (previousDayIndex === null) {
+    return { nextStreak: 1, shieldConsumed: false, gapDays: 0 };
+  }
+  const gap = currentDayIndex - previousDayIndex;
+  if (gap === 1) {
+    return { nextStreak: Math.max(1, currentStreak) + 1, shieldConsumed: false, gapDays: gap };
+  }
+  if (gap === 0) {
+    return { nextStreak: Math.max(1, currentStreak), shieldConsumed: false, gapDays: gap };
+  }
+  // Gap > 1 — streak would normally reset.
+  // A shield can repair a single missed day (gap === 2).
+  if (gap === 2 && shieldsAvailable > 0) {
+    return {
+      nextStreak: Math.max(1, currentStreak) + 1,
+      shieldConsumed: true,
+      gapDays: gap,
+    };
+  }
+  return { nextStreak: 1, shieldConsumed: false, gapDays: gap };
 };
 
 const readCurrentXp = (xpState: Record<string, unknown>): number =>
@@ -175,6 +193,7 @@ export const applyProgressionReward = async (input: {
   applied: boolean;
 }> => {
   const now = input.now || new Date();
+  const nowIso = now.toISOString();
   const mutation = await mutateWalletProfile<{
     totalXP: number;
     streak: number;
@@ -215,7 +234,7 @@ export const applyProgressionReward = async (input: {
         activityCount: weeklyArena.activityCount + toSafeInt(input.reward.arenaActivity),
         commentRewards: weeklyArena.commentRewards + (input.isCommentReward ? 1 : 0),
         quizRewards: weeklyArena.quizRewards + (input.isQuizReward ? 1 : 0),
-        updatedAt: now.toISOString(),
+        updatedAt: nowIso,
       };
 
       const nextWallet: ProgressionWalletState = {
@@ -227,12 +246,44 @@ export const applyProgressionReward = async (input: {
       let nextStreak = currentStreak;
       let nextLastStreakDate = normalizeDateKey(currentState.lastStreakDate);
       let nextActiveDays = sanitizeDateKeys(currentState.activeDays);
+      let shieldConsumed = false;
       const activeDateKey = normalizeDateKey(input.markActiveDateKey);
       if (activeDateKey) {
-        nextStreak = deriveNextStreak(nextStreak, nextLastStreakDate, activeDateKey);
+        const shieldsAvailable = toSafeInt(loaded.wallet.inventory.streak_shield);
+        const update = deriveNextStreak(prevStreak, nextLastStreakDate, activeDateKey, shieldsAvailable);
+        nextStreak = update.nextStreak;
+        shieldConsumed = update.shieldConsumed;
         nextLastStreakDate = activeDateKey;
         nextActiveDays = sanitizeDateKeys([...nextActiveDays, activeDateKey]);
       }
+
+      // Evaluate streak milestone rewards (one-time per run, idempotent)
+      const milestoneState = normalizeStreakMilestoneState(currentState.streakMilestones);
+      const milestoneEval = evaluateStreakMilestones({
+        prevStreak,
+        nextStreak,
+        prevState: milestoneState,
+        nowIso,
+      });
+
+      const nextWallet: ProgressionWalletState = {
+        ...loaded.wallet,
+        balance:
+          loaded.wallet.balance
+          + toSafeInt(input.reward.tickets)
+          + milestoneEval.totalReward.tickets,
+        lifetimeEarned:
+          loaded.wallet.lifetimeEarned
+          + toSafeInt(input.reward.tickets)
+          + milestoneEval.totalReward.tickets,
+        inventory: {
+          ...loaded.wallet.inventory,
+          streak_shield: Math.max(
+            0,
+            toSafeInt(loaded.wallet.inventory.streak_shield) - (shieldConsumed ? 1 : 0)
+          ),
+        },
+      };
 
       let nextDailyRituals = Array.isArray(currentState.dailyRituals)
         ? [...(currentState.dailyRituals as unknown[])]
@@ -266,6 +317,7 @@ export const applyProgressionReward = async (input: {
         lastStreakDate: nextLastStreakDate,
         activeDays: nextActiveDays,
         weeklyArena: nextWeeklyArena,
+        streakMilestones: milestoneEval.nextState,
       };
       nextXpState = withMirroredProfileXp(nextXpState, currentTotalXp + toSafeInt(input.reward.xp));
 

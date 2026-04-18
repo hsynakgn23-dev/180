@@ -1,6 +1,7 @@
 import { createCorsHeaders } from './lib/cors.js';
 import { applyProgressionReward } from './lib/progressionProfile.js';
 import { createSupabaseServiceClient } from './lib/supabaseServiceClient.js';
+import { applyProgressionReward } from './lib/progressionProfile.js';
 
 export const config = { runtime: 'nodejs' };
 

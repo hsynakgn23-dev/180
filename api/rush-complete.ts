@@ -2,6 +2,7 @@ import { createCorsHeaders } from './lib/cors.js';
 import { createSupabaseServiceClient } from './lib/supabaseServiceClient.js';
 import { applyRushCompleteMarks } from './lib/markUnlock.js';
 import { applyProgressionReward } from './lib/progressionProfile.js';
+import { getRushCompletionReward } from '../src/domain/progressionRewards.js';
 
 export const config = { runtime: 'nodejs' };
 
@@ -16,13 +17,6 @@ type ApiResponse = {
     setHeader?: (key: string, value: string) => void;
     status?: (statusCode: number) => { json: (payload: Record<string, unknown>) => unknown };
 };
-
-// XP thresholds and rewards
-const RUSH_XP_CONFIG = {
-    rush_15: { threshold: 10, xp: 75 },
-    rush_30: { threshold: 21, xp: 180 },
-    endless: { threshold: 10, xpPerThreshold: 30 }
-} as const;
 
 const sendJson = (
     res: ApiResponse,
@@ -122,20 +116,19 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     const isExpired = session.expires_at && now > new Date(session.expires_at);
     const finalStatus = isExpired ? 'expired' : 'completed';
 
-    // Calculate XP
-    const mode = session.mode as keyof typeof RUSH_XP_CONFIG;
-    let xpEarned = 0;
-
-    if (mode === 'endless') {
-        const endlessConfig = RUSH_XP_CONFIG.endless;
-        const thresholdsMet = Math.floor((session.correct_count || 0) / endlessConfig.threshold);
-        xpEarned = thresholdsMet * endlessConfig.xpPerThreshold;
-    } else {
-        const modeConfig = RUSH_XP_CONFIG[mode];
-        if (modeConfig && (session.correct_count || 0) >= modeConfig.threshold) {
-            xpEarned = modeConfig.xp;
-        }
-    }
+    // Calculate XP, tickets and arena score using the shared reward function
+    const mode = session.mode as 'rush_15' | 'rush_30' | 'endless';
+    const isExpiredFlag = Boolean(isExpired);
+    const rushReward = getRushCompletionReward({
+        mode,
+        correctCount: session.correct_count || 0,
+        wrongCount: session.wrong_count || 0,
+        totalQuestions: session.total_questions || 0,
+        expired: isExpiredFlag,
+    });
+    const xpEarned = rushReward.xp;
+    const ticketsEarned = rushReward.tickets;
+    const arenaScoreEarned = rushReward.arenaScore;
 
     // Update session
     const { error: sessionUpdateError } = await supabase
@@ -151,9 +144,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         return sendJson(res, 500, { ok: false, error: 'Failed to complete session.' }, cors);
     }
 
-    // Update profile XP through the shared progression writer so wallet/ticket
-    // state is preserved and `xp` / `totalXP` stay in sync.
-    if (xpEarned > 0) {
+    // Update profile XP, tickets, and arena score through the shared progression writer
+    // so wallet/ticket state is preserved and `xp` / `totalXP` stay in sync.
+    if (xpEarned > 0 || ticketsEarned > 0 || arenaScoreEarned > 0) {
         try {
             await applyProgressionReward({
                 supabase,
@@ -162,9 +155,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
                 fallbackDisplayName: user.email ? String(user.email).split('@')[0] : null,
                 reward: {
                     xp: xpEarned,
-                    tickets: 0,
-                    arenaScore: 0,
-                    arenaActivity: 0,
+                    tickets: ticketsEarned,
+                    arenaScore: arenaScoreEarned,
+                    arenaActivity: rushReward.arenaActivity,
                 },
                 isQuizReward: true,
                 ledger: {
@@ -213,9 +206,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
             });
     }
 
-    const modeConfig = mode === 'endless' ? RUSH_XP_CONFIG.endless : RUSH_XP_CONFIG[mode];
-    const threshold = mode === 'endless' ? RUSH_XP_CONFIG.endless.threshold : (modeConfig as { threshold: number }).threshold;
-    const passedThreshold = (session.correct_count || 0) >= threshold;
+    const threshold = rushReward.threshold;
+    const passedThreshold = rushReward.passedThreshold;
 
     // Unlock rush/knowledge marks and return newly earned ones
     const newlyUnlockedMarks = await applyRushCompleteMarks(
@@ -234,6 +226,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         wrongCount: session.wrong_count,
         totalQuestions: session.total_questions,
         xpEarned,
+        xp_earned: xpEarned,
+        tickets_earned: ticketsEarned,
+        arena_score_earned: arenaScoreEarned,
         passedThreshold,
         threshold,
         shouldShowAd,
