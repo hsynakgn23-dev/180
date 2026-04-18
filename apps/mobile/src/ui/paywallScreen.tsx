@@ -280,9 +280,13 @@ const PAYWALL_LEGAL_COPY: Record<PaywallLanguage, {
   tr: {
     oneTimeLegal: 'Tek seferlik odemedir. Yenilenmez.',
     subscriptionLegalYear: (price) =>
-      `Abonelik ${price} / yil olarak yenilenir. Odeme Google Play hesabinizdan alinir. Abonelik donem sonu otomatik yenilenir. Yenilemeyi iptal etmek icin Google Play > Abonelikler > 180 Absolute Cinema > Iptal Et yolunu izleyebilirsiniz. Iptal en az 24 saat oncesinden yapilmalidir.`,
+      Platform.OS === 'ios'
+        ? `Abonelik ${price} / yil olarak yenilenir. Odeme iTunes hesabinizdan alinir. Abonelik donem sonu otomatik yenilenir. Yenilemeyi iptal etmek icin App Store > Hesap > Abonelikler yolunu izleyebilirsiniz. Iptal en az 24 saat oncesinden yapilmalidir.`
+        : `Abonelik ${price} / yil olarak yenilenir. Odeme Google Play hesabinizdan alinir. Abonelik donem sonu otomatik yenilenir. Yenilemeyi iptal etmek icin Google Play > Abonelikler > 180 Absolute Cinema > Iptal Et yolunu izleyebilirsiniz. Iptal en az 24 saat oncesinden yapilmalidir.`,
     subscriptionLegalMonth: (price) =>
-      `Abonelik ${price} / ay olarak yenilenir. Odeme Google Play hesabinizdan alinir. Abonelik donem sonu otomatik yenilenir. Yenilemeyi iptal etmek icin Google Play > Abonelikler > 180 Absolute Cinema > Iptal Et yolunu izleyebilirsiniz. Iptal en az 24 saat oncesinden yapilmalidir.`,
+      Platform.OS === 'ios'
+        ? `Abonelik ${price} / ay olarak yenilenir. Odeme iTunes hesabinizdan alinir. Abonelik donem sonu otomatik yenilenir. Yenilemeyi iptal etmek icin App Store > Hesap > Abonelikler yolunu izleyebilirsiniz. Iptal en az 24 saat oncesinden yapilmalidir.`
+        : `Abonelik ${price} / ay olarak yenilenir. Odeme Google Play hesabinizdan alinir. Abonelik donem sonu otomatik yenilenir. Yenilemeyi iptal etmek icin Google Play > Abonelikler > 180 Absolute Cinema > Iptal Et yolunu izleyebilirsiniz. Iptal en az 24 saat oncesinden yapilmalidir.`,
     webPreview: 'Web onizleme. Satin alma mobilde calisir.',
     plansLoading: 'Planlar hazirlaniyor. Fiyatlar yuklenince satin alma acilacak.',
     currentPlanActive: 'Bu plan hesabinda zaten acik.',
@@ -293,9 +297,13 @@ const PAYWALL_LEGAL_COPY: Record<PaywallLanguage, {
   en: {
     oneTimeLegal: 'One-time payment. Does not renew.',
     subscriptionLegalYear: (price) =>
-      `Subscription renews at ${price}/year. Payment is charged to your Google Play account. Subscription auto-renews at the end of each period. To cancel, go to Google Play > Subscriptions > 180 Absolute Cinema > Cancel. Cancellation must be made at least 24 hours before the end of the current period.`,
+      Platform.OS === 'ios'
+        ? `Subscription renews at ${price}/year. Payment is charged to your iTunes Account. Subscription auto-renews at the end of each period. To cancel, go to App Store > Account > Subscriptions. Cancellation must be made at least 24 hours before the end of the current period.`
+        : `Subscription renews at ${price}/year. Payment is charged to your Google Play account. Subscription auto-renews at the end of each period. To cancel, go to Google Play > Subscriptions > 180 Absolute Cinema > Cancel. Cancellation must be made at least 24 hours before the end of the current period.`,
     subscriptionLegalMonth: (price) =>
-      `Subscription renews at ${price}/month. Payment is charged to your Google Play account. Subscription auto-renews at the end of each period. To cancel, go to Google Play > Subscriptions > 180 Absolute Cinema > Cancel. Cancellation must be made at least 24 hours before the end of the current period.`,
+      Platform.OS === 'ios'
+        ? `Subscription renews at ${price}/month. Payment is charged to your iTunes Account. Subscription auto-renews at the end of each period. To cancel, go to App Store > Account > Subscriptions. Cancellation must be made at least 24 hours before the end of the current period.`
+        : `Subscription renews at ${price}/month. Payment is charged to your Google Play account. Subscription auto-renews at the end of each period. To cancel, go to Google Play > Subscriptions > 180 Absolute Cinema > Cancel. Cancellation must be made at least 24 hours before the end of the current period.`,
     webPreview: 'Web preview. Purchases work on mobile.',
     plansLoading: 'Loading plans. Purchase will be available once prices load.',
     currentPlanActive: 'This plan is already active on your account.',
@@ -306,9 +314,13 @@ const PAYWALL_LEGAL_COPY: Record<PaywallLanguage, {
   es: {
     oneTimeLegal: 'Pago unico. No se renueva.',
     subscriptionLegalYear: (price) =>
-      `La suscripcion se renueva a ${price}/ano. El pago se cobra en tu cuenta de Google Play. La suscripcion se renueva automaticamente al final de cada periodo. Para cancelar, ve a Google Play > Suscripciones > 180 Absolute Cinema > Cancelar. La cancelacion debe realizarse al menos 24 horas antes del final del periodo actual.`,
+      Platform.OS === 'ios'
+        ? `La suscripcion se renueva a ${price}/ano. El pago se cobra en tu cuenta de iTunes. La suscripcion se renueva automaticamente al final de cada periodo. Para cancelar, ve a App Store > Cuenta > Suscripciones. La cancelacion debe realizarse al menos 24 horas antes del final del periodo actual.`
+        : `La suscripcion se renueva a ${price}/ano. El pago se cobra en tu cuenta de Google Play. La suscripcion se renueva automaticamente al final de cada periodo. Para cancelar, ve a Google Play > Suscripciones > 180 Absolute Cinema > Cancelar. La cancelacion debe realizarse al menos 24 horas antes del final del periodo actual.`,
     subscriptionLegalMonth: (price) =>
-      `La suscripcion se renueva a ${price}/mes. El pago se cobra en tu cuenta de Google Play. La suscripcion se renueva automaticamente al final de cada periodo. Para cancelar, ve a Google Play > Suscripciones > 180 Absolute Cinema > Cancelar. La cancelacion debe realizarse al menos 24 horas antes del final del periodo actual.`,
+      Platform.OS === 'ios'
+        ? `La suscripcion se renueva a ${price}/mes. El pago se cobra en tu cuenta de iTunes. La suscripcion se renueva automaticamente al final de cada periodo. Para cancelar, ve a App Store > Cuenta > Suscripciones. La cancelacion debe realizarse al menos 24 horas antes del final del periodo actual.`
+        : `La suscripcion se renueva a ${price}/mes. El pago se cobra en tu cuenta de Google Play. La suscripcion se renueva automaticamente al final de cada periodo. Para cancelar, ve a Google Play > Suscripciones > 180 Absolute Cinema > Cancelar. La cancelacion debe realizarse al menos 24 horas antes del final del periodo actual.`,
     webPreview: 'Vista previa web. Las compras funcionan en el movil.',
     plansLoading: 'Cargando planes. La compra estara disponible cuando se carguen los precios.',
     currentPlanActive: 'Este plan ya esta activo en tu cuenta.',
@@ -319,9 +331,13 @@ const PAYWALL_LEGAL_COPY: Record<PaywallLanguage, {
   fr: {
     oneTimeLegal: 'Paiement unique. Ne se renouvelle pas.',
     subscriptionLegalYear: (price) =>
-      `L'abonnement se renouvelle a ${price}/an. Le paiement est debite de votre compte Google Play. L'abonnement se renouvelle automatiquement a la fin de chaque periode. Pour annuler, allez dans Google Play > Abonnements > 180 Absolute Cinema > Annuler. L'annulation doit etre effectuee au moins 24 heures avant la fin de la periode en cours.`,
+      Platform.OS === 'ios'
+        ? `L'abonnement se renouvelle a ${price}/an. Le paiement est debite de votre compte iTunes. L'abonnement se renouvelle automatiquement a la fin de chaque periode. Pour annuler, allez dans App Store > Compte > Abonnements. L'annulation doit etre effectuee au moins 24 heures avant la fin de la periode en cours.`
+        : `L'abonnement se renouvelle a ${price}/an. Le paiement est debite de votre compte Google Play. L'abonnement se renouvelle automatiquement a la fin de chaque periode. Pour annuler, allez dans Google Play > Abonnements > 180 Absolute Cinema > Annuler. L'annulation doit etre effectuee au moins 24 heures avant la fin de la periode en cours.`,
     subscriptionLegalMonth: (price) =>
-      `L'abonnement se renouvelle a ${price}/mois. Le paiement est debite de votre compte Google Play. L'abonnement se renouvelle automatiquement a la fin de chaque periode. Pour annuler, allez dans Google Play > Abonnements > 180 Absolute Cinema > Annuler. L'annulation doit etre effectuee au moins 24 heures avant la fin de la periode en cours.`,
+      Platform.OS === 'ios'
+        ? `L'abonnement se renouvelle a ${price}/mois. Le paiement est debite de votre compte iTunes. L'abonnement se renouvelle automatiquement a la fin de chaque periode. Pour annuler, allez dans App Store > Compte > Abonnements. L'annulation doit etre effectuee au moins 24 heures avant la fin de la periode en cours.`
+        : `L'abonnement se renouvelle a ${price}/mois. Le paiement est debite de votre compte Google Play. L'abonnement se renouvelle automatiquement a la fin de chaque periode. Pour annuler, allez dans Google Play > Abonnements > 180 Absolute Cinema > Annuler. L'annulation doit etre effectuee au moins 24 heures avant la fin de la periode en cours.`,
     webPreview: 'Apercu web. Les achats fonctionnent sur mobile.',
     plansLoading: 'Chargement des plans. L\'achat sera disponible une fois les prix charges.',
     currentPlanActive: 'Ce plan est deja actif sur votre compte.',
