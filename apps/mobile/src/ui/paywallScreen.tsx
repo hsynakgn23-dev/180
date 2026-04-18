@@ -334,8 +334,10 @@ export const PaywallModal = ({
       : `${selectedPlan.label} • ${selectedPlan.price} • ${selectedPlan.period}`;
   const paymentLegal =
     selected === 'supporter'
-      ? 'Tek seferlik odemedir. Yenilenmez.'
-      : 'Aboneliktir. Iptal edilmedikce donem sonunda yenilenir.';
+      ? 'Tek seferlik odemedir. Yenilenmez. Iade icin App Store / Google Play sartlari gecerlidir.'
+      : Platform.OS === 'android'
+        ? `${selectedPlan.price} tutarinda ${selected === 'annual' ? 'yillik' : 'aylik'} abonelik. Donem bitmeden 24 saat once iptal edilmezse ayni ucretle otomatik yenilenir. Iptal: Google Play → Hesabim → Abonelikler.`
+        : `${selectedPlan.price} tutarinda ${selected === 'annual' ? 'yillik' : 'aylik'} abonelik. Donem bitmeden 24 saat once iptal edilmezse ayni ucretle otomatik yenilenir. Iptal: App Store → Hesap → Abonelikler.`;
   const footerNote = isWebPreview
     ? 'Web onizleme. Satin alma mobilde calisir.'
     : isProductLoading
