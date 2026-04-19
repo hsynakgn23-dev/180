@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "apps/mobile/**"
+      - "api/**"
       - "src/**"
       - "packages/shared/src/mobile/**"
       - "scripts/mobile-*.mjs"
@@ -17,6 +18,7 @@ on:
     branches: [main]
     paths:
       - "apps/mobile/**"
+      - "api/**"
       - "src/**"
       - "packages/shared/src/mobile/**"
       - "scripts/mobile-*.mjs"
