@@ -225,8 +225,11 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
                     arenaScore: poolReward.arenaScore,
                     arenaActivity: poolReward.arenaActivity,
                 },
-                source: 'pool_quiz',
-                sourceId: String(question.movie_id || ''),
+                ledger: {
+                    source: 'pool_quiz',
+                    sourceId: String(question.movie_id || ''),
+                    reason: 'pool_quiz_complete',
+                },
             });
         } catch (rewardError) {
             console.error('pool-answer: applyProgressionReward failed', {

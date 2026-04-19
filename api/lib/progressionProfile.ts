@@ -96,32 +96,22 @@ const readProcessedRewardKeys = (
 const appendProcessedRewardKey = (keys: string[], key: string): string[] =>
   Array.from(new Set([...keys, key])).slice(-MAX_REWARD_MUTATION_KEYS);
 
-const deriveNextStreak = (currentStreak: number, previousDateKey: string | null, nextDateKey: string): number => {
-  if (previousDateKey === nextDateKey) return Math.max(1, currentStreak);
+const deriveNextStreak = (
+  currentStreak: number,
+  previousDateKey: string | null,
+  nextDateKey: string,
+  shieldsAvailable = 0
+): { nextStreak: number; shieldConsumed: boolean; gapDays: number } => {
+  if (previousDateKey === nextDateKey) return { nextStreak: Math.max(1, currentStreak), shieldConsumed: false, gapDays: 0 };
   const currentDayIndex = parseDateKeyToDayIndex(nextDateKey);
   const previousDayIndex = previousDateKey ? parseDateKeyToDayIndex(previousDateKey) : null;
-  if (currentDayIndex === null) {
-    return { nextStreak: Math.max(1, currentStreak), shieldConsumed: false, gapDays: 0 };
-  }
-  if (previousDayIndex === null) {
-    return { nextStreak: 1, shieldConsumed: false, gapDays: 0 };
-  }
+  if (currentDayIndex === null) return { nextStreak: Math.max(1, currentStreak), shieldConsumed: false, gapDays: 0 };
+  if (previousDayIndex === null) return { nextStreak: 1, shieldConsumed: false, gapDays: 0 };
   const gap = currentDayIndex - previousDayIndex;
-  if (gap === 1) {
-    return { nextStreak: Math.max(1, currentStreak) + 1, shieldConsumed: false, gapDays: gap };
-  }
-  if (gap === 0) {
-    return { nextStreak: Math.max(1, currentStreak), shieldConsumed: false, gapDays: gap };
-  }
-  // Gap > 1 — streak would normally reset.
-  // A shield can repair a single missed day (gap === 2).
-  if (gap === 2 && shieldsAvailable > 0) {
-    return {
-      nextStreak: Math.max(1, currentStreak) + 1,
-      shieldConsumed: true,
-      gapDays: gap,
-    };
-  }
+  if (gap === 1) return { nextStreak: Math.max(1, currentStreak) + 1, shieldConsumed: false, gapDays: gap };
+  if (gap === 0) return { nextStreak: Math.max(1, currentStreak), shieldConsumed: false, gapDays: gap };
+  // Gap > 1 — a streak shield can repair a single missed day (gap === 2)
+  if (gap === 2 && shieldsAvailable > 0) return { nextStreak: Math.max(1, currentStreak) + 1, shieldConsumed: true, gapDays: gap };
   return { nextStreak: 1, shieldConsumed: false, gapDays: gap };
 };
 
@@ -193,7 +183,6 @@ export const applyProgressionReward = async (input: {
   applied: boolean;
 }> => {
   const now = input.now || new Date();
-  const nowIso = now.toISOString();
   const mutation = await mutateWalletProfile<{
     totalXP: number;
     streak: number;
@@ -234,13 +223,7 @@ export const applyProgressionReward = async (input: {
         activityCount: weeklyArena.activityCount + toSafeInt(input.reward.arenaActivity),
         commentRewards: weeklyArena.commentRewards + (input.isCommentReward ? 1 : 0),
         quizRewards: weeklyArena.quizRewards + (input.isQuizReward ? 1 : 0),
-        updatedAt: nowIso,
-      };
-
-      const nextWallet: ProgressionWalletState = {
-        ...loaded.wallet,
-        balance: loaded.wallet.balance + toSafeInt(input.reward.tickets),
-        lifetimeEarned: loaded.wallet.lifetimeEarned + toSafeInt(input.reward.tickets),
+        updatedAt: now.toISOString(),
       };
 
       let nextStreak = currentStreak;
@@ -250,38 +233,20 @@ export const applyProgressionReward = async (input: {
       const activeDateKey = normalizeDateKey(input.markActiveDateKey);
       if (activeDateKey) {
         const shieldsAvailable = toSafeInt(loaded.wallet.inventory.streak_shield);
-        const update = deriveNextStreak(prevStreak, nextLastStreakDate, activeDateKey, shieldsAvailable);
-        nextStreak = update.nextStreak;
-        shieldConsumed = update.shieldConsumed;
+        const streakUpdate = deriveNextStreak(nextStreak, nextLastStreakDate, activeDateKey, shieldsAvailable);
+        nextStreak = streakUpdate.nextStreak;
+        shieldConsumed = streakUpdate.shieldConsumed;
         nextLastStreakDate = activeDateKey;
         nextActiveDays = sanitizeDateKeys([...nextActiveDays, activeDateKey]);
       }
 
-      // Evaluate streak milestone rewards (one-time per run, idempotent)
-      const milestoneState = normalizeStreakMilestoneState(currentState.streakMilestones);
-      const milestoneEval = evaluateStreakMilestones({
-        prevStreak,
-        nextStreak,
-        prevState: milestoneState,
-        nowIso,
-      });
-
       const nextWallet: ProgressionWalletState = {
         ...loaded.wallet,
-        balance:
-          loaded.wallet.balance
-          + toSafeInt(input.reward.tickets)
-          + milestoneEval.totalReward.tickets,
-        lifetimeEarned:
-          loaded.wallet.lifetimeEarned
-          + toSafeInt(input.reward.tickets)
-          + milestoneEval.totalReward.tickets,
+        balance: loaded.wallet.balance + toSafeInt(input.reward.tickets),
+        lifetimeEarned: loaded.wallet.lifetimeEarned + toSafeInt(input.reward.tickets),
         inventory: {
           ...loaded.wallet.inventory,
-          streak_shield: Math.max(
-            0,
-            toSafeInt(loaded.wallet.inventory.streak_shield) - (shieldConsumed ? 1 : 0)
-          ),
+          streak_shield: Math.max(0, toSafeInt(loaded.wallet.inventory.streak_shield) - (shieldConsumed ? 1 : 0)),
         },
       };
 
@@ -317,7 +282,6 @@ export const applyProgressionReward = async (input: {
         lastStreakDate: nextLastStreakDate,
         activeDays: nextActiveDays,
         weeklyArena: nextWeeklyArena,
-        streakMilestones: milestoneEval.nextState,
       };
       nextXpState = withMirroredProfileXp(nextXpState, currentTotalXp + toSafeInt(input.reward.xp));
 
