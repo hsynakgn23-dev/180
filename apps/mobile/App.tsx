@@ -7406,6 +7406,10 @@ export default function App() {
             onClose={() => setPaywallVisible(false)}
             onPurchase={(plan) => void subscription.purchase(plan).then((ok) => { if (ok) setPaywallVisible(false); })}
             onRestore={() => void subscription.restore()}
+            products={subscription.products}
+            loading={subscription.loading}
+            currentTier={subscription.tier}
+            currentPlan={subscription.currentPlan}
             purchasing={subscription.purchasing}
             error={subscription.error}
             language={settingsLanguage as 'tr' | 'en' | 'es' | 'fr'}

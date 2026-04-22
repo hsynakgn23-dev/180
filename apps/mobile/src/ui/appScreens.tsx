@@ -1054,7 +1054,7 @@ const LegacyAuthCard = ({
                 buttonStyle={
                   APP_SCREENS_THEME_MODE === 'dawn'
                     ? AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
-                    : AppleAuthentication.AppleAuthenticationButtonStyle.WHITE_OUTLINE
+                    : AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
                 }
                 cornerRadius={14}
                 style={[
