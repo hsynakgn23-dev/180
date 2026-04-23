@@ -1,7 +1,7 @@
 export const MOBILE_THEME = {
   color: {
     textPrimary: '#E5E4E2',
-    textMuted: '#9e9b94', // was #8e8b84 — bumped for WCAG AA (>4.5:1 on #121212)
+    textMuted: '#a09890',
     textOnDark: '#E5E4E2',
     amberBg: '#1f1f1f',
     amberBorder: 'rgba(255, 255, 255, 0.12)',

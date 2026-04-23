@@ -24,6 +24,7 @@ import {
 } from '../../../../src/domain/progressionEconomy';
 import {
   type WalletDailyTaskKey,
+  type WalletDailyTaskStatus,
   type WalletDailyTaskSnapshot,
 } from '../../../../src/domain/walletDailyTasks';
 
@@ -225,23 +226,26 @@ const normalizeSnapshot = (value: unknown): WalletSnapshot => {
     raw.inventory && typeof raw.inventory === 'object' && !Array.isArray(raw.inventory)
       ? (raw.inventory as Record<string, unknown>)
       : {};
-  const dailyTasks = Array.isArray(raw.dailyTasks)
+  const dailyTasks: WalletDailyTaskSnapshot[] = Array.isArray(raw.dailyTasks)
     ? raw.dailyTasks
         .filter((task): task is Record<string, unknown> =>
           Boolean(task && typeof task === 'object' && !Array.isArray(task))
         )
-        .map((task) => ({
-          key: String(task.key || '').trim() as WalletDailyTaskKey,
-          title: String(task.title || '').trim(),
-          description: String(task.description || '').trim(),
-          ticketReward: Math.max(0, Number(task.ticketReward) || 0),
-          progress: Math.max(0, Number(task.progress) || 0),
-          target: Math.max(1, Number(task.target) || 1),
-          status:
+        .map((task) => {
+          const status: WalletDailyTaskStatus =
             task.status === 'claimed' || task.status === 'ready' || task.status === 'locked'
               ? task.status
-              : 'locked',
-        }))
+              : 'locked';
+          return {
+            key: String(task.key || '').trim() as WalletDailyTaskKey,
+            title: String(task.title || '').trim(),
+            description: String(task.description || '').trim(),
+            ticketReward: Math.max(0, Number(task.ticketReward) || 0),
+            progress: Math.max(0, Number(task.progress) || 0),
+            target: Math.max(1, Number(task.target) || 1),
+            status,
+          };
+        })
         .filter((task) => Boolean(task.key && task.title && task.ticketReward > 0))
     : [];
   return {
@@ -266,7 +270,7 @@ const normalizeSnapshot = (value: unknown): WalletSnapshot => {
   };
 };
 
-const TOPUP_PRODUCT_IDS = new Set(REEL_TOPUP_PACKS.map((pack) => pack.productId));
+const TOPUP_PRODUCT_IDS: ReadonlySet<string> = new Set(REEL_TOPUP_PACKS.map((pack) => pack.productId));
 
 export function useWallet(accessToken: string | null, language: WalletLanguage = 'tr') {
   const [state, setState] = useState<WalletState>(INITIAL_STATE);

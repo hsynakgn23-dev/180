@@ -25,7 +25,11 @@ import {
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { appendMobileDeepLinkParams, buildMobileDeepLinkFromRouteIntent } from '../../packages/shared/src/mobile';
+import {
+  appendMobileDeepLinkParams,
+  buildMobileDeepLinkFromRouteIntent,
+  type MobileScreenId,
+} from '../../packages/shared/src/mobile';
 import { buildLeagueNotificationCopy, buildStreakNotificationCopy, isStreakMilestone } from '../../src/domain/celebrations';
 import { fetchDailyMovies } from './src/lib/dailyApi';
 import { usePageEntranceAnimation } from './src/hooks/usePageEntranceAnimation';
@@ -665,11 +669,9 @@ const MAIN_TAB_BY_SCREEN = {
   invite_claim: 'Profile',
   share_hub: 'Profile',
   public_profile: 'Profile',
+  discover_home: 'Quiz',
   quiz_home: 'Quiz',
-} as const satisfies Record<
-  'daily_home' | 'profile_home' | 'invite_claim' | 'share_hub' | 'public_profile' | 'quiz_home',
-  keyof MainTabParamList
->;
+} as const satisfies Record<MobileScreenId | 'quiz_home', keyof MainTabParamList>;
 const TAB_ICON_BY_ROUTE = {
   Daily: { active: 'today', inactive: 'today-outline' },
   Quiz: { active: 'flash', inactive: 'flash-outline' },
@@ -825,7 +827,7 @@ const inviteMessageByCode: Record<string, string> = {
 
 
 export default function App() {
-  type MainTabKey = 'daily' | 'explore' | 'inbox' | 'marks' | 'profile';
+  type MainTabKey = keyof typeof MAIN_TAB_BY_KEY;
   type AuthFlowMode = 'login' | 'register' | 'forgot' | 'recovery';
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
@@ -4294,7 +4296,8 @@ export default function App() {
   const handleTabNavigationStateChange = useCallback(() => {
     const currentRouteName = tabNavigationRef.getCurrentRoute()?.name;
     if (!currentRouteName) return;
-    const nextTabKey = MAIN_KEY_BY_TAB[currentRouteName];
+    const nextTabKey = MAIN_KEY_BY_TAB[currentRouteName as keyof typeof MAIN_KEY_BY_TAB];
+    if (!nextTabKey) return;
     setActiveTab((prev) => (prev === nextTabKey ? prev : nextTabKey));
   }, []);
   const handleTabNavigationReady = useCallback(() => {
@@ -4780,6 +4783,11 @@ export default function App() {
         marks: publicProfileResolvedMarks.marks,
         featuredMarks: publicProfileResolvedMarks.featuredMarks,
         lastRitualDate: publicSnapshot.lastRitualDate,
+        weeklyArenaScore: 0,
+        weeklyArenaActivity: 0,
+        streakProtectionWeekKey: null,
+        streakProtectionDate: null,
+        streakProtectionClaimedAt: null,
         source: publicSnapshot.source,
       }
     : {
@@ -7263,7 +7271,7 @@ export default function App() {
                           language={settingsLanguage}
                           displayName={profileShellTitle}
                           avatarUrl={profileAvatarUrl}
-                          username={profileUsername}
+                          _username={profileUsername}
                           bio={profileShellBody}
                           birthDateLabel={profileBirthDateLabel}
                           genderLabel={profileGenderLabel}
@@ -7774,7 +7782,6 @@ export default function App() {
     </SafeAreaProvider>
   );
 }
-
 
 
 

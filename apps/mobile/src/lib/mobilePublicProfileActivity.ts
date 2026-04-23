@@ -304,7 +304,8 @@ export const fetchMobilePublicProfileActivity = async ({
     };
   }
 
-  if (!isSupabaseLive() || !supabase) {
+  const client = supabase;
+  if (!isSupabaseLive() || !client) {
     return {
       ok: false,
       message: 'Supabase baglantisi hazir degil.',
@@ -312,7 +313,7 @@ export const fetchMobilePublicProfileActivity = async ({
     };
   }
 
-  const { data: profileData, error: profileError } = await supabase
+  const { data: profileData, error: profileError } = await client
     .from('profiles_public')
     .select('display_name,xp_state')
     .eq('user_id', normalizedUserId)
@@ -373,7 +374,7 @@ export const fetchMobilePublicProfileActivity = async ({
     let hasReadError = false;
 
     for (const variant of variants) {
-      let query = supabase
+      let query = client
         .from('rituals')
         .select(variant.select)
         .order(variant.orderBy, { ascending: false })

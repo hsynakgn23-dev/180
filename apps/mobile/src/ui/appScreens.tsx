@@ -18,6 +18,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text as RNText,
   TextInput,
   View,
@@ -218,7 +219,7 @@ const resolveGenreVisual = (
   if (has('romance', 'romantik', 'ask', 'aşk')) return { icon: 'heart', accent: '#ec4899' };
   if (has('comedy', 'komedi')) return { icon: 'emoticon-happy-outline', accent: '#facc15' };
   if (has('science fiction', 'sci-fi', 'scifi', 'bilim kurgu')) {
-    return { icon: 'planet', accent: '#60a5fa' };
+    return { icon: 'ufo', accent: '#60a5fa' };
   }
   if (has('fantasy', 'fantezi')) return { icon: 'auto-fix', accent: '#a78bfa' };
   if (has('animation', 'animasyon')) return { icon: 'star-four-points-outline', accent: '#22c55e' };
@@ -226,7 +227,7 @@ const resolveGenreVisual = (
   if (has('family', 'aile')) return { icon: 'home-heart', accent: '#10b981' };
   if (has('history', 'tarih')) return { icon: 'bank-outline', accent: '#c084fc' };
   if (has('war', 'savas', 'savaş')) return { icon: 'shield-sword-outline', accent: '#fb923c' };
-  if (has('western')) return { icon: 'cowboy-hat', accent: '#f59e0b' };
+  if (has('western')) return { icon: 'hat-fedora', accent: '#f59e0b' };
   if (has('music', 'muzik', 'müzik')) return { icon: 'music-note-outline', accent: '#38bdf8' };
   if (has('mystery', 'gizem')) return { icon: 'magnify', accent: '#a78bfa' };
   return { icon: 'movie-open-outline', accent: '#8A9A5B' };
@@ -4220,7 +4221,7 @@ const LegacyProfileCinematicCard = ({
       <View style={styles.profileDnaList}>
         {topGenres.map((genreEntry) => {
           const percentage = totalGenres > 0 ? Math.round((genreEntry.count / totalGenres) * 100) : 0;
-          const fillWidth = `${Math.max(12, percentage)}%`;
+          const fillWidth = `${Math.max(12, percentage)}%` as `${number}%`;
 
           return (
             <View key={`profile-dna-row-${genreEntry.genre}`} style={styles.profileDnaListItem}>
@@ -5182,7 +5183,7 @@ const PushInboxRowCard = memo(
             {!item.opened ? <View style={styles.inboxUnreadDot} /> : null}
             <Text style={[styles.inboxTitle, item.opened ? styles.inboxTitleRead : null]}>
               {item.title || 'Bildirim'}{' '}
-              <Text style={styles.inboxTitleState}>({stateLabel})</Text>
+              <Text style={styles.inboxMeta}>({stateLabel})</Text>
             </Text>
           </View>
           {showOpsMeta ? (
@@ -9464,10 +9465,22 @@ const SETTINGS_GENDER_OPTIONS_BY_LANGUAGE: Record<
   MobileSettingsLanguage,
   Array<{ key: MobileSettingsGender; label: string }>
 > = {
-  tr: [...mobileTranslations.tr.settings.genderOptions],
-  en: [...mobileTranslations.en.settings.genderOptions],
-  es: [...mobileTranslations.es.settings.genderOptions],
-  fr: [...mobileTranslations.fr.settings.genderOptions],
+  tr: mobileTranslations.tr.settings.genderOptions.map((option) => ({
+    key: option.key as MobileSettingsGender,
+    label: option.label,
+  })),
+  en: mobileTranslations.en.settings.genderOptions.map((option) => ({
+    key: option.key as MobileSettingsGender,
+    label: option.label,
+  })),
+  es: mobileTranslations.es.settings.genderOptions.map((option) => ({
+    key: option.key as MobileSettingsGender,
+    label: option.label,
+  })),
+  fr: mobileTranslations.fr.settings.genderOptions.map((option) => ({
+    key: option.key as MobileSettingsGender,
+    label: option.label,
+  })),
 };
 const MOBILE_SETTINGS_IDENTITY_FIELD_COPY: Record<MobileSettingsLanguage, string> = {
   tr: mobileTranslations.tr.settings.genderFieldLabel,
@@ -10501,10 +10514,10 @@ const MobileSettingsModal = ({
       privacyDraft={privacyDraft}
       onChangePrivacy={onChangePrivacy}
       onSavePrivacy={onSavePrivacy}
-      letterboxdSummary={letterboxdSummary}
-      letterboxdStatus={letterboxdStatus}
-      isImportingLetterboxd={isImportingLetterboxd}
-      onImportLetterboxd={onImportLetterboxd}
+      _letterboxdSummary={letterboxdSummary}
+      _letterboxdStatus={letterboxdStatus}
+      _isImportingLetterboxd={isImportingLetterboxd}
+      _onImportLetterboxd={onImportLetterboxd}
       onOpenShareHub={onOpenShareHub}
       onSignOut={onSignOut}
     />
@@ -11338,7 +11351,7 @@ const MobileSettingsModal = ({
                         <StatusStrip
                           tone="sage"
                           eyebrow="Kullanilan Kod"
-                          title={invitedByCode}
+                          title={invitedByCode || undefined}
                           body="Bu hesap daha once bir davet baglantisi ile iliskilendirildi."
                         />
                       ) : (
@@ -12541,7 +12554,7 @@ const MobileSettingsNavigatorModal = ({
   const rulesCopy = mobileCopy.settings.rules;
   const platformRules = mobileCopy.settings.rules.items;
   const accountDeletionCopy = mobileCopy.settings.accountDeletion;
-  const settingsGenderOptions = mobileCopy.settings.genderOptions;
+  const settingsGenderOptions = SETTINGS_GENDER_OPTIONS_BY_LANGUAGE[language] || SETTINGS_GENDER_OPTIONS_BY_LANGUAGE.en;
 
   const identityDisplayName = String(identityDraft.fullName || '').trim();
   const identityUsername = String(identityDraft.username || '')
@@ -13540,8 +13553,8 @@ const ArenaLeaderboardCard = ({
           })}
           {(() => {
             return null;
-            if (!currentDisplayName || state.entries.length < 2) return null;
-            const normalizedName = currentDisplayName.trim().toLowerCase();
+            const normalizedName = String(currentDisplayName || '').trim().toLowerCase();
+            if (!normalizedName || state.entries.length < 2) return null;
             const myIdx = state.entries.findIndex(
               (e) => String(e.displayName || '').trim().toLowerCase() === normalizedName
             );
@@ -14053,7 +14066,7 @@ export const MarkUnlockModal = ({
   );
 };
 
-const markModalStyles = {
+const markModalStyles = StyleSheet.create({
   backdrop: { ...{ position: 'absolute' as const, top: 0, left: 0, right: 0, bottom: 0 }, backgroundColor: 'rgba(0,0,0,0.62)' },
   backdropTap: { position: 'absolute' as const, top: 0, left: 0, right: 0, bottom: 0 },
   card: {
@@ -14074,7 +14087,7 @@ const markModalStyles = {
   description: { color: '#a09890', fontSize: 14, lineHeight: 22, marginBottom: 28 },
   actionBtn: { borderRadius: 999, paddingVertical: 15, alignItems: 'center' },
   actionText: { color: '#111', fontSize: 15, fontWeight: '800', letterSpacing: 0.3 },
-};
+});
 
 // ---------------------------------------------------------------------------
 // XpGainToast — brief animated pill showing "+X XP" after a reward
@@ -14119,7 +14132,7 @@ export const XpGainToast = ({ xpDelta, onDone }: XpGainToastProps) => {
   );
 };
 
-const xpToastStyles = {
+const xpToastStyles = StyleSheet.create({
   pill: {
     position: 'absolute', bottom: 120, alignSelf: 'center',
     flexDirection: 'row', alignItems: 'center',
@@ -14130,7 +14143,7 @@ const xpToastStyles = {
   plus: { color: '#c9a84c', fontSize: 17, fontWeight: '700' },
   value: { color: '#f2e6c8', fontSize: 20, fontWeight: '800', letterSpacing: 0.5 },
   label: { color: '#c9a84c', fontSize: 14, fontWeight: '700', letterSpacing: 1 },
-};
+});
 
 // ---------------------------------------------------------------------------
 // TierAdvancementModal — celebration when user advances a tier within a league
@@ -14246,7 +14259,7 @@ export const TierAdvancementModal = ({
   );
 };
 
-const tierModalStyles = {
+const tierModalStyles = StyleSheet.create({
   backdrop: { ...{ position: 'absolute' as const, top: 0, left: 0, right: 0, bottom: 0 }, backgroundColor: 'rgba(0,0,0,0.58)' },
   backdropTap: { position: 'absolute' as const, top: 0, left: 0, right: 0, bottom: 0 },
   card: {
@@ -14266,7 +14279,7 @@ const tierModalStyles = {
   body: { color: '#a09890', fontSize: 14, lineHeight: 22, marginBottom: 24 },
   actionBtn: { borderRadius: 999, paddingVertical: 15, alignItems: 'center' },
   actionText: { color: '#111', fontSize: 15, fontWeight: '800', letterSpacing: 0.3 },
-};
+});
 
 export {
   setAppScreensThemeMode,
@@ -14322,11 +14335,6 @@ export type {
   MobileSettingsPrivacyDraft,
   MobileSettingsSaveState,
 };
-
-
-
-
-
 
 
 

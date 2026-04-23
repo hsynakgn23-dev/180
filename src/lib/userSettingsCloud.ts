@@ -133,7 +133,7 @@ export const readUserSettingsFromCloud = async (
 export const syncUserSettingsToCloud = async (
   client: UserSettingsSupabaseClientLike | null | undefined,
   userId: string,
-  settings: UserSettingsSnapshot
+  settings: Partial<UserSettingsSnapshot>
 ): Promise<SyncUserSettingsResult> => {
   const normalizedUserId = String(userId || '').trim();
   const normalizedSettings = normalizeUserSettingsSnapshot(settings);
