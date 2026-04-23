@@ -1,6 +1,4 @@
-import { MOBILE_API_BASE_URL_ERROR, resolveMobileApiUrl } from './mobileEnv';
-import { fetchWithTimeout } from './network';
-import { readSupabaseSessionSafe } from './supabase';
+import { buildQuizAuthHeaders, quizRequest } from './quizTransport';
 
 export type MobileDailyQuizOptionKey = 'a' | 'b' | 'c' | 'd';
 export type MobileDailyQuizLanguageCode = 'tr' | 'en' | 'es' | 'fr';
@@ -266,48 +264,18 @@ const normalizeAnswerResult = (
   };
 };
 
-const AUTH_HEADER_TIMEOUT_MS = 3000;
+// Auth header'i paylasilan transport katmanindan aliyoruz. quizTransport hem
+// session okuma timeout'u, hem 401'de otomatik token refresh yoneterek bu
+// islevi zaten tam olarak karsiliyor — burada yeniden tanimlamiyoruz.
+const buildAuthHeaders = buildQuizAuthHeaders;
 
-const buildAuthHeaders = async (): Promise<Record<string, string>> => {
-  try {
-    const sessionResult = await Promise.race([
-      readSupabaseSessionSafe(),
-      new Promise<{ session: null; clearedInvalidSession: false; error: null }>((resolve) =>
-        setTimeout(() => resolve({ session: null, clearedInvalidSession: false, error: null }), AUTH_HEADER_TIMEOUT_MS)
-      ),
-    ]);
-    const accessToken = String(sessionResult.session?.access_token || '').trim();
-    if (!accessToken) return {};
-    return {
-      Authorization: `Bearer ${accessToken}`,
-    };
-  } catch {
-    return {};
-  }
-};
-
-const MOBILE_DAILY_QUIZ_REQUEST_TIMEOUT_MS = 10000;
-
-const requestMobileDailyQuizApi = async (
+// quizTransport; timeout, exponential backoff retry, 401'de tek seferlik token
+// refresh ve yazma isteklerinde idempotency key'i otomatik ekler.
+const requestMobileDailyQuizApi = (
   path: string,
   init: RequestInit,
   timeoutMessage: string,
-): Promise<Response> => {
-  const url = resolveMobileApiUrl(path);
-  if (!url) {
-    return new Response(JSON.stringify({ ok: false, error: MOBILE_API_BASE_URL_ERROR }), {
-      status: 503,
-      headers: { 'content-type': 'application/json' },
-    });
-  }
-
-  return fetchWithTimeout({
-    url,
-    init,
-    timeoutMs: MOBILE_DAILY_QUIZ_REQUEST_TIMEOUT_MS,
-    timeoutMessage,
-  });
-};
+): Promise<Response> => quizRequest(path, init, { timeoutMessage });
 
 export const readMobileDailyQuizBundle = async (input: {
   dateKey?: string | null;
