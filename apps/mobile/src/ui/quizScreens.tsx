@@ -916,13 +916,26 @@ const PoolQuizModal = ({
         });
       } else {
         setState({ phase: 'idle' });
-        Alert.alert('Quiz su an acilamadi', res.error || 'Gercek soru havuzuna baglanilamadi.');
-        onClose();
+        // quizTransport icerden 3 kez denedi; hala basarisizsa gercek sebebi
+        // kullaniciya soyluyoruz ve tekrar deneme secenegi birakiyoruz.
+        Alert.alert(
+          'Quiz su an acilamadi',
+          res.error || 'Sunucuya ulasilamadi. Lutfen internetinizi kontrol edip tekrar deneyin.',
+          [
+            { text: 'Kapat', style: 'cancel', onPress: onClose },
+            { text: 'Tekrar dene', onPress: () => setState({ phase: 'idle' }) },
+          ]
+        );
       }
-    }).catch(() => {
+    }).catch((err) => {
       setState({ phase: 'idle' });
-      Alert.alert('Quiz su an acilamadi', 'Gercek soru havuzuna baglanilamadi.');
-      onClose();
+      const message =
+        (err instanceof Error && err.message) ||
+        'Sunucuya ulasilamadi. Lutfen internetinizi kontrol edip tekrar deneyin.';
+      Alert.alert('Quiz su an acilamadi', message, [
+        { text: 'Kapat', style: 'cancel', onPress: onClose },
+        { text: 'Tekrar dene', onPress: () => setState({ phase: 'idle' }) },
+      ]);
     });
   }, [visible, movieId, language, clearTimer, onClose, skipResultAd]);
 
@@ -956,7 +969,10 @@ const PoolQuizModal = ({
     setPendingSelection(selected);
     const selectionStartedAt = Date.now();
 
-    const res = await submitPoolAnswer({ movie_id: state.movieId, question_id: questionId, selected_option: selected, language }).catch(() => null);
+    // quizTransport ici 3 kez (exponential backoff) + 401'de token refresh
+    // dener. Bu noktaya geldiysek gercekten basarisizlik var; sessiz yutmuyoruz.
+    const res = await submitPoolAnswer({ movie_id: state.movieId, question_id: questionId, selected_option: selected, language })
+      .catch((err) => ({ ok: false, error: (err instanceof Error && err.message) || 'Baglanti hatasi.' } as const));
 
     let isCorrect = false;
     let correctKey: PoolOptionKey = 'a';
@@ -975,7 +991,11 @@ const PoolQuizModal = ({
     } else {
       setPendingSelection(null);
       setSubmitting(false);
-      Alert.alert('Cevap gonderilemedi', (res && !res.ok ? res.error : '') || 'Gercek quiz cevabi kaydedilemedi.');
+      const reason = (res && !res.ok && res.error) || 'Cevap kaydedilemedi.';
+      Alert.alert(
+        'Cevap gonderilemedi',
+        `${reason}\n\nTekrar denemek icin secime yeniden dokunun.`,
+      );
       startTimer();
       return;
     }

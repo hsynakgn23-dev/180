@@ -1,6 +1,4 @@
-import { MOBILE_API_BASE_URL_ERROR, resolveMobileApiUrl } from './mobileEnv';
-import { fetchWithTimeout } from './network';
-import { readSupabaseSessionSafe } from './supabase';
+import { buildQuizAuthHeaders, quizRequest } from './quizTransport';
 
 export type PoolLanguageCode = 'tr' | 'en' | 'es' | 'fr';
 export type PoolOptionKey = 'a' | 'b' | 'c' | 'd';
@@ -177,35 +175,17 @@ const toNullableNumber = (value: unknown): number | null => {
   return Number.isFinite(num) ? num : null;
 };
 
-const buildAuthHeaders = async (): Promise<Record<string, string>> => {
-  const sessionResult = await readSupabaseSessionSafe();
-  const accessToken = String(sessionResult.session?.access_token || '').trim();
-  if (!accessToken) return {};
-  return { Authorization: `Bearer ${accessToken}` };
-};
+// Auth header'i paylasilan transport katmanindan aliyoruz (token refresh dahil).
+const buildAuthHeaders = buildQuizAuthHeaders;
 
-const MOBILE_QUIZ_REQUEST_TIMEOUT_MS = 10000;
-
-const requestMobileQuizApi = async (
+// Dar uyumluluk icin eski imzayi koruyoruz; is mantigi artik quizTransport'ta.
+// quizTransport otomatik: timeout, exponential backoff retry, 401'de token
+// refresh, yazma isteklerinde idempotency key.
+const requestMobileQuizApi = (
   path: string,
   init: RequestInit,
   timeoutMessage: string,
-): Promise<Response> => {
-  const url = resolveMobileApiUrl(path);
-  if (!url) {
-    return new Response(JSON.stringify({ ok: false, error: MOBILE_API_BASE_URL_ERROR }), {
-      status: 503,
-      headers: { 'content-type': 'application/json' },
-    });
-  }
-
-  return fetchWithTimeout({
-    url,
-    init,
-    timeoutMs: MOBILE_QUIZ_REQUEST_TIMEOUT_MS,
-    timeoutMessage,
-  });
-};
+): Promise<Response> => quizRequest(path, init, { timeoutMessage });
 
 // --- API Functions ---
 
