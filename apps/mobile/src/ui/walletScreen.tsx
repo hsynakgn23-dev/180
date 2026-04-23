@@ -34,9 +34,10 @@ const COPY = {
     openMobile: 'Mobil satin alma gerekir',
     noAdsPremium: 'Premium kullanici oldugun icin Bilet reklami kapali.',
     buy: 'Satin al',
+    processing: 'Isleniyor...',
+    loadingPacks: 'Hazirlaniyor...',
     use: 'Ac',
     close: 'Kapat',
-    bestValue: 'EN IYI',
     remaining: 'kalan',
     packAmount: (value: number) => `${value} Bilet`,
     count: (value: number) => `${value} adet`,
@@ -56,9 +57,10 @@ const COPY = {
     openMobile: 'Mobile purchase required',
     noAdsPremium: 'Rewarded Ticket ads are disabled for premium users.',
     buy: 'Buy',
+    processing: 'Processing...',
+    loadingPacks: 'Preparing...',
     use: 'Open',
     close: 'Close',
-    bestValue: 'BEST',
     remaining: 'left',
     packAmount: (value: number) => `${value} Tickets`,
     count: (value: number) => `${value} owned`,
@@ -78,9 +80,10 @@ const COPY = {
     openMobile: 'Compra movil requerida',
     noAdsPremium: 'Los anuncios de entradas estan desactivados para premium.',
     buy: 'Comprar',
+    processing: 'Procesando...',
+    loadingPacks: 'Preparando...',
     use: 'Abrir',
     close: 'Cerrar',
-    bestValue: 'MEJOR',
     remaining: 'restantes',
     packAmount: (value: number) => `${value} Entradas`,
     count: (value: number) => `${value} en inventario`,
@@ -100,9 +103,10 @@ const COPY = {
     openMobile: 'Achat mobile requis',
     noAdsPremium: 'Les pubs de billets sont desactivees pour premium.',
     buy: 'Acheter',
+    processing: 'Traitement...',
+    loadingPacks: 'Preparation...',
     use: 'Ouvrir',
     close: 'Fermer',
-    bestValue: 'MEILLEUR',
     remaining: 'restants',
     packAmount: (value: number) => `${value} Billets`,
     count: (value: number) => `${value} en stock`,
@@ -188,25 +192,25 @@ const TOPUP_BADGE_COPY = {
   tr: {
     starter: 'Hizli destek',
     standard: 'Standart',
-    best_value: 'En iyi deger',
+    best_value: 'Populer',
     vault: 'Buyuk paket',
   },
   en: {
     starter: 'Quick support',
     standard: 'Standard',
-    best_value: 'Best value',
+    best_value: 'Popular',
     vault: 'Large pack',
   },
   es: {
     starter: 'Soporte rapido',
     standard: 'Estandar',
-    best_value: 'Mejor valor',
+    best_value: 'Popular',
     vault: 'Paquete grande',
   },
   fr: {
     starter: 'Soutien rapide',
     standard: 'Standard',
-    best_value: 'Meilleure valeur',
+    best_value: 'Populaire',
     vault: 'Grand pack',
   },
 } as const;
@@ -300,6 +304,7 @@ type WalletModalProps = {
   dailyTasks: WalletDailyTaskSnapshot[];
   productMap: Map<string, Product>;
   actionBusy?: boolean;
+  topupLoading?: boolean;
   topupPurchasing?: boolean;
   message?: string | null;
   error?: string | null;
@@ -321,6 +326,7 @@ export const WalletModal = ({
   dailyTasks,
   productMap,
   actionBusy = false,
+  topupLoading = false,
   topupPurchasing = false,
   message,
   error,
@@ -569,28 +575,41 @@ export const WalletModal = ({
                 const product = productMap.get(pack.productId);
                 const price =
                   String(product?.displayPrice || '').trim() || String(pack.fallbackDisplayPrice || '').trim() || copy.openMobile;
+                const purchaseDisabled = topupPurchasing || (Platform.OS !== 'web' && topupLoading);
+                const purchaseLabel = topupPurchasing
+                  ? copy.processing
+                  : Platform.OS !== 'web' && topupLoading
+                    ? copy.loadingPacks
+                    : copy.buy;
                 return (
-                  <Pressable
+                  <View
                     key={pack.key}
-                    style={({ pressed }) => [
+                    style={[
                       walletStyles.packCard,
                       pack.featured ? walletStyles.packCardFeatured : null,
-                      pressed ? walletStyles.packCardPressed : null,
                     ]}
-                    onPress={() => onPurchasePack(pack.key)}
-                    disabled={topupPurchasing}
                   >
                     <View style={walletStyles.packHeader}>
                       <Text style={walletStyles.packTitle}>{copy.packAmount(pack.reels)}</Text>
-                      <View style={[walletStyles.packBadge, pack.featured ? walletStyles.packBadgeFeatured : null]}>
-                        <Text style={[walletStyles.packBadgeText, pack.featured ? walletStyles.packBadgeTextFeatured : null]}>
-                          {pack.featured ? copy.bestValue : resolveTopupBadge(language, pack.key)}
-                        </Text>
+                      <View style={walletStyles.packBadge}>
+                        <Text style={walletStyles.packBadgeText}>{resolveTopupBadge(language, pack.key)}</Text>
                       </View>
                     </View>
-                    <Text style={walletStyles.packPrice}>{price}</Text>
-                    <Text style={walletStyles.packMeta}>{Platform.OS === 'web' ? copy.webMeta : copy.packAmount(pack.reels)}</Text>
-                  </Pressable>
+                    <Text style={walletStyles.packMeta}>
+                      {Platform.OS === 'web' ? copy.webMeta : copy.packAmount(pack.reels)}
+                    </Text>
+                    <View style={walletStyles.packFooterRow}>
+                      <Text style={walletStyles.packPrice}>{price}</Text>
+                      <UiButton
+                        label={purchaseLabel}
+                        tone={pack.featured ? 'brand' : 'teal'}
+                        onPress={() => onPurchasePack(pack.key)}
+                        disabled={purchaseDisabled}
+                        style={walletStyles.packBuyButton}
+                        accessibilityLabel={`${copy.buy} ${copy.packAmount(pack.reels)}`}
+                      />
+                    </View>
+                  </View>
                 );
               })}
             </View>
@@ -1065,10 +1084,6 @@ const walletStyles = StyleSheet.create({
     borderColor: 'rgba(168,181,106,0.32)',
     backgroundColor: '#1d2017',
   },
-  packCardPressed: {
-    opacity: 0.92,
-    transform: [{ scale: 0.99 }],
-  },
   packHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1087,27 +1102,32 @@ const walletStyles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
-  packBadgeFeatured: {
-    backgroundColor: '#d7d08d',
-  },
   packBadgeText: {
     color: '#d9c6a5',
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.8,
   },
-  packBadgeTextFeatured: {
-    color: '#101408',
+  packFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginTop: 12,
   },
   packPrice: {
     color: '#ffffff',
     fontSize: 20,
     fontWeight: '800',
-    marginBottom: 4,
+    flexShrink: 0,
   },
   packMeta: {
     color: '#9b8e7e',
     fontSize: 11,
     lineHeight: 16,
+  },
+  packBuyButton: {
+    minWidth: 118,
+    minHeight: 46,
   },
 });

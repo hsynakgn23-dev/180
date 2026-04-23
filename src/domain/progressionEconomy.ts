@@ -123,7 +123,7 @@ export const REEL_TOPUP_PACKS = [
     productId: 'com.absolutecinema.reel.550',
     reels: 550,
     title: '550 Reel',
-    badge: 'En iyi deger',
+    badge: 'Populer',
     fallbackDisplayPrice: '$4.99',
     featured: true,
   },

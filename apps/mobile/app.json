@@ -22,7 +22,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.absolutecinema",
-      "buildNumber": "20",
+      "buildNumber": "22",
       "usesAppleSignIn": true,
       "config": {
         "usesNonExemptEncryption": false

@@ -7668,6 +7668,7 @@ export default function App() {
             dailyTasks={wallet.snapshot.dailyTasks}
             productMap={wallet.productMap}
             actionBusy={wallet.actionBusy}
+            topupLoading={wallet.topupLoading}
             topupPurchasing={wallet.topupPurchasing}
             message={wallet.message}
             error={wallet.error}
@@ -7778,7 +7779,6 @@ export default function App() {
     </SafeAreaProvider>
   );
 }
-
 
 
 

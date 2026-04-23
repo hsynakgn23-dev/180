@@ -24,6 +24,7 @@ import {
 } from '../../../../src/domain/progressionEconomy';
 import {
   type WalletDailyTaskKey,
+  type WalletDailyTaskStatus,
   type WalletDailyTaskSnapshot,
 } from '../../../../src/domain/walletDailyTasks';
 
@@ -93,6 +94,7 @@ const WALLET_COPY = {
     rewardMobileOnly: 'Odullu reklam yalnizca mobil uygulamada calisir.',
     rewardSuccess: (amount: number) => `+${amount} Bilet eklendi.`,
     topupMobileOnly: 'Bilet satin alma yalnizca mobil uygulamada calisir.',
+    topupProductUnavailable: 'Bu Bilet paketi App Store tarafinda hazir degil.',
     topupVerifyFailed: 'Bilet satin alma dogrulanamadi.',
     topupReceiptMissing: 'Satin alma islemi tamamlanamadi.',
     topupSuccess: (amount: number) => `+${amount} Bilet eklendi.`,
@@ -109,6 +111,7 @@ const WALLET_COPY = {
     rewardMobileOnly: 'Rewarded ads only work in the mobile app.',
     rewardSuccess: (amount: number) => `+${amount} Tickets added.`,
     topupMobileOnly: 'Ticket purchases only work in the mobile app.',
+    topupProductUnavailable: 'This Ticket pack is not ready in the store yet.',
     topupVerifyFailed: 'Ticket purchase could not be verified.',
     topupReceiptMissing: 'Purchase could not be completed.',
     topupSuccess: (amount: number) => `+${amount} Tickets added.`,
@@ -125,6 +128,7 @@ const WALLET_COPY = {
     rewardMobileOnly: 'Los anuncios con recompensa solo funcionan en la app movil.',
     rewardSuccess: (amount: number) => `+${amount} entradas añadidas.`,
     topupMobileOnly: 'Las compras de entradas solo funcionan en la app movil.',
+    topupProductUnavailable: 'Este paquete aun no esta listo en la tienda.',
     topupVerifyFailed: 'No se pudo verificar la compra de entradas.',
     topupReceiptMissing: 'No se pudo completar la compra.',
     topupSuccess: (amount: number) => `+${amount} entradas añadidas.`,
@@ -141,6 +145,7 @@ const WALLET_COPY = {
     rewardMobileOnly: 'Les pubs recompensees fonctionnent seulement dans l application mobile.',
     rewardSuccess: (amount: number) => `+${amount} billets ajoutes.`,
     topupMobileOnly: 'Les achats de billets fonctionnent seulement dans l application mobile.',
+    topupProductUnavailable: 'Ce pack n est pas encore pret dans la boutique.',
     topupVerifyFailed: 'L achat de billets n a pas pu etre verifie.',
     topupReceiptMissing: 'L achat n a pas pu etre finalise.',
     topupSuccess: (amount: number) => `+${amount} billets ajoutes.`,
@@ -225,23 +230,26 @@ const normalizeSnapshot = (value: unknown): WalletSnapshot => {
     raw.inventory && typeof raw.inventory === 'object' && !Array.isArray(raw.inventory)
       ? (raw.inventory as Record<string, unknown>)
       : {};
-  const dailyTasks = Array.isArray(raw.dailyTasks)
+  const dailyTasks: WalletDailyTaskSnapshot[] = Array.isArray(raw.dailyTasks)
     ? raw.dailyTasks
         .filter((task): task is Record<string, unknown> =>
           Boolean(task && typeof task === 'object' && !Array.isArray(task))
         )
-        .map((task) => ({
-          key: String(task.key || '').trim() as WalletDailyTaskKey,
-          title: String(task.title || '').trim(),
-          description: String(task.description || '').trim(),
-          ticketReward: Math.max(0, Number(task.ticketReward) || 0),
-          progress: Math.max(0, Number(task.progress) || 0),
-          target: Math.max(1, Number(task.target) || 1),
-          status:
+        .map((task) => {
+          const status: WalletDailyTaskStatus =
             task.status === 'claimed' || task.status === 'ready' || task.status === 'locked'
               ? task.status
-              : 'locked',
-        }))
+              : 'locked';
+          return {
+            key: String(task.key || '').trim() as WalletDailyTaskKey,
+            title: String(task.title || '').trim(),
+            description: String(task.description || '').trim(),
+            ticketReward: Math.max(0, Number(task.ticketReward) || 0),
+            progress: Math.max(0, Number(task.progress) || 0),
+            target: Math.max(1, Number(task.target) || 1),
+            status,
+          };
+        })
         .filter((task) => Boolean(task.key && task.title && task.ticketReward > 0))
     : [];
   return {
@@ -266,7 +274,7 @@ const normalizeSnapshot = (value: unknown): WalletSnapshot => {
   };
 };
 
-const TOPUP_PRODUCT_IDS = new Set(REEL_TOPUP_PACKS.map((pack) => pack.productId));
+const TOPUP_PRODUCT_IDS: ReadonlySet<string> = new Set(REEL_TOPUP_PACKS.map((pack) => pack.productId));
 
 export function useWallet(accessToken: string | null, language: WalletLanguage = 'tr') {
   const [state, setState] = useState<WalletState>(INITIAL_STATE);
@@ -604,6 +612,11 @@ export function useWallet(accessToken: string | null, language: WalletLanguage =
       setFailure(copy.topupMobileOnly);
       return false;
     }
+    const productReady = state.topupProducts.some((product) => String(product.id || '').trim() === pack.productId);
+    if (!productReady) {
+      setFailure(copy.topupProductUnavailable);
+      return false;
+    }
 
     topupPurchaseActiveRef.current = true;
     setState((current) => ({
@@ -692,7 +705,18 @@ export function useWallet(accessToken: string | null, language: WalletLanguage =
       setFailure(normalizeWalletErrorMessage(error, copy.topupFailed));
       return false;
     }
-  }, [applySnapshot, copy.topupFailed, copy.topupMobileOnly, copy.topupReceiptMissing, copy.topupSuccess, copy.topupVerifyFailed, fetchJson, setFailure]);
+  }, [
+    applySnapshot,
+    copy.topupFailed,
+    copy.topupMobileOnly,
+    copy.topupProductUnavailable,
+    copy.topupReceiptMissing,
+    copy.topupSuccess,
+    copy.topupVerifyFailed,
+    fetchJson,
+    setFailure,
+    state.topupProducts,
+  ]);
 
   const productMap = useMemo(() => {
     const next = new Map<string, Product>();

@@ -1051,11 +1051,7 @@ const LegacyAuthCard = ({
             {mode === 'login' && showAppleSignIn ? (
               <AppleAuthentication.AppleAuthenticationButton
                 buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
-                buttonStyle={
-                  APP_SCREENS_THEME_MODE === 'dawn'
-                    ? AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
-                    : AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
-                }
+                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
                 cornerRadius={14}
                 style={[
                   styles.authAppleButton,
@@ -1541,12 +1537,22 @@ const AuthCard = ({
                   icon={<FontAwesome name="google" size={28} color="#A45E4A" />}
                 />
                 {showAppleSignIn ? (
-                  <AuthProviderLogoButton
-                    label={isBusy ? 'Apple yonlendiriliyor' : 'Apple ile uye ol'}
-                    onPress={onAppleSignIn}
-                    disabled={isBusy || !isConfigured}
-                    tone="dark"
-                    icon={<Ionicons name="logo-apple" size={28} color="#E5E4E2" />}
+                  <AppleAuthentication.AppleAuthenticationButton
+                    buttonType={
+                      isRegisterMode
+                        ? AppleAuthentication.AppleAuthenticationButtonType.SIGN_UP
+                        : AppleAuthentication.AppleAuthenticationButtonType.CONTINUE
+                    }
+                    buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+                    cornerRadius={14}
+                    style={[
+                      styles.authAppleButton,
+                      isBusy || !isConfigured ? styles.authAppleButtonDisabled : null,
+                    ]}
+                    onPress={() => {
+                      if (isBusy || !isConfigured) return;
+                      onAppleSignIn();
+                    }}
                   />
                 ) : null}
               </>
@@ -14322,7 +14328,6 @@ export type {
   MobileSettingsPrivacyDraft,
   MobileSettingsSaveState,
 };
-
 
 
 

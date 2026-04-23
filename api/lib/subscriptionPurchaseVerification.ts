@@ -74,6 +74,10 @@ const STRIPE_ENV_BY_PRODUCT_ID: Record<string, { priceEnv: string[]; productEnv:
     priceEnv: ['MOBILE_IAP_STRIPE_PRICE_ID_SUPPORTER', 'STRIPE_PRICE_ID_PREMIUM_SUPPORTER'],
     productEnv: ['MOBILE_IAP_STRIPE_PRODUCT_ID_SUPPORTER', 'STRIPE_PRODUCT_ID_PREMIUM_SUPPORTER'],
   },
+  'com.absolutecinema.premium.supporter.v2': {
+    priceEnv: ['MOBILE_IAP_STRIPE_PRICE_ID_SUPPORTER', 'STRIPE_PRICE_ID_PREMIUM_SUPPORTER'],
+    productEnv: ['MOBILE_IAP_STRIPE_PRODUCT_ID_SUPPORTER', 'STRIPE_PRODUCT_ID_PREMIUM_SUPPORTER'],
+  },
 };
 
 const normalizeText = (value: unknown, maxLength = 4000): string => {

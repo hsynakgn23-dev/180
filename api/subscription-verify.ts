@@ -91,6 +91,11 @@ const PRODUCT_ACCESS: Record<string, {
         tier: 'supporter',
         durationDays: null,
     },
+    'com.absolutecinema.premium.supporter.v2': {
+        plan: 'supporter',
+        tier: 'supporter',
+        durationDays: null,
+    },
 };
 
 export default async function handler(req: ApiRequest, res: ApiResponse) {
