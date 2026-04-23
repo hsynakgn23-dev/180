@@ -264,7 +264,9 @@ const normalizeAnswerResult = (
   };
 };
 
-// Auth header'i paylasilan transport katmanindan aliyoruz (token refresh dahil).
+// Auth header'i paylasilan transport katmanindan aliyoruz. quizTransport hem
+// session okuma timeout'u, hem 401'de otomatik token refresh yoneterek bu
+// islevi zaten tam olarak karsiliyor — burada yeniden tanimlamiyoruz.
 const buildAuthHeaders = buildQuizAuthHeaders;
 
 // quizTransport; timeout, exponential backoff retry, 401'de tek seferlik token

@@ -65,11 +65,13 @@ begin
     insert into public.movie_pool_answers (
       user_id,
       question_id,
+      movie_id,
       is_correct
     )
     values (
       p_user_id,
       p_question_id,
+      p_movie_id,
       coalesce(p_is_correct, false)
     );
   exception
@@ -264,3 +266,4 @@ $$;
 
 revoke all on function public.record_pool_answer(uuid, uuid, uuid, boolean, integer, integer, text, text) from public;
 grant execute on function public.record_pool_answer(uuid, uuid, uuid, boolean, integer, integer, text, text) to authenticated;
+grant execute on function public.record_pool_answer(uuid, uuid, uuid, boolean, integer, integer, text, text) to service_role;

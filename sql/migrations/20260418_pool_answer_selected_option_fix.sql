@@ -1,46 +1,19 @@
--- ============================================================
--- record_pool_answer: repo <-> prod senkronizasyonu
--- ============================================================
--- Tespit (2026-04-23): Production veritabanindaki record_pool_answer
--- fonksiyonu 9 parametre aliyordu (icinde p_selected_option text) —
--- ancak repo'daki son migration 20260411 sadece 8 parametreliydi.
--- Prod elden guncellenmis, repo yetisememisti.
+-- Fix record_pool_answer RPC to include selected_option column.
 --
--- Sonuc: api/pool-answer.ts 8 parametreyle cagri atiyordu; Postgres
--- RPC'yi bulamiyor, "function ... does not exist" hatasi veriyordu.
--- Bu yuzden *hicbir* film havuzu cevabi kaydedilemiyordu.
+-- The movie_pool_answers table has selected_option NOT NULL (schema drift —
+-- added directly in Supabase, never captured in a migration). The previous
+-- version of record_pool_answer omitted it, so every INSERT failed with
+-- 23502 not-null violation ("null value in column selected_option").
 --
--- Bu migration:
---   1. Eski (imzasi gecersiz) fonksiyonu DROP eder.
---   2. Yenisini p_selected_option dahil 9 parametreyle olusturur.
---   3. Selected_option'i movie_pool_answers tablosuna yazar (kolon
---      zaten prod'da mevcut, burada IF NOT EXISTS ile garantiliyoruz).
--- ============================================================
+-- This migration:
+-- 1. Drops the old function signature (7 args, without p_selected_option).
+-- 2. Recreates it with p_selected_option as a required parameter.
+-- 3. Includes selected_option in the INSERT.
+--
+-- Safe to re-run.
 
-begin;
-
--- 1) movie_pool_answers tablosunda selected_option kolonunu garanti altina al.
-alter table public.movie_pool_answers
-    add column if not exists selected_option text;
-
--- Eski kayitlar icin geriye donuk doldurma yok — null kalabilir.
--- Yeni kayitlar icin check constraint:
-do $$
-begin
-    if not exists (
-        select 1 from pg_constraint
-        where conname = 'movie_pool_answers_selected_option_check'
-    ) then
-        alter table public.movie_pool_answers
-            add constraint movie_pool_answers_selected_option_check
-            check (selected_option is null or selected_option in ('a','b','c','d'));
-    end if;
-end$$;
-
--- 2) Eski 8-parametreli fonksiyonu bosalt (varsa).
 drop function if exists public.record_pool_answer(uuid, uuid, uuid, boolean, integer, integer, text, text);
 
--- 3) Yeni 9-parametreli versiyon.
 create or replace function public.record_pool_answer(
   p_user_id uuid,
   p_question_id uuid,
@@ -67,6 +40,7 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+#variable_conflict use_variable
 declare
   v_now timestamptz := timezone('utc'::text, now());
   v_total_questions integer := 0;
@@ -91,13 +65,12 @@ declare
   v_weekly_activity integer := 0;
   v_weekly_comment_rewards integer := 0;
   v_weekly_quiz_rewards integer := 0;
-  v_selected_option text := nullif(lower(trim(coalesce(p_selected_option, ''))), '');
+  v_selected_option text := lower(coalesce(p_selected_option, ''));
 begin
   if p_user_id is null or p_question_id is null or p_movie_id is null then
     raise exception 'INVALID_INPUT';
   end if;
-
-  if v_selected_option is not null and v_selected_option not in ('a','b','c','d') then
+  if v_selected_option not in ('a', 'b', 'c', 'd') then
     raise exception 'INVALID_SELECTED_OPTION';
   end if;
 
@@ -110,14 +83,14 @@ begin
     insert into public.movie_pool_answers (
       user_id,
       question_id,
-      is_correct,
-      selected_option
+      selected_option,
+      is_correct
     )
     values (
       p_user_id,
       p_question_id,
-      coalesce(p_is_correct, false),
-      v_selected_option
+      v_selected_option,
+      coalesce(p_is_correct, false)
     );
   exception
     when unique_violation then
@@ -157,9 +130,21 @@ begin
 
   if not found then
     insert into public.movie_pool_user_progress (
-      user_id, movie_id, questions_answered, correct_count, xp_earned, completed
+      user_id,
+      movie_id,
+      questions_answered,
+      correct_count,
+      xp_earned,
+      completed
     )
-    values (p_user_id, p_movie_id, 0, 0, 0, false)
+    values (
+      p_user_id,
+      p_movie_id,
+      0,
+      0,
+      0,
+      false
+    )
     on conflict (user_id, movie_id) do nothing;
 
     select *
@@ -187,7 +172,12 @@ begin
 
   if v_awarded_xp > 0 then
     insert into public.profiles (
-      user_id, email, display_name, subscription_tier, xp_state, updated_at
+      user_id,
+      email,
+      display_name,
+      subscription_tier,
+      xp_state,
+      updated_at
     )
     values (
       p_user_id,
@@ -294,5 +284,3 @@ $$;
 
 revoke all on function public.record_pool_answer(uuid, uuid, uuid, boolean, text, integer, integer, text, text) from public;
 grant execute on function public.record_pool_answer(uuid, uuid, uuid, boolean, text, integer, integer, text, text) to authenticated;
-
-commit;

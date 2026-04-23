@@ -231,6 +231,7 @@ const mapClaimError = (
     return { errorCode: 'SERVER_ERROR', status: 500, message: 'Invite claim failed.' };
 };
 
+
 const isAmbiguousClaimCountError = (rawMessage: string): boolean => {
     const text = rawMessage.toLowerCase();
     return text.includes('claim_count') && text.includes('ambiguous');
