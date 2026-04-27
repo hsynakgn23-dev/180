@@ -210,6 +210,14 @@ export const LEAGUE_NAMES = Object.keys(LEAGUES_DATA);
 type PendingRegistrationProfile = RegistrationProfileInput & { email: string };
 const getLeagueIndexFromXp = (xp: number): number =>
     Math.min(Math.floor(xp / LEVEL_THRESHOLD), LEAGUE_NAMES.length - 1);
+
+const applyXPDelta = (
+    prev: XPState,
+    amount: number,
+    _source: string
+): Partial<XPState> => ({
+    totalXP: Math.floor(prev.totalXP + amount),
+});
 const KNOWN_MOVIES_BY_ID = new Map(
     TMDB_SEEDS.map((movie) => [
         movie.id,
@@ -1270,9 +1278,12 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         return undefined; // Same day (0)
     };
 
-    const updateState = (newState: Partial<XPState>) => {
+    const updateState = (
+        update: Partial<XPState> | ((prev: XPState) => Partial<XPState>)
+    ) => {
         setState(prev => {
-            const updated = { ...prev, ...newState };
+            const patch = typeof update === 'function' ? update(prev) : update;
+            const updated = { ...prev, ...patch };
             if (user) {
                 persistUserXpStateToLocal(user.email, updated);
             }
@@ -1780,11 +1791,10 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             return { ok: false, message: 'Bugun paylasim bonusu zaten alindi.' };
         }
 
-        const nextXP = state.totalXP + SHARE_REWARD_XP;
-        updateState({
-            totalXP: nextXP,
-            lastShareRewardDate: today
-        });
+        updateState((prev) => ({
+            ...applyXPDelta(prev, SHARE_REWARD_XP, 'share'),
+            lastShareRewardDate: today,
+        }));
         triggerWhisper(`Paylasim bonusi +${SHARE_REWARD_XP} XP`);
 
         const platformLabel = platform === 'x' ? 'X' : platform === 'tiktok' ? 'TikTok' : 'Instagram';
@@ -1874,7 +1884,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 pendingWelcomeWhisperRef.current = true;
                 updated = {
                     ...prev,
-                    totalXP: prev.totalXP + 5,
+                    ...applyXPDelta(prev, 5, 'daily_login'),
                     lastLoginDate: today,
                     dailyDwellXP: 0,
                     lastDwellDate: today,
@@ -1906,10 +1916,10 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 return;
             }
             if (state.dailyDwellXP < MAX_DAILY_DWELL_XP) {
-                updateState({
-                    totalXP: state.totalXP + 2,
-                    dailyDwellXP: state.dailyDwellXP + 2
-                });
+                updateState((prev) => ({
+                    ...applyXPDelta(prev, 2, 'dwell'),
+                    dailyDwellXP: prev.dailyDwellXP + 2,
+                }));
             }
         }, 120000);
         return () => clearInterval(interval);
@@ -2034,15 +2044,15 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
         const newTotalXP = Math.floor(state.totalXP + earnedXP);
 
-        updateState({
-            totalXP: newTotalXP,
+        updateState((prev) => ({
+            ...applyXPDelta(prev, earnedXP, 'ritual'),
             dailyRituals: allRituals,
             marks: currentMarks,
             uniqueGenres: newUniqueGenres,
             streak: newStreak,
             lastStreakDate: today,
-            nonConsecutiveCount: nonConsecutive
-        });
+            nonConsecutiveCount: nonConsecutive,
+        }));
 
         const preferredGoal: ShareRewardTrigger =
             shouldIncreaseStreakToday && newStreak > 0 ? 'streak' : 'comment';
@@ -2209,16 +2219,18 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     // 4. Social
     const echoRitual = (ritualId: string) => {
         void ritualId;
-        const newXP = state.totalXP + 1;
         const newGiven = (state.echoesGiven || 0) + 1;
         let currentMarks = [...(state.marks || [])];
         if (state.echoesGiven === 0) currentMarks = tryUnlockMark('echo_initiate', currentMarks);
         if (newGiven >= 10) currentMarks = tryUnlockMark('echo_chamber', currentMarks);
-        updateState({ totalXP: newXP, marks: currentMarks, echoesGiven: newGiven });
+        updateState((prev) => ({
+            ...applyXPDelta(prev, 1, 'echo_given'),
+            marks: currentMarks,
+            echoesGiven: newGiven,
+        }));
     };
 
     const receiveEcho = (movieTitle = "Unknown Ritual") => {
-        const newXP = state.totalXP + 3;
         const newReceived = (state.echoesReceived || 0) + 1;
         let currentMarks = [...(state.marks || [])];
 
@@ -2234,12 +2246,12 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             date: new Date().toLocaleDateString()
         };
 
-        updateState({
-            totalXP: newXP,
+        updateState((prev) => ({
+            ...applyXPDelta(prev, 3, 'echo_received'),
             marks: currentMarks,
             echoesReceived: newReceived,
-            echoHistory: [newLog, ...(state.echoHistory || [])].slice(0, 10) // Keep last 10
-        });
+            echoHistory: [newLog, ...(state.echoHistory || [])].slice(0, 10), // Keep last 10
+        }));
 
         // Debug whisper?
         // triggerWhisper("Your voice echoed. +3 XP");
@@ -2438,7 +2450,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 const updated = {
                     ...prev,
                     invitedBy: normalizedCode,
-                    totalXP: prev.totalXP + inviteeRewardXp
+                    ...applyXPDelta(prev, inviteeRewardXp, 'invite_accepted'),
                 };
                 if (user) {
                     persistUserXpStateToLocal(user.email, updated);
