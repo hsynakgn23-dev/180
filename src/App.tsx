@@ -18,20 +18,14 @@ import { readAdminSession } from './lib/adminApi'
 const DailyShowcase = lazy(() =>
   import('./features/daily-showcase/DailyShowcase').then((mod) => ({ default: mod.DailyShowcase }))
 )
-const PoolDiscoveryPanel = lazy(() =>
-  import('./features/pool-quiz/PoolDiscoveryPanel').then((mod) => ({ default: mod.PoolDiscoveryPanel }))
-)
-const QuizRushPanel = lazy(() =>
-  import('./features/pool-quiz/QuizRushPanel').then((mod) => ({ default: mod.QuizRushPanel }))
-)
-const BlurQuizPanel = lazy(() =>
-  import('./features/blur-quiz/BlurQuizPanel').then((mod) => ({ default: mod.BlurQuizPanel }))
+const QuizSection = lazy(() =>
+  import('./features/quiz/QuizSection').then((mod) => ({ default: mod.QuizSection }))
 )
 const MovieDetailModal = lazy(() =>
   import('./features/daily-showcase/MovieDetailModal').then((mod) => ({ default: mod.MovieDetailModal }))
 )
-const Arena = lazy(() =>
-  import('./features/arena/Arena').then((mod) => ({ default: mod.Arena }))
+const ArenaLeaderboardWidget = lazy(() =>
+  import('./features/arena/ArenaLeaderboardWidget').then((mod) => ({ default: mod.ArenaLeaderboardWidget }))
 )
 const WriteOverlay = lazy(() =>
   import('./features/ritual/WriteOverlay').then((mod) => ({ default: mod.WriteOverlay }))
@@ -246,6 +240,21 @@ const AppContent = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const openPublicProfile = (target: { userId?: string | null; username: string }) => {
+    const username = target.username.trim();
+    const key = target.userId
+      ? `id:${target.userId}`
+      : `name:${username}`;
+    const encoded = encodeURIComponent(key);
+    const query = username ? `?name=${encodeURIComponent(username)}` : '';
+    setShowProfile(false);
+    setShowAdminPanel(false);
+    setStartProfileInSettings(false);
+    setActiveMovie(null);
+    setDetailMovie(null);
+    window.location.hash = `/u/${encoded}${query}`;
+  };
+
   useEffect(() => {
     if (!showDebugPanel) return;
 
@@ -263,6 +272,13 @@ const AppContent = () => {
   const fullScreenFallback = <div className="min-h-screen" aria-hidden="true" />;
 
   if (!user || isPasswordRecoveryMode) {
+    if (showAdminPanel && !isPasswordRecoveryMode) {
+      return (
+        <Suspense fallback={fullScreenFallback}>
+          <LoginView />
+        </Suspense>
+      );
+    }
     if ((showLanding || didJustLogout) && !isPasswordRecoveryMode) {
       return (
         <Suspense fallback={fullScreenFallback}>
@@ -308,45 +324,23 @@ const AppContent = () => {
       {showDebugPanel && DebugPanelComponent ? <DebugPanelComponent /> : null}
 
       {/* Top Right Controls */}
-      <div className="fixed top-3 right-3 sm:top-6 sm:right-6 z-40 flex items-start sm:items-center gap-2 sm:gap-4">
-        <NotificationCenter />
-        {canOpenAdminPanel ? (
+      <div className="fixed top-3 right-3 sm:top-6 sm:right-6 z-40 flex flex-col items-end gap-3 pointer-events-none">
+        <div className="flex items-start sm:items-center gap-2 sm:gap-4 pointer-events-auto">
+          <NotificationCenter />
+          {canOpenAdminPanel ? (
+            <button
+              type="button"
+              onClick={() => {
+                window.location.hash = '/admin'
+                setShowAdminPanel(true)
+              }}
+              className="rounded-full border border-sage/30 bg-[#121212]/95 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-sage hover:border-sage/60 transition-colors"
+            >
+              Admin
+            </button>
+          ) : null}
           <button
             type="button"
-            onClick={() => {
-              window.location.hash = '/admin'
-              setShowAdminPanel(true)
-            }}
-            className="rounded-full border border-sage/30 bg-[#121212]/95 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-sage hover:border-sage/60 transition-colors"
-          >
-            Admin
-          </button>
-        ) : null}
-        <button
-          type="button"
-          onClick={() => {
-            if (window.location.hash.startsWith('#/u/') || parseAdminHash(window.location.hash)) {
-              window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
-              setPublicProfileTarget(null);
-              setShowAdminPanel(false);
-            }
-            setStartProfileInSettings(false);
-            setShowProfile(true);
-          }}
-          className="sm:hidden relative p-0.5 w-9 h-9 rounded-full border border-sage/35 bg-[#121212]/95 text-sage/70 hover:text-sage transition-colors overflow-hidden"
-          title={text.app.profileTitle}
-          aria-label={text.app.profileAria}
-        >
-          {avatarUrl ? (
-            <img src={avatarUrl} alt={text.app.profileTitle} className="w-full h-full object-cover rounded-full" />
-          ) : (
-            <span className="flex h-full w-full items-center justify-center text-[10px] font-bold tracking-wide">
-              {user?.name?.slice(0, 2).toUpperCase() || 'OB'}
-            </span>
-          )}
-        </button>
-        <div className="hidden sm:block">
-          <ProfileWidget
             onClick={() => {
               if (window.location.hash.startsWith('#/u/') || parseAdminHash(window.location.hash)) {
                 window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
@@ -356,17 +350,50 @@ const AppContent = () => {
               setStartProfileInSettings(false);
               setShowProfile(true);
             }}
-            onOpenSettings={() => {
-              if (window.location.hash.startsWith('#/u/') || parseAdminHash(window.location.hash)) {
-                window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
-                setPublicProfileTarget(null);
-                setShowAdminPanel(false);
-              }
-              setStartProfileInSettings(true);
-              setShowProfile(true);
-            }}
-          />
+            className="sm:hidden relative p-0.5 w-9 h-9 rounded-full border border-sage/35 bg-[#121212]/95 text-sage/70 hover:text-sage transition-colors overflow-hidden"
+            title={text.app.profileTitle}
+            aria-label={text.app.profileAria}
+          >
+            {avatarUrl ? (
+              <img src={avatarUrl} alt={text.app.profileTitle} className="w-full h-full object-cover rounded-full" />
+            ) : (
+              <span className="flex h-full w-full items-center justify-center text-[10px] font-bold tracking-wide">
+                {user?.name?.slice(0, 2).toUpperCase() || 'OB'}
+              </span>
+            )}
+          </button>
+          <div className="hidden sm:block">
+            <ProfileWidget
+              onClick={() => {
+                if (window.location.hash.startsWith('#/u/') || parseAdminHash(window.location.hash)) {
+                  window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+                  setPublicProfileTarget(null);
+                  setShowAdminPanel(false);
+                }
+                setStartProfileInSettings(false);
+                setShowProfile(true);
+              }}
+              onOpenSettings={() => {
+                if (window.location.hash.startsWith('#/u/') || parseAdminHash(window.location.hash)) {
+                  window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+                  setPublicProfileTarget(null);
+                  setShowAdminPanel(false);
+                }
+                setStartProfileInSettings(true);
+                setShowProfile(true);
+              }}
+            />
+          </div>
         </div>
+        {!activeMovie && !showProfile && !detailMovie && !publicProfileTarget && !showAdminPanel ? (
+          <div className="hidden lg:block pointer-events-auto">
+            <Suspense fallback={<div className="w-[340px] rounded-2xl border border-white/10 bg-[#121212]/90 px-4 py-5 text-[10px] uppercase tracking-[0.18em] text-white/35">{text.app.loadingArena}</div>}>
+              <SectionErrorBoundary key="arena-leaderboard-widget-v1" title={text.arena.title} fallbackMessage={text.app.arenaUnavailable}>
+                <ArenaLeaderboardWidget onOpenProfile={openPublicProfile} />
+              </SectionErrorBoundary>
+            </Suspense>
+          </div>
+        ) : null}
       </div>
 
       {detailMovie && (
@@ -455,32 +482,12 @@ const AppContent = () => {
             </SectionErrorBoundary>
           </Suspense>
 
-          <Suspense fallback={<section className="mt-6 rounded-2xl border border-white/10 bg-white/5 px-4 py-10 text-center text-sm text-white/30 animate-pulse">...</section>}>
-            <SectionErrorBoundary title="Quiz" fallbackMessage="">
-              <PoolDiscoveryPanel />
+          <Suspense fallback={<section className="mx-auto mb-16 max-w-5xl px-4 sm:px-6"><div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-10 text-center text-sm text-white/30 animate-pulse">...</div></section>}>
+            <SectionErrorBoundary key="quiz-web-redesign-v4" title="Quiz" fallbackMessage="">
+              <QuizSection />
             </SectionErrorBoundary>
           </Suspense>
 
-          <Suspense fallback={<section className="mt-6 rounded-2xl border border-white/10 bg-white/5 px-4 py-10 text-center text-sm text-white/30 animate-pulse">...</section>}>
-            <SectionErrorBoundary title="Quiz Rush" fallbackMessage="">
-              <QuizRushPanel />
-            </SectionErrorBoundary>
-          </Suspense>
-
-          <Suspense fallback={<section className="mt-6 rounded-2xl border border-white/10 bg-white/5 px-4 py-10 text-center text-sm text-white/30 animate-pulse">...</section>}>
-            <SectionErrorBoundary title="Blur Quiz" fallbackMessage="">
-              <BlurQuizPanel />
-            </SectionErrorBoundary>
-          </Suspense>
-
-          <Suspense fallback={<section className="mt-6 rounded-2xl border border-white/10 bg-white/5 px-4 py-6 text-sm text-white/60">{text.app.loadingArena}</section>}>
-            <SectionErrorBoundary
-              title={text.arena.title}
-              fallbackMessage={text.app.arenaUnavailable}
-            >
-              <Arena />
-            </SectionErrorBoundary>
-          </Suspense>
         </main>
 
         <InfoFooter className="mt-8" panelWrapperClassName="px-4 sm:px-6 pb-4" footerClassName="py-8 px-4 sm:px-6 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4 text-[10px] uppercase tracking-widest text-white/20" />
@@ -502,4 +509,3 @@ function App() {
 }
 
 export default App
-

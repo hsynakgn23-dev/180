@@ -5,6 +5,8 @@ export type PoolOptionKey = 'a' | 'b' | 'c' | 'd';
 export type PoolLanguageCode = 'tr' | 'en' | 'es' | 'fr';
 export type RushMode = 'rush_15' | 'rush_30' | 'endless';
 export type SwipeDirection = 'left' | 'right';
+export type JokerSource = 'wallet' | 'bonus';
+export type RushJokerKey = 'fifty_fifty' | 'pass' | 'freeze';
 
 export type PoolMovie = {
     id: string;
@@ -38,6 +40,16 @@ export type RushSession = {
     expires_at: string | null;
     questions: RushSessionQuestion[];
 };
+
+export type FiftyFiftyJokerResult =
+    | { ok: true; removed_options: PoolOptionKey[] }
+    | { ok: false; error: string };
+
+export type RushJokerResult =
+    | { ok: true; type: 'fifty_fifty'; removed_options: PoolOptionKey[] }
+    | { ok: true; type: 'freeze'; expires_at: string | null }
+    | { ok: true; type: 'pass' }
+    | { ok: false; error: string };
 
 const getAuthHeaders = async (): Promise<Record<string, string>> => {
     if (!supabase) return {};
@@ -123,13 +135,41 @@ export const submitPoolAnswer = async (input: {
     }
 };
 
+export const requestPoolFiftyFifty = async (input: {
+    question_id: string;
+    source?: JokerSource;
+}): Promise<FiftyFiftyJokerResult> => {
+    try {
+        const res = await fetch(buildApiUrl('/api/pool-joker'), {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', ...(await getAuthHeaders()) },
+            body: JSON.stringify({
+                question_id: input.question_id,
+                questionId: input.question_id,
+                type: 'fifty_fifty',
+                source: input.source ?? 'wallet',
+            }),
+        });
+        const json = await res.json();
+        if (!res.ok || !json?.ok) return { ok: false, error: json?.error || `HTTP ${res.status}` };
+        const removedOptions = Array.isArray(json.removed_options)
+            ? json.removed_options.filter((value: unknown): value is PoolOptionKey =>
+                value === 'a' || value === 'b' || value === 'c' || value === 'd'
+            )
+            : [];
+        return { ok: true, removed_options: removedOptions };
+    } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : 'Request failed' };
+    }
+};
+
 export const startRushSession = async (
     mode: RushMode,
     language: PoolLanguageCode
 ): Promise<{
     ok: true; session: RushSession;
 } | {
-    ok: false; error: string; requires_subscription?: boolean; limit_reached?: boolean; rewarded_ad_available?: boolean;
+    ok: false; error: string; auth_required?: boolean; requires_subscription?: boolean; limit_reached?: boolean; rewarded_ad_available?: boolean;
 }> => {
     try {
         const res = await fetch(buildApiUrl('/api/rush-start'), {
@@ -142,14 +182,18 @@ export const startRushSession = async (
             return {
                 ok: false,
                 error: json?.error || `HTTP ${res.status}`,
-                requires_subscription: json?.requiresSubscription === true,
-                limit_reached: res.status === 429 || json?.limitReached === true,
-                rewarded_ad_available: res.status === 429 ? json?.rewardedAdAvailable !== false : false,
+                auth_required: res.status === 401 || json?.auth_required === true || json?.authRequired === true,
+                requires_subscription: json?.requiresSubscription === true || json?.requires_subscription === true,
+                limit_reached: res.status === 429 || json?.limitReached === true || json?.limit_reached === true,
+                rewarded_ad_available: res.status === 429
+                    ? json?.rewardedAdAvailable !== false && json?.rewarded_ad_available !== false
+                    : false,
             };
         }
         const s = json.session ?? json;
-        const questions = Array.isArray(s.questions)
-            ? s.questions.map((q: Record<string, unknown>) => ({
+        const rawQuestions = Array.isArray(s.questions) ? s.questions : Array.isArray(json.questions) ? json.questions : [];
+        const questions = rawQuestions.length
+            ? rawQuestions.map((q: Record<string, unknown>) => ({
                 id: String(q.id || ''),
                 question_id: String(q.question_id || q.id || ''),
                 movie_title: String(q.movie_title || q.movieTitle || ''),
@@ -178,7 +222,7 @@ export const submitRushAnswer = async (input: {
     attempt_id: string;
     selected_option: PoolOptionKey;
 }): Promise<{
-    ok: true; is_correct: boolean; correct_option: PoolOptionKey; explanation: string; streak: number;
+    ok: true; is_correct: boolean; correct_option: PoolOptionKey; explanation: string; streak: number; expires_at?: string | null; total_time_seconds?: number;
 } | { ok: false; error: string; expired?: boolean }> => {
     try {
         const res = await fetch(buildApiUrl('/api/rush-answer'), {
@@ -207,7 +251,53 @@ export const submitRushAnswer = async (input: {
             correct_option: (json.correct_option ?? json.correctOption) as PoolOptionKey,
             explanation: json.explanation ?? '',
             streak: json.streak ?? 0,
+            expires_at: json.expires_at ?? json.expiresAt ?? null,
+            total_time_seconds: Number.isFinite(Number(json.total_time_seconds ?? json.totalTimeSeconds))
+                ? Number(json.total_time_seconds ?? json.totalTimeSeconds)
+                : undefined,
         };
+    } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : 'Request failed' };
+    }
+};
+
+export const requestRushJoker = async (input: {
+    session_id: string;
+    attempt_id: string;
+    type: RushJokerKey;
+    seconds?: number;
+    source?: JokerSource;
+}): Promise<RushJokerResult> => {
+    try {
+        const res = await fetch(buildApiUrl('/api/rush-joker'), {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', ...(await getAuthHeaders()) },
+            body: JSON.stringify({
+                session_id: input.session_id,
+                sessionId: input.session_id,
+                attempt_id: input.attempt_id,
+                question_id: input.attempt_id,
+                questionId: input.attempt_id,
+                type: input.type,
+                seconds: input.seconds,
+                source: input.source ?? 'wallet',
+            }),
+        });
+        const json = await res.json();
+        if (!res.ok || !json?.ok) return { ok: false, error: json?.error || `HTTP ${res.status}` };
+        const type = (json.type ?? input.type) as RushJokerKey;
+        if (type === 'freeze') {
+            return { ok: true, type: 'freeze', expires_at: json.expires_at ?? json.expiresAt ?? null };
+        }
+        if (type === 'pass') {
+            return { ok: true, type: 'pass' };
+        }
+        const removedOptions = Array.isArray(json.removed_options)
+            ? json.removed_options.filter((value: unknown): value is PoolOptionKey =>
+                value === 'a' || value === 'b' || value === 'c' || value === 'd'
+            )
+            : [];
+        return { ok: true, type: 'fifty_fifty', removed_options: removedOptions };
     } catch (e) {
         return { ok: false, error: e instanceof Error ? e.message : 'Request failed' };
     }
