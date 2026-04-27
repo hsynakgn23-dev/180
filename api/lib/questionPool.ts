@@ -116,7 +116,6 @@ const TMDB_EXCLUDED_GENRE_IDS = new Set<number>([99]); // Documentary
 const TMDB_CAST_LIMIT = 6;
 const MOVIES_PER_BATCH = 5;
 const QUESTIONS_PER_MOVIE = 5;
-const THROTTLE_MS = 300; // ~33 requests per 10 seconds, safely under 40/10s limit
 
 // ============================================================
 // Env helpers
@@ -145,10 +144,29 @@ const getServiceSupabase = () => {
 };
 
 // ============================================================
-// Throttle helper
+// Concurrency helpers
 // ============================================================
 
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+const TMDB_CREDITS_CONCURRENCY = 5;
+const POOL_UPSERT_BATCH_SIZE = 50;
+
+async function withConcurrency<T>(
+    items: T[],
+    limit: number,
+    fn: (item: T) => Promise<void>
+): Promise<void> {
+    if (items.length === 0) return;
+    const queue = [...items];
+    const workerCount = Math.min(limit, items.length);
+    const workers = Array.from({ length: workerCount }, async () => {
+        while (queue.length > 0) {
+            const item = queue.shift();
+            if (item === undefined) break;
+            await fn(item);
+        }
+    });
+    await Promise.all(workers);
+}
 
 const normalizeText = (value: unknown): string => {
     if (typeof value !== 'string') return '';
@@ -426,8 +444,6 @@ export const fetchTmdbPopularMovies = async (targetCount: number): Promise<TmdbM
                 genres: genres.map((name, i) => ({ id: genreIds[i] || 0, name })),
             });
         }
-
-        await sleep(THROTTLE_MS);
     }
 
     return movies.slice(0, targetCount);
@@ -443,45 +459,46 @@ export const enrichMoviesWithCredits = async (
     const apiKey = getTmdbApiKey();
     if (!apiKey) throw new Error('Missing TMDB_API_KEY');
 
-    const enriched: Array<TmdbMovieDetail & { director: string; castNames: string[] }> = [];
+    const enrichedByIndex = new Array<TmdbMovieDetail & { director: string; castNames: string[] }>(movies.length);
 
-    for (const movie of movies) {
-        const movieId = Number(movie.id);
-        if (!movieId) continue;
+    await withConcurrency(
+        movies.map((movie, index) => ({ movie, index })),
+        TMDB_CREDITS_CONCURRENCY,
+        async ({ movie, index }) => {
+            const movieId = Number(movie.id);
+            if (!movieId) return;
 
-        try {
-            const response = await fetch(
-                `${TMDB_API_BASE}/movie/${movieId}/credits?api_key=${apiKey}&language=en-US`,
-                { signal: AbortSignal.timeout(15000) }
-            );
-            if (!response.ok) {
-                enriched.push({ ...movie, director: '', castNames: [] });
-                await sleep(THROTTLE_MS);
-                continue;
+            try {
+                const response = await fetch(
+                    `${TMDB_API_BASE}/movie/${movieId}/credits?api_key=${apiKey}&language=en-US`,
+                    { signal: AbortSignal.timeout(15000) }
+                );
+                if (!response.ok) {
+                    enrichedByIndex[index] = { ...movie, director: '', castNames: [] };
+                    return;
+                }
+
+                const payload = (await response.json()) as TmdbCreditsResult;
+                const director =
+                    (payload.crew || []).find((m) => String(m?.job || '').toLowerCase() === 'director')?.name ||
+                    (payload.crew || []).find((m) => String(m?.department || '').toLowerCase() === 'directing')?.name ||
+                    '';
+
+                const castNames = (payload.cast || [])
+                    .slice()
+                    .sort((a, b) => (Number(a?.order) || 9999) - (Number(b?.order) || 9999))
+                    .map((m) => String(m?.name || '').trim())
+                    .filter(Boolean)
+                    .slice(0, TMDB_CAST_LIMIT);
+
+                enrichedByIndex[index] = { ...movie, director: director.trim(), castNames };
+            } catch {
+                enrichedByIndex[index] = { ...movie, director: '', castNames: [] };
             }
-
-            const payload = (await response.json()) as TmdbCreditsResult;
-            const director =
-                (payload.crew || []).find((m) => String(m?.job || '').toLowerCase() === 'director')?.name ||
-                (payload.crew || []).find((m) => String(m?.department || '').toLowerCase() === 'directing')?.name ||
-                '';
-
-            const castNames = (payload.cast || [])
-                .slice()
-                .sort((a, b) => (Number(a?.order) || 9999) - (Number(b?.order) || 9999))
-                .map((m) => String(m?.name || '').trim())
-                .filter(Boolean)
-                .slice(0, TMDB_CAST_LIMIT);
-
-            enriched.push({ ...movie, director: director.trim(), castNames });
-        } catch {
-            enriched.push({ ...movie, director: '', castNames: [] });
         }
+    );
 
-        await sleep(THROTTLE_MS);
-    }
-
-    return enriched;
+    return enrichedByIndex.filter((entry): entry is TmdbMovieDetail & { director: string; castNames: string[] } => Boolean(entry));
 };
 
 // ============================================================
@@ -495,6 +512,23 @@ export const saveMoviesToPool = async (
     let inserted = 0;
     let skipped = 0;
 
+    type UpsertRow = {
+        tmdb_id: number;
+        title: string;
+        poster_path: string | null;
+        release_year: number | null;
+        genre: string | null;
+        era: string | null;
+        overview: string | null;
+        vote_average: number | null;
+        original_language: string | null;
+        cast_names: string[];
+        director: string | null;
+        added_from: string;
+        updated_at: string;
+    };
+
+    const rows: UpsertRow[] = [];
     for (const movie of movies) {
         const tmdbId = Number(movie.id);
         if (!tmdbId) { skipped++; continue; }
@@ -502,26 +536,44 @@ export const saveMoviesToPool = async (
         const year = parseYear(movie.release_date);
         const genre = (movie.genres || []).map((g) => g.name).filter(Boolean).join('/') || null;
 
-        const { error } = await supabase
-            .from('question_pool_movies')
-            .upsert({
-                tmdb_id: tmdbId,
-                title: (movie.title || '').trim(),
-                poster_path: movie.poster_path || null,
-                release_year: year,
-                genre,
-                era: classifyEra(year),
-                overview: (movie.overview || '').trim() || null,
-                vote_average: movie.vote_average || null,
-                original_language: movie.original_language || null,
-                cast_names: movie.castNames || [],
-                director: movie.director || null,
-                added_from: 'batch_generate',
-                updated_at: new Date().toISOString()
-            }, { onConflict: 'tmdb_id', ignoreDuplicates: false });
-
-        if (error) { skipped++; } else { inserted++; }
+        rows.push({
+            tmdb_id: tmdbId,
+            title: (movie.title || '').trim(),
+            poster_path: movie.poster_path || null,
+            release_year: year,
+            genre,
+            era: classifyEra(year),
+            overview: (movie.overview || '').trim() || null,
+            vote_average: movie.vote_average || null,
+            original_language: movie.original_language || null,
+            cast_names: movie.castNames || [],
+            director: movie.director || null,
+            added_from: 'batch_generate',
+            updated_at: new Date().toISOString()
+        });
     }
+
+    const batches: UpsertRow[][] = [];
+    for (let i = 0; i < rows.length; i += POOL_UPSERT_BATCH_SIZE) {
+        batches.push(rows.slice(i, i + POOL_UPSERT_BATCH_SIZE));
+    }
+
+    const results = await Promise.all(
+        batches.map((batch) =>
+            supabase
+                .from('question_pool_movies')
+                .upsert(batch, { onConflict: 'tmdb_id', ignoreDuplicates: false })
+        )
+    );
+
+    results.forEach((result, idx) => {
+        const batchSize = batches[idx].length;
+        if (result.error) {
+            skipped += batchSize;
+        } else {
+            inserted += batchSize;
+        }
+    });
 
     return { inserted, skipped };
 };

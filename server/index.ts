@@ -9,18 +9,11 @@ try {
 }
 
 import accountDeleteHandler from '../api/account-delete.js';
-import adminDashboardHandler from '../api/admin/dashboard.js';
-import adminSessionHandler from '../api/admin/session.js';
-import adminModerationCommentHandler from '../api/admin/moderation/comment.js';
-import adminModerationUserHandler from '../api/admin/moderation/user.js';
 import analyticsHandler from '../api/analytics.js';
-import cronDailyHandler from '../api/cron/daily.js';
 import dailyHandler from '../api/daily.js';
 import dailyBundleHandler from '../api/daily-bundle.js';
 import dailyQuizAnswerHandler from '../api/daily-quiz-answer.js';
 import dailyRitualRewardHandler from '../api/daily-ritual-reward.js';
-import dailyQuizImportHandler from '../api/internal/daily-quiz-import.js';
-import dailySourceHandler from '../api/internal/daily-source.js';
 import ogFilmHandler from '../api/og/film.js';
 import ogProfileHandler from '../api/og/profile.js';
 import pushEngagementHandler from '../api/push/engagement.js';
@@ -44,16 +37,8 @@ import walletSpendHandler from '../api/wallet-spend.js';
 import walletStatusHandler from '../api/wallet-status.js';
 import walletTaskClaimHandler from '../api/wallet-task-claim.js';
 import walletTopupVerifyHandler from '../api/wallet-topup-verify.js';
-import poolBatchGenerateHandler from '../api/internal/pool-batch-generate.js';
-import poolBatchStatusHandler from '../api/internal/pool-batch-status.js';
-import poolBackfillHandler from '../api/internal/pool-backfill.js';
-import poolFetchChunkHandler from '../api/internal/pool-fetch-chunk.js';
-import poolGenerateMissingHandler from '../api/internal/pool-generate-missing.js';
-import poolTopupHandler from '../api/internal/pool-topup.js';
 import blurQuizHandler from '../api/blur-quiz.js';
 import arenaLeaderboardHandler from '../api/arena-leaderboard.js';
-import cronArenaFinalizeHandler from '../api/cron/arena-finalize.js';
-import cronPushDispatchHandler from '../api/cron/push-dispatch.js';
 import userSearchHandler from '../api/user-search.js';
 import userBlockHandler from '../api/user-block.js';
 import userReportHandler from '../api/user-report.js';
@@ -72,30 +57,47 @@ type RouteEntry = {
     handler: ApiRouteHandler;
 };
 
+const lazy = (loader: () => Promise<{ default: ApiRouteHandler }>): ApiRouteHandler => {
+    let cached: ApiRouteHandler | null = null;
+    let loading: Promise<ApiRouteHandler> | null = null;
+    return async (req, res) => {
+        if (!cached) {
+            if (!loading) {
+                loading = loader().then((mod) => {
+                    cached = mod.default;
+                    return cached;
+                });
+            }
+            cached = await loading;
+        }
+        return cached(req, res);
+    };
+};
+
 const JSON_HEADERS = {
     'content-type': 'application/json; charset=utf-8'
 };
 
 const ROUTES: RouteEntry[] = [
-    { path: '/api/admin/dashboard', handler: adminDashboardHandler as ApiRouteHandler },
-    { path: '/api/admin/session', handler: adminSessionHandler as ApiRouteHandler },
+    { path: '/api/admin/dashboard', handler: lazy(() => import('../api/admin/dashboard.js')) },
+    { path: '/api/admin/session', handler: lazy(() => import('../api/admin/session.js')) },
     {
         path: '/api/admin/moderation/comment',
-        handler: adminModerationCommentHandler as ApiRouteHandler
+        handler: lazy(() => import('../api/admin/moderation/comment.js'))
     },
     {
         path: '/api/admin/moderation/user',
-        handler: adminModerationUserHandler as ApiRouteHandler
+        handler: lazy(() => import('../api/admin/moderation/user.js'))
     },
     { path: '/api/analytics', handler: analyticsHandler as ApiRouteHandler },
     { path: '/api/account-delete', handler: accountDeleteHandler as ApiRouteHandler },
-    { path: '/api/cron/daily', handler: cronDailyHandler as ApiRouteHandler },
+    { path: '/api/cron/daily', handler: lazy(() => import('../api/cron/daily.js')) },
     { path: '/api/daily', handler: dailyHandler as ApiRouteHandler },
     { path: '/api/daily-bundle', handler: dailyBundleHandler as ApiRouteHandler },
     { path: '/api/daily-quiz-answer', handler: dailyQuizAnswerHandler as ApiRouteHandler },
     { path: '/api/daily-ritual-reward', handler: dailyRitualRewardHandler as ApiRouteHandler },
-    { path: '/api/internal/daily-quiz-import', handler: dailyQuizImportHandler as ApiRouteHandler },
-    { path: '/api/internal/daily-source', handler: dailySourceHandler as ApiRouteHandler },
+    { path: '/api/internal/daily-quiz-import', handler: lazy(() => import('../api/internal/daily-quiz-import.js')) },
+    { path: '/api/internal/daily-source', handler: lazy(() => import('../api/internal/daily-source.js')) },
     { path: '/api/og/film', handler: ogFilmHandler as ApiRouteHandler },
     { path: '/api/og/profile', handler: ogProfileHandler as ApiRouteHandler },
     { path: '/api/push/engagement', handler: pushEngagementHandler as ApiRouteHandler },
@@ -121,16 +123,16 @@ const ROUTES: RouteEntry[] = [
     { path: '/api/wallet-status', handler: walletStatusHandler as ApiRouteHandler },
     { path: '/api/wallet-task-claim', handler: walletTaskClaimHandler as ApiRouteHandler },
     { path: '/api/wallet-topup-verify', handler: walletTopupVerifyHandler as ApiRouteHandler },
-    { path: '/api/internal/pool-batch-generate', handler: poolBatchGenerateHandler as ApiRouteHandler },
-    { path: '/api/internal/pool-batch-status', handler: poolBatchStatusHandler as ApiRouteHandler },
-    { path: '/api/internal/pool-backfill', handler: poolBackfillHandler as ApiRouteHandler },
-    { path: '/api/internal/pool-fetch-chunk', handler: poolFetchChunkHandler as ApiRouteHandler },
-    { path: '/api/internal/pool-generate-missing', handler: poolGenerateMissingHandler as ApiRouteHandler },
-    { path: '/api/internal/pool-topup', handler: poolTopupHandler as ApiRouteHandler },
+    { path: '/api/internal/pool-batch-generate', handler: lazy(() => import('../api/internal/pool-batch-generate.js')) },
+    { path: '/api/internal/pool-batch-status', handler: lazy(() => import('../api/internal/pool-batch-status.js')) },
+    { path: '/api/internal/pool-backfill', handler: lazy(() => import('../api/internal/pool-backfill.js')) },
+    { path: '/api/internal/pool-fetch-chunk', handler: lazy(() => import('../api/internal/pool-fetch-chunk.js')) },
+    { path: '/api/internal/pool-generate-missing', handler: lazy(() => import('../api/internal/pool-generate-missing.js')) },
+    { path: '/api/internal/pool-topup', handler: lazy(() => import('../api/internal/pool-topup.js')) },
     { path: '/api/blur-quiz', handler: blurQuizHandler as ApiRouteHandler },
     { path: '/api/arena-leaderboard', handler: arenaLeaderboardHandler as ApiRouteHandler },
-    { path: '/api/cron/arena-finalize', handler: cronArenaFinalizeHandler as ApiRouteHandler },
-    { path: '/api/cron/push-dispatch', handler: cronPushDispatchHandler as ApiRouteHandler },
+    { path: '/api/cron/arena-finalize', handler: lazy(() => import('../api/cron/arena-finalize.js')) },
+    { path: '/api/cron/push-dispatch', handler: lazy(() => import('../api/cron/push-dispatch.js')) },
     { path: '/api/user-search', handler: userSearchHandler as ApiRouteHandler },
     { path: '/api/user-block', handler: userBlockHandler as ApiRouteHandler },
     { path: '/api/user-report', handler: userReportHandler as ApiRouteHandler }

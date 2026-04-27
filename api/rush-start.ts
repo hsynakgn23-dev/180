@@ -221,25 +221,30 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
   const config = RUSH_CONFIG[mode];
 
-  const { data: subscription } = await supabase
-    .from('subscriptions')
-    .select('plan, status')
-    .eq('user_id', user.id)
-    .eq('status', 'active')
-    .maybeSingle();
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('subscription_tier')
-    .eq('user_id', user.id)
-    .maybeSingle();
-
-  const { data: recentSessions } = await supabase
-    .from('quiz_rush_sessions')
-    .select('metadata')
-    .eq('user_id', user.id)
-    .order('created_at', { ascending: false })
-    .limit(4);
+  const parallelStart = Date.now();
+  const [subscriptionResult, profileResult, recentSessionsResult] = await Promise.all([
+    supabase
+      .from('subscriptions')
+      .select('plan, status')
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .maybeSingle(),
+    supabase
+      .from('profiles')
+      .select('subscription_tier')
+      .eq('user_id', user.id)
+      .maybeSingle(),
+    supabase
+      .from('quiz_rush_sessions')
+      .select('metadata')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(4),
+  ]);
+  console.log(`[rush-start] parallel-prefetch took ${Date.now() - parallelStart}ms`);
+  const subscription = subscriptionResult.data;
+  const profile = profileResult.data;
+  const recentSessions = recentSessionsResult.data;
 
   const { isPremium } = resolveSubscriptionEntitlement({
     subscriptionPlan: subscription?.plan,
