@@ -57,14 +57,14 @@ type RouteEntry = {
     handler: ApiRouteHandler;
 };
 
-const lazy = (loader: () => Promise<{ default: ApiRouteHandler }>): ApiRouteHandler => {
+const lazy = (loader: () => Promise<{ default: unknown }>): ApiRouteHandler => {
     let cached: ApiRouteHandler | null = null;
     let loading: Promise<ApiRouteHandler> | null = null;
     return async (req, res) => {
         if (!cached) {
             if (!loading) {
                 loading = loader().then((mod) => {
-                    cached = mod.default;
+                    cached = mod.default as ApiRouteHandler;
                     return cached;
                 });
             }
