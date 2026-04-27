@@ -14,7 +14,11 @@ import {
     shouldSyncUserSettings,
     syncUserSettingsToCloud
 } from '../lib/userSettingsCloud';
-import { normalizeUserSettingsLanguage } from '../domain/userSettings';
+import {
+    DEFAULT_PUSH_PREFS,
+    normalizeUserSettingsLanguage,
+    type UserSettingsSnapshot
+} from '../domain/userSettings';
 import { supabase } from '../lib/supabase';
 
 const readThemeModeFromStorage = (): ThemeMode => {
@@ -30,7 +34,7 @@ export const UserSettingsSyncBridge: React.FC = () => {
     const hasHydratedRemoteSettingsRef = useRef(false);
     const isApplyingRemoteSettingsRef = useRef(false);
     const releaseApplyTimerRef = useRef<number | null>(null);
-    const lastSyncedSettingsRef = useRef<{ language: string; themeMode: ThemeMode } | null>(null);
+    const lastSyncedSettingsRef = useRef<UserSettingsSnapshot | null>(null);
     const latestLanguageRef = useRef(language);
     const latestThemeModeRef = useRef(themeMode);
 
@@ -102,7 +106,8 @@ export const UserSettingsSyncBridge: React.FC = () => {
 
                 lastSyncedSettingsRef.current = {
                     language: nextLanguage,
-                    themeMode: nextThemeMode
+                    themeMode: nextThemeMode,
+                    pushPrefs: result.settings.pushPrefs
                 };
             } else {
                 lastSyncedSettingsRef.current = null;
@@ -129,9 +134,10 @@ export const UserSettingsSyncBridge: React.FC = () => {
         if (!hasHydratedRemoteSettingsRef.current) return;
         if (isApplyingRemoteSettingsRef.current) return;
 
-        const nextSettings = {
+        const nextSettings: UserSettingsSnapshot = {
             language,
-            themeMode
+            themeMode,
+            pushPrefs: lastSyncedSettingsRef.current?.pushPrefs || { ...DEFAULT_PUSH_PREFS }
         };
 
         if (!shouldSyncUserSettings(lastSyncedSettingsRef.current, nextSettings)) {
@@ -144,7 +150,8 @@ export const UserSettingsSyncBridge: React.FC = () => {
             if (cancelled || !result.ok) return;
             lastSyncedSettingsRef.current = {
                 language: result.settings.language,
-                themeMode: result.settings.themeMode
+                themeMode: result.settings.themeMode,
+                pushPrefs: result.settings.pushPrefs
             };
         });
 

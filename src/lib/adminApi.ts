@@ -309,6 +309,8 @@ export const moderateAdminComment = async (input: {
         movieTitle?: string;
         text: string;
         removalReason: string;
+        reportResolutionWarning?: string;
+        auditWarning?: string;
     }>(buildApiUrl('/api/admin/moderation/comment'), {
         method: 'POST',
         body: JSON.stringify(input)
@@ -325,6 +327,7 @@ export const moderateAdminUser = async (input: {
         action: 'suspend' | 'unsuspend' | 'delete';
         targetUserId: string;
         suspendedUntil?: string | null;
+        auditWarning?: string;
     }>(buildApiUrl('/api/admin/moderation/user'), {
         method: 'POST',
         body: JSON.stringify(input)
@@ -341,6 +344,21 @@ export type GiftCode = {
     note: string | null;
     created_at: string;
     is_revoked: boolean;
+    redemption_count?: number;
+    redemptions?: GiftCodeRedemption[];
+    auditWarning?: string;
+};
+
+export type GiftCodeRedemption = {
+    id: string;
+    code: string;
+    user_id: string | null;
+    gift_type: string;
+    value: number;
+    status: string;
+    redeemed_at: string | null;
+    fulfilled_at: string | null;
+    last_error: string | null;
 };
 
 export const listAdminGiftCodes = async (): Promise<AdminApiResponse<GiftCode[]>> =>
@@ -355,5 +373,15 @@ export const createAdminGiftCode = async (input: {
 }) =>
     requestAdminApi<GiftCode>(buildApiUrl('/api/admin/gift'), {
         method: 'POST',
+        body: JSON.stringify(input)
+    });
+
+export const updateAdminGiftCode = async (input: {
+    codeId: string;
+    isRevoked: boolean;
+    note?: string;
+}) =>
+    requestAdminApi<GiftCode>(buildApiUrl('/api/admin/gift'), {
+        method: 'PATCH',
         body: JSON.stringify(input)
     });

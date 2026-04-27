@@ -144,6 +144,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         p_question_id: questionId,
         p_movie_id: question.movie_id,
         p_is_correct: isCorrect,
+        p_selected_option: selectedOption,
         p_correct_xp: POOL_CORRECT_XP,
         p_perfect_bonus_xp: POOL_PERFECT_BONUS_XP,
         p_email: user.email || null,
