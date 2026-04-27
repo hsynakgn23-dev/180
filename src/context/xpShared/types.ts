@@ -51,6 +51,7 @@ export interface XPState {
 export interface AuthResult {
     ok: boolean;
     message?: string;
+    whisper?: string;
 }
 
 export type ShareRewardTrigger = 'comment' | 'streak';

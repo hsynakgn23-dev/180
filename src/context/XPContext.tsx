@@ -1,8 +1,7 @@
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { MAJOR_MARKS } from '../data/marksData';
 import { supabase, isSupabaseLive } from '../lib/supabase';
 import { moderateComment } from '../lib/commentModeration';
-import { trackEvent } from '../lib/analytics';
 import { normalizeAvatarUrl } from '../lib/avatarUpload';
 import { STREAK_MILESTONE_SET } from '../domain/celebrations';
 import { buildApiUrl } from '../lib/apiBase';
@@ -10,13 +9,12 @@ import { fetchWithAuth } from '../lib/fetchWithAuth';
 import { sendEngagementNotification } from '../lib/engagementNotificationApi';
 import { claimInviteCodeViaApi, ensureInviteCodeViaApi, getReferralDeviceKey } from '../lib/referralApi';
 export { getLeagueKeyByIndex, resolveLeagueInfo, resolveLeagueKey, resolveLeagueKeyFromXp } from '../domain/leagueSystem';
-import type { User as SupabaseUser } from '@supabase/supabase-js';
 
+import { AuthProvider, useAuth } from './AuthContext';
 import type {
     AuthResult,
     EchoLog,
     LeagueInfo,
-    PendingRegistrationProfile,
     RegistrationGender,
     RegistrationProfileInput,
     RitualLog,
@@ -61,16 +59,7 @@ import {
     readUserRitualsFromCloud,
     readUserXpStateFromLocal,
 } from './xpShared/persistence';
-import {
-    buildAuthRedirectTo,
-    clearRecoveryUrlState,
-    consumePostAuthHash,
-    getLegacyStoredUser,
-    isPasswordRecoveryUrl,
-    normalizeAuthError,
-    rememberPostAuthHash,
-    toSessionUser,
-} from './xpShared/auth';
+import { normalizeAuthError } from './xpShared/auth';
 
 // Backward-compatible re-exports for existing consumers of XPContext.
 export { LEAGUES_DATA, LEAGUE_NAMES } from './xpShared/state';
@@ -157,9 +146,9 @@ interface XPContextType {
 
 const XPContext = createContext<XPContextType | undefined>(undefined);
 
-export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [user, setUser] = useState<SessionUser | null>(() => getLegacyStoredUser());
-    const sessionUserRef = useRef<SessionUser | null>(getLegacyStoredUser());
+const XPProviderInner: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const auth = useAuth();
+    const { user, authMode, isPasswordRecoveryMode } = auth;
 
     const [state, setState] = useState<XPState>(buildInitialXPState());
     const [whisper, setWhisper] = useState<string | null>(null);
@@ -169,16 +158,13 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     const [sharePromptEvent, setSharePromptEvent] = useState<SharePromptEvent | null>(null);
     const previousLeagueIndexRef = useRef(getLeagueIndexFromXp(state.totalXP));
     const pendingWelcomeWhisperRef = useRef(false);
-    const pendingRegistrationProfileRef = useRef<PendingRegistrationProfile | null>(null);
     const canReadProfileStateRef = useRef(true);
     const canWriteProfileStateRef = useRef(true);
     const canWriteRitualRef = useRef(true);
     const canReadFollowRef = useRef(true);
     const canWriteFollowRef = useRef(true);
     const [isXpHydrated, setIsXpHydrated] = useState(false);
-    const [isPasswordRecoveryMode, setIsPasswordRecoveryMode] = useState<boolean>(() => isPasswordRecoveryUrl());
     const [isPremium, setIsPremium] = useState(false);
-    const authMode: 'supabase' | 'local' = isSupabaseLive() && supabase ? 'supabase' : 'local';
 
     useEffect(() => {
         if (!user) { setIsPremium(false); return; }
@@ -196,59 +182,6 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         })();
         return () => { cancelled = true; };
     }, [user]);
-
-    const setSessionUser = (nextUser: SessionUser | null) => {
-        setUser(nextUser);
-        sessionUserRef.current = nextUser;
-        if (nextUser) {
-            localStorage.setItem('180_user_session', JSON.stringify(nextUser));
-        } else {
-            localStorage.removeItem('180_user_session');
-        }
-    };
-
-    useEffect(() => {
-        if (!isSupabaseLive() || !supabase) {
-            return;
-        }
-
-        let active = true;
-        const applyAuthUser = (authUser: SupabaseUser | null) => {
-            if (!active) return;
-            const mapped = toSessionUser(authUser);
-            setSessionUser(mapped);
-        };
-
-        void supabase.auth.getSession().then(({ data }) => {
-            const sessionUser = data.session?.user ?? null;
-            applyAuthUser(sessionUser);
-        });
-
-        const { data } = supabase.auth.onAuthStateChange((event, session) => {
-            if (event === 'PASSWORD_RECOVERY') {
-                setIsPasswordRecoveryMode(true);
-            }
-            if (event === 'SIGNED_OUT') {
-                setIsPasswordRecoveryMode(false);
-                applyAuthUser(null);
-                return;
-            }
-
-            const sessionUser = session?.user ?? null;
-            applyAuthUser(sessionUser);
-            if (sessionUser && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
-                const postAuthHash = consumePostAuthHash();
-                if (postAuthHash && typeof window !== 'undefined') {
-                    window.location.hash = postAuthHash.replace(/^#/, '');
-                }
-            }
-        });
-
-        return () => {
-            active = false;
-            data.subscription.unsubscribe();
-        };
-    }, []);
 
     // Load data when user changes
     useEffect(() => {
@@ -332,7 +265,7 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 resolvedState = buildInitialXPState();
             }
 
-            const pendingRegistration = pendingRegistrationProfileRef.current;
+            const pendingRegistration = auth.consumePendingRegistration();
             if (pendingRegistration && pendingRegistration.email === user.email) {
                 resolvedState = {
                     ...resolvedState,
@@ -341,7 +274,6 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                     gender: pendingRegistration.gender,
                     birthDate: pendingRegistration.birthDate
                 };
-                pendingRegistrationProfileRef.current = null;
             }
 
             resolvedState = {
@@ -564,249 +496,56 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         setSharePromptEvent(null);
     };
 
-    const login = async (
-        email: string,
-        password: string,
-        isRegistering = false,
-        registrationProfile?: RegistrationProfileInput
-    ): Promise<AuthResult> => {
-        const normalizedEmail = (email || '').trim().toLowerCase();
-        if (!normalizedEmail.includes('@')) {
-            return { ok: false, message: 'Gecerli bir e-posta gir.' };
-        }
-        if ((password || '').length < 6) {
-            return { ok: false, message: 'Sifre en az 6 karakter olmali.' };
-        }
-
-        const normalizedRegistration: RegistrationProfileInput | null = isRegistering
-            ? {
-                fullName: (registrationProfile?.fullName || '').trim(),
-                username: (registrationProfile?.username || '').trim(),
-                gender: registrationProfile?.gender || 'prefer_not_to_say',
-                birthDate: (registrationProfile?.birthDate || '').trim()
+    const dispatchAuthWhisper = useCallback(
+        (result: AuthResult): AuthResult => {
+            if (result.whisper) {
+                setWhisper(result.whisper);
+                setTimeout(() => setWhisper(null), 4000);
             }
-            : null;
-        const flow = isRegistering ? 'register' : 'login';
+            return result;
+        },
+        [],
+    );
 
-        if (isRegistering) {
-            if (!normalizedRegistration?.fullName || normalizedRegistration.fullName.length < 2) {
-                return { ok: false, message: 'Isim en az 2 karakter olmali.' };
-            }
-            if (!USERNAME_REGEX.test(normalizedRegistration.username)) {
-                return { ok: false, message: 'Kullanici adi 3-20 karakter olmali (harf, rakam, _).' };
-            }
-            if (!REGISTRATION_GENDERS.includes(normalizedRegistration.gender)) {
-                return { ok: false, message: 'Cinsiyet secimi gecersiz.' };
-            }
-            if (!normalizedRegistration.birthDate) {
-                return { ok: false, message: 'Dogum tarihi gerekli.' };
-            }
+    const login = useCallback(
+        async (
+            email: string,
+            password: string,
+            isRegistering?: boolean,
+            registrationProfile?: RegistrationProfileInput,
+        ): Promise<AuthResult> =>
+            dispatchAuthWhisper(await auth.login(email, password, isRegistering, registrationProfile)),
+        [auth, dispatchAuthWhisper],
+    );
 
-            const birthDate = new Date(`${normalizedRegistration.birthDate}T00:00:00`);
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            if (Number.isNaN(birthDate.getTime()) || birthDate > today) {
-                return { ok: false, message: 'Dogum tarihi gecersiz.' };
-            }
-        }
+    const loginWithGoogle = useCallback(
+        async (): Promise<AuthResult> => dispatchAuthWhisper(await auth.loginWithGoogle()),
+        [auth, dispatchAuthWhisper],
+    );
 
-        if (!isSupabaseLive() || !supabase) {
-            if (normalizedRegistration) {
-                pendingRegistrationProfileRef.current = {
-                    email: normalizedEmail,
-                    ...normalizedRegistration
-                };
-            }
+    const loginWithApple = useCallback(
+        async (): Promise<AuthResult> => dispatchAuthWhisper(await auth.loginWithApple()),
+        [auth, dispatchAuthWhisper],
+    );
 
-            const fallbackUser: SessionUser = {
-                email: normalizedEmail,
-                name: normalizedRegistration?.fullName || normalizedEmail.split('@')[0] || 'observer',
-                fullName: normalizedRegistration?.fullName || '',
-                username: normalizedRegistration?.username || '',
-                gender: normalizedRegistration ? normalizedRegistration.gender : '',
-                birthDate: normalizedRegistration?.birthDate || ''
-            };
-            setSessionUser(fallbackUser);
-            triggerWhisper("Welcome to the Ritual.");
-            trackEvent(isRegistering ? 'signup_success' : 'login_success', {
-                flow,
-                method: 'password',
-                authMode: 'local'
-            });
-            return { ok: true, message: 'Supabase kapali oldugu icin local session acildi.' };
-        }
+    const requestPasswordReset = useCallback(
+        async (email: string): Promise<AuthResult> =>
+            dispatchAuthWhisper(await auth.requestPasswordReset(email)),
+        [auth, dispatchAuthWhisper],
+    );
 
-        try {
-            if (isRegistering) {
-                if (!normalizedRegistration) {
-                    return { ok: false, message: 'Kayit bilgileri eksik.' };
-                }
+    const completePasswordReset = useCallback(
+        async (newPassword: string): Promise<AuthResult> =>
+            dispatchAuthWhisper(await auth.completePasswordReset(newPassword)),
+        [auth, dispatchAuthWhisper],
+    );
 
-                pendingRegistrationProfileRef.current = {
-                    email: normalizedEmail,
-                    ...normalizedRegistration
-                };
-
-                const { data, error } = await supabase.auth.signUp({
-                    email: normalizedEmail,
-                    password,
-                    options: {
-                        data: {
-                            full_name: normalizedRegistration.fullName,
-                            name: normalizedRegistration.fullName,
-                            username: normalizedRegistration.username,
-                            gender: normalizedRegistration.gender,
-                            birth_date: normalizedRegistration.birthDate
-                        }
-                    }
-                });
-
-                if (error) {
-                    const reason = normalizeAuthError(error.message);
-                    trackEvent('auth_failure', { flow, method: 'password', reason });
-                    return { ok: false, message: reason };
-                }
-                if (data.session?.user) {
-                    const mapped = toSessionUser(data.session.user);
-                    if (mapped) {
-                        setSessionUser(mapped);
-                    }
-                    trackEvent('signup_success', {
-                        flow,
-                        method: 'password',
-                        authMode: 'supabase'
-                    }, {
-                        userId: data.session.user.id
-                    });
-                    triggerWhisper("Account created.");
-                    return { ok: true, message: 'Kayit tamamlandi. Oturum acildi.' };
-                }
-
-                setSessionUser(null);
-                trackEvent('signup_pending_confirmation', {
-                    flow,
-                    method: 'password',
-                    authMode: 'supabase'
-                });
-                return {
-                    ok: true,
-                    message: 'Kayit tamamlandi. E-posta onayi sonrasi giris yap.'
-                };
-            }
-
-            const { data, error } = await supabase.auth.signInWithPassword({
-                email: normalizedEmail,
-                password
-            });
-
-            if (error) {
-                const reason = normalizeAuthError(error.message);
-                trackEvent('auth_failure', { flow, method: 'password', reason });
-                return { ok: false, message: reason };
-            }
-            const mapped = toSessionUser(data.user ?? data.session?.user ?? null);
-            if (mapped) {
-                setSessionUser(mapped);
-            }
-            const resolvedUserId = data.user?.id || data.session?.user?.id || mapped?.id || null;
-            trackEvent('login_success', {
-                flow,
-                method: 'password',
-                authMode: 'supabase'
-            }, {
-                userId: resolvedUserId
-            });
-            triggerWhisper("Welcome to the Ritual.");
-            return { ok: true };
-        } catch (error) {
-            const message = error instanceof Error ? error.message : 'Login failed.';
-            const reason = normalizeAuthError(message);
-            trackEvent('auth_failure', { flow, method: 'password', reason });
-            return { ok: false, message: reason };
-            return { ok: false, message: normalizeAuthError(message) };
-        }
-    };
-
-    const loginWithOAuthProvider = async (provider: 'google' | 'apple'): Promise<AuthResult> => {
-        if (!isSupabaseLive() || !supabase) {
-            return { ok: false, message: 'Sosyal giris icin Supabase gerekli.' };
-        }
-
-        try {
-            rememberPostAuthHash();
-            const redirectTo = buildAuthRedirectTo();
-            const { error } = await supabase.auth.signInWithOAuth({
-                provider,
-                options: { redirectTo }
-            });
-
-            if (error) return { ok: false, message: normalizeAuthError(error.message) };
-            return { ok: true };
-        } catch (error) {
-            const message = error instanceof Error ? error.message : 'OAuth login failed.';
-            return { ok: false, message: normalizeAuthError(message) };
-        }
-    };
-
-    const loginWithGoogle = async (): Promise<AuthResult> => loginWithOAuthProvider('google');
-
-    const loginWithApple = async (): Promise<AuthResult> => loginWithOAuthProvider('apple');
-
-    const requestPasswordReset = async (email: string): Promise<AuthResult> => {
-        const normalizedEmail = email.trim().toLowerCase();
-        if (!normalizedEmail) {
-            return { ok: false, message: 'E-posta gerekli.' };
-        }
-
-        if (!isSupabaseLive() || !supabase) {
-            return { ok: false, message: 'Sifre sifirlama icin Supabase gerekli.' };
-        }
-
-        try {
-            const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
-                redirectTo: buildAuthRedirectTo()
-            });
-            if (error) return { ok: false, message: normalizeAuthError(error.message) };
-            return { ok: true, message: 'Sifre yenileme baglantisi e-posta adresine gonderildi.' };
-        } catch (error) {
-            const message = error instanceof Error ? error.message : 'Password reset failed.';
-            return { ok: false, message: normalizeAuthError(message) };
-        }
-    };
-
-    const completePasswordReset = async (newPassword: string): Promise<AuthResult> => {
-        const normalizedPassword = newPassword.trim();
-        if (normalizedPassword.length < 6) {
-            return { ok: false, message: 'Sifre en az 6 karakter olmali.' };
-        }
-
-        if (!isSupabaseLive() || !supabase) {
-            return { ok: false, message: 'Sifre guncelleme icin Supabase gerekli.' };
-        }
-
-        try {
-            const { error } = await supabase.auth.updateUser({ password: normalizedPassword });
-            if (error) return { ok: false, message: normalizeAuthError(error.message) };
-
-            setIsPasswordRecoveryMode(false);
-            clearRecoveryUrlState();
-            triggerWhisper("Password updated.");
-            return { ok: true, message: 'Sifre guncellendi.' };
-        } catch (error) {
-            const message = error instanceof Error ? error.message : 'Password update failed.';
-            return { ok: false, message: normalizeAuthError(message) };
-        }
-    };
-
-    const logout = async () => {
-        if (isSupabaseLive() && supabase) {
-            await supabase.auth.signOut();
-        }
-        setSessionUser(null);
-        setIsPasswordRecoveryMode(false);
+    const logout = useCallback(async () => {
+        // XP/share prompt cleanup is driven by the user-change useEffect below;
+        // AuthContext just clears the auth state.
         setSharePromptEvent(null);
-        setState(buildInitialXPState("Orbiting nearby..."));
-    };
+        await auth.logout();
+    }, [auth]);
 
     const updateAvatar = (url: string) => {
         updateState({ avatarUrl: normalizeAvatarUrl(url) || undefined });
@@ -1559,13 +1298,12 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         });
 
         const displayName = normalizedProfile.fullName || normalizedProfile.username || user.name;
-        setSessionUser({
-            ...user,
+        auth.mergeSessionUser({
             name: displayName,
             fullName: normalizedProfile.fullName,
             username: normalizedProfile.username,
             gender: normalizedProfile.gender,
-            birthDate: normalizedProfile.birthDate
+            birthDate: normalizedProfile.birthDate,
         });
 
         if (isSupabaseLive() && supabase) {
@@ -1740,6 +1478,12 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         </XPContext.Provider>
     );
 };
+
+export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+    <AuthProvider>
+        <XPProviderInner>{children}</XPProviderInner>
+    </AuthProvider>
+);
 
 export const useXP = () => {
     const context = useContext(XPContext);
