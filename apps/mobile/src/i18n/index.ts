@@ -5,9 +5,24 @@ import { fr } from './fr';
 import { tr } from './tr';
 
 export type AppLanguage = 'en' | 'tr' | 'es' | 'fr';
-export type MobileTranslations = typeof tr;
+type DeepWiden<T> =
+  T extends (...args: infer Args) => infer Return
+    ? (...args: Args) => Return
+    : T extends string
+      ? string
+      : T extends number
+        ? number
+        : T extends boolean
+          ? boolean
+          : T extends readonly unknown[]
+            ? { readonly [K in keyof T]: DeepWiden<T[K]> }
+            : T extends object
+              ? { readonly [K in keyof T]: DeepWiden<T[K]> }
+              : T;
 
-export const mobileTranslations = { en, tr, es, fr } as const satisfies Record<AppLanguage, MobileTranslations>;
+export type MobileTranslations = DeepWiden<typeof tr>;
+
+export const mobileTranslations: Record<AppLanguage, MobileTranslations> = { en, tr, es, fr };
 
 /** Returns the device's primary language code mapped to a supported AppLanguage. */
 export const getDeviceLanguage = (): AppLanguage => {

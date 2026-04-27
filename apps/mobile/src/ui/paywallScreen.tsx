@@ -3,6 +3,7 @@ import type { Product } from 'expo-iap';
 import {
   ActivityIndicator,
   Animated,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -263,6 +264,89 @@ const PlanCard = ({
   );
 };
 
+type PaywallLanguage = 'tr' | 'en' | 'es' | 'fr';
+
+const PAYWALL_LEGAL_COPY: Record<PaywallLanguage, {
+  oneTimeLegal: string;
+  subscriptionLegalYear: (price: string) => string;
+  subscriptionLegalMonth: (price: string) => string;
+  webPreview: string;
+  plansLoading: string;
+  currentPlanActive: string;
+  privacyPolicy: string;
+  termsOfService: string;
+  restorePurchases: string;
+}> = {
+  tr: {
+    oneTimeLegal: 'Tek seferlik odemedir. Yenilenmez.',
+    subscriptionLegalYear: (price) =>
+      Platform.OS === 'ios'
+        ? `Abonelik ${price} / yil olarak yenilenir. Odeme iTunes hesabinizdan alinir. Abonelik donem sonu otomatik yenilenir. Yenilemeyi iptal etmek icin App Store > Hesap > Abonelikler yolunu izleyebilirsiniz. Iptal en az 24 saat oncesinden yapilmalidir.`
+        : `Abonelik ${price} / yil olarak yenilenir. Odeme Google Play hesabinizdan alinir. Abonelik donem sonu otomatik yenilenir. Yenilemeyi iptal etmek icin Google Play > Abonelikler > 180 Absolute Cinema > Iptal Et yolunu izleyebilirsiniz. Iptal en az 24 saat oncesinden yapilmalidir.`,
+    subscriptionLegalMonth: (price) =>
+      Platform.OS === 'ios'
+        ? `Abonelik ${price} / ay olarak yenilenir. Odeme iTunes hesabinizdan alinir. Abonelik donem sonu otomatik yenilenir. Yenilemeyi iptal etmek icin App Store > Hesap > Abonelikler yolunu izleyebilirsiniz. Iptal en az 24 saat oncesinden yapilmalidir.`
+        : `Abonelik ${price} / ay olarak yenilenir. Odeme Google Play hesabinizdan alinir. Abonelik donem sonu otomatik yenilenir. Yenilemeyi iptal etmek icin Google Play > Abonelikler > 180 Absolute Cinema > Iptal Et yolunu izleyebilirsiniz. Iptal en az 24 saat oncesinden yapilmalidir.`,
+    webPreview: 'Web onizleme. Satin alma mobilde calisir.',
+    plansLoading: 'Planlar hazirlaniyor. Fiyatlar yuklenince satin alma acilacak.',
+    currentPlanActive: 'Bu plan hesabinda zaten acik.',
+    privacyPolicy: 'Gizlilik Politikasi',
+    termsOfService: 'Kullanim Kosullari',
+    restorePurchases: 'Satin alimlarini geri yukle',
+  },
+  en: {
+    oneTimeLegal: 'One-time payment. Does not renew.',
+    subscriptionLegalYear: (price) =>
+      Platform.OS === 'ios'
+        ? `Subscription renews at ${price}/year. Payment is charged to your iTunes Account. Subscription auto-renews at the end of each period. To cancel, go to App Store > Account > Subscriptions. Cancellation must be made at least 24 hours before the end of the current period.`
+        : `Subscription renews at ${price}/year. Payment is charged to your Google Play account. Subscription auto-renews at the end of each period. To cancel, go to Google Play > Subscriptions > 180 Absolute Cinema > Cancel. Cancellation must be made at least 24 hours before the end of the current period.`,
+    subscriptionLegalMonth: (price) =>
+      Platform.OS === 'ios'
+        ? `Subscription renews at ${price}/month. Payment is charged to your iTunes Account. Subscription auto-renews at the end of each period. To cancel, go to App Store > Account > Subscriptions. Cancellation must be made at least 24 hours before the end of the current period.`
+        : `Subscription renews at ${price}/month. Payment is charged to your Google Play account. Subscription auto-renews at the end of each period. To cancel, go to Google Play > Subscriptions > 180 Absolute Cinema > Cancel. Cancellation must be made at least 24 hours before the end of the current period.`,
+    webPreview: 'Web preview. Purchases work on mobile.',
+    plansLoading: 'Loading plans. Purchase will be available once prices load.',
+    currentPlanActive: 'This plan is already active on your account.',
+    privacyPolicy: 'Privacy Policy',
+    termsOfService: 'Terms of Service',
+    restorePurchases: 'Restore purchases',
+  },
+  es: {
+    oneTimeLegal: 'Pago unico. No se renueva.',
+    subscriptionLegalYear: (price) =>
+      Platform.OS === 'ios'
+        ? `La suscripcion se renueva a ${price}/ano. El pago se cobra en tu cuenta de iTunes. La suscripcion se renueva automaticamente al final de cada periodo. Para cancelar, ve a App Store > Cuenta > Suscripciones. La cancelacion debe realizarse al menos 24 horas antes del final del periodo actual.`
+        : `La suscripcion se renueva a ${price}/ano. El pago se cobra en tu cuenta de Google Play. La suscripcion se renueva automaticamente al final de cada periodo. Para cancelar, ve a Google Play > Suscripciones > 180 Absolute Cinema > Cancelar. La cancelacion debe realizarse al menos 24 horas antes del final del periodo actual.`,
+    subscriptionLegalMonth: (price) =>
+      Platform.OS === 'ios'
+        ? `La suscripcion se renueva a ${price}/mes. El pago se cobra en tu cuenta de iTunes. La suscripcion se renueva automaticamente al final de cada periodo. Para cancelar, ve a App Store > Cuenta > Suscripciones. La cancelacion debe realizarse al menos 24 horas antes del final del periodo actual.`
+        : `La suscripcion se renueva a ${price}/mes. El pago se cobra en tu cuenta de Google Play. La suscripcion se renueva automaticamente al final de cada periodo. Para cancelar, ve a Google Play > Suscripciones > 180 Absolute Cinema > Cancelar. La cancelacion debe realizarse al menos 24 horas antes del final del periodo actual.`,
+    webPreview: 'Vista previa web. Las compras funcionan en el movil.',
+    plansLoading: 'Cargando planes. La compra estara disponible cuando se carguen los precios.',
+    currentPlanActive: 'Este plan ya esta activo en tu cuenta.',
+    privacyPolicy: 'Politica de Privacidad',
+    termsOfService: 'Terminos de Servicio',
+    restorePurchases: 'Restaurar compras',
+  },
+  fr: {
+    oneTimeLegal: 'Paiement unique. Ne se renouvelle pas.',
+    subscriptionLegalYear: (price) =>
+      Platform.OS === 'ios'
+        ? `L'abonnement se renouvelle a ${price}/an. Le paiement est debite de votre compte iTunes. L'abonnement se renouvelle automatiquement a la fin de chaque periode. Pour annuler, allez dans App Store > Compte > Abonnements. L'annulation doit etre effectuee au moins 24 heures avant la fin de la periode en cours.`
+        : `L'abonnement se renouvelle a ${price}/an. Le paiement est debite de votre compte Google Play. L'abonnement se renouvelle automatiquement a la fin de chaque periode. Pour annuler, allez dans Google Play > Abonnements > 180 Absolute Cinema > Annuler. L'annulation doit etre effectuee au moins 24 heures avant la fin de la periode en cours.`,
+    subscriptionLegalMonth: (price) =>
+      Platform.OS === 'ios'
+        ? `L'abonnement se renouvelle a ${price}/mois. Le paiement est debite de votre compte iTunes. L'abonnement se renouvelle automatiquement a la fin de chaque periode. Pour annuler, allez dans App Store > Compte > Abonnements. L'annulation doit etre effectuee au moins 24 heures avant la fin de la periode en cours.`
+        : `L'abonnement se renouvelle a ${price}/mois. Le paiement est debite de votre compte Google Play. L'abonnement se renouvelle automatiquement a la fin de chaque periode. Pour annuler, allez dans Google Play > Abonnements > 180 Absolute Cinema > Annuler. L'annulation doit etre effectuee au moins 24 heures avant la fin de la periode en cours.`,
+    webPreview: 'Apercu web. Les achats fonctionnent sur mobile.',
+    plansLoading: 'Chargement des plans. L\'achat sera disponible une fois les prix charges.',
+    currentPlanActive: 'Ce plan est deja actif sur votre compte.',
+    privacyPolicy: 'Politique de Confidentialite',
+    termsOfService: 'Conditions d\'Utilisation',
+    restorePurchases: 'Restaurer les achats',
+  },
+};
+
 export const PaywallModal = ({
   visible,
   onClose,
@@ -274,6 +358,7 @@ export const PaywallModal = ({
   loading = false,
   purchasing,
   error,
+  language = 'tr',
 }: {
   visible: boolean;
   onClose: () => void;
@@ -285,6 +370,7 @@ export const PaywallModal = ({
   loading?: boolean;
   purchasing: boolean;
   error: string | null;
+  language?: PaywallLanguage;
 }) => {
   const [selected, setSelected] = useState<IapPlan>('annual');
 
@@ -332,16 +418,17 @@ export const PaywallModal = ({
     selected === 'supporter'
       ? `${selectedPlan.label} • ${selectedPlan.price} • tek seferlik`
       : `${selectedPlan.label} • ${selectedPlan.price} • ${selectedPlan.period}`;
+  const legalCopy = PAYWALL_LEGAL_COPY[language] || PAYWALL_LEGAL_COPY.en;
   const paymentLegal =
     selected === 'supporter'
-      ? 'Tek seferlik odemedir. Yenilenmez. Iade icin App Store / Google Play sartlari gecerlidir.'
-      : Platform.OS === 'android'
-        ? `${selectedPlan.price} tutarinda ${selected === 'annual' ? 'yillik' : 'aylik'} abonelik. Donem bitmeden 24 saat once iptal edilmezse ayni ucretle otomatik yenilenir. Iptal: Google Play → Hesabim → Abonelikler.`
-        : `${selectedPlan.price} tutarinda ${selected === 'annual' ? 'yillik' : 'aylik'} abonelik. Donem bitmeden 24 saat once iptal edilmezse ayni ucretle otomatik yenilenir. Iptal: App Store → Hesap → Abonelikler.`;
+      ? legalCopy.oneTimeLegal
+      : selected === 'annual'
+        ? legalCopy.subscriptionLegalYear(selectedPlan.price)
+        : legalCopy.subscriptionLegalMonth(selectedPlan.price);
   const footerNote = isWebPreview
-    ? 'Web onizleme. Satin alma mobilde calisir.'
+    ? legalCopy.webPreview
     : isProductLoading
-      ? 'Planlar hazirlaniyor. Fiyatlar yuklenince satin alma acilacak.'
+      ? legalCopy.plansLoading
     : paymentLegal;
   const ctaLabel = purchasing ? 'Isleniyor...' : 'Odemeyi yap';
   const currentPlanLabel =
@@ -352,7 +439,7 @@ export const PaywallModal = ({
       : 'Aktif bir planin var. Istersen yine de diger secenekleri inceleyebilirsin.';
   const effectiveFooterNote =
     !isWebPreview && selectedIsCurrentPlan
-      ? 'Bu plan hesabinda zaten acik.'
+      ? legalCopy.currentPlanActive
       : footerNote;
   const effectiveCtaLabel = purchasing
     ? 'Isleniyor...'
@@ -507,6 +594,26 @@ export const PaywallModal = ({
 
           <Text style={pw.legalText}>{effectiveFooterNote}</Text>
 
+          <View style={pw.legalLinksRow}>
+            <Pressable
+              onPress={() => {
+                void Linking.openURL('https://180absolutecinema.com/privacy/');
+              }}
+              accessibilityRole="link"
+            >
+              <Text style={pw.legalLinkText}>{legalCopy.privacyPolicy}</Text>
+            </Pressable>
+            <Text style={pw.legalLinkDivider}>|</Text>
+            <Pressable
+              onPress={() => {
+                void Linking.openURL('https://180absolutecinema.com/terms/');
+              }}
+              accessibilityRole="link"
+            >
+              <Text style={pw.legalLinkText}>{legalCopy.termsOfService}</Text>
+            </Pressable>
+          </View>
+
           {!isWebPreview && onRestore ? (
             <Pressable
               style={({ pressed }) => [pw.restoreBtn, pressed ? pw.restoreBtnPressed : null]}
@@ -515,7 +622,7 @@ export const PaywallModal = ({
               accessibilityRole="button"
               accessibilityLabel="Satin alimlari geri yukle"
             >
-              <Text style={pw.restoreBtnText}>Satin alimlarini geri yukle</Text>
+              <Text style={pw.restoreBtnText}>{legalCopy.restorePurchases}</Text>
             </Pressable>
           ) : null}
         </View>
@@ -998,6 +1105,22 @@ const pw = StyleSheet.create({
     lineHeight: 16,
     color: TEXT_MUTED,
     textAlign: 'center',
+  },
+  legalLinksRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 6,
+  },
+  legalLinkText: {
+    fontSize: 11,
+    color: SAGE,
+    textDecorationLine: 'underline',
+  },
+  legalLinkDivider: {
+    fontSize: 11,
+    color: TEXT_MUTED,
   },
   restoreBtn: {
     alignSelf: 'center',

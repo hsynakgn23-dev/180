@@ -4,6 +4,8 @@ import { applyPoolAnswerMarks } from './lib/markUnlock.js';
 import {
     DAILY_QUIZ_CORRECT_XP
 } from '../src/domain/dailyQuizRewards.js';
+import { getPoolQuizReward } from '../src/domain/progressionRewards.js';
+import { applyProgressionReward } from './lib/progressionProfile.js';
 
 export const config = { runtime: 'nodejs' };
 
@@ -21,6 +23,19 @@ type ApiResponse = {
 
 const POOL_CORRECT_XP = DAILY_QUIZ_CORRECT_XP || 10;
 const POOL_PERFECT_BONUS_XP = 25;
+
+/**
+ * Hata yaniti sablonu. Frontend quizTransport + UI bu alanlari kullaniyor:
+ *  - error_code: makine-okunur kimlik ("invalid_option", "server_error" ...)
+ *  - retriable: transport katmani bunu gorunce otomatik retry yapacak mi?
+ *    (yalnizca network / 5xx gibi gecici hatalar true olmali.)
+ */
+const errorPayload = (
+    error: string,
+    error_code: string,
+    retriable: boolean,
+    extra: Record<string, unknown> = {}
+): Record<string, unknown> => ({ ok: false, error, error_code, retriable, ...extra });
 
 const sendJson = (
     res: ApiResponse,
@@ -89,25 +104,30 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     }
 
     if (req.method !== 'POST') {
-        return sendJson(res, 405, { ok: false, error: 'Method not allowed.' }, cors);
+        return sendJson(res, 405, errorPayload('Method not allowed.', 'method_not_allowed', false), cors);
     }
+
+    // quizTransport'un gonderdigi idempotency key. Suanda gozlenebilirlik icin
+    // logluyoruz; record_pool_answer RPC'si zaten (user_id, question_id) uzerinden
+    // duplicate koruma yapiyor.
+    const idempotencyKey = getHeader(req, 'x-idempotency-key');
 
     const accessToken = getBearerToken(req);
     if (!accessToken) {
-        return sendJson(res, 401, { ok: false, error: 'Missing authorization.' }, cors);
+        return sendJson(res, 401, errorPayload('Oturum bulunamadi. Lutfen yeniden giris yapin.', 'not_authenticated', false), cors);
     }
 
     const supabaseUrl = getSupabaseUrl();
     const supabaseServiceKey = getSupabaseServiceRoleKey();
     if (!supabaseUrl || !supabaseServiceKey) {
-        return sendJson(res, 500, { ok: false, error: 'Server config error.' }, cors);
+        return sendJson(res, 500, errorPayload('Sunucu yapilandirma hatasi.', 'server_config_error', false), cors);
     }
 
     const supabase = createSupabaseServiceClient(supabaseUrl, supabaseServiceKey);
 
     const { data: { user }, error: authError } = await supabase.auth.getUser(accessToken);
     if (authError || !user) {
-        return sendJson(res, 401, { ok: false, error: 'Invalid token.' }, cors);
+        return sendJson(res, 401, errorPayload('Oturum gecersiz. Lutfen yeniden giris yapin.', 'invalid_token', false), cors);
     }
 
     const body = await parseBody(req);
@@ -117,10 +137,10 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     const lang = String(bodyObj.language || bodyObj.lang || 'tr').trim();
 
     if (!questionId) {
-        return sendJson(res, 400, { ok: false, error: 'Missing question_id.' }, cors);
+        return sendJson(res, 400, errorPayload('Soru kimligi eksik.', 'missing_question_id', false), cors);
     }
     if (!['a', 'b', 'c', 'd'].includes(selectedOption)) {
-        return sendJson(res, 400, { ok: false, error: 'Invalid selected_option.' }, cors);
+        return sendJson(res, 400, errorPayload('Gecersiz cevap secenegi.', 'invalid_option', false), cors);
     }
 
     const { data: question, error: questionError } = await supabase
@@ -130,7 +150,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         .single();
 
     if (questionError || !question) {
-        return sendJson(res, 404, { ok: false, error: 'Question not found.' }, cors);
+        return sendJson(res, 404, errorPayload('Soru bulunamadi.', 'question_not_found', false), cors);
     }
 
     const isCorrect = selectedOption === question.correct_option;
@@ -139,6 +159,11 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     const explanation = explanations[validLang] || explanations.tr || explanations.en || '';
 
     const fallbackDisplayName = user.email ? String(user.email).split('@')[0] : null;
+    // NOT: Production DB'deki record_pool_answer RPC 9 parametre aliyor (icinde
+    // p_selected_option var). Repo'daki migration 20260411 ise 8 parametreli
+    // eski versiyonu tanimliyor — prod elden guncellenmis, aradaki fark hicbir
+    // cevabin kaydedilememesine yol aciyordu. Simdi selected_option gecirildigi
+    // icin RPC bulunuyor ve cagri basarili oluyor.
     const { data: rpcData, error: rpcError } = await supabase.rpc('record_pool_answer', {
         p_user_id: user.id,
         p_question_id: questionId,
@@ -157,8 +182,10 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
             message: rpcError.message,
             userId: user.id,
             questionId,
+            idempotencyKey: idempotencyKey || null,
         });
-        return sendJson(res, 500, { ok: false, error: 'Failed to save answer.' }, cors);
+        // DB gecici arizalarinda transport tekrar denesin diye retriable:true.
+        return sendJson(res, 500, errorPayload('Cevap kaydedilemedi, tekrar denenecek.', 'rpc_error', true), cors);
     }
 
     const rpcRow =
@@ -170,8 +197,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         console.error('pool-answer: record_pool_answer returned no data', {
             userId: user.id,
             questionId,
+            idempotencyKey: idempotencyKey || null,
         });
-        return sendJson(res, 500, { ok: false, error: 'Failed to save answer.' }, cors);
+        return sendJson(res, 500, errorPayload('Cevap kaydedilemedi, tekrar denenecek.', 'rpc_empty', true), cors);
     }
 
     const duplicate = rpcRow.duplicate === true;
@@ -203,6 +231,41 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
             null
         );
 
+    // Calculate pool quiz reward (tickets + arena score) and persist to profile.
+    // XP is already handled by the RPC, so we pass xp: 0 to avoid double-counting.
+    let ticketsEarned = 0;
+    let arenaScoreEarned = 0;
+    if (!duplicate && completed) {
+        try {
+            const poolReward = getPoolQuizReward({ isCompleted: true, isPerfect });
+            ticketsEarned = poolReward.tickets;
+            arenaScoreEarned = poolReward.arenaScore;
+
+            await applyProgressionReward({
+                supabase,
+                userId: user.id,
+                fallbackEmail: user.email || null,
+                fallbackDisplayName: fallbackDisplayName,
+                reward: {
+                    xp: 0,
+                    tickets: poolReward.tickets,
+                    arenaScore: poolReward.arenaScore,
+                    arenaActivity: poolReward.arenaActivity,
+                },
+                ledger: {
+                    source: 'pool_quiz',
+                    sourceId: String(question.movie_id || ''),
+                    reason: 'pool_quiz_complete',
+                },
+            });
+        } catch (rewardError) {
+            console.error('pool-answer: applyProgressionReward failed', {
+                userId: user.id,
+                error: rewardError instanceof Error ? rewardError.message : 'unknown',
+            });
+        }
+    }
+
     return sendJson(res, 200, {
         ok: true,
         question_id: questionId,
@@ -212,6 +275,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         explanation,
         xp_earned: xpEarned,
         bonus_xp: bonusXp,
+        tickets_earned: ticketsEarned,
+        arena_score_earned: arenaScoreEarned,
         duplicate,
         progress: {
             answered,

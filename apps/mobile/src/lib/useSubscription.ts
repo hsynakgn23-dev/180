@@ -15,7 +15,7 @@ import { resolveMobileApiBaseUrl } from './mobileEnv';
 export const IAP_PRODUCTS = {
   monthly: 'com.absolutecinema.premium.monthly',
   annual: 'com.absolutecinema.premium.annual',
-  supporter: 'com.absolutecinema.premium.supporter',
+  supporter: 'com.absolutecinema.premium.supporter.v2',
 } as const;
 
 export type IapPlan = keyof typeof IAP_PRODUCTS;

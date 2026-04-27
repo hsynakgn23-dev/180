@@ -6,6 +6,7 @@ export const ANALYTICS_EVENT_NAMES = [
     'auth_failure',
     'signup_success',
     'signup_pending_confirmation',
+    'email_verification_requested',
     'login_success',
     'oauth_start',
     'oauth_redirect_started',

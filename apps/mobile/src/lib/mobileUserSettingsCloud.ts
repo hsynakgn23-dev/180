@@ -1,4 +1,5 @@
 import {
+  normalizeUserSettingsSnapshot,
   type UserSettingsSnapshot,
 } from '../../../../src/domain/userSettings';
 import {
@@ -46,18 +47,19 @@ export const readMobileUserSettingsFromCloud = async (): Promise<ReadMobileUserS
 };
 
 export const syncMobileUserSettingsToCloud = async (
-  settings: UserSettingsSnapshot
+  settings: Partial<UserSettingsSnapshot>
 ): Promise<SyncMobileUserSettingsResult> => {
+  const normalizedSettings = normalizeUserSettingsSnapshot(settings);
   const sessionResult = await readSupabaseSessionSafe();
   const userId = String(sessionResult.session?.user?.id || '').trim();
   if (!userId) {
     return {
       ok: false,
-      settings,
+      settings: normalizedSettings,
       message: 'user_session_missing',
     };
   }
   // Cast needed: real SupabaseClient fluent types differ from our minimal interface
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return syncUserSettingsToCloud(supabase as any, userId, settings);
+  return syncUserSettingsToCloud(supabase as any, userId, normalizedSettings);
 };

@@ -53,6 +53,11 @@ export const MARK_CATALOG: MarkCatalogEntry[] = [
   { id: 'quiet_following', title: 'Quiet Following', description: 'Follow 5 users.', category: 'Social', whisper: 'A small orbit.', motion: 'pulse' },
   { id: 'echo_chamber', title: 'Echo Chamber', description: 'Give 10 Echoes.', category: 'Social', whisper: 'Signal sustained.', motion: 'spin' },
 
+  // Arena season marks — top 3 per cohort per week
+  { id: 'arena_gold', title: 'Arena Gold', description: 'Finish 1st in your weekly arena cohort.', category: 'Legacy', whisper: 'The week was yours.', motion: 'signal' },
+  { id: 'arena_silver', title: 'Arena Silver', description: 'Finish 2nd in your weekly arena cohort.', category: 'Legacy', whisper: 'Within arm\u2019s reach.', motion: 'spark' },
+  { id: 'arena_bronze', title: 'Arena Bronze', description: 'Finish 3rd in your weekly arena cohort.', category: 'Legacy', whisper: 'A podium earned.', motion: 'spark' },
+
   { id: 'eternal_mark', title: 'Eternal', description: 'Reach the Eternal League.', category: 'Legacy', whisper: 'Still here.', motion: 'float' },
   { id: 'legacy', title: 'The Pillar', description: 'Active for 30+ days.', category: 'Legacy', whisper: 'A pillar in time.', motion: 'float' },
   { id: 'archive_keeper', title: 'Archive Keeper', description: 'Submit 50 comments.', category: 'Legacy', whisper: 'The archive remembers.', motion: 'float' },
