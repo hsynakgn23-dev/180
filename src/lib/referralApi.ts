@@ -1,4 +1,5 @@
 import { getConfiguredApiBase } from './apiBase';
+import { fetchWithAuth } from './fetchWithAuth';
 import { isSupabaseLive, supabase } from './supabase';
 
 type ReferralApiErrorCode =
@@ -73,11 +74,11 @@ const postReferralApi = async <T>(
     }
 
     try {
-        const response = await fetch(getApiUrl(path), {
+        const response = await fetchWithAuth(getApiUrl(path), {
             method: 'POST',
+            isWrite: true,
             headers: {
-                'content-type': 'application/json',
-                Authorization: `Bearer ${accessToken}`
+                'content-type': 'application/json'
             },
             body: JSON.stringify(payload)
         });

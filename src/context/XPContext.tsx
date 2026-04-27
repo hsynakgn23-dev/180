@@ -7,6 +7,7 @@ import { trackEvent } from '../lib/analytics';
 import { MAX_AVATAR_DATA_URL_LENGTH, normalizeAvatarUrl } from '../lib/avatarUpload';
 import { STREAK_MILESTONE_SET } from '../domain/celebrations';
 import { buildApiUrl } from '../lib/apiBase';
+import { fetchWithAuth } from '../lib/fetchWithAuth';
 import { sendEngagementNotification } from '../lib/engagementNotificationApi';
 import { claimInviteCodeViaApi, ensureInviteCodeViaApi, getReferralDeviceKey } from '../lib/referralApi';
 export { getLeagueKeyByIndex, resolveLeagueInfo, resolveLeagueKey, resolveLeagueKeyFromXp } from '../domain/leagueSystem';
@@ -986,13 +987,9 @@ export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         let cancelled = false;
         (async () => {
             try {
-                const headers: Record<string, string> = { Accept: 'application/json' };
-                if (supabase) {
-                    const { data } = await supabase.auth.getSession();
-                    const token = data?.session?.access_token;
-                    if (token) headers['Authorization'] = `Bearer ${token}`;
-                }
-                const res = await fetch(buildApiUrl('/api/subscription-status'), { headers });
+                const res = await fetchWithAuth(buildApiUrl('/api/subscription-status'), {
+                    headers: { Accept: 'application/json' },
+                });
                 if (!cancelled && res.ok) {
                     const json = await res.json();
                     setIsPremium(json.tier === 'premium');

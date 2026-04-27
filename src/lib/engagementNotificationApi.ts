@@ -1,5 +1,5 @@
 import { buildApiUrl } from './apiBase';
-import { fetchWithTimeout } from './network';
+import { fetchWithAuth } from './fetchWithAuth';
 import { isSupabaseLive, supabase } from './supabase';
 
 type EngagementNotificationApiErrorCode =
@@ -79,18 +79,14 @@ export const sendEngagementNotification = async (
     }
 
     try {
-        const response = await fetchWithTimeout({
-            url: buildApiUrl('/api/push/engagement'),
-            timeoutMs: 10000,
-            timeoutMessage: 'Engagement notification timeout',
-            init: {
-                method: 'POST',
-                headers: {
-                    'content-type': 'application/json',
-                    Authorization: `Bearer ${accessToken}`
-                },
-                body: JSON.stringify(body)
-            }
+        const response = await fetchWithAuth(buildApiUrl('/api/push/engagement'), {
+            method: 'POST',
+            isWrite: true,
+            signal: AbortSignal.timeout(10000),
+            headers: {
+                'content-type': 'application/json'
+            },
+            body: JSON.stringify(body)
         });
 
         const rawBody = (await response.json().catch(() => ({}))) as {
