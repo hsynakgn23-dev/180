@@ -75,6 +75,31 @@ type LoadWalletProfileInput = {
   userId: string;
   fallbackEmail?: string | null;
   fallbackDisplayName?: string | null;
+  authenticatedUserId?: string | null;
+};
+
+export class WalletProfileAuthorizationError extends Error {
+  statusCode = 403;
+
+  constructor() {
+    super('Wallet profile access is forbidden for this authenticated user.');
+    this.name = 'WalletProfileAuthorizationError';
+  }
+}
+
+const assertAuthenticatedWalletOwner = (input: {
+  userId: string;
+  authenticatedUserId?: string | null;
+}): void => {
+  const userId = String(input.userId ?? '').trim();
+  const authenticatedUserId = String(input.authenticatedUserId ?? '').trim();
+  if (authenticatedUserId && userId !== authenticatedUserId) {
+    console.error('[wallet-profile] owner mismatch rejected', {
+      userId,
+      authenticatedUserId,
+    });
+    throw new WalletProfileAuthorizationError();
+  }
 };
 
 type LoadedWalletProfile = {
@@ -360,6 +385,7 @@ const toLoadedWalletProfile = (data: unknown): LoadedWalletProfile => {
 export const loadWalletProfile = async (
   input: LoadWalletProfileInput
 ): Promise<LoadedWalletProfile> => {
+  assertAuthenticatedWalletOwner(input);
   const { data } = await input.supabase
     .from('profiles')
     .select(WALLET_PROFILE_COLUMNS)
@@ -447,9 +473,11 @@ export const mutateWalletProfile = async <TResult, TReason extends string>(input
   userId: string;
   fallbackEmail?: string | null;
   fallbackDisplayName?: string | null;
+  authenticatedUserId?: string | null;
   maxRetries?: number;
   mutate: (loaded: LoadedWalletProfile) => Promise<WalletMutationAttempt<TResult, TReason>> | WalletMutationAttempt<TResult, TReason>;
 }): Promise<WalletMutationResult<TResult, TReason>> => {
+  assertAuthenticatedWalletOwner(input);
   const maxRetries = Math.max(1, input.maxRetries || WALLET_MUTATION_MAX_RETRIES);
   for (let attempt = 0; attempt < maxRetries; attempt += 1) {
     const loaded = await loadWalletProfile(input);

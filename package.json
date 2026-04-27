@@ -45,6 +45,7 @@
     "test:referral:smoke:claim": "node test-referral-smoke.js claim",
     "test:referral:smoke:e2e": "node test-referral-smoke.js e2e",
     "test:referral:smoke:e2e:fresh": "node scripts/referral-smoke-e2e-fresh.mjs",
+    "test:cloudrun:unit": "tsc -p tsconfig.cloudrun.json && node tests/api/run-cloudrun-unit-tests.mjs",
     "test:mobile:deeplink:smoke": "node scripts/mobile-deeplink-smoke.mjs",
     "test:mobile:contracts": "tsx scripts/mobile-contract-smoke.mjs",
     "test:mobile:push-inbox:smoke": "tsx scripts/mobile-push-inbox-smoke.mjs",
