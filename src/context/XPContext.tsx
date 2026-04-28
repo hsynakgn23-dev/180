@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext } from 'react';
+import React, { useCallback, useMemo } from 'react';
 export { getLeagueKeyByIndex, resolveLeagueInfo, resolveLeagueKey, resolveLeagueKeyFromXp } from '../domain/leagueSystem';
 
 import { AuthProvider, useAuth } from './AuthContext';
@@ -96,19 +96,35 @@ interface XPContextType {
     isPremium: boolean;
 }
 
-const XPContext = createContext<XPContextType | undefined>(undefined);
+export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+    <AuthProvider>
+        <ProgressionProvider>
+            <ProfileProvider>{children}</ProfileProvider>
+        </ProgressionProvider>
+    </AuthProvider>
+);
 
-const XPProviderInner: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+/**
+ * Backward-compatible composite hook. Combines useAuth + useProgression +
+ * useProfile into the legacy XPContextType shape, with auth method wrappers
+ * that route AuthResult.whisper through progression.triggerWhisper. New code
+ * should prefer the dedicated hooks (useAuth / useProgression / useProfile)
+ * for tighter dependencies.
+ */
+export const useXP = (): XPContextType => {
     const auth = useAuth();
     const progression = useProgression();
     const profile = useProfile();
 
+    const triggerWhisper = progression.triggerWhisper;
+    const dismissSharePrompt = progression.dismissSharePrompt;
+
     const dispatchAuthWhisper = useCallback(
         (result: AuthResult): AuthResult => {
-            if (result.whisper) progression.triggerWhisper(result.whisper);
+            if (result.whisper) triggerWhisper(result.whisper);
             return result;
         },
-        [progression.triggerWhisper],
+        [triggerWhisper],
     );
 
     const login = useCallback(
@@ -145,93 +161,82 @@ const XPProviderInner: React.FC<{ children: React.ReactNode }> = ({ children }) 
     );
 
     const logout = useCallback(async () => {
-        progression.dismissSharePrompt();
+        dismissSharePrompt();
         await auth.logout();
-    }, [auth, progression]);
+    }, [auth, dismissSharePrompt]);
 
-    return (
-        <XPContext.Provider
-            value={{
-                xp: progression.xp,
-                league: progression.leagueName,
-                leagueInfo: progression.leagueInfo,
-                levelUpEvent: progression.levelUpEvent,
-                closeLevelUp: progression.closeLevelUp,
-                streakCelebrationEvent: progression.streakCelebrationEvent,
-                closeStreakCelebration: progression.closeStreakCelebration,
-                sharePromptEvent: progression.sharePromptEvent,
-                dismissSharePrompt: progression.dismissSharePrompt,
-                progressPercentage: progression.progressPercentage,
-                nextLevelXP: progression.nextLevelXP,
-                whisper: progression.whisper,
-                dailyRituals: progression.dailyRituals,
-                dailyRitualsCount: progression.dailyRitualsCount,
-                marks: progression.marks,
-                featuredMarks: progression.featuredMarks,
-                toggleFeaturedMark: progression.toggleFeaturedMark,
-                daysPresent: progression.daysPresent,
-                streak: progression.streak,
-                echoHistory: progression.echoHistory,
-                following: profile.following,
-                isFollowingUser: profile.isFollowingUser,
-                fullName: profile.fullName,
-                username: profile.username,
-                gender: profile.gender,
-                birthDate: profile.birthDate,
-                bio: profile.bio,
-                avatarId: profile.avatarId,
-                updateIdentity: profile.updateIdentity,
-                updatePersonalInfo: profile.updatePersonalInfo,
-                toggleFollowUser: profile.toggleFollowUser,
-                awardShareXP: progression.awardShareXP,
-                applyQuizProgress: progression.applyQuizProgress,
-                inviteCode: profile.inviteCode,
-                inviteLink: profile.inviteLink,
-                invitedByCode: profile.invitedByCode,
-                inviteClaimsCount: profile.inviteClaimsCount,
-                inviteRewardsEarned: profile.inviteRewardsEarned,
-                inviteRewardConfig: profile.inviteRewardConfig,
-                claimInviteCode: profile.claimInviteCode,
-                submitRitual: progression.submitRitual,
-                deleteRitual: progression.deleteRitual,
-                echoRitual: progression.echoRitual,
-                receiveEcho: progression.receiveEcho,
-                debugAddXP: progression.debugAddXP,
-                debugUnlockMark: progression.debugUnlockMark,
-                user: auth.user,
-                authMode: auth.authMode,
-                isPasswordRecoveryMode: auth.isPasswordRecoveryMode,
-                login,
-                requestPasswordReset,
-                completePasswordReset,
-                loginWithGoogle,
-                loginWithApple,
-                logout,
-                avatarUrl: profile.avatarUrl,
-                updateAvatar: profile.updateAvatar,
-                redeemInviteCode: profile.redeemInviteCode,
-                isPremium: profile.isPremium,
-            }}
-        >
-            {children}
-        </XPContext.Provider>
+    return useMemo<XPContextType>(
+        () => ({
+            xp: progression.xp,
+            league: progression.leagueName,
+            leagueInfo: progression.leagueInfo,
+            levelUpEvent: progression.levelUpEvent,
+            closeLevelUp: progression.closeLevelUp,
+            streakCelebrationEvent: progression.streakCelebrationEvent,
+            closeStreakCelebration: progression.closeStreakCelebration,
+            sharePromptEvent: progression.sharePromptEvent,
+            dismissSharePrompt: progression.dismissSharePrompt,
+            progressPercentage: progression.progressPercentage,
+            nextLevelXP: progression.nextLevelXP,
+            whisper: progression.whisper,
+            dailyRituals: progression.dailyRituals,
+            dailyRitualsCount: progression.dailyRitualsCount,
+            marks: progression.marks,
+            featuredMarks: progression.featuredMarks,
+            toggleFeaturedMark: progression.toggleFeaturedMark,
+            daysPresent: progression.daysPresent,
+            streak: progression.streak,
+            echoHistory: progression.echoHistory,
+            following: profile.following,
+            isFollowingUser: profile.isFollowingUser,
+            fullName: profile.fullName,
+            username: profile.username,
+            gender: profile.gender,
+            birthDate: profile.birthDate,
+            bio: profile.bio,
+            avatarId: profile.avatarId,
+            updateIdentity: profile.updateIdentity,
+            updatePersonalInfo: profile.updatePersonalInfo,
+            toggleFollowUser: profile.toggleFollowUser,
+            awardShareXP: progression.awardShareXP,
+            applyQuizProgress: progression.applyQuizProgress,
+            inviteCode: profile.inviteCode,
+            inviteLink: profile.inviteLink,
+            invitedByCode: profile.invitedByCode,
+            inviteClaimsCount: profile.inviteClaimsCount,
+            inviteRewardsEarned: profile.inviteRewardsEarned,
+            inviteRewardConfig: profile.inviteRewardConfig,
+            claimInviteCode: profile.claimInviteCode,
+            submitRitual: progression.submitRitual,
+            deleteRitual: progression.deleteRitual,
+            echoRitual: progression.echoRitual,
+            receiveEcho: progression.receiveEcho,
+            debugAddXP: progression.debugAddXP,
+            debugUnlockMark: progression.debugUnlockMark,
+            user: auth.user,
+            authMode: auth.authMode,
+            isPasswordRecoveryMode: auth.isPasswordRecoveryMode,
+            login,
+            requestPasswordReset,
+            completePasswordReset,
+            loginWithGoogle,
+            loginWithApple,
+            logout,
+            avatarUrl: profile.avatarUrl,
+            updateAvatar: profile.updateAvatar,
+            redeemInviteCode: profile.redeemInviteCode,
+            isPremium: profile.isPremium,
+        }),
+        [
+            auth,
+            progression,
+            profile,
+            login,
+            loginWithGoogle,
+            loginWithApple,
+            requestPasswordReset,
+            completePasswordReset,
+            logout,
+        ],
     );
-};
-
-export const XPProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-    <AuthProvider>
-        <ProgressionProvider>
-            <ProfileProvider>
-                <XPProviderInner>{children}</XPProviderInner>
-            </ProfileProvider>
-        </ProgressionProvider>
-    </AuthProvider>
-);
-
-export const useXP = () => {
-    const context = useContext(XPContext);
-    if (!context) {
-        throw new Error('useXP must be used within an XPProvider');
-    }
-    return context;
 };
