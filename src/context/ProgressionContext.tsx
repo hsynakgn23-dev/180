@@ -371,7 +371,6 @@ export const ProgressionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         return () => {
             active = false;
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [user?.email, user?.id]);
 
     // ---------- level up detection ----------
@@ -449,7 +448,6 @@ export const ProgressionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             persistUserXpStateToLocal(user.email, updated);
             return updated;
         });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isXpHydrated, user?.email]);
 
     useEffect(() => {

@@ -158,7 +158,6 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
         return () => {
             active = false;
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isXpHydrated, user?.email, user?.id]);
 
     const updateAvatar = useCallback(
