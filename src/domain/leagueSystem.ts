@@ -1,3 +1,5 @@
+import { LEVEL_THRESHOLD } from '../context/xpShared/state';
+
 export interface LeagueInfo {
   name: string;
   color: string;
@@ -20,8 +22,6 @@ export const LEAGUE_NAMES = [
 ] as const;
 
 export type LeagueKey = (typeof LEAGUE_NAMES)[number];
-
-export const LEVEL_THRESHOLD = 500;
 
 export const LEAGUES_DATA: Record<LeagueKey, LeagueInfo> = {
   Bronze: { name: 'Figuran', color: '#CD7F32', description: 'Sahneye ilk adim.' },

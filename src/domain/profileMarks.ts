@@ -1,6 +1,7 @@
 import { MARK_CATALOG } from './marksCatalog.js';
 import { readProfileFollowingCount } from './profileSocialState.js';
 import { TMDB_SEEDS } from '../data/tmdbSeeds.js';
+import { getLocalDateKey } from '../context/xpShared/state.js';
 
 type ProfileXpState = Record<string, unknown>;
 
@@ -81,13 +82,6 @@ const sanitizeStringList = (value: unknown, maxItems = 120, itemLimit = 80): str
     .map((entry) => normalizeText(entry, itemLimit))
     .filter(Boolean);
   return Array.from(new Set(cleaned)).slice(0, maxItems);
-};
-
-const getLocalDateKey = (value = new Date()): string => {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, '0');
-  const day = String(value.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
 };
 
 const normalizeDateKey = (value: unknown): string | null => {

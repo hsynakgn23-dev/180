@@ -7,6 +7,7 @@ import { TMDB_SEEDS } from '../../data/tmdbSeeds';
 import { runWithAbortTimeout } from '../../lib/network';
 import { resolvePosterCandidates } from '../../lib/posterCandidates';
 import { isSupabaseLive, supabase } from '../../lib/supabase';
+import { LEVEL_THRESHOLD } from '../../context/xpShared/state';
 import {
     getDefaultProfileVisibility,
     readProfileVisibilityFromXpState,
@@ -76,8 +77,6 @@ type PublicProfileData = {
     followCounts: FollowCountState;
     visibility: ProfileVisibility;
 };
-
-const LEVEL_THRESHOLD = 500;
 
 const MOVIE_ID_BY_TITLE = new Map(
     TMDB_SEEDS.map((movie) => [movie.title.trim().toLowerCase(), movie.id] as const)
