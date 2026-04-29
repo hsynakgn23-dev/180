@@ -1,4 +1,5 @@
 import { createCorsHeaders } from './lib/cors.js';
+import { parseBody, sendJson } from './lib/httpHelpers.js';
 import { createSupabaseServiceHeaders } from './lib/supabaseServiceHeaders.js';
 
 export const config = {
@@ -62,31 +63,6 @@ const EVENT_NAME_REGEX = /^[a-z0-9_:-]{2,80}$/i;
 const UUID_REGEX =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-const sendJson = (
-    res: ApiResponse,
-    status: number,
-    payload: Record<string, unknown>,
-    headers: Record<string, string> = {}
-) => {
-    if (res && typeof res.setHeader === 'function') {
-        for (const [key, value] of Object.entries(headers)) {
-            res.setHeader(key, value);
-        }
-    }
-
-    if (res && typeof res.status === 'function') {
-        return res.status(status).json(payload);
-    }
-
-    return new Response(JSON.stringify(payload), {
-        status,
-        headers: {
-            'content-type': 'application/json; charset=utf-8',
-            ...headers
-        }
-    });
-};
-
 const toTrimmed = (value: unknown, maxLength: number): string | null => {
     const text = String(value ?? '').trim();
     if (!text) return null;
@@ -104,27 +80,6 @@ const toIso = (value: unknown): string => {
 const toObject = (value: unknown): Record<string, unknown> | null => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
     return value as Record<string, unknown>;
-};
-
-const parseBody = async (req: ApiRequest): Promise<unknown> => {
-    if (req.body !== undefined) return req.body;
-    if (typeof req.on !== 'function') return null;
-
-    const chunks: string[] = [];
-    await new Promise<void>((resolve) => {
-        req.on?.('data', (chunk) => {
-            chunks.push(Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk));
-        });
-        req.on?.('end', () => resolve());
-    });
-
-    const raw = chunks.join('').trim();
-    if (!raw) return null;
-    try {
-        return JSON.parse(raw) as unknown;
-    } catch {
-        return null;
-    }
 };
 
 const normalizeEventName = (value: unknown): string | null => {

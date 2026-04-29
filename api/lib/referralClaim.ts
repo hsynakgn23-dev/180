@@ -1,4 +1,5 @@
 import { createCorsHeaders } from './cors.js';
+import { getBearerToken, parseBody, sendJson } from './httpHelpers.js';
 import { applyProgressionReward } from './progressionProfile.js';
 import { createSupabaseServiceHeaders } from './supabaseServiceHeaders.js';
 import { createSupabaseServiceClient } from './supabaseServiceClient.js';
@@ -62,72 +63,6 @@ type ServiceSupabase = ReturnType<typeof createSupabaseServiceClient>;
 
 const INVITE_CODE_REGEX = /^[A-Z0-9]{6,12}$/;
 const DEVICE_KEY_REGEX = /^[a-zA-Z0-9:_-]{8,80}$/;
-
-const sendJson = (
-    res: ApiResponse,
-    status: number,
-    payload: Record<string, unknown>,
-    headers: Record<string, string> = {}
-) => {
-    if (res && typeof res.setHeader === 'function') {
-        for (const [key, value] of Object.entries(headers)) {
-            res.setHeader(key, value);
-        }
-    }
-
-    if (res && typeof res.status === 'function') {
-        return res.status(status).json(payload);
-    }
-
-    return new Response(JSON.stringify(payload), {
-        status,
-        headers: {
-            'content-type': 'application/json; charset=utf-8',
-            ...headers
-        }
-    });
-};
-
-const getHeader = (req: ApiRequest, key: string): string => {
-    const headers = req.headers;
-    if (!headers) return '';
-
-    if (typeof (headers as Headers).get === 'function') {
-        return ((headers as Headers).get(key) || '').trim();
-    }
-
-    const objectHeaders = headers as Record<string, string | undefined>;
-    return (objectHeaders[key.toLowerCase()] || objectHeaders[key] || '').trim();
-};
-
-const getBearerToken = (req: ApiRequest): string | null => {
-    const authHeader = getHeader(req, 'authorization');
-    const match = authHeader.match(/^Bearer\s+(.+)$/i);
-    if (!match) return null;
-    const token = match[1].trim();
-    return token || null;
-};
-
-const parseBody = async (req: ApiRequest): Promise<unknown> => {
-    if (req.body !== undefined) return req.body;
-    if (typeof req.on !== 'function') return null;
-
-    const chunks: string[] = [];
-    await new Promise<void>((resolve) => {
-        req.on?.('data', (chunk) => {
-            chunks.push(Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk));
-        });
-        req.on?.('end', () => resolve());
-    });
-
-    const raw = chunks.join('').trim();
-    if (!raw) return null;
-    try {
-        return JSON.parse(raw) as unknown;
-    } catch {
-        return null;
-    }
-};
 
 const toObject = (value: unknown): Record<string, unknown> | null => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
