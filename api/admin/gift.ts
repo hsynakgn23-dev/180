@@ -333,14 +333,6 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
             metadata: auditMetadata
         });
 
-        if (audit.error) {
-            return sendJson(
-                res,
-                500,
-                { ok: false, errorCode: 'SERVER_ERROR', message: audit.error },
-                corsHeaders
-            );
-        }
 
         const { data: updated, error: updateError } = await serviceClient
             .from('gift_codes')
@@ -354,7 +346,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
         if (updateError || !updated) {
             const message = getErrorMessage(updateError, 'Gift code update failed.');
-            await updateAuditStatus(serviceClient, audit.id, auditMetadata, 'failed', message);
+            if (audit.id) {
+                await updateAuditStatus(serviceClient, audit.id, auditMetadata, 'failed', message);
+            }
             return sendJson(
                 res,
                 500,
@@ -367,12 +361,15 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         const { rows } = normalizedUpdated
             ? await attachGiftRedemptions(serviceClient, [normalizedUpdated])
             : { rows: [] };
-        const auditWarning = await updateAuditStatus(
-            serviceClient,
-            audit.id,
-            auditMetadata,
-            'fulfilled'
-        );
+        const auditUpdateWarning = audit.id
+            ? await updateAuditStatus(
+                  serviceClient,
+                  audit.id,
+                  auditMetadata,
+                  'fulfilled'
+              )
+            : '';
+        const auditWarning = audit.error || auditUpdateWarning;
 
         return sendJson(
             res,
@@ -449,14 +446,6 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         metadata: auditMetadata
     });
 
-    if (audit.error) {
-        return sendJson(
-            res,
-            500,
-            { ok: false, errorCode: 'SERVER_ERROR', message: audit.error },
-            corsHeaders
-        );
-    }
 
     const { data: inserted, error: insertError } = await serviceClient
         .from('gift_codes')
@@ -474,7 +463,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
     if (insertError || !inserted) {
         const message = getErrorMessage(insertError, 'Gift code insert failed.');
-        await updateAuditStatus(serviceClient, audit.id, auditMetadata, 'failed', message);
+        if (audit.id) {
+            await updateAuditStatus(serviceClient, audit.id, auditMetadata, 'failed', message);
+        }
         return sendJson(
             res,
             500,
@@ -484,12 +475,15 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     }
 
     const normalizedInserted = normalizeGiftCode(inserted);
-    const auditWarning = await updateAuditStatus(
-        serviceClient,
-        audit.id,
-        auditMetadata,
-        'fulfilled'
-    );
+    const auditUpdateWarning = audit.id
+        ? await updateAuditStatus(
+              serviceClient,
+              audit.id,
+              auditMetadata,
+              'fulfilled'
+          )
+        : '';
+    const auditWarning = audit.error || auditUpdateWarning;
 
     return sendJson(
         res,

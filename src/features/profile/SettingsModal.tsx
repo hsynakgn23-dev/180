@@ -79,12 +79,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         username,
         gender,
         birthDate,
-        inviteCode,
-        inviteLink,
-        invitedByCode,
-        inviteClaimsCount,
-        inviteRewardsEarned,
-        inviteRewardConfig,
         claimInviteCode,
         isPremium
     } = useXP();
@@ -231,63 +225,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     const inviteCopy = React.useMemo(() => {
         if (language === 'tr') {
             return {
-                title: 'Davet Programi',
-                subtitle: 'Linkini paylas, yeni kullanici gelirse ikiniz de XP kazanirsiniz.',
-                yourCode: 'Kodun',
-                copyLink: 'Linki Kopyala',
-                pasteCode: 'Davet Kodu Gir',
-                applyCode: 'Kodu Uygula',
-                alreadyClaimed: 'Bu hesap zaten bir davet kodu kullandÄ±.',
-                claimSuccess: `Kod uygulandÄ±. +${inviteRewardConfig.inviteeXp} XP`,
-                copied: 'Davet linki kopyalandÄ±.',
-                stats: `KazandÄ±rÄ±lan: ${inviteClaimsCount} davet / ${inviteRewardsEarned} XP`,
-                rewardSummary: `Davet Eden: +${inviteRewardConfig.inviterXp} XP | Davet Alan: +${inviteRewardConfig.inviteeXp} XP`
+                title: 'Hediye Kodu',
+                subtitle: 'Admin tarafindan verilen premium veya bilet kodunu burada kullan.',
+                pasteCode: 'Hediye Kodu Gir',
+                applyCode: 'Kodu Uygula'
             };
         }
         if (language === 'es') {
             return {
-                title: 'Programa de InvitaciÃ³n',
-                subtitle: 'Comparte tu enlace y, cuando llegue un nuevo usuario, ambos ganan XP.',
-                yourCode: 'Tu CÃ³digo',
-                copyLink: 'Copiar Enlace',
-                pasteCode: 'Ingresar CÃ³digo',
-                applyCode: 'Aplicar CÃ³digo',
-                alreadyClaimed: 'Esta cuenta ya usÃ³ un cÃ³digo de invitaciÃ³n.',
-                claimSuccess: `CÃ³digo aplicado. +${inviteRewardConfig.inviteeXp} XP`,
-                copied: 'Enlace de invitaciÃ³n copiado.',
-                stats: `Ganado: ${inviteClaimsCount} invitaciones / ${inviteRewardsEarned} XP`,
-                rewardSummary: `Invitador: +${inviteRewardConfig.inviterXp} XP | Invitado: +${inviteRewardConfig.inviteeXp} XP`
+                title: 'Codigo de Regalo',
+                subtitle: 'Usa aqui el codigo de premium o tickets entregado por el admin.',
+                pasteCode: 'Ingresar Codigo',
+                applyCode: 'Aplicar Codigo'
             };
         }
         if (language === 'fr') {
             return {
-                title: 'Programme dâ€™Invitation',
-                subtitle: 'Partage ton lien. Si un nouveau compte rejoint, vous gagnez tous les deux de lâ€™XP.',
-                yourCode: 'Ton Code',
-                copyLink: 'Copier le Lien',
-                pasteCode: 'Entrer un Code',
-                applyCode: 'Appliquer le Code',
-                alreadyClaimed: 'Ce compte a dÃ©jÃ  utilisÃ© un code dâ€™invitation.',
-                claimSuccess: `Code appliquÃ©. +${inviteRewardConfig.inviteeXp} XP`,
-                copied: 'Lien dâ€™invitation copiÃ©.',
-                stats: `GagnÃ©: ${inviteClaimsCount} invitations / ${inviteRewardsEarned} XP`,
-                rewardSummary: `Inviteur: +${inviteRewardConfig.inviterXp} XP | InvitÃ©: +${inviteRewardConfig.inviteeXp} XP`
+                title: 'Code Cadeau',
+                subtitle: 'Utilise ici le code premium ou tickets donne par l admin.',
+                pasteCode: 'Entrer le Code',
+                applyCode: 'Appliquer le Code'
             };
         }
         return {
-            title: 'Invite Program',
-            subtitle: 'Share your link. If a new account joins, both of you earn XP.',
-            yourCode: 'Your Code',
-            copyLink: 'Copy Link',
-            pasteCode: 'Enter Invite Code',
-            applyCode: 'Apply Code',
-            alreadyClaimed: 'This account already used an invite code.',
-            claimSuccess: `Code applied. +${inviteRewardConfig.inviteeXp} XP`,
-            copied: 'Invite link copied.',
-            stats: `Earned: ${inviteClaimsCount} invites / ${inviteRewardsEarned} XP`,
-            rewardSummary: `Inviter: +${inviteRewardConfig.inviterXp} XP | Invitee: +${inviteRewardConfig.inviteeXp} XP`
+            title: 'Gift Code',
+            subtitle: 'Redeem an admin-issued premium or ticket code here.',
+            pasteCode: 'Enter Gift Code',
+            applyCode: 'Apply Code'
         };
-    }, [inviteClaimsCount, inviteRewardConfig.inviteeXp, inviteRewardConfig.inviterXp, inviteRewardsEarned, language]);
+    }, [language]);
 
     const privacyCopy = React.useMemo(() => {
         if (language === 'tr') {
@@ -364,7 +330,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 avatarFileFailed: 'Avatar dosyasi islenemedi.',
                 clipboardUnavailable: 'Pano kullanilamiyor.',
                 clipboardFailed: 'Pano kopyalanamadi.',
-                inviteCodeFailed: 'Davet kodu uygulanamadi.',
+                inviteCodeFailed: 'Hediye kodu uygulanamadi.',
                 claimedCodeLabel: 'Kullanilan kod',
                 toggleOn: 'Acik',
                 toggleOff: 'Kapali'
@@ -396,7 +362,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             avatarFileFailed: 'Avatar file could not be processed.',
             clipboardUnavailable: 'Clipboard unavailable.',
             clipboardFailed: 'Clipboard copy failed.',
-            inviteCodeFailed: 'Invite code could not be applied.',
+            inviteCodeFailed: 'Gift code could not be applied.',
             claimedCodeLabel: 'Claimed code',
             toggleOn: 'On',
             toggleOff: 'Off'
@@ -666,35 +632,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             }
     };
 
-    const copyInviteLink = async () => {
-        if (!inviteLink) return;
-        try {
-            if (!navigator.clipboard?.writeText) {
-                setInviteStatus(settingsUiCopy.clipboardUnavailable);
-                return;
-            }
-            await navigator.clipboard.writeText(inviteLink);
-            trackEvent('invite_created', {
-                inviteCode,
-                source: 'settings_copy_link'
-            }, {
-                userId: user?.id || null
-            });
-            setInviteStatus(inviteCopy.copied);
-        } catch {
-            setInviteStatus(settingsUiCopy.clipboardFailed);
-        }
-    };
-
     const handleApplyInviteCode = async () => {
-        if (invitedByCode) {
-            setInviteStatus(inviteCopy.alreadyClaimed);
-            return;
-        }
         const result = await claimInviteCode(inviteCodeDraft);
         if (result.ok) {
             setInviteCodeDraft('');
-            setInviteStatus(inviteCopy.claimSuccess);
+            setInviteStatus(result.message || 'Kod uygulandi.');
         } else {
             setInviteStatus(result.message || settingsUiCopy.inviteCodeFailed);
         }
@@ -1193,52 +1135,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                 <p className="text-[10px] uppercase tracking-[0.18em] text-gray-400 mb-2">{inviteCopy.title}</p>
                                 <p className="text-xs text-gray-500 mb-4">{inviteCopy.subtitle}</p>
 
-                                <div className="rounded border border-white/10 bg-[#141414] px-3 py-2 mb-3">
-                                    <p className="text-[9px] uppercase tracking-[0.14em] text-gray-500 mb-1">{inviteCopy.yourCode}</p>
-                                    <p className="text-sm tracking-[0.14em] font-bold text-sage">{inviteCode || '-'}</p>
-                                </div>
-
-                                <button
-                                    type="button"
-                                    onClick={() => void copyInviteLink()}
-                                    className="w-full text-[10px] uppercase tracking-[0.18em] border border-sage/30 rounded px-3 py-2 text-sage hover:border-sage/60 transition-colors"
-                                >
-                                    {inviteCopy.copyLink}
-                                </button>
-
-                                <p className="mt-3 text-[10px] uppercase tracking-[0.12em] text-gray-500">
-                                    {inviteCopy.stats}
-                                </p>
-                                <p className="mt-1 text-[10px] uppercase tracking-[0.12em] text-gray-500">
-                                    {inviteCopy.rewardSummary}
-                                </p>
-
-                                {invitedByCode ? (
-                                    <p className="mt-3 text-[10px] uppercase tracking-[0.12em] text-sage/80">
-                                        {settingsUiCopy.claimedCodeLabel}: {invitedByCode}
-                                    </p>
-                                ) : (
-                                    <div className="mt-4 space-y-2">
-                                        <label className="text-[10px] uppercase tracking-[0.12em] text-gray-500 block">
-                                            {inviteCopy.pasteCode}
-                                        </label>
-                                        <div className="flex gap-2">
-                                            <input
-                                                value={inviteCodeDraft}
-                                                onChange={(e) => setInviteCodeDraft(e.target.value.toUpperCase())}
-                                                placeholder="ABCD1234"
-                                                className="settings-field flex-1 rounded px-3 py-2.5 text-sm tracking-[0.14em] focus:border-sage/40 outline-none"
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={handleApplyInviteCode}
-                                                className="text-[10px] uppercase tracking-[0.16em] border border-white/15 rounded px-3 py-2 text-white/80 hover:text-sage hover:border-sage/40 transition-colors"
-                                            >
-                                                {inviteCopy.applyCode}
-                                            </button>
-                                        </div>
+                                <div className="mt-4 space-y-2">
+                                    <label className="text-[10px] uppercase tracking-[0.12em] text-gray-500 block">
+                                        {inviteCopy.pasteCode}
+                                    </label>
+                                    <div className="flex gap-2">
+                                        <input
+                                            value={inviteCodeDraft}
+                                            onChange={(e) => setInviteCodeDraft(e.target.value.replace(/[^a-zA-Z0-9-]/g, '').toUpperCase())}
+                                            placeholder="CINE-XXXX-XXXX"
+                                            className="settings-field flex-1 rounded px-3 py-2.5 text-sm tracking-[0.14em] focus:border-sage/40 outline-none"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={handleApplyInviteCode}
+                                            className="text-[10px] uppercase tracking-[0.16em] border border-white/15 rounded px-3 py-2 text-white/80 hover:text-sage hover:border-sage/40 transition-colors"
+                                        >
+                                            {inviteCopy.applyCode}
+                                        </button>
                                     </div>
-                                )}
+                                </div>
 
                                 {inviteStatus && (
                                     <p className="mt-3 text-[10px] uppercase tracking-[0.12em] text-sage/90">{inviteStatus}</p>

@@ -136,7 +136,7 @@ import {
   sendEngagementPushNotification,
   sendPushTestNotification,
 } from './src/lib/mobilePushApi';
-import { claimInviteCodeViaApi, ensureInviteCodeViaApi, persistClaimedInviteCode, readPersistedClaimedInviteCode } from './src/lib/mobileReferralApi';
+import { claimInviteCodeViaApi, persistClaimedInviteCode, readPersistedClaimedInviteCode } from './src/lib/mobileReferralApi';
 import {
   claimMobileShareReward,
   MOBILE_SHARE_REWARD_XP,
@@ -816,12 +816,15 @@ const inviteFailureReasonByCode: Record<string, string> = {
 
 const inviteMessageByCode: Record<string, string> = {
   UNAUTHORIZED: 'Oturum bulunamadi. Once mobilde giris yapman gerekiyor.',
-  INVALID_CODE: 'Davet kodu gecersiz.',
-  INVITE_NOT_FOUND: 'Davet kodu bulunamadi.',
-  SELF_INVITE: 'Kendi davet kodunu kullanamazsin.',
-  ALREADY_CLAIMED: 'Bu hesap zaten bir davet kodu kullandi.',
-  DEVICE_DAILY_LIMIT: 'Gunluk cihaz limiti doldu. Daha sonra tekrar dene.',
-  DEVICE_CODE_REUSE: 'Bu cihazda bu kod daha once kullanilmis.',
+  INVALID_CODE: 'Hediye kodu gecersiz.',
+  CODE_NOT_FOUND: 'Hediye kodu bulunamadi.',
+  CODE_REVOKED: 'Bu hediye kodu iptal edilmis.',
+  CODE_EXPIRED: 'Bu hediye kodunun suresi dolmus.',
+  CODE_EXHAUSTED: 'Bu hediye kodunun kullanim hakki bitmis.',
+  ALREADY_REDEEMED: 'Bu hediye kodu bu hesapta zaten kullanilmis.',
+  WALLET_UPDATE_FAILED: 'Bilet hediyesi hesaba eklenemedi.',
+  SUBSCRIPTION_UPDATE_FAILED: 'Premium hediyesi hesaba eklenemedi.',
+  REFERRAL_PROGRAM_DISABLED: 'Arkadas daveti artik kullanilmiyor.',
   SERVER_ERROR: 'Sunucuya ulasilamadi. Birazdan tekrar dene.',
 };
 
@@ -838,7 +841,7 @@ export default function App() {
   const [dailyState, setDailyState] = useState<DailyState>({ status: 'idle' });
   const [inviteClaimState, setInviteClaimState] = useState<InviteClaimState>({ status: 'idle' });
 
-  // Load persisted claimed invite code on mount
+  // Load persisted redeemed gift code on mount
   useEffect(() => {
     let active = true;
     void (async () => {
@@ -966,11 +969,11 @@ export default function App() {
       inboxItemsLabel: isTurkishUi ? 'oge' : 'items',
       inviteStatsPrefix: isTurkishUi ? 'Kod kullanim' : 'Code uses',
       inviteStatsEmpty: isTurkishUi
-        ? 'Davet kodu olusturulunca burada gorunur.'
-        : 'This will appear here after an invite code is created.',
+        ? 'Admin hediye kodunu buradan kullanabilirsin.'
+        : 'Redeem an admin gift code here.',
       inviteRewardLabel: isTurkishUi
-        ? 'Davetli +180 XP | Davet eden +120 XP'
-        : 'Invitee +180 XP | Inviter +120 XP',
+        ? 'Premium veya bilet kodlari admin panelinden verilir.'
+        : 'Premium and ticket codes are issued from the admin panel.',
       themeMode: {
         dawn: isTurkishUi ? 'Gunduz' : 'Dawn',
         midnight: isTurkishUi ? 'Gece' : 'Night',
@@ -1008,12 +1011,15 @@ export default function App() {
     (errorCode?: string | null, fallbackMessage?: string) => {
       const englishInviteMessages: Record<string, string> = {
         UNAUTHORIZED: 'No active session was found. Please sign in on mobile first.',
-        INVALID_CODE: 'Invite code is invalid.',
-        INVITE_NOT_FOUND: 'Invite code could not be found.',
-        SELF_INVITE: 'You cannot use your own invite code.',
-        ALREADY_CLAIMED: 'This account already used an invite code.',
-        DEVICE_DAILY_LIMIT: 'This device reached the daily invite limit. Try again later.',
-        DEVICE_CODE_REUSE: 'This invite code was already used on this device.',
+        INVALID_CODE: 'Gift code is invalid.',
+        CODE_NOT_FOUND: 'Gift code could not be found.',
+        CODE_REVOKED: 'This gift code was revoked.',
+        CODE_EXPIRED: 'This gift code expired.',
+        CODE_EXHAUSTED: 'This gift code has no remaining uses.',
+        ALREADY_REDEEMED: 'This account already used this gift code.',
+        WALLET_UPDATE_FAILED: 'Ticket gift could not be added.',
+        SUBSCRIPTION_UPDATE_FAILED: 'Premium gift could not be added.',
+        REFERRAL_PROGRAM_DISABLED: 'Friend invites are no longer available.',
         SERVER_ERROR: 'The server could not be reached. Try again shortly.',
       };
       const normalizedCode = String(errorCode || '').trim();
@@ -4856,9 +4862,7 @@ export default function App() {
         watchCount: entry.watchCount,
       }));
   }, [publicProfileFullState.items]);
-  const inviteStatsLabel = inviteProgram.code
-    ? `${localizedUiCopy.inviteStatsPrefix}: ${inviteProgram.claimCount}`
-    : localizedUiCopy.inviteStatsEmpty;
+  const inviteStatsLabel = localizedUiCopy.inviteStatsEmpty;
   const inviteRewardLabel = localizedUiCopy.inviteRewardLabel;
   const letterboxdSummary = formatMobileLetterboxdSummary(letterboxdImportState.snapshot);
   const activeAccountLabel = profileDisplayName || localizedUiCopy.observerLabel;
@@ -4884,8 +4888,8 @@ export default function App() {
     if (!raw) return 'Bugunun yorumu henuz hazir degil.';
     return raw.length > 120 ? `${raw.slice(0, 120).trimEnd()}...` : raw;
   }, [latestOwnComment?.text]);
-  const effectiveShareInviteCode = String(inviteProgram.code || inviteCode || '').trim();
-  const effectiveShareInviteLink = String(inviteProgram.inviteLink || '').trim();
+  const effectiveShareInviteCode = '';
+  const effectiveShareInviteLink = '';
   const canShareComment = Boolean(String(latestOwnComment?.text || '').trim());
   const canShareStreak = canShareComment && profileStats.streak > 0;
   const shareLeagueLabel =
@@ -6003,18 +6007,24 @@ export default function App() {
     try {
       const result = await claimInviteCodeViaApi(inviteCodeText);
       if (result.ok && result.data) {
-        const inviteeRewardXp = Math.max(0, Number(result.data.inviteeRewardXp || 0));
-        const inviterRewardXp = Math.max(0, Number(result.data.inviterRewardXp || 0));
+        const giftValue = Math.max(0, Number(result.data.value || 0));
+        const successMessage = result.data.giftType === 'premium'
+          ? isTurkishUi
+            ? `Premium hediye kodu uygulandi. +${giftValue} gun.`
+            : `Premium gift code applied. +${giftValue} days.`
+          : isTurkishUi
+            ? `Bilet hediye kodu uygulandi. +${giftValue} bilet.`
+            : `Ticket gift code applied. +${giftValue} tickets.`;
+        const inviteeRewardXp = 0;
+        const inviterRewardXp = 0;
 
         setInviteClaimState({
           status: 'success',
           inviteCode: inviteCodeText,
-          message: isTurkishUi
-            ? `Davet kodu uygulandi. +${inviteeRewardXp} XP eklendi.`
-            : `Invite code applied. +${inviteeRewardXp} XP added.`,
+          message: successMessage,
           inviteeRewardXp,
           inviterRewardXp,
-          claimCount: Math.max(0, Number(result.data.claimCount || 0)),
+          claimCount: 0,
         });
         void persistClaimedInviteCode(inviteCodeText);
 
@@ -6080,22 +6090,27 @@ export default function App() {
   const handleApplyInviteCodeFromSettings = useCallback(async () => {
     const inviteCodeText = String(inviteCodeDraft || '').trim().toUpperCase();
     if (!inviteCodeText) {
-      setInviteStatus(isTurkishUi ? 'Davet kodu gir.' : 'Enter an invite code.');
+      setInviteStatus(isTurkishUi ? 'Hediye kodu gir.' : 'Enter a gift code.');
       return;
     }
 
     setIsInviteActionBusy(true);
-    setInviteStatus(isTurkishUi ? 'Kod uygulaniyor...' : 'Applying invite code...');
+    setInviteStatus(isTurkishUi ? 'Kod uygulaniyor...' : 'Applying gift code...');
 
     try {
       const result = await claimInviteCodeViaApi(inviteCodeText);
       if (result.ok && result.data) {
-        const inviteeRewardXp = Math.max(0, Number(result.data.inviteeRewardXp || 0));
-        const inviterRewardXp = Math.max(0, Number(result.data.inviterRewardXp || 0));
-        const claimCount = Math.max(0, Number(result.data.claimCount || 0));
-        const successMessage = isTurkishUi
-          ? `Davet kodu uygulandi. +${inviteeRewardXp} XP eklendi.`
-          : `Invite code applied. +${inviteeRewardXp} XP added.`;
+        const giftValue = Math.max(0, Number(result.data.value || 0));
+        const inviteeRewardXp = 0;
+        const inviterRewardXp = 0;
+        const claimCount = 0;
+        const successMessage = result.data.giftType === 'premium'
+          ? isTurkishUi
+            ? `Premium hediye kodu uygulandi. +${giftValue} gun.`
+            : `Premium gift code applied. +${giftValue} days.`
+          : isTurkishUi
+            ? `Bilet hediye kodu uygulandi. +${giftValue} bilet.`
+            : `Ticket gift code applied. +${giftValue} tickets.`;
         setInviteClaimState({
           status: 'success',
           inviteCode: inviteCodeText,
@@ -6133,50 +6148,12 @@ export default function App() {
   }, [inviteCodeDraft, isTurkishUi, refreshProfileStats, resolveInviteMessage]);
 
   const refreshInviteProgram = useCallback(async () => {
-    if (authState.status !== 'signed_in') {
-      setInviteProgram({
-        code: '',
-        inviteLink: '',
-        claimCount: 0,
-      });
-      return;
-    }
-
-    setIsInviteActionBusy(true);
-    try {
-      const signedInEmail = authState.status === 'signed_in' ? authState.email : '';
-      const seed = signedInEmail || `mobile-${Date.now().toString(36)}`;
-      const result = await ensureInviteCodeViaApi(seed);
-      if (result.ok && result.data) {
-        setInviteProgram({
-          code: String(result.data.code || '').trim(),
-          inviteLink: String(result.data.inviteLink || '').trim(),
-          claimCount: Math.max(0, Number(result.data.claimCount || 0)),
-        });
-        return;
-      }
-
-      setInviteProgram({
-        code: '',
-        inviteLink: '',
-        claimCount: 0,
-      });
-      setInviteStatus(
-        isTurkishUi ? 'Davet kodu hazirlanamadi.' : 'Invite code could not be prepared.'
-      );
-    } catch {
-      setInviteProgram({
-        code: '',
-        inviteLink: '',
-        claimCount: 0,
-      });
-      setInviteStatus(
-        isTurkishUi ? 'Davet kodu hazirlanamadi.' : 'Invite code could not be prepared.'
-      );
-    } finally {
-      setIsInviteActionBusy(false);
-    }
-  }, [authState, isTurkishUi]);
+    setInviteProgram({
+      code: '',
+      inviteLink: '',
+      claimCount: 0,
+    });
+  }, []);
 
   useEffect(() => {
     if (!settingsVisible) return;

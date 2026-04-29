@@ -1,6 +1,3 @@
-import claimReferralHandler from './lib/referralClaim.js';
-import createReferralHandler from './lib/referralCreate.js';
-
 export const config = {
     runtime: 'nodejs'
 };
@@ -30,33 +27,35 @@ const readReferralAction = (req: ApiRequest): 'create' | 'claim' | null => {
     }
 };
 
-export default async function handler(req: ApiRequest, res: unknown) {
-    const action = readReferralAction(req);
-
-    if (action === 'create') {
-        return createReferralHandler(req, res as never);
-    }
-
-    if (action === 'claim') {
-        return claimReferralHandler(req, res as never);
-    }
-
-    const responseBody = {
-        ok: false,
-        errorCode: 'INVALID_ACTION',
-        message: 'Referral action is invalid.'
-    };
-
+const sendResponse = (res: unknown, status: number, payload: Record<string, unknown>) => {
     if (res && typeof (res as { status?: unknown }).status === 'function') {
-        return (res as { status: (code: number) => { json: (payload: unknown) => unknown } })
-            .status(400)
-            .json(responseBody);
+        return (res as { status: (code: number) => { json: (body: unknown) => unknown } })
+            .status(status)
+            .json(payload);
     }
 
-    return new Response(JSON.stringify(responseBody), {
-        status: 400,
+    return new Response(JSON.stringify(payload), {
+        status,
         headers: {
             'content-type': 'application/json; charset=utf-8'
         }
+    });
+};
+
+export default async function handler(req: ApiRequest, res: unknown) {
+    const action = readReferralAction(req);
+
+    if (action === 'create' || action === 'claim') {
+        return sendResponse(res, 410, {
+            ok: false,
+            errorCode: 'REFERRAL_PROGRAM_DISABLED',
+            message: 'Friend invite program is disabled. Gift codes are handled through /api/gift-redeem.'
+        });
+    }
+
+    return sendResponse(res, 400, {
+        ok: false,
+        errorCode: 'INVALID_ACTION',
+        message: 'Referral action is invalid.'
     });
 }

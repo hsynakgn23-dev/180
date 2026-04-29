@@ -11151,26 +11151,26 @@ const MobileSettingsModal = ({
                   title={isSignedIn ? activeAccountLabel : 'Hesabin bagli degil'}
                   body={
                     isSignedIn
-                      ? 'Davet programi ve platform kurallarini bu sekmeden yonet.'
-                      : 'Giris yaptiginda davet ve hesap islemleri burada acilir.'
+                      ? 'Hediye kodu ve platform kurallarini bu sekmeden yonet.'
+                      : 'Giris yaptiginda hediye kodu ve hesap islemleri burada acilir.'
                   }
                   badges={[
                     { label: isSignedIn ? 'Hesap acik' : 'Giris gerekli', tone: isSignedIn ? 'sage' : 'clay' },
                     { label: activeEmailLabel || 'E-posta yok', tone: 'muted' },
-                    { label: inviteCode ? `Kod ${inviteCode}` : 'Kod bekleniyor', tone: inviteCode ? 'muted' : 'clay' },
+                    { label: 'Hediye kodu', tone: 'muted' },
                   ]}
                   metrics={[
-                    { label: 'Davet', value: inviteCode ? 'hazir' : '--' },
+                    { label: 'Hediye', value: 'kod' },
                     { label: 'Durum', value: isInviteActionBusy ? 'isleniyor' : isSignedIn ? 'hazir' : 'misafir' },
-                    { label: 'Baglanti', value: invitedByCode ? 'var' : 'acik' },
+                    { label: 'Tip', value: 'premium/bilet' },
                   ]}
                 />
 
                 {inviteStatus ? (
                   <StatusStrip
                     tone={inviteStatusTone}
-                    eyebrow="Davet Durumu"
-                    title={inviteStatusTone === 'clay' ? 'Davet islemi tamamlanamadi' : 'Davet bilgisi guncellendi'}
+                    eyebrow="Hediye Kodu"
+                    title={inviteStatusTone === 'clay' ? 'Hediye kodu uygulanamadi' : 'Hediye kodu uygulandi'}
                     body={inviteStatus}
                     meta={inviteStatsLabel}
                   />
@@ -11305,78 +11305,47 @@ const MobileSettingsModal = ({
 
                 <CollapsibleSectionCard
                   accent="sage"
-                  title="Davet Programi"
-                  meta={inviteCode ? `Kod ${inviteCode}` : 'Kod hazirlaniyor'}
+                  title="Hediye Kodu"
+                  meta="Premium / bilet"
                   defaultExpanded
                 >
                   {!isSignedIn ? (
                     <StatePanel
                       tone="clay"
                       variant="empty"
-                      eyebrow="Davet"
-                      title="Davet programi icin once giris yap"
-                      body="Link kopyalamak ve kod kullanmak icin hesabina giris yapman gerekir."
+                      eyebrow="Hediye"
+                      title="Hediye kodu icin once giris yap"
+                      body="Premium veya bilet kodunu kullanmak icin hesabina giris yapman gerekir."
                       meta="Giris yaptiginda bu bolum acilir."
                     />
                   ) : (
                     <>
-                      <View style={styles.detailInfoGrid}>
-                        <View style={styles.detailInfoCard}>
-                          <Text style={styles.detailInfoLabel}>Kod</Text>
-                          <Text style={styles.detailInfoValue}>{inviteCode || '-'}</Text>
-                        </View>
-                        <View style={styles.detailInfoCard}>
-                          <Text style={styles.detailInfoLabel}>Link</Text>
-                          <Text style={styles.detailInfoValue} numberOfLines={3}>
-                            {inviteLink || 'hazirlaniyor'}
-                          </Text>
-                        </View>
-                      </View>
-
-                      <UiButton
-                        label={isInviteActionBusy ? 'Isleniyor...' : 'Linki Kopyala'}
-                        tone="neutral"
-                        onPress={onCopyInviteLink}
-                        disabled={!canCopyInviteLink || isInviteActionBusy}
-                      />
-
                       <StatusStrip
                         tone="sage"
-                        eyebrow="Davet Notu"
+                        eyebrow="Hediye Kodu"
                         body={inviteRewardLabel}
                         meta={inviteStatsLabel}
                       />
 
-                      {invitedByCode ? (
-                        <StatusStrip
-                          tone="sage"
-                          eyebrow="Kullanilan Kod"
-                          title={invitedByCode || undefined}
-                          body="Bu hesap daha once bir davet baglantisi ile iliskilendirildi."
-                        />
-                      ) : (
-                        <>
-                          <Text style={styles.subSectionLabel}>Davet Kodu Gir</Text>
-                          <TextInput
-                            style={styles.input}
-                            value={inviteCodeDraft}
-                            onChangeText={(value) =>
-                              onInviteCodeDraftChange(value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase())
-                            }
-                            autoCapitalize="characters"
-                            maxLength={12}
-                            placeholder="ABCD1234"
-                            placeholderTextColor="#8e8b84"
-                            accessibilityLabel="Davet kodu gir"
-                          />
-                          <UiButton
-                            label={isInviteActionBusy ? 'Uygulaniyor...' : 'Kodu Uygula'}
-                            tone="brand"
-                            onPress={onApplyInviteCode}
-                            disabled={isInviteActionBusy || !inviteCodeDraft.trim()}
-                          />
-                        </>
-                      )}
+                      <Text style={styles.subSectionLabel}>Hediye Kodu Gir</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={inviteCodeDraft}
+                        onChangeText={(value) =>
+                          onInviteCodeDraftChange(value.replace(/[^a-zA-Z0-9-]/g, '').toUpperCase())
+                        }
+                        autoCapitalize="characters"
+                        maxLength={80}
+                        placeholder="CINE-XXXX-XXXX"
+                        placeholderTextColor="#8e8b84"
+                        accessibilityLabel="Hediye kodu gir"
+                      />
+                      <UiButton
+                        label={isInviteActionBusy ? 'Uygulaniyor...' : 'Kodu Uygula'}
+                        tone="brand"
+                        onPress={onApplyInviteCode}
+                        disabled={isInviteActionBusy || !inviteCodeDraft.trim()}
+                      />
                     </>
                   )}
                 </CollapsibleSectionCard>
@@ -11720,7 +11689,7 @@ const ShareHubScreen = ({
         previewStreakTitle: 'Seri paketi hazir',
         previewCommentTitle: 'Yorum paketi hazir',
         previewStreakBody: (value: number) => `Bugunku seri tamamlandi: ${value} gun`,
-        codeLabel: 'Davet kodu',
+        codeLabel: 'Kod',
         readinessEyebrow: 'Paylasim Hazirligi',
         commentNotReadyTitle: 'Yorum paylasimi henuz hazir degil',
         streakNotReadyTitle: 'Seri paketi henuz hazir degil',
@@ -11760,7 +11729,7 @@ const ShareHubScreen = ({
         previewStreakTitle: 'Streak package ready',
         previewCommentTitle: 'Comment package ready',
         previewStreakBody: (value: number) => `Today's streak completed: ${value} days`,
-        codeLabel: 'Invite code',
+        codeLabel: 'Code',
         readinessEyebrow: 'Share Readiness',
         commentNotReadyTitle: 'Comment sharing is not ready yet',
         streakNotReadyTitle: 'Streak package is not ready yet',
@@ -13245,29 +13214,7 @@ const MobileSettingsNavigatorModal = ({
 
       <ScreenCard accent="sage">
         <Text style={styles.sectionLeadEyebrow}>{navigatorCopy.inviteTitle}</Text>
-        <Text style={styles.sectionLeadTitle}>
-          {inviteCode ? `Kod ${inviteCode}` : navigatorCopy.inviteTitle}
-        </Text>
-        <View style={styles.detailInfoGrid}>
-          <View style={styles.detailInfoCard}>
-            <Text style={styles.detailInfoLabel}>Kod</Text>
-            <Text style={styles.detailInfoValue}>{inviteCode || '-'}</Text>
-          </View>
-          <View style={styles.detailInfoCard}>
-            <Text style={styles.detailInfoLabel}>Link</Text>
-            <Text style={styles.detailInfoValue} numberOfLines={3}>
-              {inviteLink || '...'}
-            </Text>
-          </View>
-        </View>
-
-        <UiButton
-          label={isInviteActionBusy ? navigatorCopy.inviteBusy : navigatorCopy.inviteCopy}
-          tone="neutral"
-          onPress={onCopyInviteLink}
-          disabled={!canCopyInviteLink || isInviteActionBusy || !isSignedIn}
-        />
-
+        <Text style={styles.sectionLeadTitle}>{navigatorCopy.inviteTitle}</Text>
         <StatusStrip
           tone="sage"
           eyebrow={navigatorCopy.inviteTitle}
@@ -13275,36 +13222,25 @@ const MobileSettingsNavigatorModal = ({
           meta={inviteStatsLabel}
         />
 
-        {invitedByCode ? (
-          <StatusStrip
-            tone="sage"
-            eyebrow={navigatorCopy.inviteInputLabel}
-            title={invitedByCode}
-            body={navigatorCopy.inviteMatchedBody}
-          />
-        ) : (
-          <>
-            <Text style={styles.subSectionLabel}>{navigatorCopy.inviteInputLabel}</Text>
-            <TextInput
-              style={styles.input}
-              value={inviteCodeDraft}
-              onChangeText={(value) =>
-                onInviteCodeDraftChange(value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase())
-              }
-              autoCapitalize="characters"
-              maxLength={12}
-              placeholder={navigatorCopy.inviteInputPlaceholder}
-              placeholderTextColor="#8e8b84"
-              accessibilityLabel={navigatorCopy.inviteInputLabel}
-            />
-            <UiButton
-              label={isInviteActionBusy ? navigatorCopy.inviteBusy : navigatorCopy.inviteApply}
-              tone="brand"
-              onPress={onApplyInviteCode}
-              disabled={isInviteActionBusy || !inviteCodeDraft.trim() || !isSignedIn}
-            />
-          </>
-        )}
+        <Text style={styles.subSectionLabel}>{navigatorCopy.inviteInputLabel}</Text>
+        <TextInput
+          style={styles.input}
+          value={inviteCodeDraft}
+          onChangeText={(value) =>
+            onInviteCodeDraftChange(value.replace(/[^a-zA-Z0-9-]/g, '').toUpperCase())
+          }
+          autoCapitalize="characters"
+          maxLength={80}
+          placeholder={navigatorCopy.inviteInputPlaceholder}
+          placeholderTextColor="#8e8b84"
+          accessibilityLabel={navigatorCopy.inviteInputLabel}
+        />
+        <UiButton
+          label={isInviteActionBusy ? navigatorCopy.inviteBusy : navigatorCopy.inviteApply}
+          tone="brand"
+          onPress={onApplyInviteCode}
+          disabled={isInviteActionBusy || !inviteCodeDraft.trim() || !isSignedIn}
+        />
       </ScreenCard>
 
       <ScreenCard accent="sage">

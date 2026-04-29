@@ -1,4 +1,6 @@
-import { LEVEL_THRESHOLD } from '../context/xpShared/state';
+import { LEVEL_THRESHOLD } from '../context/xpShared/state.js';
+
+export { LEVEL_THRESHOLD };
 
 export interface LeagueInfo {
   name: string;

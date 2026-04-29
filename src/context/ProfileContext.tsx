@@ -7,36 +7,28 @@ import React, {
     useState,
 } from 'react';
 
-import { buildApiUrl } from '../lib/apiBase';
-import { normalizeAvatarUrl } from '../lib/avatarUpload';
-import { sendEngagementNotification } from '../lib/engagementNotificationApi';
-import { fetchWithAuth } from '../lib/fetchWithAuth';
-import {
-    claimInviteCodeViaApi,
-    ensureInviteCodeViaApi,
-    getReferralDeviceKey,
-} from '../lib/referralApi';
-import { isSupabaseLive, supabase } from '../lib/supabase';
+import { buildApiUrl } from '../lib/apiBase.js';
+import { normalizeAvatarUrl } from '../lib/avatarUpload.js';
+import { sendEngagementNotification } from '../lib/engagementNotificationApi.js';
+import { fetchWithAuth } from '../lib/fetchWithAuth.js';
+import { claimInviteCodeViaApi } from '../lib/referralApi.js';
+import { isSupabaseLive, supabase } from '../lib/supabase.js';
 
-import { useAuth } from './AuthContext';
-import { useProgression } from './ProgressionContext';
-import { normalizeAuthError } from './xpShared/auth';
+import { useAuth } from './AuthContext.js';
+import { useProgression } from './ProgressionContext.js';
+import { normalizeAuthError } from './xpShared/auth.js';
 import {
-    applyXPDelta,
     buildFollowUserIdKey,
-    buildInviteLink,
-    INVITEE_REWARD_XP,
-    INVITER_REWARD_XP,
     isSupabaseCapabilityError,
     normalizeFollowKey,
     REGISTRATION_GENDERS,
     USERNAME_REGEX,
-} from './xpShared/state';
+} from './xpShared/state.js';
 import type {
     AuthResult,
     RegistrationGender,
     RegistrationProfileInput,
-} from './xpShared/types';
+} from './xpShared/types.js';
 
 export type ProfileContextValue = {
     // Identity slice (mirrored from progression.state for convenience)
@@ -86,12 +78,10 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const { user } = auth;
     const {
         state,
-        setState,
         updateState,
         triggerWhisper,
         tryUnlockMark,
         canWriteFollowRef,
-        isXpHydrated,
     } = progression;
 
     const [isPremium, setIsPremium] = useState(false);
@@ -120,45 +110,6 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
             cancelled = true;
         };
     }, [user]);
-
-    // Referral / invite code sync
-    useEffect(() => {
-        if (!isXpHydrated || !user?.email || !isSupabaseLive() || !supabase) {
-            return;
-        }
-
-        let active = true;
-
-        const syncInviteProgram = async () => {
-            const seed = user.email || user.id || `web-${Date.now().toString(36)}`;
-            const result = await ensureInviteCodeViaApi(seed);
-            if (!active || !result.ok || !result.data) {
-                return;
-            }
-
-            const referralCode = String(result.data.code || '').trim().toUpperCase();
-            const referralCount = Math.max(0, Number(result.data.claimCount || 0));
-            if (!referralCode) {
-                return;
-            }
-
-            updateState((prev) => {
-                if (
-                    String(prev.referralCode || '').trim().toUpperCase() === referralCode &&
-                    Math.max(0, Number(prev.referralCount || 0)) === referralCount
-                ) {
-                    return {};
-                }
-                return { referralCode, referralCount };
-            });
-        };
-
-        void syncInviteProgram();
-
-        return () => {
-            active = false;
-        };
-    }, [isXpHydrated, user?.email, user?.id]);
 
     const updateAvatar = useCallback(
         (url: string) => {
@@ -425,42 +376,37 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
         [user, auth, updateState, triggerWhisper],
     );
 
-    const getInviteCodeValidationMessage = useCallback(
-        (code: string): string | null => {
-            const normalizedCode = code.trim().toUpperCase();
-            if (!normalizedCode || normalizedCode.length < 4) {
-                return 'Gecersiz davet kodu.';
-            }
-            if (state.invitedBy) {
-                return 'Zaten bir davet kodu kullandiniz.';
-            }
-            if (normalizedCode === String(state.referralCode || '').trim().toUpperCase()) {
-                return 'Kendi kodunu kullanamazsin.';
-            }
-            return null;
-        },
-        [state.invitedBy, state.referralCode],
-    );
+    const getInviteCodeValidationMessage = useCallback((code: string): string | null => {
+        const normalizedCode = code.trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
+        if (!normalizedCode || normalizedCode.length < 6) {
+            return 'Gecersiz hediye kodu.';
+        }
+        return null;
+    }, []);
 
     const resolveInviteClaimFailureMessage = useCallback(
         (errorCode?: string, fallbackMessage?: string): string => {
             switch (String(errorCode || '').toUpperCase()) {
                 case 'UNAUTHORIZED':
-                    return 'Davet kodu kullanmak icin once giris yapmalisin.';
+                    return 'Hediye kodu kullanmak icin once giris yapmalisin.';
                 case 'INVALID_CODE':
-                    return 'Gecersiz davet kodu.';
-                case 'INVITE_NOT_FOUND':
-                    return 'Davet kodu bulunamadi.';
-                case 'SELF_INVITE':
-                    return 'Kendi kodunu kullanamazsin.';
-                case 'ALREADY_CLAIMED':
-                    return 'Zaten bir davet kodu kullandiniz.';
-                case 'DEVICE_DAILY_LIMIT':
-                    return 'Bu cihaz bugun cok fazla deneme yapti.';
-                case 'DEVICE_CODE_REUSE':
-                    return 'Bu cihaz bu kodu zaten kullandi.';
+                    return 'Gecersiz hediye kodu.';
+                case 'CODE_NOT_FOUND':
+                    return 'Hediye kodu bulunamadi.';
+                case 'CODE_REVOKED':
+                    return 'Bu hediye kodu iptal edilmis.';
+                case 'CODE_EXPIRED':
+                    return 'Bu hediye kodunun suresi dolmus.';
+                case 'CODE_EXHAUSTED':
+                    return 'Bu hediye kodunun kullanim hakki bitmis.';
+                case 'ALREADY_REDEEMED':
+                    return 'Bu hediye kodu bu hesapta zaten kullanilmis.';
+                case 'WALLET_UPDATE_FAILED':
+                    return 'Bilet hediyesi hesaba eklenemedi.';
+                case 'SUBSCRIPTION_UPDATE_FAILED':
+                    return 'Premium hediyesi hesaba eklenemedi.';
                 default:
-                    return fallbackMessage || 'Davet kodu uygulanamadi.';
+                    return fallbackMessage || 'Hediye kodu uygulanamadi.';
             }
         },
         [],
@@ -474,7 +420,7 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
             }
             return {
                 ok: false,
-                message: 'Davet kodu icin sunucu onayi gerekiyor.',
+                message: 'Hediye kodu icin sunucu onayi gerekiyor.',
             };
         },
         [getInviteCodeValidationMessage],
@@ -491,12 +437,12 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
             if (!isSupabaseLive() || !supabase) {
                 return {
                     ok: false,
-                    message: 'Davet kodu su anda kullanilamiyor.',
+                    message: 'Hediye kodu su anda kullanilamiyor.',
                 };
             }
 
             try {
-                const result = await claimInviteCodeViaApi(normalizedCode, getReferralDeviceKey());
+                const result = await claimInviteCodeViaApi(normalizedCode);
                 if (!result.ok || !result.data) {
                     return {
                         ok: false,
@@ -504,23 +450,16 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
                     };
                 }
 
-                const inviteeRewardXp = Math.max(
-                    0,
-                    Number(result.data.inviteeRewardXp || INVITEE_REWARD_XP),
-                );
+                const value = Math.max(0, Number(result.data.value || 0));
+                const successMessage =
+                    result.data.giftType === 'premium'
+                        ? `Premium hediye kodu uygulandi. +${value} gun.`
+                        : `Bilet hediye kodu uygulandi. +${value} bilet.`;
 
-                // Atomic write: combine invitedBy + applyXPDelta in one setState
-                // so the persistence effect captures both together.
-                setState((prev) => ({
-                    ...prev,
-                    invitedBy: normalizedCode,
-                    ...applyXPDelta(prev, inviteeRewardXp, 'invite_accepted'),
-                }));
-
-                triggerWhisper(`Invite accepted. +${inviteeRewardXp} XP`);
+                triggerWhisper('Gift code redeemed.');
                 return {
                     ok: true,
-                    message: 'Davet kodu kabul edildi.',
+                    message: successMessage,
                 };
             } catch (error) {
                 return {
@@ -535,16 +474,15 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
         [
             getInviteCodeValidationMessage,
             resolveInviteClaimFailureMessage,
-            setState,
             triggerWhisper,
         ],
     );
 
-    const inviteCode = String(state.referralCode || '').trim().toUpperCase();
-    const inviteLink = buildInviteLink(inviteCode);
-    const invitedByCode = state.invitedBy || null;
-    const inviteClaimsCount = state.referralCount || 0;
-    const inviteRewardsEarned = inviteClaimsCount * INVITER_REWARD_XP;
+    const inviteCode = '';
+    const inviteLink = '';
+    const invitedByCode = null;
+    const inviteClaimsCount = 0;
+    const inviteRewardsEarned = 0;
 
     const value = useMemo<ProfileContextValue>(
         () => ({
@@ -568,8 +506,8 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
             inviteClaimsCount,
             inviteRewardsEarned,
             inviteRewardConfig: {
-                inviterXp: INVITER_REWARD_XP,
-                inviteeXp: INVITEE_REWARD_XP,
+                inviterXp: 0,
+                inviteeXp: 0,
             },
             claimInviteCode,
             redeemInviteCode,

@@ -333,10 +333,12 @@ export const moderateAdminUser = async (input: {
         body: JSON.stringify(input)
     });
 
+export type GiftCodeType = 'tickets' | 'premium';
+
 export type GiftCode = {
     id: string;
     code: string;
-    gift_type: 'tickets' | 'premium';
+    gift_type: GiftCodeType;
     value: number;
     max_uses: number;
     use_count: number;
@@ -365,7 +367,7 @@ export const listAdminGiftCodes = async (): Promise<AdminApiResponse<GiftCode[]>
     requestAdminApi<GiftCode[]>(buildApiUrl('/api/admin/gift'), { method: 'GET' });
 
 export const createAdminGiftCode = async (input: {
-    giftType: 'tickets' | 'premium';
+    giftType: GiftCodeType;
     value: number;
     maxUses?: number;
     expiresInDays?: number;

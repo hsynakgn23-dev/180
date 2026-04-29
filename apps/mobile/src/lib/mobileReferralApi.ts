@@ -3,14 +3,19 @@ import { isSupabaseLive, readSupabaseSessionSafe, supabase } from './supabase';
 import { resolveMobileReferralApiBase } from './mobileEnv';
 import { fetchWithTimeout } from './network';
 
+type GiftCodeType = 'tickets' | 'premium';
+
 type ReferralApiErrorCode =
   | 'UNAUTHORIZED'
   | 'INVALID_CODE'
-  | 'INVITE_NOT_FOUND'
-  | 'SELF_INVITE'
-  | 'ALREADY_CLAIMED'
-  | 'DEVICE_DAILY_LIMIT'
-  | 'DEVICE_CODE_REUSE'
+  | 'CODE_NOT_FOUND'
+  | 'CODE_REVOKED'
+  | 'CODE_EXPIRED'
+  | 'CODE_EXHAUSTED'
+  | 'ALREADY_REDEEMED'
+  | 'WALLET_UPDATE_FAILED'
+  | 'SUBSCRIPTION_UPDATE_FAILED'
+  | 'REFERRAL_PROGRAM_DISABLED'
   | 'SERVER_ERROR';
 
 type ReferralApiResponse<T> = {
@@ -22,6 +27,8 @@ type ReferralApiResponse<T> = {
 
 type ClaimInvitePayload = {
   code: string;
+  giftType: GiftCodeType;
+  value: number;
   inviterUserId: string | null;
   inviterRewardXp: number;
   inviteeRewardXp: number;
@@ -35,8 +42,7 @@ type EnsureInviteCodePayload = {
   inviteLink: string;
 };
 
-const REFERRAL_DEVICE_KEY_STORAGE = '180_referral_device_key_v1';
-const REFERRAL_CLAIMED_CODE_STORAGE = '180_referral_claimed_code_v1';
+const REFERRAL_CLAIMED_CODE_STORAGE = '180_gift_code_redeemed_code_v1';
 
 const normalizeText = (value: unknown, maxLength: number): string => {
   const text = String(value ?? '').trim();
@@ -44,11 +50,8 @@ const normalizeText = (value: unknown, maxLength: number): string => {
   return text.length > maxLength ? text.slice(0, maxLength) : text;
 };
 
-const normalizeDeviceKey = (value: string): string =>
-  value.replace(/[^a-zA-Z0-9:_-]/g, '').slice(0, 80);
-
-const normalizeInviteCode = (value: unknown): string =>
-  normalizeText(value, 12).toUpperCase().replace(/[^A-Z0-9]/g, '');
+const normalizeGiftCode = (value: unknown): string =>
+  normalizeText(value, 80).toUpperCase().replace(/[^A-Z0-9-]/g, '');
 
 const getApiUrl = (path: string): string => {
   const base = resolveMobileReferralApiBase();
@@ -73,11 +76,29 @@ const getAuthToken = async (): Promise<string | null> => {
   }
 };
 
-const postReferralApi = async <T>(
-  path: string,
-  payload: Record<string, unknown>
-): Promise<ReferralApiResponse<T>> => {
-  const endpoint = getApiUrl(path);
+const normalizeErrorCode = (value: unknown): ReferralApiErrorCode => {
+  const code = String(value || '').trim().toUpperCase();
+  switch (code) {
+    case 'UNAUTHORIZED':
+    case 'INVALID_CODE':
+    case 'CODE_NOT_FOUND':
+    case 'CODE_REVOKED':
+    case 'CODE_EXPIRED':
+    case 'CODE_EXHAUSTED':
+    case 'ALREADY_REDEEMED':
+    case 'WALLET_UPDATE_FAILED':
+    case 'SUBSCRIPTION_UPDATE_FAILED':
+    case 'REFERRAL_PROGRAM_DISABLED':
+      return code;
+    default:
+      return 'SERVER_ERROR';
+  }
+};
+
+const postGiftRedeemApi = async (
+  code: string
+): Promise<ReferralApiResponse<ClaimInvitePayload>> => {
+  const endpoint = getApiUrl('/api/gift-redeem');
   if (!endpoint) {
     return {
       ok: false,
@@ -99,21 +120,23 @@ const postReferralApi = async <T>(
     const response = await fetchWithTimeout({
       url: endpoint,
       timeoutMs: 10000,
-      timeoutMessage: 'Referral API timeout',
+      timeoutMessage: 'Gift code API timeout',
       init: {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
           Authorization: `Bearer ${accessToken}`
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ code })
       }
     });
 
     const rawBody = (await response.json().catch(() => ({}))) as {
       ok?: boolean;
-      data?: T;
-      errorCode?: ReferralApiErrorCode;
+      code?: string;
+      giftType?: GiftCodeType;
+      value?: number;
+      errorCode?: string;
       message?: string;
       error?: string;
     };
@@ -121,14 +144,24 @@ const postReferralApi = async <T>(
     if (!response.ok || rawBody.ok === false) {
       return {
         ok: false,
-        errorCode: rawBody.errorCode || 'SERVER_ERROR',
+        errorCode: normalizeErrorCode(rawBody.errorCode || rawBody.error),
         message: rawBody.message || rawBody.error || `HTTP ${response.status}`
       };
     }
 
+    const giftType = rawBody.giftType === 'premium' ? 'premium' : 'tickets';
+    const value = Math.max(0, Math.floor(Number(rawBody.value) || 0));
     return {
       ok: true,
-      data: rawBody.data
+      data: {
+        code: normalizeGiftCode(rawBody.code || code),
+        giftType,
+        value,
+        inviterUserId: null,
+        inviterRewardXp: 0,
+        inviteeRewardXp: 0,
+        claimCount: 0,
+      }
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Network error.';
@@ -140,57 +173,33 @@ const postReferralApi = async <T>(
   }
 };
 
-export const getReferralDeviceKey = async (): Promise<string> => {
-  const buildGeneratedDeviceKey = (): string => {
-    const maybeCrypto = globalThis.crypto as { randomUUID?: () => string } | undefined;
-    const randomSuffix = maybeCrypto?.randomUUID
-      ? maybeCrypto.randomUUID()
-      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-    const normalized = normalizeDeviceKey(`dev-${randomSuffix}`);
-    return normalized || `dev-${Date.now().toString(36)}-fallback`;
-  };
-
-  try {
-    const existing = await AsyncStorage.getItem(REFERRAL_DEVICE_KEY_STORAGE);
-    const normalizedExisting = normalizeDeviceKey(String(existing || ''));
-    if (normalizedExisting) return normalizedExisting;
-
-    const generated = buildGeneratedDeviceKey();
-    await AsyncStorage.setItem(REFERRAL_DEVICE_KEY_STORAGE, generated);
-    return generated;
-  } catch {
-    return buildGeneratedDeviceKey();
-  }
-};
+export const getReferralDeviceKey = async (): Promise<string> => 'gift-code-only';
 
 export const claimInviteCodeViaApi = async (
   rawCode: string
 ): Promise<ReferralApiResponse<ClaimInvitePayload>> => {
-  const inviteCode = normalizeInviteCode(rawCode);
-  if (!inviteCode) {
+  const giftCode = normalizeGiftCode(rawCode);
+  if (!giftCode || giftCode.length < 6) {
     return {
       ok: false,
       errorCode: 'INVALID_CODE',
-      message: 'Davet kodu gecersiz.',
+      message: 'Hediye kodu gecersiz.',
     };
   }
-  const deviceKey = await getReferralDeviceKey();
-  return postReferralApi<ClaimInvitePayload>('/api/referral?action=claim', {
-    code: inviteCode,
-    deviceKey
-  });
+  return postGiftRedeemApi(giftCode);
 };
 
 export const ensureInviteCodeViaApi = async (
-  rawSeed: string
-): Promise<ReferralApiResponse<EnsureInviteCodePayload>> => {
-  const seed = normalizeText(rawSeed, 120) || `mobile-${Date.now().toString(36)}`;
-  return postReferralApi<EnsureInviteCodePayload>('/api/referral?action=create', { seed });
-};
+  _rawSeed: string
+): Promise<ReferralApiResponse<EnsureInviteCodePayload>> => ({
+  ok: false,
+  errorCode: 'REFERRAL_PROGRAM_DISABLED',
+  message: 'Friend invite program is disabled.'
+});
 
 export const persistClaimedInviteCode = async (code: string): Promise<void> => {
   try {
-    const normalized = normalizeInviteCode(code);
+    const normalized = normalizeGiftCode(code);
     if (normalized) {
       await AsyncStorage.setItem(REFERRAL_CLAIMED_CODE_STORAGE, normalized);
     }
@@ -202,7 +211,7 @@ export const persistClaimedInviteCode = async (code: string): Promise<void> => {
 export const readPersistedClaimedInviteCode = async (): Promise<string | null> => {
   try {
     const stored = await AsyncStorage.getItem(REFERRAL_CLAIMED_CODE_STORAGE);
-    const normalized = normalizeInviteCode(stored);
+    const normalized = normalizeGiftCode(stored);
     return normalized || null;
   } catch {
     return null;
