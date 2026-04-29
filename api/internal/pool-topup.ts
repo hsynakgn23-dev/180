@@ -7,6 +7,7 @@
 
 import { buildBatchRequests, submitAnthropicBatch } from '../lib/questionPool.js';
 import { createSupabaseServiceClient } from '../lib/supabaseServiceClient.js';
+import { getBearerToken, getQueryParam, sendJson } from '../lib/httpHelpers.js';
 
 export const config = { runtime: 'nodejs' };
 
@@ -23,41 +24,8 @@ type ApiResponse = {
     status?: (code: number) => { json: (p: Record<string, unknown>) => unknown };
 };
 
-const sendJson = (res: ApiResponse, status: number, payload: Record<string, unknown>) => {
-    if (res && typeof res.status === 'function') return res.status(status).json(payload);
-    return new Response(JSON.stringify(payload), {
-        status,
-        headers: { 'content-type': 'application/json; charset=utf-8' },
-    });
-};
-
 const resolveSecret = () =>
     String(process.env.CRON_SECRET || process.env.DAILY_QUIZ_IMPORT_SECRET || '').trim();
-
-const getHeader = (req: ApiRequest, key: string): string => {
-    const h = req.headers;
-    if (!h) return '';
-    if (typeof (h as Headers).get === 'function') return ((h as Headers).get(key) || '').trim();
-    const o = h as Record<string, string | undefined>;
-    return (o[key.toLowerCase()] || o[key] || '').trim();
-};
-
-const getBearerToken = (req: ApiRequest) => {
-    const m = getHeader(req, 'authorization').match(/^Bearer\s+(.+)$/i);
-    return m ? m[1].trim() || null : null;
-};
-
-const getQueryParam = (req: ApiRequest, key: string): string | null => {
-    const raw = req?.query?.[key];
-    if (typeof raw === 'string') return raw;
-    if (Array.isArray(raw) && typeof raw[0] === 'string') return raw[0];
-    const rawUrl = typeof req?.url === 'string' ? req.url : '';
-    if (!rawUrl) return null;
-    try {
-        const url = new URL(rawUrl, rawUrl.startsWith('http') ? undefined : 'https://localhost');
-        return url.searchParams.get(key);
-    } catch { return null; }
-};
 
 const getSupabase = () => {
     const url = String(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();

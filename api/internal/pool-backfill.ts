@@ -1,5 +1,6 @@
 import { syncDailyQuestionsToPool } from '../lib/questionPool.js';
 import { createSupabaseServiceClient } from '../lib/supabaseServiceClient.js';
+import { getBearerToken, getQueryParam, sendJson } from '../lib/httpHelpers.js';
 
 export const config = { runtime: 'nodejs' };
 
@@ -13,16 +14,6 @@ type ApiResponse = {
     status?: (statusCode: number) => { json: (payload: Record<string, unknown>) => unknown };
 };
 
-const sendJson = (res: ApiResponse, status: number, payload: Record<string, unknown>) => {
-    if (res && typeof res.status === 'function') {
-        return res.status(status).json(payload);
-    }
-    return new Response(JSON.stringify(payload), {
-        status,
-        headers: { 'content-type': 'application/json; charset=utf-8' },
-    });
-};
-
 const resolveSecret = (): string =>
     String(
         process.env.DAILY_QUIZ_IMPORT_SECRET ||
@@ -30,29 +21,6 @@ const resolveSecret = (): string =>
             process.env.CRON_SECRET ||
             ''
     ).trim();
-
-const getHeader = (req: ApiRequest, key: string): string => {
-    const headers = req.headers;
-    if (!headers) return '';
-    if (typeof (headers as Headers).get === 'function') {
-        return ((headers as Headers).get(key) || '').trim();
-    }
-    const obj = headers as Record<string, string | undefined>;
-    return (obj[key.toLowerCase()] || obj[key] || '').trim();
-};
-
-const getBearerToken = (req: ApiRequest): string | null => {
-    const authHeader = getHeader(req, 'authorization');
-    const match = authHeader.match(/^Bearer\s+(.+)$/i);
-    return match ? match[1].trim() || null : null;
-};
-
-const getQueryParam = (req: ApiRequest, key: string): string | null => {
-    const raw = req?.query?.[key];
-    if (typeof raw === 'string') return raw;
-    if (Array.isArray(raw) && typeof raw[0] === 'string') return raw[0];
-    return null;
-};
 
 /**
  * Backfill the question pool from existing daily_movie_questions.

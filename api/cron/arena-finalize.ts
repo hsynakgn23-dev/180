@@ -21,6 +21,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { createSupabaseServiceClient } from '../lib/supabaseServiceClient.js';
+import { getHeader, parseBody, sendJson, toObject } from '../lib/httpHelpers.js';
 import { applyProgressionReward } from '../lib/progressionProfile.js';
 import {
   getArenaSeasonReward,
@@ -42,48 +43,6 @@ type ApiRequest = {
 type ApiResponse = {
   setHeader?: (key: string, value: string) => void;
   status?: (statusCode: number) => { json: (payload: Record<string, unknown>) => unknown };
-};
-
-const sendJson = (
-  res: ApiResponse,
-  status: number,
-  payload: Record<string, unknown>
-) => {
-  if (res && typeof res.status === 'function') return res.status(status).json(payload);
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: { 'content-type': 'application/json; charset=utf-8' },
-  });
-};
-
-const getHeader = (req: ApiRequest, key: string): string => {
-  const headers = req.headers;
-  if (!headers) return '';
-  if (typeof (headers as Headers).get === 'function') return ((headers as Headers).get(key) || '').trim();
-  const obj = headers as Record<string, string | undefined>;
-  return (obj[key.toLowerCase()] || obj[key] || '').trim();
-};
-
-const parseBody = async (req: ApiRequest): Promise<Record<string, unknown>> => {
-  if (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) {
-    return req.body as Record<string, unknown>;
-  }
-  if (typeof req.on !== 'function') return {};
-  const chunks: string[] = [];
-  await new Promise<void>((resolve) => {
-    req.on?.('data', (chunk) => {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk));
-    });
-    req.on?.('end', () => resolve());
-  });
-  const raw = chunks.join('').trim();
-  if (!raw) return {};
-  try {
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {};
-  } catch { return {}; }
 };
 
 const getCronSecret = (): string | null =>
@@ -131,7 +90,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return sendJson(res, 500, { ok: false, error: 'Server config error.' });
   }
 
-  const body = await parseBody(req);
+  const body = toObject(await parseBody(req)) || {};
   const requestedWeek = String(body.weekKey || '').trim();
   const weekKey = requestedWeek && WEEK_KEY_RE.test(requestedWeek)
     ? requestedWeek

@@ -21,6 +21,7 @@
  
 
 import { createSupabaseServiceClient } from '../lib/supabaseServiceClient.js';
+import { getHeader, sendJson } from '../lib/httpHelpers.js';
 import { sendExpoPushMessages } from '../lib/push.js';
 
 export const config = { runtime: 'nodejs' };
@@ -60,22 +61,6 @@ type ProfileTokenRow = {
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-const sendJson = (res: ApiResponse, status: number, payload: Record<string, unknown>) => {
-  if (res && typeof res.status === 'function') return res.status(status).json(payload);
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: { 'content-type': 'application/json; charset=utf-8' },
-  });
-};
-
-const getHeader = (req: ApiRequest, key: string): string => {
-  const headers = req.headers;
-  if (!headers) return '';
-  if (typeof (headers as Headers).get === 'function') return ((headers as Headers).get(key) || '').trim();
-  const obj = headers as Record<string, string | undefined>;
-  return (obj[key.toLowerCase()] || obj[key] || '').trim();
-};
 
 const getCronSecret = (): string | null =>
   process.env.CRON_SECRET || process.env.VERCEL_CRON_SECRET || null;

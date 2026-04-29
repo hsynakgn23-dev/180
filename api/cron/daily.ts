@@ -16,6 +16,7 @@ import {
     sendExpoPushMessages
 } from '../lib/push.js';
 import { syncDailyQuestionsToPool } from '../lib/questionPool.js';
+import { getHeader, getQueryParam, sendJson } from '../lib/httpHelpers.js';
 
 export const config = {
     runtime: 'nodejs'
@@ -846,47 +847,6 @@ const decodeJwtRole = (jwt: string): string | null => {
     } catch {
         return null;
     }
-};
-
-const getQueryParam = (req: any, key: string): string | null => {
-    const rawQueryValue = req?.query?.[key];
-    if (typeof rawQueryValue === 'string') return rawQueryValue;
-    if (Array.isArray(rawQueryValue) && typeof rawQueryValue[0] === 'string') return rawQueryValue[0];
-
-    const rawUrl = typeof req?.url === 'string' ? req.url : '';
-    if (!rawUrl) return null;
-
-    try {
-        const host = req?.headers?.host || 'localhost';
-        const url = new URL(rawUrl, rawUrl.startsWith('http') ? undefined : `https://${host}`);
-        return url.searchParams.get(key);
-    } catch {
-        return null;
-    }
-};
-
-const getHeader = (req: any, key: string): string => {
-    const lowerKey = key.toLowerCase();
-    const headers = req?.headers;
-
-    if (!headers) return '';
-
-    if (typeof headers.get === 'function') {
-        return headers.get(key) || '';
-    }
-
-    return headers[lowerKey] || headers[key] || '';
-};
-
-const sendJson = (res: any, status: number, payload: Record<string, unknown>) => {
-    if (res && typeof res.status === 'function') {
-        return res.status(status).json(payload);
-    }
-
-    return new Response(JSON.stringify(payload), {
-        status,
-        headers: { 'content-type': 'application/json; charset=utf-8' }
-    });
 };
 
 const normalizeText = (value: unknown, maxLength = 400): string => {
@@ -1787,4 +1747,3 @@ export default async function handler(req: any, res: any) {
         return sendJson(res, 500, { error: error.message || 'Unexpected error' });
     }
 }
-
