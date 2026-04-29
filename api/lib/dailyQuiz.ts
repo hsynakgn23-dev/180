@@ -1,4 +1,5 @@
 import { createSupabaseServiceClient } from './supabaseServiceClient.js';
+import { getBearerToken as getRequestBearerToken } from './httpHelpers.js';
 import { createSupabaseServiceHeaders } from './supabaseServiceHeaders.js';
 import {
     DAILY_QUIZ_CORRECT_XP,
@@ -553,27 +554,10 @@ export const stageDailyQuizSourceBatch = async (input: {
     }
 };
 
-const getHeader = (
-    headers: Record<string, string | undefined> | Headers | undefined,
-    key: string
-): string => {
-    if (!headers) return '';
-    if (typeof (headers as Headers).get === 'function') {
-        return ((headers as Headers).get(key) || '').trim();
-    }
-
-    const objectHeaders = headers as Record<string, string | undefined>;
-    return (objectHeaders[key.toLowerCase()] || objectHeaders[key] || '').trim();
-};
-
 const getBearerToken = (
     headers: Record<string, string | undefined> | Headers | undefined
 ): string | null => {
-    const authHeader = getHeader(headers, 'authorization');
-    const match = authHeader.match(/^Bearer\s+(.+)$/i);
-    if (!match) return null;
-    const token = match[1].trim();
-    return token || null;
+    return getRequestBearerToken({ headers });
 };
 
 const readAuthUser = async (accessToken: string): Promise<{ id: string; email: string } | null> => {

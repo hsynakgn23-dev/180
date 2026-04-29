@@ -18,6 +18,7 @@
 // - Searches display_name ILIKE '%q%' OR xp_state->>'username' ILIKE '%q%'.
 
 import { createCorsHeaders } from './lib/cors.js';
+import { getBearerToken, getQueryParam, sendJson } from './lib/httpHelpers.js';
 import { createSupabaseServiceClient } from './lib/supabaseServiceClient.js';
 import { resolveLeagueKeyFromXp } from '../src/domain/leagueSystem.js';
 
@@ -37,49 +38,7 @@ type ApiResponse = {
   status?: (statusCode: number) => { json: (payload: Record<string, unknown>) => unknown };
 };
 
-const sendJson = (
-  res: ApiResponse,
-  status: number,
-  payload: Record<string, unknown>,
-  headers: Record<string, string> = {}
-) => {
-  if (res && typeof res.setHeader === 'function') {
-    for (const [k, v] of Object.entries(headers)) res.setHeader(k, v);
-  }
-  if (res && typeof res.status === 'function') return res.status(status).json(payload);
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: { 'content-type': 'application/json; charset=utf-8', ...headers },
-  });
-};
-
-const getHeader = (req: ApiRequest, key: string): string => {
-  const h = req.headers;
-  if (!h) return '';
-  if (typeof (h as Headers).get === 'function') return ((h as Headers).get(key) || '').trim();
-  const obj = h as Record<string, string | undefined>;
-  return (obj[key.toLowerCase()] || obj[key] || '').trim();
-};
-
-const getBearerToken = (req: ApiRequest): string | null => {
-  const m = getHeader(req, 'authorization').match(/^Bearer\s+(.+)$/i);
-  return m ? m[1].trim() || null : null;
-};
-
-const getQueryValue = (req: ApiRequest, key: string): string => {
-  if (req.query && typeof req.query === 'object') {
-    const v = req.query[key];
-    if (Array.isArray(v)) return String(v[0] || '').trim();
-    if (typeof v === 'string') return v.trim();
-  }
-  if (typeof req.url === 'string') {
-    try {
-      const u = new URL(req.url, 'http://localhost');
-      return (u.searchParams.get(key) || '').trim();
-    } catch { /* noop */ }
-  }
-  return '';
-};
+const getQueryValue = (req: ApiRequest, key: string): string => (getQueryParam(req, key) || '').trim();
 
 const getSupabaseUrl = () => String(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
 const getSupabaseServiceKey = () => String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();

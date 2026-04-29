@@ -1,5 +1,6 @@
 import { createCorsHeaders } from './lib/cors.js';
 import { getCachedDailyMovies, setCachedDailyMovies } from './lib/dailyCache.js';
+import { getQueryParam, sendJson } from './lib/httpHelpers.js';
 
 export const config = {
     runtime: 'nodejs'
@@ -80,48 +81,6 @@ const getSupabaseReadKey = (): string => {
         process.env.VITE_SUPABASE_ANON_KEY ||
         ''
     );
-};
-
-const getQueryParam = (req: ApiRequest, key: string): string | null => {
-    const rawQueryValue = req?.query?.[key];
-    if (typeof rawQueryValue === 'string') return rawQueryValue;
-    if (Array.isArray(rawQueryValue) && typeof rawQueryValue[0] === 'string') return rawQueryValue[0];
-
-    const rawUrl = typeof req?.url === 'string' ? req.url : '';
-    if (!rawUrl) return null;
-
-    try {
-        const host = req?.headers?.host || 'localhost';
-        const url = new URL(rawUrl, rawUrl.startsWith('http') ? undefined : `https://${host}`);
-        return url.searchParams.get(key);
-    } catch {
-        return null;
-    }
-};
-
-const sendJson = (
-    res: ApiResponse,
-    status: number,
-    payload: Record<string, unknown>,
-    headers: Record<string, string> = {}
-) => {
-    if (res && typeof res.setHeader === 'function') {
-        for (const [key, value] of Object.entries(headers)) {
-            res.setHeader(key, value);
-        }
-    }
-
-    if (res && typeof res.status === 'function') {
-        return res.status(status).json(payload);
-    }
-
-    return new Response(JSON.stringify(payload), {
-        status,
-        headers: {
-            'content-type': 'application/json; charset=utf-8',
-            ...headers
-        }
-    });
 };
 
 const isValidDateKey = (value: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(value);

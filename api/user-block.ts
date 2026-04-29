@@ -16,6 +16,7 @@
 //   - Removes row from user_blocks (no-op if not present).
 
 import { createCorsHeaders } from './lib/cors.js';
+import { getBearerToken, parseBody, sendJson, toObject } from './lib/httpHelpers.js';
 import { createSupabaseServiceClient } from './lib/supabaseServiceClient.js';
 
 export const config = { runtime: 'nodejs' };
@@ -33,55 +34,6 @@ type ApiRequest = {
 type ApiResponse = {
   setHeader?: (k: string, v: string) => void;
   status?: (code: number) => { json: (p: Record<string, unknown>) => unknown };
-};
-
-const sendJson = (
-  res: ApiResponse,
-  status: number,
-  payload: Record<string, unknown>,
-  headers: Record<string, string> = {}
-) => {
-  if (res && typeof res.setHeader === 'function') {
-    for (const [k, v] of Object.entries(headers)) res.setHeader(k, v);
-  }
-  if (res && typeof res.status === 'function') return res.status(status).json(payload);
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: { 'content-type': 'application/json; charset=utf-8', ...headers },
-  });
-};
-
-const getHeader = (req: ApiRequest, key: string): string => {
-  const h = req.headers;
-  if (!h) return '';
-  if (typeof (h as Headers).get === 'function') return ((h as Headers).get(key) || '').trim();
-  const obj = h as Record<string, string | undefined>;
-  return (obj[key.toLowerCase()] || obj[key] || '').trim();
-};
-
-const getBearerToken = (req: ApiRequest): string | null => {
-  const m = getHeader(req, 'authorization').match(/^Bearer\s+(.+)$/i);
-  return m ? m[1].trim() || null : null;
-};
-
-const parseBody = async (req: ApiRequest): Promise<Record<string, unknown>> => {
-  if (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) {
-    return req.body as Record<string, unknown>;
-  }
-  if (typeof req.on !== 'function') return {};
-  const chunks: string[] = [];
-  await new Promise<void>((resolve) => {
-    req.on?.('data', (c) => chunks.push(Buffer.isBuffer(c) ? c.toString('utf8') : String(c)));
-    req.on?.('end', () => resolve());
-  });
-  const raw = chunks.join('').trim();
-  if (!raw) return {};
-  try {
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {};
-  } catch { return {}; }
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -112,7 +64,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   const { data: { user }, error: authError } = await supabase.auth.getUser(accessToken);
   if (authError || !user) return sendJson(res, 401, { ok: false, error: 'Invalid token.' }, cors);
 
-  const body = await parseBody(req);
+  const body = toObject(await parseBody(req)) || {};
   const targetUserId = String(body.targetUserId || '').trim();
   const action = String(body.action || '').trim().toLowerCase();
 

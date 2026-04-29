@@ -1,4 +1,5 @@
 import { createCorsHeaders } from './lib/cors.js';
+import { getBearerToken, getQueryParam, sendJson } from './lib/httpHelpers.js';
 import { createSupabaseServiceClient } from './lib/supabaseServiceClient.js';
 import { getBlurQuizReward } from '../src/domain/progressionRewards.js';
 import { applyProgressionReward } from './lib/progressionProfile.js';
@@ -115,56 +116,6 @@ const TITLE_CANONICAL_TOKEN_MAP: Record<string, string> = {
 };
 const tmdbTitleAliasCache = new Map<number, string[]>();
 let titleAliasesColumnAvailable: boolean | null = null;
-
-const sendJson = (
-    res: ApiResponse,
-    status: number,
-    payload: Record<string, unknown>,
-    headers: Record<string, string> = {}
-) => {
-    if (res && typeof res.setHeader === 'function') {
-        for (const [key, value] of Object.entries(headers)) {
-            res.setHeader(key, value);
-        }
-    }
-    if (res && typeof res.status === 'function') {
-        return res.status(status).json(payload);
-    }
-    return new Response(JSON.stringify(payload), {
-        status,
-        headers: { 'content-type': 'application/json; charset=utf-8', ...headers },
-    });
-};
-
-const getHeader = (req: ApiRequest, key: string): string => {
-    const headers = req.headers;
-    if (!headers) return '';
-    if (typeof (headers as Headers).get === 'function') {
-        return ((headers as Headers).get(key) || '').trim();
-    }
-    const obj = headers as Record<string, string | undefined>;
-    return (obj[key.toLowerCase()] || obj[key] || '').trim();
-};
-
-const getBearerToken = (req: ApiRequest): string | null => {
-    const authHeader = getHeader(req, 'authorization');
-    const match = authHeader.match(/^Bearer\s+(.+)$/i);
-    return match ? match[1].trim() || null : null;
-};
-
-const getQueryParam = (req: ApiRequest, key: string): string | null => {
-    const raw = req?.query?.[key];
-    if (typeof raw === 'string') return raw;
-    if (Array.isArray(raw) && typeof raw[0] === 'string') return raw[0];
-    const rawUrl = typeof req?.url === 'string' ? req.url : '';
-    if (!rawUrl) return null;
-    try {
-        const url = new URL(rawUrl, rawUrl.startsWith('http') ? undefined : 'https://localhost');
-        return url.searchParams.get(key);
-    } catch {
-        return null;
-    }
-};
 
 const readBody = (req: ApiRequest): Promise<unknown> => {
     if (req.body !== undefined) return Promise.resolve(req.body);
