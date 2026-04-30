@@ -5,10 +5,10 @@ const config = baseConfig.expo;
 module.exports = {
   expo: {
     ...config,
-    version: '1.0.4',
+    version: '1.0.6',
     android: {
       ...config.android,
-      versionCode: 32,
+      versionCode: 37,
       googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? './google-services.json',
       permissions: [
         ...(config.android.permissions ?? []),
