@@ -1,6 +1,6 @@
-import { TMDB_SEEDS } from '../../data/tmdbSeeds';
-import { normalizeAvatarUrl } from '../../lib/avatarUpload';
-import type { EchoLog, LeagueInfo, RegistrationGender, RitualLog, XPState } from './types';
+import { TMDB_SEEDS } from '../../data/tmdbSeeds.js';
+import { normalizeAvatarUrl } from '../../lib/avatarUpload.js';
+import type { EchoLog, LeagueInfo, RegistrationGender, RitualLog, XPState } from './types.js';
 
 export const LEAGUES_DATA: Record<string, LeagueInfo> = {
     'Bronze': { name: 'Figüran', color: '#CD7F32', description: 'Sahneye ilk adım.' },

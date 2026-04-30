@@ -1,9 +1,9 @@
 import React, { useCallback, useMemo } from 'react';
-export { getLeagueKeyByIndex, resolveLeagueInfo, resolveLeagueKey, resolveLeagueKeyFromXp } from '../domain/leagueSystem';
+export { getLeagueKeyByIndex, resolveLeagueInfo, resolveLeagueKey, resolveLeagueKeyFromXp } from '../domain/leagueSystem.js';
 
-import { AuthProvider, useAuth } from './AuthContext';
-import { ProgressionProvider, useProgression } from './ProgressionContext';
-import { ProfileProvider, useProfile } from './ProfileContext';
+import { AuthProvider, useAuth } from './AuthContext.js';
+import { ProgressionProvider, useProgression } from './ProgressionContext.js';
+import { ProfileProvider, useProfile } from './ProfileContext.js';
 import type {
     AuthResult,
     EchoLog,
@@ -15,16 +15,16 @@ import type {
     SharePromptEvent,
     ShareRewardTrigger,
     StreakCelebrationEvent,
-} from './xpShared/types';
+} from './xpShared/types.js';
 
 // Backward-compatible re-exports for existing consumers of XPContext.
-export { LEAGUES_DATA, LEAGUE_NAMES } from './xpShared/state';
+export { LEAGUES_DATA, LEAGUE_NAMES } from './xpShared/state.js';
 export type {
     LeagueInfo,
     RegistrationGender,
     SharePromptEvent,
     StreakCelebrationEvent,
-} from './xpShared/types';
+} from './xpShared/types.js';
 
 interface XPContextType {
     xp: number;

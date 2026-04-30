@@ -1,6 +1,6 @@
 import type { User as SupabaseUser } from '@supabase/supabase-js';
-import type { RegistrationGender, SessionUser } from './types';
-import { REGISTRATION_GENDERS } from './state';
+import type { RegistrationGender, SessionUser } from './types.js';
+import { REGISTRATION_GENDERS } from './state.js';
 
 export const POST_AUTH_HASH_STORAGE_KEY = '180_post_auth_hash';
 

@@ -8,12 +8,12 @@ import React, {
     useState,
 } from 'react';
 
-import { MAJOR_MARKS } from '../data/marksData';
-import { STREAK_MILESTONE_SET } from '../domain/celebrations';
-import { moderateComment } from '../lib/commentModeration';
-import { isSupabaseLive, supabase } from '../lib/supabase';
+import { MAJOR_MARKS } from '../data/marksData.js';
+import { STREAK_MILESTONE_SET } from '../domain/celebrations.js';
+import { moderateComment } from '../lib/commentModeration.js';
+import { isSupabaseLive, supabase } from '../lib/supabase.js';
 
-import { useAuth } from './AuthContext';
+import { useAuth } from './AuthContext.js';
 import {
     compactStateForPersistence,
     persistUserRitualBackupToLocal,
@@ -21,7 +21,7 @@ import {
     readUserRitualBackupFromLocal,
     readUserRitualsFromCloud,
     readUserXpStateFromLocal,
-} from './xpShared/persistence';
+} from './xpShared/persistence.js';
 import {
     applyXPDelta,
     buildFollowUserIdKey,
@@ -42,7 +42,7 @@ import {
     parseDateKeyToDayIndex,
     ritualFingerprint,
     SHARE_REWARD_XP,
-} from './xpShared/state';
+} from './xpShared/state.js';
 import type {
     AuthResult,
     EchoLog,
@@ -52,7 +52,7 @@ import type {
     ShareRewardTrigger,
     StreakCelebrationEvent,
     XPState,
-} from './xpShared/types';
+} from './xpShared/types.js';
 
 type UserFollowRow = {
     followed_user_id: string | null;

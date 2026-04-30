@@ -1,8 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
-import { trackEvent } from '../lib/analytics';
-import { isSupabaseLive, supabase } from '../lib/supabase';
+import { trackEvent } from '../lib/analytics.js';
+import { isSupabaseLive, supabase } from '../lib/supabase.js';
 import {
     buildAuthRedirectTo,
     clearRecoveryUrlState,
@@ -12,14 +12,14 @@ import {
     normalizeAuthError,
     rememberPostAuthHash,
     toSessionUser,
-} from './xpShared/auth';
-import { REGISTRATION_GENDERS, USERNAME_REGEX } from './xpShared/state';
+} from './xpShared/auth.js';
+import { REGISTRATION_GENDERS, USERNAME_REGEX } from './xpShared/state.js';
 import type {
     AuthResult,
     PendingRegistrationProfile,
     RegistrationProfileInput,
     SessionUser,
-} from './xpShared/types';
+} from './xpShared/types.js';
 
 export type AuthContextValue = {
     user: SessionUser | null;

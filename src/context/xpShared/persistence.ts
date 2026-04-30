@@ -1,6 +1,6 @@
-import { MAX_AVATAR_DATA_URL_LENGTH } from '../../lib/avatarUpload';
-import { isSupabaseLive, supabase } from '../../lib/supabase';
-import type { RitualLog, XPState } from './types';
+import { MAX_AVATAR_DATA_URL_LENGTH } from '../../lib/avatarUpload.js';
+import { isSupabaseLive, supabase } from '../../lib/supabase.js';
+import type { RitualLog, XPState } from './types.js';
 import {
     fallbackMovieIdFromTitle,
     isSupabaseCapabilityError,
@@ -9,7 +9,7 @@ import {
     normalizeRitualLog,
     normalizeXPState,
     STORAGE_RECOVERY_KEYS,
-} from './state';
+} from './state.js';
 
 export const USER_XP_STORAGE_KEY_PREFIX = '180_xp_data_';
 export const USER_RITUAL_BACKUP_KEY_PREFIX = '180_ritual_backup_';
