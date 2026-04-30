@@ -17,7 +17,7 @@ module.exports = {
     },
     ios: {
       ...config.ios,
-      buildNumber: '19',
+      buildNumber: '26',
     },
   },
 };
