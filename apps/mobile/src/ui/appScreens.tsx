@@ -1957,7 +1957,7 @@ const PresetAvatarPickerGrid = ({
       </View>
       {!isPremium ? (
         <View style={{ backgroundColor: 'rgba(214,223,161,0.08)', borderRadius: 8, borderWidth: 1, borderColor: 'rgba(214,223,161,0.2)', paddingHorizontal: 10, paddingVertical: 7 }}>
-          <Text style={{ color: '#d6dfa1', fontSize: 11 }}>🎟 {ticketHint}</Text>
+          <Text style={{ color: '#dce6b8', fontSize: 11 }}>🎟 {ticketHint}</Text>
         </View>
       ) : null}
     </View>
@@ -3246,7 +3246,7 @@ const ProfileUnifiedCard = ({
               {normalizedDisplayName}
             </Text>
             {isPremium ? (
-              <Ionicons name="checkmark-circle" size={16} color="#d6dfa1" />
+              <Ionicons name="checkmark-circle" size={16} color="#dce6b8" />
             ) : null}
           </View>
           {summaryBadges.length > 0 ? (
