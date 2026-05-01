@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 
 const ROOT_ENV_PATH = path.join(process.cwd(), '.env');
 const MOBILE_ENV_PATH = path.join(process.cwd(), 'apps', 'mobile', '.env');
@@ -9,7 +10,8 @@ const MOBILE_GOOGLE_SERVICES_PATH = path.join(
   'mobile',
   'google-services.json'
 );
-const MOBILE_APP_JSON_PATH = path.join(process.cwd(), 'apps', 'mobile', 'app.json');
+const MOBILE_APP_CONFIG_PATH = path.join(process.cwd(), 'apps', 'mobile', 'app.config.js');
+const _require = createRequire(import.meta.url);
 
 const REQUIRED_MOBILE_KEYS = [
   'EXPO_PUBLIC_ANALYTICS_ENDPOINT',
@@ -57,8 +59,7 @@ const extractHost = (urlText) => {
 
 const rootEnv = parseEnv(readFileSafe(ROOT_ENV_PATH));
 const mobileEnv = parseEnv(readFileSafe(MOBILE_ENV_PATH));
-const appJsonRaw = readFileSafe(MOBILE_APP_JSON_PATH);
-const appJson = appJsonRaw ? JSON.parse(appJsonRaw) : {};
+const appJson = (() => { try { return _require(MOBILE_APP_CONFIG_PATH); } catch { return {}; } })();
 
 const errors = [];
 const warnings = [];

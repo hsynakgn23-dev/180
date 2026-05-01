@@ -1,11 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 
 const ROOT_DIR = process.cwd();
 const ROOT_ENV_PATH = path.join(ROOT_DIR, '.env');
 const MOBILE_ENV_PATH = path.join(ROOT_DIR, 'apps', 'mobile', '.env');
 const MOBILE_RELEASE_ENV_PATH = path.join(ROOT_DIR, 'apps', 'mobile', '.env.release');
-const MOBILE_APP_JSON_PATH = path.join(ROOT_DIR, 'apps', 'mobile', 'app.json');
+const MOBILE_APP_CONFIG_PATH = path.join(ROOT_DIR, 'apps', 'mobile', 'app.config.js');
+const _require = createRequire(import.meta.url);
 
 const ORDERED_KEYS = [
   'EXPO_PUBLIC_ANALYTICS_ENDPOINT',
@@ -60,9 +62,8 @@ const parseAbsoluteUrl = (value) => {
 
 const resolveProjectIdFromAppJson = () => {
   try {
-    const raw = fs.readFileSync(MOBILE_APP_JSON_PATH, 'utf8');
-    const parsed = JSON.parse(raw);
-    return normalizeText(parsed?.expo?.extra?.eas?.projectId);
+    const config = _require(MOBILE_APP_CONFIG_PATH);
+    return normalizeText(config?.expo?.extra?.eas?.projectId);
   } catch {
     return '';
   }

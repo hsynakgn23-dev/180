@@ -1,10 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 
 const ROOT_DIR = process.cwd();
 const ROOT_ENV_PATH = path.join(ROOT_DIR, '.env');
 const MOBILE_ENV_PATH = path.join(ROOT_DIR, 'apps', 'mobile', '.env');
-const MOBILE_APP_JSON_PATH = path.join(ROOT_DIR, 'apps', 'mobile', 'app.json');
+const MOBILE_APP_CONFIG_PATH = path.join(ROOT_DIR, 'apps', 'mobile', 'app.config.js');
+const _require = createRequire(import.meta.url);
 const MOBILE_GOOGLE_SERVICES_PATH = path.join(ROOT_DIR, 'apps', 'mobile', 'google-services.json');
 const PUSH_API_PATH = path.join(ROOT_DIR, 'api', 'push', 'test.ts');
 const MIGRATION_PATH = path.join(
@@ -53,8 +55,7 @@ const showWarn = (detail) => {
 
 const rootEnv = parseEnv(readFileSafe(ROOT_ENV_PATH));
 const mobileEnv = parseEnv(readFileSafe(MOBILE_ENV_PATH));
-const appJsonRaw = readFileSafe(MOBILE_APP_JSON_PATH);
-const appJson = appJsonRaw ? JSON.parse(appJsonRaw) : {};
+const appJson = (() => { try { return _require(MOBILE_APP_CONFIG_PATH); } catch { return {}; } })();
 
 let failed = false;
 
@@ -89,7 +90,7 @@ if (!projectIdOk) failed = true;
 
 const appJsonProjectOk = isUuid(appJsonProjectId);
 showItem(
-  'apps/mobile/app.json extra.eas.projectId',
+  'apps/mobile/app.config.js extra.eas.projectId',
   appJsonProjectOk,
   appJsonProjectOk ? String(appJsonProjectId).trim() : 'missing or invalid uuid'
 );
@@ -98,12 +99,12 @@ if (!appJsonProjectOk) failed = true;
 if (projectIdOk && appJsonProjectOk && String(mobileProjectId).trim() !== String(appJsonProjectId).trim()) {
   failed = true;
   showItem(
-    'projectId parity (env vs app.json)',
+    'projectId parity (env vs app.config.js)',
     false,
     `${String(mobileProjectId).trim()} != ${String(appJsonProjectId).trim()}`
   );
 } else if (projectIdOk && appJsonProjectOk) {
-  showItem('projectId parity (env vs app.json)', true);
+  showItem('projectId parity (env vs app.config.js)', true);
 }
 
 const forbiddenMobileKeys = Object.keys(mobileEnv).filter((key) => !key.startsWith('EXPO_PUBLIC_'));

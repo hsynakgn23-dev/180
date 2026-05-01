@@ -1,11 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 
 const ROOT_DIR = process.cwd();
 const ROOT_ENV_PATH = path.join(ROOT_DIR, '.env');
 const MOBILE_ENV_PATH = path.join(ROOT_DIR, 'apps', 'mobile', '.env');
-const APP_JSON_PATH = path.join(ROOT_DIR, 'apps', 'mobile', 'app.json');
+const APP_CONFIG_PATH = path.join(ROOT_DIR, 'apps', 'mobile', 'app.config.js');
+const _require = createRequire(import.meta.url);
 const EAS_JSON_PATH = path.join(ROOT_DIR, 'apps', 'mobile', 'eas.json');
 const GOOGLE_SERVICES_PATH = path.join(ROOT_DIR, 'apps', 'mobile', 'google-services.json');
 
@@ -137,10 +139,8 @@ const evaluateEndpoint = (label, value) => {
 const rootEnv = parseEnv(readFileSafe(ROOT_ENV_PATH));
 const mobileEnv = parseEnv(readFileSafe(effectiveMobileEnvPath));
 
-const appJsonRaw = readFileSafe(APP_JSON_PATH);
+const appJson = (() => { try { return _require(APP_CONFIG_PATH); } catch { return {}; } })();
 const easJsonRaw = readFileSafe(EAS_JSON_PATH);
-
-const appJson = appJsonRaw ? JSON.parse(appJsonRaw) : {};
 const easJson = easJsonRaw ? JSON.parse(easJsonRaw) : {};
 
 // ── Build gate checks (run actual compiler/linter to catch real blockers) ────
@@ -174,7 +174,7 @@ showItem(
   `mobile env file exists (${path.relative(ROOT_DIR, effectiveMobileEnvPath)})`,
   fs.existsSync(effectiveMobileEnvPath)
 );
-showItem('apps/mobile/app.json exists', fs.existsSync(APP_JSON_PATH));
+showItem('apps/mobile/app.config.js exists', fs.existsSync(APP_CONFIG_PATH));
 showItem('apps/mobile/eas.json exists', fs.existsSync(EAS_JSON_PATH));
 
 const expo = appJson?.expo || {};
@@ -233,14 +233,14 @@ showItem(
   isUuid(envProjectId) ? envProjectId : 'missing or invalid uuid'
 );
 showItem(
-  'app.json extra.eas.projectId',
+  'app.config.js extra.eas.projectId',
   isUuid(appProjectId),
   isUuid(appProjectId) ? appProjectId : 'missing or invalid uuid'
 );
 if (isUuid(envProjectId) && isUuid(appProjectId) && envProjectId !== appProjectId) {
-  showItem('projectId parity (env vs app.json)', false, `${envProjectId} != ${appProjectId}`);
+  showItem('projectId parity (env vs app.config.js)', false, `${envProjectId} != ${appProjectId}`);
 } else if (isUuid(envProjectId) && isUuid(appProjectId)) {
-  showItem('projectId parity (env vs app.json)', true);
+  showItem('projectId parity (env vs app.config.js)', true);
 }
 
 evaluateEndpoint('EXPO_PUBLIC_ANALYTICS_ENDPOINT', mobileEnv.EXPO_PUBLIC_ANALYTICS_ENDPOINT);

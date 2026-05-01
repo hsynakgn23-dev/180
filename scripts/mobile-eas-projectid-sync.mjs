@@ -1,11 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 
 const ROOT_DIR = process.cwd();
 const MOBILE_DIR = path.join(ROOT_DIR, 'apps', 'mobile');
 const MOBILE_ENV_PATH = path.join(MOBILE_DIR, '.env');
-const MOBILE_APP_JSON_PATH = path.join(MOBILE_DIR, 'app.json');
+const MOBILE_APP_CONFIG_PATH = path.join(MOBILE_DIR, 'app.config.js');
+const _require = createRequire(import.meta.url);
 const ENV_KEY = 'EXPO_PUBLIC_EXPO_PROJECT_ID';
 
 const UUID_REGEX =
@@ -83,9 +85,8 @@ const findUuidDeep = (value) => {
 
 const readProjectIdFromAppJson = () => {
   try {
-    const raw = fs.readFileSync(MOBILE_APP_JSON_PATH, 'utf8');
-    const parsed = JSON.parse(raw);
-    const projectId = String(parsed?.expo?.extra?.eas?.projectId || '').trim();
+    const config = _require(MOBILE_APP_CONFIG_PATH);
+    const projectId = String(config?.expo?.extra?.eas?.projectId || '').trim();
     return UUID_REGEX.test(projectId) ? projectId : null;
   } catch {
     return null;
@@ -108,21 +109,8 @@ const readProjectInfoJson = () => {
   }
 };
 
-const writeProjectIdToAppJson = (projectId) => {
-  const raw = fs.readFileSync(MOBILE_APP_JSON_PATH, 'utf8');
-  const parsed = JSON.parse(raw);
-  if (!parsed.expo || typeof parsed.expo !== 'object') {
-    throw new Error('apps/mobile/app.json icinde "expo" objesi bulunamadi.');
-  }
-  if (!parsed.expo.extra || typeof parsed.expo.extra !== 'object') {
-    parsed.expo.extra = {};
-  }
-  if (!parsed.expo.extra.eas || typeof parsed.expo.extra.eas !== 'object') {
-    parsed.expo.extra.eas = {};
-  }
-  parsed.expo.extra.eas.projectId = projectId;
-  fs.writeFileSync(MOBILE_APP_JSON_PATH, `${JSON.stringify(parsed, null, 2)}\n`, 'utf8');
-};
+// projectId artık app.config.js içinde sabit — write-back gerekmez
+const writeProjectIdToAppJson = (_projectId) => {};
 
 const main = () => {
   const mobileEnvText = fs.existsSync(MOBILE_ENV_PATH)
@@ -134,15 +122,13 @@ const main = () => {
   if (UUID_REGEX.test(existingProjectId)) {
     writeProjectIdToAppJson(existingProjectId);
     console.info(`[mobile-eas-projectid-sync] ${ENV_KEY} already set.`);
-    console.info('[mobile-eas-projectid-sync] app.json extra.eas.projectId updated.');
     return;
   }
 
   const fromAppJson = readProjectIdFromAppJson();
   if (fromAppJson) {
     writeEnvKey(MOBILE_ENV_PATH, ENV_KEY, fromAppJson);
-    writeProjectIdToAppJson(fromAppJson);
-    console.info(`[mobile-eas-projectid-sync] ${ENV_KEY} updated from app.json: ${fromAppJson}`);
+    console.info(`[mobile-eas-projectid-sync] ${ENV_KEY} updated from app.config.js: ${fromAppJson}`);
     return;
   }
 
@@ -153,9 +139,7 @@ const main = () => {
   }
 
   writeEnvKey(MOBILE_ENV_PATH, ENV_KEY, projectId);
-  writeProjectIdToAppJson(projectId);
   console.info(`[mobile-eas-projectid-sync] ${ENV_KEY} updated: ${projectId}`);
-  console.info('[mobile-eas-projectid-sync] app.json extra.eas.projectId updated.');
 };
 
 try {
