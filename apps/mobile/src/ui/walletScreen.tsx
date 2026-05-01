@@ -310,7 +310,7 @@ export const WalletModal = ({
   visible,
   onClose,
   language = 'tr',
-  isPremium,
+  isPremium: _isPremium,
   balance,
   inventory,
   rewardedAd,
