@@ -25,7 +25,7 @@ module.exports = {
     ios: {
       supportsTablet: true,
       bundleIdentifier: 'com.absolutecinema',
-      buildNumber: '27',
+      buildNumber: '38',
       usesAppleSignIn: true,
       config: {
         usesNonExemptEncryption: false,
