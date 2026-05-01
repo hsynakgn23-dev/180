@@ -82,11 +82,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       ok: false,
       reason: result.reason,
       error:
-        result.reason === 'premium_blocked'
-          ? 'Rewarded Ticket claims are disabled for premium users.'
-          : result.reason === 'daily_limit_reached'
-            ? 'Daily rewarded Ticket limit reached.'
-            : 'Rewarded Ticket cooldown is still active.',
+        result.reason === 'daily_limit_reached'
+          ? 'Daily rewarded Ticket limit reached.'
+          : 'Rewarded Ticket cooldown is still active.',
       wallet: toWalletSnapshot(result.wallet, entitlement.isPremium),
     }, cors);
   }

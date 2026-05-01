@@ -1889,26 +1889,38 @@ const PresetAvatarPickerGrid = ({
   selectedAvatarUrl,
   isPremium,
   onSelect,
+  onBuyAvatar,
+  avatarPurchaseCost = 150,
+  ownedAvatarIds = [],
   language = 'tr',
 }: {
   selectedAvatarUrl: string;
   isPremium: boolean;
   onSelect: (avatarUrl: string) => void;
+  onBuyAvatar?: (avatarId: string) => void;
+  avatarPurchaseCost?: number;
+  ownedAvatarIds?: string[];
   language?: MobileSettingsLanguage;
 }) => {
-  const premiumHint = language === 'tr' ? 'Premium uyelik gerektirir' : language === 'fr' ? 'Abonnement premium requis' : language === 'es' ? 'Requiere suscripcion premium' : 'Requires premium membership';
+  const ticketHint = language === 'tr' ? `${avatarPurchaseCost} Bilet` : language === 'fr' ? `${avatarPurchaseCost} billets` : language === 'es' ? `${avatarPurchaseCost} entradas` : `${avatarPurchaseCost} Tickets`;
 
   const renderAvatarButton = (entry: CinemaAvatarEntry) => {
     const avatarUrl = makeCinemaAvatarUrl(entry.id);
     const isSelected = selectedAvatarUrl === avatarUrl;
-    const isLocked = !entry.isFree && !isPremium;
+    const isOwned = entry.isFree || isPremium || ownedAvatarIds.includes(entry.id);
+    const isLocked = !isOwned;
     const xml = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">${entry.svgPaths}</svg>`;
     return (
       <Pressable
         key={entry.id}
-        onPress={() => !isLocked && onSelect(avatarUrl)}
-        disabled={isLocked}
-        style={{ alignItems: 'center' as const, gap: 4, opacity: isLocked ? 0.4 : 1, width: 64 }}
+        onPress={() => {
+          if (isLocked) {
+            onBuyAvatar?.(entry.id);
+          } else {
+            onSelect(avatarUrl);
+          }
+        }}
+        style={{ alignItems: 'center' as const, gap: 4, opacity: isLocked ? 0.55 : 1, width: 64 }}
         accessibilityRole="button"
         accessibilityLabel={entry.label}
       >
@@ -1927,7 +1939,7 @@ const PresetAvatarPickerGrid = ({
           <SvgXml xml={xml} width={30} height={30} color={entry.accent} />
           {isLocked ? (
             <View style={{ position: 'absolute' as const, top: 2, right: 2 }}>
-              <Text style={{ fontSize: 9 }}>🔒</Text>
+              <Text style={{ fontSize: 9 }}>🎟</Text>
             </View>
           ) : null}
         </View>
@@ -1944,8 +1956,8 @@ const PresetAvatarPickerGrid = ({
         {CINEMA_AVATAR_CATALOG.map(renderAvatarButton)}
       </View>
       {!isPremium ? (
-        <View style={{ backgroundColor: 'rgba(255,149,0,0.08)', borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,149,0,0.2)', paddingHorizontal: 10, paddingVertical: 7 }}>
-          <Text style={{ color: '#FF9500', fontSize: 11 }}>🔒 {premiumHint}</Text>
+        <View style={{ backgroundColor: 'rgba(214,223,161,0.08)', borderRadius: 8, borderWidth: 1, borderColor: 'rgba(214,223,161,0.2)', paddingHorizontal: 10, paddingVertical: 7 }}>
+          <Text style={{ color: '#d6dfa1', fontSize: 11 }}>🎟 {ticketHint}</Text>
         </View>
       ) : null}
     </View>
@@ -2994,6 +3006,7 @@ const ProfileUnifiedCard = ({
   state,
   isSignedIn,
   isShareHubActive = false,
+  isPremium = false,
   displayName,
   avatarUrl,
   _username,
@@ -3013,6 +3026,7 @@ const ProfileUnifiedCard = ({
   state: ProfileState;
   isSignedIn: boolean;
   isShareHubActive?: boolean;
+  isPremium?: boolean;
   displayName: string;
   avatarUrl?: string;
   _username?: string;
@@ -3227,9 +3241,14 @@ const ProfileUnifiedCard = ({
 
         <View style={{ flex: 1, gap: 4 }}>
           <Text style={styles.sectionLeadEyebrow}>{copy.eyebrow}</Text>
-          <Text style={styles.sectionLeadTitle} numberOfLines={1}>
-            {normalizedDisplayName}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={styles.sectionLeadTitle} numberOfLines={1}>
+              {normalizedDisplayName}
+            </Text>
+            {isPremium ? (
+              <Ionicons name="checkmark-circle" size={16} color="#d6dfa1" />
+            ) : null}
+          </View>
           {summaryBadges.length > 0 ? (
             <View style={[styles.sectionLeadBadgeRow, { marginTop: 10 }]}>
               {summaryBadges.map((badge) => (
@@ -9587,6 +9606,9 @@ const MobileSettingsModal = ({
   onSavePassword,
   onSendVerificationEmail,
   onSelectAvatar,
+  onBuyAvatar,
+  ownedAvatarIds = [],
+  avatarPurchaseCost = 150,
   isPremium,
   activeAccountLabel,
   activeEmailLabel,
@@ -9635,6 +9657,9 @@ const MobileSettingsModal = ({
   ) => Promise<{ ok: boolean; message: string }>;
   onSendVerificationEmail: () => void;
   onSelectAvatar: (avatarUrl: string) => void;
+  onBuyAvatar?: (avatarId: string) => void;
+  ownedAvatarIds?: string[];
+  avatarPurchaseCost?: number;
   isPremium: boolean;
   activeAccountLabel: string;
   activeEmailLabel: string;
@@ -9683,6 +9708,9 @@ const MobileSettingsModal = ({
       onSavePassword={onSavePassword}
       onSendVerificationEmail={onSendVerificationEmail}
       onSelectAvatar={onSelectAvatar}
+      onBuyAvatar={onBuyAvatar}
+      ownedAvatarIds={ownedAvatarIds}
+      avatarPurchaseCost={avatarPurchaseCost}
       isPremium={isPremium}
       activeAccountLabel={activeAccountLabel}
       activeEmailLabel={activeEmailLabel}
@@ -10667,6 +10695,9 @@ const MobileSettingsNavigatorModal = ({
   onSavePassword,
   onSendVerificationEmail,
   onSelectAvatar,
+  onBuyAvatar,
+  ownedAvatarIds = [],
+  avatarPurchaseCost = 150,
   isPremium,
   activeAccountLabel,
   activeEmailLabel,
@@ -10715,6 +10746,9 @@ const MobileSettingsNavigatorModal = ({
   ) => Promise<{ ok: boolean; message: string }>;
   onSendVerificationEmail: () => void;
   onSelectAvatar: (avatarUrl: string) => void;
+  onBuyAvatar?: (avatarId: string) => void;
+  ownedAvatarIds?: string[];
+  avatarPurchaseCost?: number;
   isPremium: boolean;
   activeAccountLabel: string;
   activeEmailLabel: string;
@@ -11051,6 +11085,9 @@ const MobileSettingsNavigatorModal = ({
           selectedAvatarUrl={identityDraft.avatarUrl}
           isPremium={isPremium}
           onSelect={onSelectAvatar}
+          onBuyAvatar={onBuyAvatar}
+          ownedAvatarIds={ownedAvatarIds}
+          avatarPurchaseCost={avatarPurchaseCost}
           language={language}
         />
       </ScreenCard>

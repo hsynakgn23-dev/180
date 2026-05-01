@@ -7245,6 +7245,7 @@ export default function App() {
                         <ProfileUnifiedCard
                           state={profileState}
                           isSignedIn={isSignedIn}
+                          isPremium={subscription.isPremium}
                           language={settingsLanguage}
                           displayName={profileShellTitle}
                           avatarUrl={profileAvatarUrl}
@@ -7590,6 +7591,9 @@ export default function App() {
             onSavePrivacy={handleSaveSettingsPrivacy}
             saveState={settingsSaveState}
             onSelectAvatar={handleSelectPresetAvatar}
+            onBuyAvatar={(avatarId) => { void wallet.buyAvatar(avatarId); }}
+            ownedAvatarIds={wallet.snapshot.ownedAvatarIds}
+            avatarPurchaseCost={wallet.snapshot.avatarPurchaseCost}
             isPremium={subscription.isPremium}
             activeAccountLabel={activeAccountLabel}
             activeEmailLabel={activeEmailLabel}

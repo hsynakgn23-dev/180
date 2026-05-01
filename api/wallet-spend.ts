@@ -1,6 +1,6 @@
 import { createCorsHeaders } from './lib/cors.js';
 import { getBearerToken, parseBody, sendJson } from './lib/httpHelpers.js';
-import { purchaseWalletStoreItem, toWalletSnapshot } from './lib/progressionWallet.js';
+import { buyAvatar, purchaseWalletStoreItem, toWalletSnapshot } from './lib/progressionWallet.js';
 import { createSupabaseServiceClient } from './lib/supabaseServiceClient.js';
 
 export const config = { runtime: 'nodejs' };
@@ -53,6 +53,35 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     ? (body as Record<string, unknown>)
     : {};
   const itemKey = String(payload.itemKey || payload.item_key || '').trim();
+  const avatarId = String(payload.avatarId || payload.avatar_id || '').trim();
+
+  if (avatarId) {
+    const result = await buyAvatar({
+      supabase,
+      supabaseUrl,
+      supabaseServiceRoleKey: supabaseServiceKey,
+      userId: user.id,
+      fallbackEmail: user.email || null,
+      fallbackDisplayName: user.email ? String(user.email).split('@')[0] : null,
+      avatarId,
+    });
+
+    if (!result.ok) {
+      return sendJson(res, 400, {
+        ok: false,
+        error: result.reason === 'insufficient_balance' ? 'Insufficient Ticket balance.' : 'Invalid avatar ID.',
+        reason: result.reason,
+      }, cors);
+    }
+
+    return sendJson(res, 200, {
+      ok: true,
+      avatarId,
+      cost: result.cost,
+      alreadyOwned: result.alreadyOwned,
+      wallet: toWalletSnapshot(result.wallet, false),
+    }, cors);
+  }
 
   const result = await purchaseWalletStoreItem({
     supabase,

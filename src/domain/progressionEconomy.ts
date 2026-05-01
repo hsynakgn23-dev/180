@@ -1,5 +1,7 @@
 export const WALLET_STARTER_TICKETS = 12;
 
+export const AVATAR_PURCHASE_COST = 150;
+
 export const REEL_REWARDED_AD_AMOUNT = 2;
 export const REEL_REWARDED_AD_DAILY_LIMIT = 2;
 export const REEL_REWARDED_AD_COOLDOWN_MINUTES = 15;

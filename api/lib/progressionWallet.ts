@@ -1,4 +1,5 @@
 import {
+  AVATAR_PURCHASE_COST,
   DEFAULT_WALLET_INVENTORY,
   findWalletStoreItem,
   PREMIUM_STARTER_BUNDLE,
@@ -42,6 +43,7 @@ export type ProgressionWalletState = {
   premiumStarterGrantedAt: string | null;
   premiumStarterProductId: string | null;
   processedTopups: WalletProcessedTopup[];
+  ownedAvatarIds: string[];
 };
 
 export type WalletProcessedTopup = {
@@ -68,6 +70,8 @@ export type ProgressionWalletSnapshot = {
     rewardAmount: number;
     cooldownRemainingSeconds: number;
   };
+  ownedAvatarIds: string[];
+  avatarPurchaseCost: number;
 };
 
 type LoadWalletProfileInput = {
@@ -253,6 +257,11 @@ const callWalletMutationRpc = async (
   return row;
 };
 
+const normalizeOwnedAvatarIds = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  return value.map((id) => normalizeText(id, 80)).filter(Boolean).slice(0, 500);
+};
+
 const normalizeWallet = (value: unknown): ProgressionWalletState => {
   const raw = sanitizeRecord(value);
   return {
@@ -269,6 +278,7 @@ const normalizeWallet = (value: unknown): ProgressionWalletState => {
     premiumStarterGrantedAt: normalizeText(raw.premiumStarterGrantedAt, 80) || null,
     premiumStarterProductId: normalizeText(raw.premiumStarterProductId, 120) || null,
     processedTopups: normalizeProcessedTopups(raw.processedTopups),
+    ownedAvatarIds: normalizeOwnedAvatarIds(raw.ownedAvatarIds),
   };
 };
 
@@ -329,6 +339,7 @@ const serializeWallet = (wallet: ProgressionWalletState): Record<string, unknown
   premiumStarterGrantedAt: wallet.premiumStarterGrantedAt,
   premiumStarterProductId: wallet.premiumStarterProductId,
   processedTopups: wallet.processedTopups,
+  ownedAvatarIds: wallet.ownedAvatarIds,
 });
 
 const resolveRewardedMeta = (
@@ -346,7 +357,7 @@ const resolveRewardedMeta = (
       : 0;
   const cooldownRemainingSeconds = Math.ceil(cooldownMs / 1000);
   return {
-    available: !isPremium && remainingClaims > 0 && cooldownRemainingSeconds <= 0,
+    available: remainingClaims > 0 && cooldownRemainingSeconds <= 0,
     remainingClaims,
     dailyLimit: REEL_REWARDED_AD_DAILY_LIMIT,
     rewardAmount: REEL_REWARDED_AD_AMOUNT,
@@ -365,6 +376,8 @@ export const toWalletSnapshot = (
   lifetimeSpent: wallet.lifetimeSpent,
   premiumStarterGrantedAt: wallet.premiumStarterGrantedAt,
   rewardedAd: resolveRewardedMeta(wallet, isPremium, now),
+  ownedAvatarIds: wallet.ownedAvatarIds,
+  avatarPurchaseCost: AVATAR_PURCHASE_COST,
 });
 
 const toLoadedWalletProfile = (data: unknown): LoadedWalletProfile => {
@@ -779,22 +792,18 @@ export const claimRewardedReels = async (input: {
   | { ok: true; wallet: ProgressionWalletState; granted: number }
   | {
       ok: false;
-      reason: 'premium_blocked' | 'daily_limit_reached' | 'cooldown_active';
+      reason: 'daily_limit_reached' | 'cooldown_active';
       wallet: ProgressionWalletState;
     }
 > => {
   const now = new Date();
   const todayKey = getTodayKey(now);
-  const mutation = await mutateWalletProfile<number, 'premium_blocked' | 'daily_limit_reached' | 'cooldown_active'>({
+  const mutation = await mutateWalletProfile<number, 'daily_limit_reached' | 'cooldown_active'>({
     supabase: input.supabase,
     userId: input.userId,
     fallbackEmail: input.fallbackEmail || null,
     fallbackDisplayName: input.fallbackDisplayName || null,
     mutate: (loaded) => {
-      if (input.isPremium) {
-        return { ok: false, reason: 'premium_blocked' };
-      }
-
       const rewardedClaimsToday = loaded.wallet.rewardedDate === todayKey ? loaded.wallet.rewardedClaimsToday : 0;
       if (rewardedClaimsToday >= REEL_REWARDED_AD_DAILY_LIMIT) {
         return { ok: false, reason: 'daily_limit_reached' };
@@ -1056,5 +1065,78 @@ export const grantTopupPack = async (input: {
     ok: true,
     wallet,
     reels: Math.max(0, Number(row.reels) || 0),
+  };
+};
+
+export const buyAvatar = async (input: {
+  supabase: SupabaseClientLike;
+  supabaseUrl: string;
+  supabaseServiceRoleKey: string;
+  userId: string;
+  fallbackEmail?: string | null;
+  fallbackDisplayName?: string | null;
+  avatarId: string;
+}): Promise<
+  | { ok: true; wallet: ProgressionWalletState; cost: number; alreadyOwned: boolean }
+  | { ok: false; reason: 'insufficient_balance' | 'invalid_avatar'; wallet: ProgressionWalletState }
+> => {
+  const avatarId = normalizeText(input.avatarId, 80);
+  if (!avatarId) {
+    const emptyWallet = normalizeWallet(null);
+    return { ok: false, reason: 'invalid_avatar', wallet: emptyWallet };
+  }
+
+  const mutation = await mutateWalletProfile<{ cost: number; alreadyOwned: boolean }, 'insufficient_balance'>({
+    supabase: input.supabase,
+    userId: input.userId,
+    fallbackEmail: input.fallbackEmail || null,
+    fallbackDisplayName: input.fallbackDisplayName || null,
+    mutate: (loaded) => {
+      if (loaded.wallet.ownedAvatarIds.includes(avatarId)) {
+        return {
+          ok: true,
+          wallet: loaded.wallet,
+          result: { cost: 0, alreadyOwned: true },
+          persist: false,
+        };
+      }
+      if (loaded.wallet.balance < AVATAR_PURCHASE_COST) {
+        return { ok: false, reason: 'insufficient_balance' };
+      }
+      return {
+        ok: true,
+        wallet: {
+          ...loaded.wallet,
+          balance: loaded.wallet.balance - AVATAR_PURCHASE_COST,
+          lifetimeSpent: loaded.wallet.lifetimeSpent + AVATAR_PURCHASE_COST,
+          ownedAvatarIds: [...loaded.wallet.ownedAvatarIds, avatarId],
+        },
+        result: { cost: AVATAR_PURCHASE_COST, alreadyOwned: false },
+      };
+    },
+  });
+
+  if (!mutation.ok) {
+    return { ok: false, reason: mutation.reason, wallet: mutation.wallet };
+  }
+
+  if (!mutation.result.alreadyOwned) {
+    await recordWalletLedgerEntry({
+      supabase: input.supabase,
+      userId: input.userId,
+      source: 'avatar_purchase',
+      sourceId: avatarId,
+      reason: 'spend_avatar',
+      delta: -AVATAR_PURCHASE_COST,
+      balanceAfter: mutation.wallet.balance,
+      metadata: { avatarId, cost: AVATAR_PURCHASE_COST },
+    });
+  }
+
+  return {
+    ok: true,
+    wallet: mutation.wallet,
+    cost: mutation.result.cost,
+    alreadyOwned: mutation.result.alreadyOwned,
   };
 };
