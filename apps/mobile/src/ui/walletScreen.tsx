@@ -35,7 +35,6 @@ const COPY = {
     buy: 'Satin al',
     use: 'Ac',
     close: 'Kapat',
-    bestValue: 'EN IYI',
     remaining: 'kalan',
     packAmount: (value: number) => `${value} Bilet`,
     count: (value: number) => `${value} adet`,
@@ -56,7 +55,6 @@ const COPY = {
     buy: 'Buy',
     use: 'Open',
     close: 'Close',
-    bestValue: 'BEST',
     remaining: 'left',
     packAmount: (value: number) => `${value} Tickets`,
     count: (value: number) => `${value} owned`,
@@ -77,7 +75,6 @@ const COPY = {
     buy: 'Comprar',
     use: 'Abrir',
     close: 'Cerrar',
-    bestValue: 'MEJOR',
     remaining: 'restantes',
     packAmount: (value: number) => `${value} Entradas`,
     count: (value: number) => `${value} en inventario`,
@@ -98,7 +95,6 @@ const COPY = {
     buy: 'Acheter',
     use: 'Ouvrir',
     close: 'Fermer',
-    bestValue: 'MEILLEUR',
     remaining: 'restants',
     packAmount: (value: number) => `${value} Billets`,
     count: (value: number) => `${value} en stock`,
@@ -184,25 +180,25 @@ const TOPUP_BADGE_COPY = {
   tr: {
     starter: 'Hizli destek',
     standard: 'Standart',
-    best_value: 'En iyi deger',
+    best_value: 'Populer',
     vault: 'Buyuk paket',
   },
   en: {
     starter: 'Quick support',
     standard: 'Standard',
-    best_value: 'Best value',
+    best_value: 'Popular',
     vault: 'Large pack',
   },
   es: {
     starter: 'Soporte rapido',
     standard: 'Estandar',
-    best_value: 'Mejor valor',
+    best_value: 'Popular',
     vault: 'Paquete grande',
   },
   fr: {
     starter: 'Soutien rapide',
     standard: 'Standard',
-    best_value: 'Meilleure valeur',
+    best_value: 'Populaire',
     vault: 'Grand pack',
   },
 } as const;
@@ -574,7 +570,7 @@ export const WalletModal = ({
                       <Text style={walletStyles.packTitle}>{copy.packAmount(pack.reels)}</Text>
                       <View style={[walletStyles.packBadge, pack.featured ? walletStyles.packBadgeFeatured : null]}>
                         <Text style={[walletStyles.packBadgeText, pack.featured ? walletStyles.packBadgeTextFeatured : null]}>
-                          {pack.featured ? copy.bestValue : resolveTopupBadge(language, pack.key)}
+                          {resolveTopupBadge(language, pack.key)}
                         </Text>
                       </View>
                     </View>
