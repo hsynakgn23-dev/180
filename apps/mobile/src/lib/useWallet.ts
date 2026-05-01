@@ -13,6 +13,7 @@ import {
 import { showRewardedAd } from './mobileAds';
 import { resolveMobileApiBaseUrl } from './mobileEnv';
 import {
+  AVATAR_PURCHASE_COST,
   DEFAULT_WALLET_INVENTORY,
   REEL_REWARDED_AD_AMOUNT,
   REEL_REWARDED_AD_DAILY_LIMIT,
@@ -44,6 +45,8 @@ export type WalletSnapshot = {
     cooldownRemainingSeconds: number;
   };
   dailyTasks: WalletDailyTaskSnapshot[];
+  ownedAvatarIds: string[];
+  avatarPurchaseCost: number;
 };
 
 type WalletState = {
@@ -71,6 +74,8 @@ const INITIAL_SNAPSHOT: WalletSnapshot = {
     cooldownRemainingSeconds: 0,
   },
   dailyTasks: [],
+  ownedAvatarIds: [],
+  avatarPurchaseCost: AVATAR_PURCHASE_COST,
 };
 
 const INITIAL_STATE: WalletState = {
@@ -100,6 +105,8 @@ const WALLET_COPY = {
     topupFailed: 'Bilet satin alma basarisiz.',
     taskClaimFailed: 'Gunluk gorev odulu alinamadi.',
     taskClaimSuccess: (amount: number) => `Gunluk gorevden +${amount} Bilet alindi.`,
+    avatarBuyFailed: 'Avatar satin alinamadi.',
+    avatarBuySuccess: 'Avatar satin alindi.',
   },
   en: {
     loadFailed: 'Ticket wallet could not be loaded.',
@@ -116,6 +123,8 @@ const WALLET_COPY = {
     topupFailed: 'Ticket purchase failed.',
     taskClaimFailed: 'Daily task reward could not be claimed.',
     taskClaimSuccess: (amount: number) => `Daily task claimed: +${amount} Tickets.`,
+    avatarBuyFailed: 'Avatar could not be purchased.',
+    avatarBuySuccess: 'Avatar purchased.',
   },
   es: {
     loadFailed: 'No se pudo cargar la cartera de entradas.',
@@ -132,6 +141,8 @@ const WALLET_COPY = {
     topupFailed: 'La compra de entradas fallo.',
     taskClaimFailed: 'No se pudo reclamar la mision diaria.',
     taskClaimSuccess: (amount: number) => `Mision diaria reclamada: +${amount} entradas.`,
+    avatarBuyFailed: 'No se pudo comprar el avatar.',
+    avatarBuySuccess: 'Avatar comprado.',
   },
   fr: {
     loadFailed: 'Le portefeuille de billets est indisponible.',
@@ -148,6 +159,8 @@ const WALLET_COPY = {
     topupFailed: 'L achat de billets a echoue.',
     taskClaimFailed: 'La mission quotidienne n a pas pu etre reclamee.',
     taskClaimSuccess: (amount: number) => `Mission quotidienne reclamee: +${amount} billets.`,
+    avatarBuyFailed: 'L avatar n a pas pu etre achete.',
+    avatarBuySuccess: 'Avatar achete.',
   },
 } as const;
 
@@ -267,6 +280,10 @@ const normalizeSnapshot = (value: unknown): WalletSnapshot => {
       cooldownRemainingSeconds: Math.max(0, Number(rewardedRaw.cooldownRemainingSeconds) || 0),
     },
     dailyTasks,
+    ownedAvatarIds: Array.isArray(raw.ownedAvatarIds)
+      ? (raw.ownedAvatarIds as unknown[]).map((id) => String(id || '').trim()).filter(Boolean)
+      : [],
+    avatarPurchaseCost: Math.max(0, Number(raw.avatarPurchaseCost) || AVATAR_PURCHASE_COST),
   };
 };
 
@@ -698,6 +715,31 @@ export function useWallet(accessToken: string | null, language: WalletLanguage =
     }
   }, [applySnapshot, copy.topupFailed, copy.topupMobileOnly, copy.topupReceiptMissing, copy.topupSuccess, copy.topupVerifyFailed, fetchJson, setFailure]);
 
+  const buyAvatar = useCallback(async (avatarId: string): Promise<boolean> => {
+    if (!accessToken || !apiBase) return false;
+    setState((current) => ({
+      ...current,
+      actionBusy: true,
+      error: null,
+      message: null,
+    }));
+    try {
+      const { response, payload } = await fetchJson('/api/wallet-spend', {
+        method: 'POST',
+        body: JSON.stringify({ avatarId }),
+      });
+      if (!response.ok || !payload?.ok) {
+        setFailure(String(payload?.error || copy.avatarBuyFailed));
+        return false;
+      }
+      applySnapshot(payload.wallet, copy.avatarBuySuccess);
+      return true;
+    } catch (error: unknown) {
+      setFailure(normalizeWalletErrorMessage(error, copy.avatarBuyFailed));
+      return false;
+    }
+  }, [accessToken, apiBase, applySnapshot, copy.avatarBuyFailed, copy.avatarBuySuccess, fetchJson, setFailure]);
+
   const productMap = useMemo(() => {
     const next = new Map<string, Product>();
     for (const product of state.topupProducts) {
@@ -722,5 +764,6 @@ export function useWallet(accessToken: string | null, language: WalletLanguage =
     claimRewardedReels,
     claimDailyTask,
     purchaseTopupPack,
+    buyAvatar,
   };
 }

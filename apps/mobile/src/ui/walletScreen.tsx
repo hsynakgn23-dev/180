@@ -32,7 +32,6 @@ const COPY = {
     rewardedMeta: 'Gunluk sinirli. XP veya arena puani vermez.',
     webMeta: 'Gercek satin alma sadece mobil uygulamada calisir.',
     openMobile: 'Mobil satin alma gerekir',
-    noAdsPremium: 'Premium kullanici oldugun icin Bilet reklami kapali.',
     buy: 'Satin al',
     use: 'Ac',
     close: 'Kapat',
@@ -54,7 +53,6 @@ const COPY = {
     rewardedMeta: 'Limited daily. No XP or arena score is granted.',
     webMeta: 'Real purchases only work in the mobile build.',
     openMobile: 'Mobile purchase required',
-    noAdsPremium: 'Rewarded Ticket ads are disabled for premium users.',
     buy: 'Buy',
     use: 'Open',
     close: 'Close',
@@ -76,7 +74,6 @@ const COPY = {
     rewardedMeta: 'Disponible de forma limitada al dia. No da XP ni arena.',
     webMeta: 'Las compras reales solo funcionan en la app movil.',
     openMobile: 'Compra movil requerida',
-    noAdsPremium: 'Los anuncios de entradas estan desactivados para premium.',
     buy: 'Comprar',
     use: 'Abrir',
     close: 'Cerrar',
@@ -98,7 +95,6 @@ const COPY = {
     rewardedMeta: 'Disponible en quantite limitee chaque jour. Aucun XP ni score arena.',
     webMeta: 'Les achats reels fonctionnent seulement dans l app mobile.',
     openMobile: 'Achat mobile requis',
-    noAdsPremium: 'Les pubs de billets sont desactivees pour premium.',
     buy: 'Acheter',
     use: 'Ouvrir',
     close: 'Fermer',
@@ -535,8 +531,7 @@ export const WalletModal = ({
               <Text style={walletStyles.sectionTitle}>{copy.topup}</Text>
               <Text style={walletStyles.sectionMeta}>{economyCopy.packsMeta}</Text>
             </View>
-            {!isPremium ? (
-              <View style={walletStyles.rewardedCard}>
+            <View style={walletStyles.rewardedCard}>
                 <View style={walletStyles.rewardedLead}>
                   <View style={walletStyles.rewardedBadge}>
                     <Ionicons name="play-circle-outline" size={14} color="#d6dfa1" />
@@ -558,11 +553,6 @@ export const WalletModal = ({
                   disabled={actionBusy || !rewardedAd.available}
                 />
               </View>
-            ) : (
-              <View style={walletStyles.rewardedCard}>
-                <Text style={walletStyles.rewardedBody}>{copy.noAdsPremium}</Text>
-              </View>
-            )}
 
             <View style={walletStyles.packList}>
               {REEL_TOPUP_PACKS.map((pack) => {
