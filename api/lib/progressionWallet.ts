@@ -344,7 +344,7 @@ const serializeWallet = (wallet: ProgressionWalletState): Record<string, unknown
 
 const resolveRewardedMeta = (
   wallet: ProgressionWalletState,
-  isPremium: boolean,
+  _isPremium: boolean,
   now = new Date()
 ): ProgressionWalletSnapshot['rewardedAd'] => {
   const todayKey = getTodayKey(now);

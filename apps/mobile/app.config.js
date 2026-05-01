@@ -25,7 +25,7 @@ module.exports = {
     ios: {
       supportsTablet: true,
       bundleIdentifier: 'com.absolutecinema',
-      buildNumber: '37',
+      buildNumber: '27',
       usesAppleSignIn: true,
       config: {
         usesNonExemptEncryption: false,
@@ -33,7 +33,7 @@ module.exports = {
     },
     android: {
       package: 'com.hsyna.absolutecinema',
-      versionCode: 37,
+      versionCode: 38,
       googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? './google-services.json',
       adaptiveIcon: {
         foregroundImage: './assets/adaptive-icon.png',
