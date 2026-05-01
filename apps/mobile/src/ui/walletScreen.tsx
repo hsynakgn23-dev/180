@@ -570,7 +570,7 @@ export const WalletModal = ({
                       <Text style={walletStyles.packTitle}>{copy.packAmount(pack.reels)}</Text>
                       <View style={[walletStyles.packBadge, pack.featured ? walletStyles.packBadgeFeatured : null]}>
                         <Text style={[walletStyles.packBadgeText, pack.featured ? walletStyles.packBadgeTextFeatured : null]}>
-                          {resolveTopupBadge(language, pack.key)}
+                          {pack.featured ? '' : resolveTopupBadge(language, pack.key)}
                         </Text>
                       </View>
                     </View>
