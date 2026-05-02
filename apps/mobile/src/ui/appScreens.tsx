@@ -11,6 +11,7 @@
   type ReactNode,
 } from 'react';
 import {
+  ActivityIndicator,
   Animated,
   Easing,
   FlatList,
@@ -332,6 +333,11 @@ export type MobileMarkUnlockEvent = {
   markId: string;
 };
 
+export type MobileStreakProtectionClaimEvent = {
+  streak: number;
+  claimWindow: 'at_risk' | 'restore';
+};
+
 const LeaguePromotionModal = ({
   event,
   language = 'tr',
@@ -486,6 +492,194 @@ const StreakCelebrationModal = ({
             accessibilityLabel="Streak kutlamasini tamamla"
           >
             <Text style={styles.streakCelebrationButtonText}>{surfaceCopy.action}</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+const STREAK_PROTECTION_COPY: Record<
+  string,
+  {
+    dayLabel: string;
+    dismiss: string;
+    atRisk: { badge: string; title: string; body: string; action: string };
+    restore: { badge: string; title: string; body: string; action: string };
+  }
+> = {
+  tr: {
+    dayLabel: 'GÜN',
+    dismiss: 'Geç',
+    atRisk: {
+      badge: 'SERİ RİSKTE',
+      title: 'Seriniz bugün tehlikede',
+      body: 'Bu hafta için 1 ücretsiz korumanız var.',
+      action: 'Koru',
+    },
+    restore: {
+      badge: 'SERİ KURTARILABİLİR',
+      title: 'Dünü kurtarabilirsiniz',
+      body: 'Bu hafta için 1 ücretsiz geri yüklemeniz var.',
+      action: 'Geri Yükle',
+    },
+  },
+  en: {
+    dayLabel: 'DAY',
+    dismiss: 'Skip',
+    atRisk: {
+      badge: 'STREAK AT RISK',
+      title: 'Your streak is at risk today',
+      body: 'You have 1 free protection this week.',
+      action: 'Protect',
+    },
+    restore: {
+      badge: 'STREAK RESTORABLE',
+      title: 'You can restore yesterday',
+      body: 'You have 1 free restore this week.',
+      action: 'Restore',
+    },
+  },
+  fr: {
+    dayLabel: 'JOUR',
+    dismiss: 'Passer',
+    atRisk: {
+      badge: 'SÉRIE EN DANGER',
+      title: "Votre série est en danger aujourd'hui",
+      body: 'Vous avez 1 protection gratuite cette semaine.',
+      action: 'Protéger',
+    },
+    restore: {
+      badge: 'SÉRIE RÉCUPÉRABLE',
+      title: 'Vous pouvez récupérer hier',
+      body: 'Vous avez 1 restauration gratuite cette semaine.',
+      action: 'Restaurer',
+    },
+  },
+  es: {
+    dayLabel: 'DÍA',
+    dismiss: 'Omitir',
+    atRisk: {
+      badge: 'RACHA EN RIESGO',
+      title: 'Tu racha está en riesgo hoy',
+      body: 'Tienes 1 protección gratuita esta semana.',
+      action: 'Proteger',
+    },
+    restore: {
+      badge: 'RACHA RECUPERABLE',
+      title: 'Puedes recuperar ayer',
+      body: 'Tienes 1 restauración gratuita esta semana.',
+      action: 'Restaurar',
+    },
+  },
+};
+
+export const StreakProtectionClaimModal = ({
+  event,
+  language = 'tr',
+  onClaim,
+  onDismiss,
+}: {
+  event: MobileStreakProtectionClaimEvent | null;
+  language?: MobileSettingsLanguage;
+  onClaim: () => Promise<void>;
+  onDismiss: () => void;
+}) => {
+  const [loading, setLoading] = useState(false);
+  useWebModalFocusReset(Boolean(event));
+  if (!event) return null;
+
+  const accentColor = '#FFB457';
+  const copy = STREAK_PROTECTION_COPY[language] ?? STREAK_PROTECTION_COPY.tr;
+  const modeCopy = event.claimWindow === 'restore' ? copy.restore : copy.atRisk;
+
+  const handleClaim = async () => {
+    if (loading) return;
+    setLoading(true);
+    try {
+      await onClaim();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal
+      visible
+      transparent
+      animationType="fade"
+      onRequestClose={onDismiss}
+      accessibilityViewIsModal
+    >
+      <View
+        style={[
+          styles.streakCelebrationOverlay,
+          { backgroundColor: hexToRgba('#3D2C00', 0.88) },
+        ]}
+      >
+        <Pressable
+          style={styles.streakCelebrationOverlayTap}
+          onPress={onDismiss}
+          accessibilityLabel="Streak korumasini kapat"
+        />
+        <View
+          style={[
+            styles.streakCelebrationCard,
+            {
+              borderColor: hexToRgba(accentColor, 0.42),
+              backgroundColor: hexToRgba('#1C1610', 0.96),
+              ...buildAccentShadowStyle(accentColor),
+            },
+          ]}
+        >
+          <View
+            style={[
+              styles.streakCelebrationPulseRing,
+              {
+                borderColor: hexToRgba(accentColor, 0.28),
+                ...buildAccentGlowStyle(accentColor),
+              },
+            ]}
+          />
+          <View
+            style={[styles.streakCelebrationLine, { backgroundColor: hexToRgba(accentColor, 0.92) }]}
+          />
+          <Text style={styles.streakCelebrationEyebrow}>{modeCopy.badge}</Text>
+          <Text style={styles.streakCelebrationTitle}>{modeCopy.title}</Text>
+          <View style={styles.streakCelebrationDayChip}>
+            <Text style={styles.streakCelebrationDayLabel}>{copy.dayLabel}</Text>
+            <Text style={[styles.streakCelebrationDayValue, { color: accentColor }]}>
+              {event.streak}
+            </Text>
+          </View>
+          <Text style={styles.streakCelebrationBody}>{modeCopy.body}</Text>
+          <Pressable
+            style={({ pressed }) => [
+              styles.streakCelebrationButton,
+              pressed && { opacity: 0.75, transform: [{ scale: 0.97 }] },
+              loading && { opacity: 0.6 },
+            ]}
+            onPress={handleClaim}
+            disabled={loading}
+            hitSlop={PRESSABLE_HIT_SLOP}
+            accessibilityRole="button"
+            accessibilityLabel={modeCopy.action}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color="#1C1610" />
+            ) : (
+              <Text style={styles.streakCelebrationButtonText}>{modeCopy.action}</Text>
+            )}
+          </Pressable>
+          <Pressable
+            onPress={onDismiss}
+            hitSlop={PRESSABLE_HIT_SLOP}
+            accessibilityRole="button"
+            style={{ marginTop: 10, paddingVertical: 6 }}
+          >
+            <Text style={[styles.streakCelebrationMeta, { textDecorationLine: 'underline' }]}>
+              {copy.dismiss}
+            </Text>
           </Pressable>
         </View>
       </View>

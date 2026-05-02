@@ -54,6 +54,10 @@ import {
 import { resolveMobileFollowState, toggleMobileFollowState } from './src/lib/mobileFollowState';
 import { fetchMobileProfileStats } from './src/lib/mobileProfileStats';
 import {
+  claimMobileStreakProtectionReward,
+  resolveMobileStreakProtectionState,
+} from './src/lib/mobileStreakProtection';
+import {
   fetchMobilePublicProfileSnapshot,
   type MobilePublicProfileSnapshot,
 } from './src/lib/mobilePublicProfileSnapshot';
@@ -176,6 +180,7 @@ import type {
   MobileSettingsPrivacyDraft,
   MobileSettingsSaveState,
   MobileStreakCelebrationEvent,
+  MobileStreakProtectionClaimEvent,
   TierAdvancementEvent,
 } from './src/ui/appScreens';
 import { resolveMobileWebBaseUrl } from './src/lib/mobileEnv';
@@ -345,6 +350,7 @@ const {
   setAppScreensThemeMode,
   StatePanel,
   StreakCelebrationModal,
+  StreakProtectionClaimModal,
   TierAdvancementModal,
   XpGainToast,
 } = debugRequireAppDependency(
@@ -914,6 +920,9 @@ export default function App() {
   const [streakCelebrationEvent, setStreakCelebrationEvent] = useState<MobileStreakCelebrationEvent | null>(
     null
   );
+  const [streakProtectionClaimEvent, setStreakProtectionClaimEvent] =
+    useState<MobileStreakProtectionClaimEvent | null>(null);
+  const streakProtectionShownRef = useRef(false);
   const [tierAdvancementEvent, setTierAdvancementEvent] = useState<TierAdvancementEvent | null>(null);
   const [xpGainDelta, setXpGainDelta] = useState<number | null>(null);
   const [markUnlockQueue, setMarkUnlockQueue] = useState<string[]>([]);
@@ -1447,6 +1456,22 @@ export default function App() {
       featuredMarksCount: result.stats.featuredMarks.length,
     });
   }, [isTurkishUi]);
+
+  const handleStreakProtectionClaim = useCallback(async () => {
+    if (profileState.status !== 'success') return;
+    await claimMobileStreakProtectionReward({
+      fallbackDisplayName: profileState.displayName || '',
+      fallbackTotalXp: profileState.totalXp,
+      fallbackStreak: profileState.streak,
+      fallbackLastRitualDate: profileState.lastRitualDate,
+      fallbackMarks: profileState.marks,
+      fallbackFeaturedMarks: profileState.featuredMarks,
+      fallbackFollowersCount: profileState.followersCount,
+    });
+    setStreakProtectionClaimEvent(null);
+    await refreshProfileStats();
+  }, [profileState, refreshProfileStats]);
+
   const applyQuizProgressToProfile = useCallback(
     (input: {
       totalXp: number | null;
@@ -3509,7 +3534,6 @@ export default function App() {
       });
     }
 
-    const previousStreakDate = lastObservedStreakDateRef.current;
     const streakDateKey = String(profileState.lastRitualDate || '').trim() || null;
 
     // On first observation, just initialize refs without triggering celebration
@@ -3560,24 +3584,44 @@ export default function App() {
     }
     lastObservedMarksRef.current = [...(profileState.marks || [])];
 
-    // Streak celebration: fires when today's ritual date becomes set during this session
+    // Streak celebration: fires when streak count increases during this session,
+    // regardless of whether the activity was a ritual comment or a quiz completion.
+    const previousStreak = lastObservedStreakRef.current;
     const streakAdvanced =
       profileState.streak > 0 &&
-      streakDateKey === getLocalDateKey() &&
-      streakDateKey !== previousStreakDate;
+      previousStreak !== null &&
+      profileState.streak > previousStreak;
 
     if (streakAdvanced) {
       setStreakCelebrationEvent({
         day: profileState.streak,
         isMilestone: isStreakMilestone(profileState.streak),
       });
-      void notifyStreakProgress(profileState.streak, streakDateKey);
+      void notifyStreakProgress(profileState.streak, getLocalDateKey());
     }
 
     lastObservedLeagueIndexRef.current = currentIndex;
     lastObservedStreakRef.current = profileState.streak;
     lastObservedStreakDateRef.current = streakDateKey;
   }, [notifyLeagueProgress, notifyStreakProgress, profileState]);
+
+  useEffect(() => {
+    if (profileState.status !== 'success' || streakProtectionShownRef.current) return;
+    const protection = resolveMobileStreakProtectionState({
+      streak: profileState.streak,
+      lastRitualDate: profileState.lastRitualDate,
+      claimedWeekKey: profileState.streakProtectionWeekKey,
+      protectedDate: profileState.streakProtectionDate,
+      isSignedIn: authState.status === 'signed_in',
+      isPremium: false,
+    });
+    if (protection.mode !== 'available') return;
+    streakProtectionShownRef.current = true;
+    setStreakProtectionClaimEvent({
+      streak: profileState.streak,
+      claimWindow: protection.claimWindow,
+    });
+  }, [authState.status, profileState]);
 
   useEffect(() => {
     if (authState.status !== 'signed_in') {
@@ -3760,6 +3804,8 @@ export default function App() {
     lastObservedMarksRef.current = null;
     setLeaguePromotionEvent(null);
     setStreakCelebrationEvent(null);
+    setStreakProtectionClaimEvent(null);
+    streakProtectionShownRef.current = false;
     setTierAdvancementEvent(null);
     setXpGainDelta(null);
     setMarkUnlockQueue([]);
@@ -6668,6 +6714,12 @@ export default function App() {
           event={streakCelebrationEvent}
           language={settingsLanguage}
           onClose={() => setStreakCelebrationEvent(null)}
+        />
+        <StreakProtectionClaimModal
+          event={streakProtectionClaimEvent}
+          language={settingsLanguage}
+          onClaim={handleStreakProtectionClaim}
+          onDismiss={() => setStreakProtectionClaimEvent(null)}
         />
         <TierAdvancementModal
           event={tierAdvancementEvent}

@@ -314,6 +314,19 @@ export const resolveMobileStreakProtectionState = (input: {
   }
 
   if (dayDiff === 1) {
+    // Prevent consecutive protection across a week boundary: if the apparent last
+    // active day is itself the previous protection date (not genuine activity),
+    // require real new activity before another shield can be claimed.
+    if (protectedDate === lastRitualDate) {
+      return {
+        mode: 'unavailable',
+        currentWeekKey,
+        claimedWeekKey,
+        protectedDate,
+        targetDate: null,
+        claimWindow: null,
+      };
+    }
     return {
       mode: 'available',
       currentWeekKey,

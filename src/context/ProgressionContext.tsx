@@ -143,6 +143,7 @@ export const ProgressionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     const canWriteRitualRef = useRef(true);
     const canReadFollowRef = useRef(true);
     const canWriteFollowRef = useRef(true);
+    const lastCelebratedStreakDateRef = useRef<string | null>(null);
     const [isXpHydrated, setIsXpHydrated] = useState(false);
 
     // ---------- core helpers ----------
@@ -223,6 +224,7 @@ export const ProgressionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         canWriteRitualRef.current = true;
         canReadFollowRef.current = true;
         canWriteFollowRef.current = true;
+        lastCelebratedStreakDateRef.current = null;
 
         if (!user) {
             setState(buildInitialXPState('Orbiting nearby...'));
@@ -525,7 +527,7 @@ export const ProgressionProvider: React.FC<{ children: React.ReactNode }> = ({ c
                     : state.totalXP;
             const nextStreak =
                 input.streak !== null && Number.isFinite(input.streak)
-                    ? Math.max(state.streak, Math.floor(input.streak))
+                    ? Math.floor(input.streak)
                     : state.streak;
             const shouldProtectToday = Boolean(input.streakProtectedNow && normalizedDateKey);
             const streakAdvanced =
@@ -545,7 +547,8 @@ export const ProgressionProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 activeDays: nextActiveDays,
             });
 
-            if (streakAdvanced) {
+            if (streakAdvanced && lastCelebratedStreakDateRef.current !== normalizedDateKey) {
+                lastCelebratedStreakDateRef.current = normalizedDateKey;
                 triggerStreakCelebration(nextStreak);
             }
         },
