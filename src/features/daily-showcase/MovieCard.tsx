@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import type { Movie } from '../../data/mockMovies';
-import { resolvePosterCandidates } from '../../lib/posterCandidates';
 import { searchPosterPath } from '../../lib/tmdbApi';
 import { useLanguage } from '../../context/LanguageContext';
+import { PosterImage } from '../../components/PosterImage';
 
 interface MovieCardProps {
     movie: Movie;
@@ -14,31 +14,16 @@ interface MovieCardProps {
 export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, isWatchedToday = false, onClick }) => {
     const { text } = useLanguage();
     const isDev = import.meta.env.DEV;
-    const [imgSrc, setImgSrc] = useState<string | null>(null);
+    const [posterPathOverride, setPosterPathOverride] = useState<string | null>(null);
     const [hasError, setHasError] = useState(false);
     const [isRetrying, setIsRetrying] = useState(false);
     const [imageLoaded, setImageLoaded] = useState(false);
-    const [candidates, setCandidates] = useState<string[]>([]);
-    const [candidateIndex, setCandidateIndex] = useState(0);
-
-    const applyCandidates = (nextCandidates: string[]) => {
-        setCandidates(nextCandidates);
-        setCandidateIndex(0);
-        setImageLoaded(false);
-        setImgSrc(nextCandidates[0] ?? null);
-        setHasError(nextCandidates.length === 0);
-    };
 
     React.useEffect(() => {
+        setPosterPathOverride(null);
         setIsRetrying(false);
         setHasError(false);
         setImageLoaded(false);
-
-        const nextCandidates = resolvePosterCandidates(movie.id, movie.posterPath, 'w500');
-        applyCandidates(nextCandidates);
-        if (!nextCandidates.length) {
-            handleRetry();
-        }
     }, [movie.id, movie.posterPath, movie.title]);
 
     const handleRetry = async () => {
@@ -66,12 +51,9 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, isWatchedTod
                 if (isDev) {
                     console.log(`[Image Recovery] Found new poster: ${posterPath}`);
                 }
-                const nextCandidates = resolvePosterCandidates(movie.id, posterPath, 'w500');
-                if (nextCandidates.length) {
-                    applyCandidates(nextCandidates);
-                    setIsRetrying(false);
-                    return;
-                }
+                setPosterPathOverride(posterPath);
+                setIsRetrying(false);
+                return;
             }
             setHasError(true);
         } catch (e) {
@@ -82,17 +64,7 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, isWatchedTod
         }
     };
 
-    const handleImageError = () => {
-        const nextIndex = candidateIndex + 1;
-        if (nextIndex < candidates.length) {
-            setCandidateIndex(nextIndex);
-            setImageLoaded(false);
-            setHasError(false);
-            setImgSrc(candidates[nextIndex]);
-            return;
-        }
-        handleRetry();
-    };
+    const resolvedPosterPath = posterPathOverride || movie.posterPath;
 
     return (
         <div
@@ -105,25 +77,28 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, isWatchedTod
         >
             {/* Background / Poster */}
             <div className={`absolute inset-0 transition-all duration-700 bg-gradient-to-br ${movie.color}`}>
-                {!hasError && imgSrc ? (
-                    <>
-                        {/* Shimmer Loading State */}
-                        {!imageLoaded && (
-                            <div className="absolute inset-0 bg-white/5 animate-pulse z-10" />
-                        )}
+                {!imageLoaded && !hasError && (
+                    <div className="absolute inset-0 bg-white/5 animate-pulse z-10" />
+                )}
 
-                        <img
-                            src={imgSrc}
-                            alt={movie.title}
-                            referrerPolicy="origin"
-                            onLoad={() => setImageLoaded(true)}
-                            onError={handleImageError}
-                            className={`w-full h-full object-cover transition-all duration-[1500ms] ease-out
-                                ${imageLoaded ? 'opacity-90 group-hover:opacity-100 group-hover:scale-110' : 'opacity-0'}
-                            `}
-                        />
-                    </>
-                ) : (
+                <PosterImage
+                    movieId={movie.id}
+                    posterPath={resolvedPosterPath}
+                    size="large"
+                    alt={movie.title}
+                    priority={index < 2}
+                    onLoad={() => {
+                        setHasError(false);
+                        setImageLoaded(true);
+                    }}
+                    onExhausted={() => {
+                        setImageLoaded(false);
+                        void handleRetry();
+                    }}
+                    className={`w-full h-full object-cover transition-all duration-[1500ms] ease-out
+                        ${imageLoaded ? 'opacity-90 group-hover:opacity-100 group-hover:scale-110' : 'opacity-0'}
+                    `}
+                    fallback={
                     /* Premium Fallback State: "Absolute Cinema" Style */
                     <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-[#151515] border border-[#8A9A5B]/20">
                         {/* Camera Icon */}
@@ -147,7 +122,8 @@ export const MovieCard: React.FC<MovieCardProps> = ({ movie, index, isWatchedTod
                             {isRetrying ? text.movieCard.searching : text.movieCard.imageUnavailable}
                         </span>
                     </div>
-                )}
+                    }
+                />
 
                 {/* Gradient Overlays for Readability */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80" />

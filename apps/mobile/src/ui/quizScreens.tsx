@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
-  Image,
   Modal,
   Platform,
   Pressable,
@@ -47,6 +46,7 @@ import {
   type BlurQuizJokerKey,
   type JokerSource,
 } from '../lib/mobilePoolQuizApi';
+import { PosterImage } from '../components/PosterImage';
 import {
   type WalletInventoryKey,
   type WalletStoreItemKey,
@@ -536,17 +536,6 @@ const getTactilePressStyle = (pressed: boolean, tone: PressFeedbackTone = 'butto
   }
 };
 
-const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w342';
-
-const IMAGE_PROXY_BASE = String(process.env.EXPO_PUBLIC_IMAGE_PROXIES || '').split(',').map((s) => s.trim()).filter(Boolean)[0] || 'https://images.weserv.nl/?url=';
-
-const buildPosterUri = (posterPath: string | null | undefined): string | null => {
-  if (!posterPath) return null;
-  const url = `${TMDB_IMAGE_BASE}${posterPath.startsWith('/') ? posterPath : `/${posterPath}`}`;
-  if (Platform.OS !== 'web') return url;
-  return `${IMAGE_PROXY_BASE}${encodeURIComponent(url)}`;
-};
-
 const hasMoviePoster = (movie: PoolMovie | null | undefined) => Boolean(movie?.poster_path);
 
 const QUIZ_INTRO_FALLBACK: Record<QuizLanguage, {
@@ -819,7 +808,6 @@ const PoolQuizModal = ({
   const copy = getCopy(language);
   const accent = isDawn ? '#A57164' : '#8A9A5B';
   const atmosphereTint = isDawn ? 'rgba(244,114,182,0.14)' : 'rgba(96,165,250,0.10)';
-  const questionPosterUri = buildPosterUri(moviePosterPath);
 
   // Refs for timer callback access
   const stateRef = useRef(state);
@@ -1151,12 +1139,14 @@ const PoolQuizModal = ({
             <Ionicons name="close" size={22} color="#8e8b84" />
           </Pressable>
           <View style={qs.modalTopTitleWrap}>
-            {state.phase === 'active' && questionPosterUri ? (
-              Platform.OS === 'web' ? (
-                <View style={[qs.modalTopPosterThumb, { backgroundImage: `url(${questionPosterUri})`, backgroundSize: 'cover', backgroundRepeat: 'no-repeat', backgroundPosition: 'center' } as object]} />
-              ) : (
-                <Image source={{ uri: questionPosterUri }} style={qs.modalTopPosterThumb} resizeMode="cover" />
-              )
+            {state.phase === 'active' && moviePosterPath ? (
+              <PosterImage
+                posterPath={moviePosterPath}
+                size="small"
+                style={qs.modalTopPosterThumb}
+                accessibilityLabel={`${state.title} posteri`}
+                priority="high"
+              />
             ) : null}
             <Text style={qs.modalTopTitle} numberOfLines={1}>
               {state.phase === 'active' ? state.title : copy.loading}
@@ -1943,11 +1933,11 @@ const JokerIconButton = ({
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const BlurPosterReveal = ({
-  posterUri,
+  posterPath,
   blurStep,
   accent,
 }: {
-  posterUri: string;
+  posterPath: string;
   blurStep: number;
   accent: string;
 }) => {
@@ -1960,25 +1950,13 @@ const BlurPosterReveal = ({
 
   return (
     <View style={blurStyles.posterFrame}>
-      {Platform.OS === 'web' ? (
-        <View style={[{
-          width: '100%',
-          height: '100%',
-          backgroundImage: `url(${posterUri})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          filter: `blur(${baseBlur}px)`,
-          transform: `scale(${baseScale})`,
-          transition: 'filter 0.9s ease, transform 0.9s ease',
-        } as object]} />
-      ) : (
-        <Image
-          source={{ uri: posterUri }}
-          style={[StyleSheet.absoluteFillObject, { transform: [{ scale: baseScale }] }]}
-          resizeMode="cover"
-          blurRadius={baseBlur}
-        />
-      )}
+      <PosterImage
+        posterPath={posterPath}
+        size="large"
+        style={[StyleSheet.absoluteFillObject, { transform: [{ scale: baseScale }] }]}
+        blurRadius={baseBlur}
+        priority="high"
+      />
 
       <View pointerEvents="none" style={[blurStyles.posterCurtainTop, { opacity: curtainOpacity }]} />
       <View pointerEvents="none" style={[blurStyles.posterCurtainBottom, { opacity: curtainOpacity * 0.82 }]} />
@@ -2001,33 +1979,19 @@ const BlurPosterReveal = ({
               },
             ]}
           >
-            {Platform.OS === 'web' ? (
-              <View style={[{
+            <PosterImage
+              posterPath={posterPath}
+              size="large"
+              style={{
                 position: 'absolute',
                 left: -window.left,
                 top: -window.top,
                 width: BLUR_POSTER_WIDTH,
                 height: BLUR_POSTER_HEIGHT,
-                backgroundImage: `url(${posterUri})`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                filter: `blur(${revealBlur}px)`,
-                transition: 'filter 0.9s ease, opacity 0.7s ease',
-              } as object]} />
-            ) : (
-              <Image
-                source={{ uri: posterUri }}
-                style={{
-                  position: 'absolute',
-                  left: -window.left,
-                  top: -window.top,
-                  width: BLUR_POSTER_WIDTH,
-                  height: BLUR_POSTER_HEIGHT,
-                }}
-                resizeMode="cover"
-                blurRadius={revealBlur}
-              />
-            )}
+              }}
+              blurRadius={revealBlur}
+              priority="high"
+            />
             <View style={[blurStyles.revealWindowTint, { backgroundColor: isNewest ? `${accent}12` : 'rgba(255,255,255,0.03)' }]} />
           </View>
         );
@@ -2228,7 +2192,7 @@ const BlurQuizModal = ({
   const blurStep = isActive ? state.blurStep : 0;
   const timeProgress = isActive ? Math.max(0, 1 - state.elapsedMs / BLUR_TOTAL_DURATION) : 0;
   const potentialXp = isActive ? Math.max(10, BLUR_XP_PER_STEP[state.blurStep] - state.jokers.size * 5) : 0;
-  const posterUri = isActive ? buildPosterUri(state.posterPath) : null;
+  const posterPath = isActive ? state.posterPath : null;
 
   return (
     <Modal visible animationType="fade" transparent={false}>
@@ -2302,10 +2266,10 @@ const BlurQuizModal = ({
           )}
 
           {/* ACTIVE */}
-          {state.phase === 'active' && posterUri && (
+          {state.phase === 'active' && posterPath && (
             <View style={blurStyles.playStage}>
               {/* Poster */}
-              <BlurPosterReveal posterUri={posterUri} blurStep={blurStep} accent={accent} />
+              <BlurPosterReveal posterPath={posterPath} blurStep={blurStep} accent={accent} />
               <View style={[qs.sceneChipRow, { justifyContent: 'center', marginBottom: 14 }]}>
                 <SceneChip icon="time-outline" value={`${Math.max(0, Math.ceil((BLUR_TOTAL_DURATION - state.elapsedMs) / 1000))}s`} accent={accent} tone={timeProgress <= 0.25 ? 'negative' : timeProgress <= 0.5 ? 'accent' : 'neutral'} />
                 <SceneChip icon="aperture-outline" value={`${blurStep + 1}/${BLUR_TOTAL_STEPS}`} accent={accent} tone="accent" />
@@ -2901,7 +2865,6 @@ export const QuizHomeScreen = ({
   }, []);
 
   const currentFilm = movies.length > 0 ? movies[currentFilmIndex % movies.length] : null;
-  const posterUri = buildPosterUri(currentFilm?.poster_path);
 
   const grantSwipeRewardFromTile = useCallback(async (): Promise<boolean> => {
     const rewarded = await requestRewardedUnlock('Gunluk take quiz hakkin doldu. Bir reklam izleyerek +1 hak kazan.');
@@ -3478,7 +3441,6 @@ export const QuizHomeScreen = ({
       const progressPct = totalQ > 0 ? ((rush.current + 1) / totalQ) * 100 : 0;
       const totalSecs = rush.session.total_time_seconds || (rush.session.mode === 'rush_15' ? 90 : 150);
       const posterPath = q?.movie_poster_path || (q ? RUSH_POSTER_MAP[q.movie_title] : null);
-      const thumbUri = posterPath ? buildPosterUri(posterPath) : null;
       const hiddenOptionKeys = q ? rush.hiddenOptions[q.id] || [] : [];
       const visibleOptions = q ? q.options.filter((opt) => !hiddenOptionKeys.includes(opt.key) || !!rush.revealed) : [];
       return (
@@ -3530,15 +3492,18 @@ export const QuizHomeScreen = ({
                 <View>
                   {/* Film header with poster thumbnail */}
                   <View style={qs.rushFilmHeader}>
-                    {thumbUri && Platform.OS === 'web' ? (
-                      <View style={[qs.rushFilmThumb, { backgroundImage: `url(${thumbUri})`, backgroundSize: 'cover', backgroundPosition: 'center' } as object]} />
-                    ) : thumbUri ? (
-                      <Image source={{ uri: thumbUri }} style={qs.rushFilmThumb} resizeMode="cover" />
-                    ) : (
-                      <View style={[qs.rushFilmThumb, { backgroundColor: '#222', alignItems: 'center', justifyContent: 'center' }]}>
-                        <Ionicons name="film-outline" size={16} color="#555" />
-                      </View>
-                    )}
+                    <PosterImage
+                      posterPath={posterPath}
+                      size="small"
+                      style={qs.rushFilmThumb}
+                      fallback={
+                        <View style={[qs.rushFilmThumb, { backgroundColor: '#222', alignItems: 'center', justifyContent: 'center' }]}>
+                          <Ionicons name="film-outline" size={16} color="#555" />
+                        </View>
+                      }
+                      accessibilityLabel={`${q.movie_title} posteri`}
+                      priority="high"
+                    />
                     <View style={{ flex: 1 }}>
                       <Text style={qs.rushFilmName}>{q.movie_title}</Text>
                       <Text style={qs.rushQNumber}>Soru {rush.current + 1} / {totalQ}</Text>
@@ -4029,12 +3994,15 @@ export const QuizHomeScreen = ({
                   onTouchMove={onPointerMove}
                   onTouchEnd={onPointerUp}
                 >
-                  {posterUri ? (
-                    Platform.OS === 'web' ? (
-                      <View style={[qs.swipePoster, { backgroundImage: `url(${posterUri})`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center' } as object]} />
-                    ) : (
-                      <Image source={{ uri: posterUri }} style={qs.swipePoster} resizeMode="contain" />
-                    )
+                  {currentFilm?.poster_path ? (
+                    <PosterImage
+                      posterPath={currentFilm.poster_path}
+                      size="large"
+                      style={qs.swipePoster}
+                      contentFit="contain"
+                      accessibilityLabel={`${currentFilm.title} posteri`}
+                      priority="high"
+                    />
                   ) : (
                     <View style={[qs.swipePoster, { alignItems: 'center', justifyContent: 'center' }]}>
                       <Ionicons name="film-outline" size={48} color="#444" />
@@ -6187,4 +6155,3 @@ const qs = StyleSheet.create({
     fontWeight: '500',
   },
 });
-

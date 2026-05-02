@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLanguage } from '../../context/LanguageContext';
+import { PosterImage } from '../../components/PosterImage';
 import {
     fetchPoolMovies,
     fetchPoolQuiz,
@@ -11,7 +12,6 @@ import {
     type PoolLanguageCode,
 } from '../../lib/poolQuizApi';
 
-const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w342';
 const QUESTION_TIME = 15;
 
 const COPY: Record<PoolLanguageCode, {
@@ -507,8 +507,13 @@ export const PoolDiscoveryPanel: React.FC = () => {
                 <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-white/[0.05]">
                     <div className="flex items-center gap-2.5">
                         {quiz.poster && (
-                            <img src={`${TMDB_IMAGE_BASE}${quiz.poster}`} alt={quiz.title}
-                                className="w-9 h-12 object-cover rounded-lg shadow" />
+                            <PosterImage
+                                posterPath={quiz.poster}
+                                alt={quiz.title}
+                                size="small"
+                                priority
+                                className="w-9 h-12 object-cover rounded-lg shadow"
+                            />
                         )}
                         <div>
                             <p className="text-sm font-bold text-white/90 leading-tight">{quiz.title}</p>
@@ -665,9 +670,11 @@ export const PoolDiscoveryPanel: React.FC = () => {
                     {/* Poster card */}
                     {current.poster_path && (
                         <div className="relative mx-4 rounded-2xl overflow-hidden shadow-xl" style={{ height: 320, backgroundColor: '#000' }}>
-                            <img
-                                src={`${TMDB_IMAGE_BASE}${current.poster_path}`}
+                            <PosterImage
+                                posterPath={current.poster_path}
                                 alt={current.title}
+                                size="small"
+                                priority
                                 className="w-full h-full object-cover"
                             />
                             {/* Gradient */}

@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useRef, useState, type ComponentType } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useRef, useState, type ComponentType } from 'react'
 import './App.css'
 import { XPProvider, useXP } from './context/XPContext'
 import { NotificationProvider, useNotifications } from './context/NotificationContext'
@@ -227,7 +227,7 @@ const AppContent = () => {
     };
   }, [user?.id]);
 
-  const openHome = () => {
+  const openHome = useCallback(() => {
     setActiveMovie(null);
     setDetailMovie(null);
     setShowProfile(false);
@@ -238,9 +238,9 @@ const AppContent = () => {
       window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  }, []);
 
-  const openPublicProfile = (target: { userId?: string | null; username: string }) => {
+  const openPublicProfile = useCallback((target: { userId?: string | null; username: string }) => {
     const username = target.username.trim();
     const key = target.userId
       ? `id:${target.userId}`
@@ -253,7 +253,7 @@ const AppContent = () => {
     setActiveMovie(null);
     setDetailMovie(null);
     window.location.hash = `/u/${encoded}${query}`;
-  };
+  }, []);
 
   useEffect(() => {
     if (!showDebugPanel) return;

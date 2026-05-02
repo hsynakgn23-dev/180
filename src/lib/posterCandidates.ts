@@ -1,8 +1,8 @@
 import { resolveImageCandidates } from './tmdbImage';
 
-type PosterSize = 'w200' | 'w342' | 'w500' | 'w780' | 'original';
+type PosterSize = 'w342' | 'w500';
 
-const STORAGE_EXTENSIONS = ['jpg', 'webp', 'png'] as const;
+const STORAGE_EXTENSIONS = ['webp', 'jpg', 'png'] as const;
 
 const dedupe = (values: string[]): string[] => {
     return Array.from(new Set(values.filter(Boolean)));
@@ -38,4 +38,3 @@ export const resolvePosterCandidates = (
     const external = resolveImageCandidates(posterPath, size);
     return dedupe([...storage, ...external]);
 };
-

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useLanguage } from '../../context/LanguageContext';
+import { PosterImage } from '../../components/PosterImage';
 import {
     fetchBlurMovie,
     requestBlurQuizJoker,
@@ -681,25 +682,22 @@ function PosterFrame({
     copy: QuizCopy;
     priority?: boolean;
 }) {
-    const posterUrl = getPosterUrl(posterPath, 'w342');
-
     return (
         <div className="relative aspect-[2/3] overflow-hidden rounded-xl border border-white/[0.08] bg-[#151515] shadow-[0_18px_36px_rgba(0,0,0,0.32)]">
-            {posterUrl ? (
-                <img
-                    src={posterUrl}
-                    alt={title}
-                    loading={priority ? 'eager' : 'lazy'}
-                    decoding="async"
-                    className="h-full w-full object-cover opacity-[var(--poster-opacity)]"
-                />
-            ) : (
-                <div className="flex h-full w-full flex-col items-center justify-center gap-4 px-5 text-center">
-                    <div className="h-px w-10 bg-sage/45" />
-                    <p className="font-serif text-xl leading-tight text-[#E5E4E2]/80">{title || copy.movieFallback}</p>
-                    <p className="text-[10px] uppercase tracking-[0.22em] text-sage/60">{copy.movieFallback}</p>
-                </div>
-            )}
+            <PosterImage
+                posterPath={posterPath}
+                size="small"
+                alt={title}
+                priority={priority}
+                className="h-full w-full object-cover opacity-[var(--poster-opacity)]"
+                fallback={
+                    <div className="flex h-full w-full flex-col items-center justify-center gap-4 px-5 text-center">
+                        <div className="h-px w-10 bg-sage/45" />
+                        <p className="font-serif text-xl leading-tight text-[#E5E4E2]/80">{title || copy.movieFallback}</p>
+                        <p className="text-[10px] uppercase tracking-[0.22em] text-sage/60">{copy.movieFallback}</p>
+                    </div>
+                }
+            />
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
         </div>
     );
@@ -1322,23 +1320,20 @@ function RushTimer({ expiresAt, onExpired }: { expiresAt: string | null; onExpir
 }
 
 function RushMovieThumb({ title, posterPath }: { title: string; posterPath: string | null }) {
-    const posterUrl = getPosterUrl(posterPath, 'w92');
-
     return (
         <div className="relative h-14 w-10 shrink-0 overflow-hidden rounded-lg border border-white/[0.08] bg-white/[0.04]">
-            {posterUrl ? (
-                <img
-                    src={posterUrl}
-                    alt={title}
-                    loading="eager"
-                    decoding="async"
-                    className="h-full w-full object-cover"
-                />
-            ) : (
-                <div className="flex h-full w-full items-center justify-center text-sage/55">
-                    <QuizMark />
-                </div>
-            )}
+            <PosterImage
+                posterPath={posterPath}
+                size="small"
+                alt={title}
+                priority
+                className="h-full w-full object-cover"
+                fallback={
+                    <div className="flex h-full w-full items-center justify-center text-sage/55">
+                        <QuizMark />
+                    </div>
+                }
+            />
         </div>
     );
 }
@@ -1799,7 +1794,6 @@ function BlurMetric({ label, value, tone = 'neutral' }: { label: string; value: 
 }
 
 function BlurPosterReveal({ posterPath, blurStep, copy }: { posterPath: string | null; blurStep: number; copy: QuizCopy }) {
-    const posterUrl = getPosterUrl(posterPath);
     const safeStep = Math.max(0, Math.min(BLUR_TOTAL_STEPS - 1, blurStep));
     const baseBlur = BLUR_PX[safeStep] ?? 0;
     const baseScale = BLUR_SCALE[safeStep] ?? 1;
@@ -1807,20 +1801,20 @@ function BlurPosterReveal({ posterPath, blurStep, copy }: { posterPath: string |
 
     return (
         <div className="relative mx-auto aspect-[2/3] w-full max-w-[260px] overflow-hidden rounded-xl border border-white/[0.08] bg-[#151515] shadow-[0_18px_42px_rgba(0,0,0,0.35)]">
-            {posterUrl ? (
-                <img
-                    src={posterUrl}
-                    alt={copy.blurTitle}
-                    className="h-full w-full object-cover transition-[filter,transform] duration-700"
-                    style={{ filter: `blur(${baseBlur}px)`, transform: `scale(${baseScale})` }}
-                />
-            ) : (
-                <div className="flex h-full w-full items-center justify-center px-5 text-center font-serif text-xl text-[#E5E4E2]/70">
-                    {copy.movieFallback}
-                </div>
-            )}
+            <PosterImage
+                posterPath={posterPath}
+                size="small"
+                alt={copy.blurTitle}
+                className="h-full w-full object-cover transition-[filter,transform] duration-700"
+                style={{ filter: `blur(${baseBlur}px)`, transform: `scale(${baseScale})` }}
+                fallback={
+                    <div className="flex h-full w-full items-center justify-center px-5 text-center font-serif text-xl text-[#E5E4E2]/70">
+                        {copy.movieFallback}
+                    </div>
+                }
+            />
             <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-black/20" />
-            {posterUrl
+            {posterPath
                 ? BLUR_REVEAL_WINDOWS.slice(0, revealCount).map((windowRect, index) => (
                       <div
                           key={`${windowRect.left}-${windowRect.top}-${windowRect.width}-${windowRect.height}`}

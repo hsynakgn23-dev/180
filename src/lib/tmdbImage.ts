@@ -48,10 +48,15 @@ const getProxyList = (): string[] => {
 };
 
 const buildProxyUrl = (proxyBase: string, targetUrl: string): string => {
+    const withWebpPreference = (url: string): string => {
+        if (!/images\.weserv\.nl|wsrv\.nl/i.test(url) || /[?&]output=/i.test(url)) return url;
+        return `${url}${url.includes('?') ? '&' : '?'}output=webp`;
+    };
+
     if (proxyBase.includes('{url}')) {
-        return proxyBase.replace('{url}', encodeURIComponent(targetUrl));
+        return withWebpPreference(proxyBase.replace('{url}', encodeURIComponent(targetUrl)));
     }
-    return `${proxyBase}${encodeURIComponent(targetUrl)}`;
+    return withWebpPreference(`${proxyBase}${encodeURIComponent(targetUrl)}`);
 };
 
 export const resolveImageUrl = (

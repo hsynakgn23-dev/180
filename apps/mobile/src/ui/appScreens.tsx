@@ -13,7 +13,6 @@
 import {
   Animated,
   Easing,
-  FlatList,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -60,6 +59,8 @@ import {
   countProfileExactCommentSignals,
   countProfileHiddenGemSignals,
 } from '../../../../src/domain/profileInsights';
+import { AppList, type AppListHandle } from '../components/AppList';
+import { PosterImage } from '../components/PosterImage';
 import { UiButton } from './primitives';
 import { MobileMarkIcon } from './mobileMarkIcons';
 import { styles } from './appStyles';
@@ -91,17 +92,6 @@ const KEYBOARD_AVOIDING_BEHAVIOR = Platform.OS === 'ios' ? 'padding' : 'height';
 const KEYBOARD_AVOIDING_OFFSET = Platform.OS === 'ios' ? 12 : 0;
 const DAILY_MOVIE_CARD_STRIDE = 144;
 const DAILY_MOVIE_RAIL_PRESS_GUARD_MS = 280;
-const TMDB_POSTER_BASE_URL = 'https://image.tmdb.org/t/p/w342';
-const STORAGE_PUBLIC_PATH = '/storage/v1/object/public/';
-const STORAGE_OBJECT_PUBLIC_PATH = 'storage/v1/object/public/';
-const DEFAULT_MOBILE_IMAGE_PROXY_BASE = 'https://images.weserv.nl/?url=';
-const MOBILE_SUPABASE_BASE_URL = String(process.env.EXPO_PUBLIC_SUPABASE_URL || '')
-  .trim()
-  .replace(/\/+$/, '');
-const MOBILE_SUPABASE_STORAGE_BUCKET =
-  String(process.env.EXPO_PUBLIC_SUPABASE_STORAGE_BUCKET || 'posters')
-    .trim()
-    .replace(/^\/+|\/+$/g, '') || 'posters';
 let APP_SCREENS_THEME_MODE: MobileThemeMode = 'midnight';
 const DAWN_TEXT_COLOR_STYLE = { color: '#A45E4A' } as const;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -231,27 +221,6 @@ const resolveGenreVisual = (
   if (has('music', 'muzik', 'müzik')) return { icon: 'music-note-outline', accent: '#38bdf8' };
   if (has('mystery', 'gizem')) return { icon: 'magnify', accent: '#a78bfa' };
   return { icon: 'movie-open-outline', accent: '#8A9A5B' };
-};
-
-const resolveMobileImageProxyBase = (): string => {
-  const configured = String(process.env.EXPO_PUBLIC_IMAGE_PROXIES || '')
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
-  return configured[0] || DEFAULT_MOBILE_IMAGE_PROXY_BASE;
-};
-
-const maybeWrapWebPosterUrl = (absoluteUrl: string): string => {
-  if (Platform.OS !== 'web') return absoluteUrl;
-  if (!/^https?:\/\/image\.tmdb\.org\/t\/p\//i.test(absoluteUrl)) return absoluteUrl;
-
-  const proxyBase = resolveMobileImageProxyBase();
-  if (!proxyBase) return absoluteUrl;
-  if (absoluteUrl.startsWith(proxyBase)) return absoluteUrl;
-  if (proxyBase.includes('{url}')) {
-    return proxyBase.replace('{url}', encodeURIComponent(absoluteUrl));
-  }
-  return `${proxyBase}${encodeURIComponent(absoluteUrl)}`;
 };
 
 const hexToRgba = (hex: string, alpha: number): string => {
@@ -491,56 +460,6 @@ const StreakCelebrationModal = ({
       </View>
     </Modal>
   );
-};
-
-const isStoragePosterPath = (value: string): boolean => {
-  const normalized = value.replace(/^\/+/, '');
-  return (
-    normalized.startsWith(STORAGE_OBJECT_PUBLIC_PATH) ||
-    normalized.startsWith('object/public/') ||
-    normalized.startsWith(`${MOBILE_SUPABASE_STORAGE_BUCKET}/`) ||
-    /^\d+\/(w200|w342|w500|w780|original)\.(jpg|jpeg|png|webp)$/i.test(normalized)
-  );
-};
-
-const resolveStoragePosterUrl = (value: string): string | null => {
-  if (!MOBILE_SUPABASE_BASE_URL) return null;
-
-  const normalized = value.replace(/^\/+/, '');
-  if (normalized.startsWith(STORAGE_OBJECT_PUBLIC_PATH)) {
-    return `${MOBILE_SUPABASE_BASE_URL}/${normalized}`;
-  }
-  if (normalized.startsWith('object/public/')) {
-    return `${MOBILE_SUPABASE_BASE_URL}/storage/v1/${normalized}`;
-  }
-  if (normalized.startsWith(`${MOBILE_SUPABASE_STORAGE_BUCKET}/`)) {
-    return `${MOBILE_SUPABASE_BASE_URL}/storage/v1/object/public/${normalized}`;
-  }
-  if (/^\d+\/(w200|w342|w500|w780|original)\.(jpg|jpeg|png|webp)$/i.test(normalized)) {
-    return `${MOBILE_SUPABASE_BASE_URL}/storage/v1/object/public/${MOBILE_SUPABASE_STORAGE_BUCKET}/${normalized}`;
-  }
-  return null;
-};
-
-const resolvePosterUrl = (posterPath: string | null | undefined): string | null => {
-  const normalized = String(posterPath || '').trim();
-  if (!normalized) return null;
-  if (/^https?:\/\//i.test(normalized)) return maybeWrapWebPosterUrl(normalized);
-  if (/^\/\//.test(normalized)) return maybeWrapWebPosterUrl(`https:${normalized}`);
-
-  const storageResolved = resolveStoragePosterUrl(normalized);
-  if (storageResolved) return storageResolved;
-
-  if (
-    normalized.startsWith(STORAGE_PUBLIC_PATH) ||
-    normalized.startsWith(STORAGE_PUBLIC_PATH.slice(1)) ||
-    isStoragePosterPath(normalized)
-  ) {
-    return null;
-  }
-
-  const normalizedPath = normalized.startsWith('/') ? normalized : `/${normalized}`;
-  return maybeWrapWebPosterUrl(`${TMDB_POSTER_BASE_URL}${normalizedPath}`);
 };
 
 const ScreenCard = ({
@@ -4411,7 +4330,6 @@ const ProfileActivityCard = ({
           <Text style={styles.subSectionLabel}>Film Gunlugu</Text>
           <View style={styles.profileArchiveList}>
             {filmSummaries.map((film) => {
-              const posterUrl = resolvePosterUrl(film.posterPath);
               return (
                 <Pressable
                   key={film.key}
@@ -4425,17 +4343,15 @@ const ProfileActivityCard = ({
                   accessibilityLabel={`${film.title} film gunlugu detayini ac`}
                 >
                   <View style={styles.profileArchivePosterWrap}>
-                    {posterUrl ? (
-                      <Image
-                        source={{ uri: posterUrl }}
-                        style={styles.profileArchivePosterImage}
-                        resizeMode="cover"
-                      />
-                    ) : (
-                      <Text style={styles.profileArchivePosterFallback}>
-                        {(film.title.slice(0, 1) || 'F').toUpperCase()}
-                      </Text>
-                    )}
+                    <PosterImage
+                      posterPath={film.posterPath}
+                      size="small"
+                      style={styles.profileArchivePosterImage}
+                      fallbackLabel={(film.title.slice(0, 1) || 'F').toUpperCase()}
+                      fallbackStyle={styles.profileArchivePosterImage}
+                      fallbackTextStyle={styles.profileArchivePosterFallback}
+                      accessibilityLabel={`${film.title} posteri`}
+                    />
                   </View>
 
                   <View style={styles.profileArchiveRowCopy}>
@@ -5320,15 +5236,12 @@ const PushInboxCard = ({
       </View>
       {state.message ? <Text style={[styles.screenMeta, { marginTop: 6 }]}>{state.message}</Text> : null}
 
-      <FlatList
+      <AppList
         data={sortedItems}
         keyExtractor={(item) => item.id}
         renderItem={renderInboxRow}
         scrollEnabled={false}
-        initialNumToRender={8}
-        maxToRenderPerBatch={12}
-        windowSize={5}
-        removeClippedSubviews={Platform.OS === 'android'}
+        estimatedItemSize={88}
         ItemSeparatorComponent={() => <View style={styles.inboxItemSeparator} />}
         contentContainerStyle={styles.inboxList}
       />
@@ -5959,19 +5872,20 @@ const CommentFeedCard = ({
             const resolvedAvatarUrl =
               String(item.authorAvatarUrl || '').trim() ||
               (item.isMine ? normalizedCurrentUserAvatarUrl : '');
-            const posterUri = resolvePosterUrl(item.posterPath);
             const posterFallbackLabel = (String(item.movieTitle || '').trim().slice(0, 1) || '?').toUpperCase();
             return (
               <View key={item.id} style={[styles.commentFeedRow, isEmbedded ? styles.commentFeedRowEmbedded : null]}>
                 <View style={styles.commentFeedRowHeader}>
                   <View style={styles.commentFeedMovieHeaderMain}>
-                    {posterUri ? (
-                      <Image source={{ uri: posterUri }} style={styles.commentFeedMoviePoster} resizeMode="cover" />
-                    ) : (
-                      <View style={styles.commentFeedMoviePosterFallback}>
-                        <Text style={styles.commentFeedMoviePosterFallbackText}>{posterFallbackLabel}</Text>
-                      </View>
-                    )}
+                    <PosterImage
+                      posterPath={item.posterPath}
+                      size="small"
+                      style={styles.commentFeedMoviePoster}
+                      fallbackLabel={posterFallbackLabel}
+                      fallbackStyle={styles.commentFeedMoviePosterFallback}
+                      fallbackTextStyle={styles.commentFeedMoviePosterFallbackText}
+                      accessibilityLabel={`${item.movieTitle} posteri`}
+                    />
                     <Text style={styles.commentFeedMovieTitle} numberOfLines={2}>
                       {item.movieTitle}
                     </Text>
@@ -7072,7 +6986,7 @@ const DailyHomeScreen = ({
   username?: string | null;
 }) => {
   const isWebSurface = Platform.OS === 'web';
-  const railRef = useRef<FlatList<DailyMovieRailItem> | null>(null);
+  const railRef = useRef<AppListHandle<DailyMovieRailItem> | null>(null);
   const railScrollOffsetRef = useRef(0);
   const railDragStartOffsetRef = useRef(0);
   const railDragStartXRef = useRef(0);
@@ -7668,14 +7582,14 @@ const DailyHomeScreen = ({
         ) : null}
 
         <View {...railGestureProps}>
-          <FlatList
+          <AppList
             ref={railRef}
             horizontal
             data={railMovies}
             keyExtractor={(movie, index) => `${movie.id}-${index}`}
+            estimatedItemSize={DAILY_MOVIE_CARD_STRIDE}
             renderItem={({ item: movie, index }) => {
               const isSelected = selectedMovieId === movie.id;
-              const posterUri = resolvePosterUrl(movie.posterPath);
               return (
                 <Pressable
                   style={({ pressed }) => [
@@ -7697,15 +7611,17 @@ const DailyHomeScreen = ({
                   accessibilityLabel={copy.detailAccessibility(movie.title)}
                 >
                   <View style={styles.movieCardPoster}>
-                    {posterUri ? (
-                      <Image
-                        source={{ uri: posterUri }}
-                        style={[styles.movieCardPosterImage, !isSelected && { opacity: 0.45 }]}
-                        resizeMode="cover"
-                      />
-                    ) : (
-                      <Text style={styles.movieCardPosterFallbackLabel}>{index + 1}</Text>
-                    )}
+                    <PosterImage
+                      movieId={movie.id}
+                      posterPath={movie.posterPath}
+                      size="large"
+                      style={[styles.movieCardPosterImage, !isSelected && { opacity: 0.45 }]}
+                      fallbackLabel={String(index + 1)}
+                      fallbackStyle={styles.movieCardPosterImage}
+                      fallbackTextStyle={styles.movieCardPosterFallbackLabel}
+                      accessibilityLabel={`${movie.title} posteri`}
+                      priority={index < 2 ? 'high' : 'normal'}
+                    />
                   </View>
                   <View style={styles.movieCardContentWrapper}>
                     <Text
@@ -7723,13 +7639,10 @@ const DailyHomeScreen = ({
               );
             }}
             ItemSeparatorComponent={() => <View style={styles.movieListHorizontalSpacer} />}
-            showsHorizontalScrollIndicator={false}
-            nestedScrollEnabled
             directionalLockEnabled
             scrollEnabled={railMovies.length > 1}
             snapToInterval={DAILY_MOVIE_CARD_STRIDE}
             decelerationRate="fast"
-            keyboardShouldPersistTaps="handled"
             scrollEventThrottle={16}
             onScrollBeginDrag={() => {
               beginRailInteraction();
@@ -8381,8 +8294,6 @@ const MovieDetailsModal = ({
     Array.isArray(movie.cast) && movie.cast.length > 0
       ? movie.cast.filter(Boolean).slice(0, 6).join(', ')
       : 'Oyuncu bilgisi hazirlaniyor';
-  const posterUri = resolvePosterUrl(movie.posterPath || null);
-
   return (
     <Modal visible={Boolean(movie)} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalOverlaySurface}>
@@ -8398,13 +8309,16 @@ const MovieDetailsModal = ({
           <ScrollView contentContainerStyle={styles.modalSheetScroll} showsVerticalScrollIndicator={false}>
             <View style={styles.modalContentSurface}>
               <View style={styles.movieArchiveHeader}>
-                {posterUri ? (
-                  <Image source={{ uri: posterUri }} style={styles.movieArchivePoster} resizeMode="cover" />
-                ) : (
-                  <View style={styles.movieArchivePosterFallback}>
-                    <Text style={styles.movieArchivePosterFallbackText}>180</Text>
-                  </View>
-                )}
+                <PosterImage
+                  posterPath={movie.posterPath || null}
+                  size="large"
+                  style={styles.movieArchivePoster}
+                  fallbackLabel="180"
+                  fallbackStyle={styles.movieArchivePosterFallback}
+                  fallbackTextStyle={styles.movieArchivePosterFallbackText}
+                  accessibilityLabel={`${movie.title} posteri`}
+                  priority="high"
+                />
                 <View style={styles.movieArchiveHeaderContent}>
                   <Text style={styles.movieDetailTitle}>{movie.title}</Text>
                   <Text style={styles.movieDetailMeta}>
@@ -8504,7 +8418,6 @@ const ProfileMovieArchiveModal = ({
   const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
   if (!visible || !movie) return null;
 
-  const posterUri = resolvePosterUrl(movie.posterPath || entries[0]?.posterPath || null);
   const entryCountLabel = `${entries.length} yorum kaydi`;
 
   return (
@@ -8522,13 +8435,16 @@ const ProfileMovieArchiveModal = ({
           <ScrollView contentContainerStyle={styles.modalSheetScroll} showsVerticalScrollIndicator={false}>
             <View style={styles.modalContentSurface}>
               <View style={styles.movieArchiveHeader}>
-                {posterUri ? (
-                  <Image source={{ uri: posterUri }} style={styles.movieArchivePoster} resizeMode="cover" />
-                ) : (
-                  <View style={styles.movieArchivePosterFallback}>
-                    <Text style={styles.movieArchivePosterFallbackText}>180</Text>
-                  </View>
-                )}
+                <PosterImage
+                  posterPath={movie.posterPath || entries[0]?.posterPath || null}
+                  size="large"
+                  style={styles.movieArchivePoster}
+                  fallbackLabel="180"
+                  fallbackStyle={styles.movieArchivePosterFallback}
+                  fallbackTextStyle={styles.movieArchivePosterFallbackText}
+                  accessibilityLabel={`${movie.movieTitle} posteri`}
+                  priority="high"
+                />
                 <View style={styles.movieArchiveHeaderContent}>
                   <Text style={styles.movieDetailTitle}>{movie.movieTitle}</Text>
                   <Text style={styles.movieDetailMeta}>
@@ -8746,7 +8662,6 @@ const PublicProfileMovieArchiveModal = ({
   if (!visible || !movie) return null;
 
   const copy = MOBILE_PUBLIC_PROFILE_ARCHIVE_MODAL_COPY[language] || MOBILE_PUBLIC_PROFILE_ARCHIVE_MODAL_COPY.tr;
-  const posterUri = resolvePosterUrl(movie.posterPath || items[0]?.posterPath || null);
   const profileLabel =
     String(displayName || (language === 'tr' ? '@bilinmeyen' : '@unknown')).trim() ||
     (language === 'tr' ? '@bilinmeyen' : '@unknown');
@@ -8766,13 +8681,16 @@ const PublicProfileMovieArchiveModal = ({
           <ScrollView contentContainerStyle={styles.modalSheetScroll} showsVerticalScrollIndicator={false}>
             <View style={styles.modalContentSurface}>
               <View style={styles.movieArchiveHeader}>
-                {posterUri ? (
-                  <Image source={{ uri: posterUri }} style={styles.movieArchivePoster} resizeMode="cover" />
-                ) : (
-                  <View style={styles.movieArchivePosterFallback}>
-                    <Text style={styles.movieArchivePosterFallbackText}>180</Text>
-                  </View>
-                )}
+                <PosterImage
+                  posterPath={movie.posterPath || items[0]?.posterPath || null}
+                  size="large"
+                  style={styles.movieArchivePoster}
+                  fallbackLabel="180"
+                  fallbackStyle={styles.movieArchivePosterFallback}
+                  fallbackTextStyle={styles.movieArchivePosterFallbackText}
+                  accessibilityLabel={`${movie.movieTitle} posteri`}
+                  priority="high"
+                />
                 <View style={styles.movieArchiveHeaderContent}>
                   <Text style={styles.movieDetailTitle}>{movie.movieTitle}</Text>
                   <Text style={styles.movieDetailMeta}>
@@ -8939,23 +8857,20 @@ const ProfileCommentsModal = ({
             {activityState.items.length > 0 ? (
               <View style={styles.profileArchiveList}>
                 {activityState.items.map((item) => {
-                  const posterUrl = resolvePosterUrl(item.posterPath);
                   const movieTitle = String(item.movieTitle || '').trim() || copy.untitled;
                   const note = String(item.text || '').trim();
                   return (
                     <View key={item.id} style={styles.profileArchiveRow}>
                       <View style={styles.profileArchivePosterWrap}>
-                        {posterUrl ? (
-                          <Image
-                            source={{ uri: posterUrl }}
-                            style={styles.profileArchivePosterImage}
-                            resizeMode="cover"
-                          />
-                        ) : (
-                          <Text style={styles.profileArchivePosterFallback}>
-                            {(movieTitle.slice(0, 1) || 'F').toUpperCase()}
-                          </Text>
-                        )}
+                        <PosterImage
+                          posterPath={item.posterPath}
+                          size="small"
+                          style={styles.profileArchivePosterImage}
+                          fallbackLabel={(movieTitle.slice(0, 1) || 'F').toUpperCase()}
+                          fallbackStyle={styles.profileArchivePosterImage}
+                          fallbackTextStyle={styles.profileArchivePosterFallback}
+                          accessibilityLabel={`${movieTitle} posteri`}
+                        />
                       </View>
 
                       <View style={styles.profileArchiveRowCopy}>
@@ -12562,11 +12477,3 @@ export type {
   MobileSettingsPrivacyDraft,
   MobileSettingsSaveState,
 };
-
-
-
-
-
-
-
-

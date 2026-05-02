@@ -4,12 +4,12 @@ import { MarkIcons } from '../marks/MarkIcons';
 import { useXP } from '../../context/XPContext';
 import { resolveLeagueInfo } from '../../domain/leagueSystem';
 import { useNotifications } from '../../context/NotificationContext';
-import { resolvePosterCandidates } from '../../lib/posterCandidates';
 import { searchPosterPath } from '../../lib/tmdbApi';
 import { moderateComment } from '../../lib/commentModeration';
 import { sendEngagementNotification } from '../../lib/engagementNotificationApi';
 import { supabase, isSupabaseLive } from '../../lib/supabase';
 import { useLanguage } from '../../context/LanguageContext';
+import { PosterImage } from '../../components/PosterImage';
 
 interface RitualCardProps {
     ritual: Ritual;
@@ -104,12 +104,10 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, isHotStreak = fa
         return `${ritual.text.slice(0, MAIN_TEXT_PREVIEW_LIMIT).trimEnd()}...`;
     }, [isMainExpanded, isMainTextLong, ritual.text]);
 
-    const [imgSrc, setImgSrc] = useState<string | null>(null);
+    const [posterPathOverride, setPosterPathOverride] = useState<string | null>(null);
     const [hasError, setHasError] = useState(false);
     const [isRetrying, setIsRetrying] = useState(false);
     const [imageLoaded, setImageLoaded] = useState(false);
-    const [candidates, setCandidates] = useState<string[]>([]);
-    const [candidateIndex, setCandidateIndex] = useState(0);
     const relativeTimeLabels = useMemo(
         () => ({
             timeToday: ui.profile.timeToday,
@@ -138,14 +136,6 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, isHotStreak = fa
         onLocalRepliesChange?.(ritual.id, replies);
     }, [onLocalRepliesChange, replies, ritual.id]);
 
-    const applyCandidates = (nextCandidates: string[]) => {
-        setCandidates(nextCandidates);
-        setCandidateIndex(0);
-        setImageLoaded(false);
-        setImgSrc(nextCandidates[0] ?? null);
-        setHasError(nextCandidates.length === 0);
-    };
-
     const handleRetry = async () => {
         if (isRetrying || !ritual.movieTitle) {
             setHasError(true);
@@ -165,12 +155,9 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, isHotStreak = fa
         try {
             const posterPath = await searchPosterPath(ritual.movieTitle, apiKey);
             if (posterPath) {
-                const nextCandidates = resolvePosterCandidates(ritual.movieId, posterPath, 'w200');
-                if (nextCandidates.length) {
-                    applyCandidates(nextCandidates);
-                    setIsRetrying(false);
-                    return;
-                }
+                setPosterPathOverride(posterPath);
+                setIsRetrying(false);
+                return;
             }
             setHasError(true);
         } catch {
@@ -181,29 +168,12 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, isHotStreak = fa
     };
 
     React.useEffect(() => {
+        setPosterPathOverride(null);
         setIsRetrying(false);
         setHasError(false);
         setImageLoaded(false);
-
-        const nextCandidates = resolvePosterCandidates(ritual.movieId, ritual.posterPath, 'w200');
-        applyCandidates(nextCandidates);
-
-        if (!nextCandidates.length && ritual.movieTitle) {
-            handleRetry();
-        }
     }, [ritual.id, ritual.movieId, ritual.posterPath, ritual.movieTitle]);
-
-    const handleImageError = () => {
-        const nextIndex = candidateIndex + 1;
-        if (nextIndex < candidates.length) {
-            setCandidateIndex(nextIndex);
-            setImageLoaded(false);
-            setHasError(false);
-            setImgSrc(candidates[nextIndex]);
-            return;
-        }
-        handleRetry();
-    };
+    const resolvedPosterPath = posterPathOverride || ritual.posterPath;
 
     const handleEcho = () => {
         if (echoed) return;
@@ -403,16 +373,36 @@ export const RitualCard: React.FC<RitualCardProps> = ({ ritual, isHotStreak = fa
                 <div className="flex gap-4">
                     {/* Poster */}
                     <div className="shrink-0 self-start mt-0.5">
-                        {(!hasError && imgSrc) || !ritual.movieTitle ? (
+                        {!hasError || !ritual.movieTitle ? (
                             <div className="w-11 h-[62px] rounded-lg overflow-hidden border border-white/10 shadow-md relative bg-[#1a1a1a]">
                                 {!imageLoaded && <div className="absolute inset-0 bg-white/5 animate-pulse rounded-lg" />}
-                                <img
-                                    src={imgSrc || ''}
+                                <PosterImage
+                                    movieId={ritual.movieId}
+                                    posterPath={resolvedPosterPath}
+                                    size="small"
                                     alt={ritual.movieTitle}
-                                    referrerPolicy="origin"
-                                    onLoad={() => setImageLoaded(true)}
-                                    onError={handleImageError}
+                                    onLoad={() => {
+                                        setHasError(false);
+                                        setImageLoaded(true);
+                                    }}
+                                    onExhausted={() => {
+                                        setImageLoaded(false);
+                                        void handleRetry();
+                                    }}
                                     className={`w-full h-full object-cover transition-all duration-500 group-hover:scale-105 ${imageLoaded ? 'opacity-90 group-hover:opacity-100' : 'opacity-0'}`}
+                                    fallback={
+                                        <div
+                                            className="w-11 h-[62px] rounded-lg border flex flex-col items-center justify-center gap-1"
+                                            style={{ borderColor: `${leagueInfo.color}30`, background: `${leagueInfo.color}08` }}
+                                        >
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ color: leagueInfo.color }} className="opacity-70">
+                                                <rect x="2" y="2" width="20" height="20" rx="3" stroke="currentColor" strokeWidth="1.5" />
+                                                <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.5" />
+                                                <path d="M2 17L7 12L11 16L15 11L22 17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                            </svg>
+                                            <div className="w-3 h-px" style={{ background: `${leagueInfo.color}40` }} />
+                                        </div>
+                                    }
                                 />
                             </div>
                         ) : (

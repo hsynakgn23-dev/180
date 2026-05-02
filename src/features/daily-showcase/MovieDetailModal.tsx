@@ -1,7 +1,7 @@
 import React from 'react';
 import type { Movie } from '../../data/mockMovies';
-import { resolvePosterCandidates } from '../../lib/posterCandidates';
 import { useLanguage } from '../../context/LanguageContext';
+import { PosterImage } from '../../components/PosterImage';
 import { DailyQuizPanel } from './DailyQuizPanel';
 
 interface MovieDetailModalProps {
@@ -12,31 +12,14 @@ interface MovieDetailModalProps {
 
 export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({ movie, onClose, onStartRitual }) => {
     const { text } = useLanguage();
-    const [candidates, setCandidates] = React.useState<string[]>(() =>
-        resolvePosterCandidates(movie.id, movie.posterPath, 'w500')
+    const posterFallback = (
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-[#8A9A5B]/10">
+            <div className="w-12 h-px bg-[#8A9A5B] mb-4 opacity-50"></div>
+            <span className="text-[10px] uppercase tracking-widest text-[#8A9A5B]/60">
+                {movie.title}
+            </span>
+        </div>
     );
-    const [candidateIndex, setCandidateIndex] = React.useState(0);
-    const [imgSrc, setImgSrc] = React.useState<string | null>(() => {
-        const initial = resolvePosterCandidates(movie.id, movie.posterPath, 'w500');
-        return initial[0] ?? null;
-    });
-
-    React.useEffect(() => {
-        const nextCandidates = resolvePosterCandidates(movie.id, movie.posterPath, 'w500');
-        setCandidates(nextCandidates);
-        setCandidateIndex(0);
-        setImgSrc(nextCandidates[0] ?? null);
-    }, [movie.id, movie.posterPath]);
-
-    const handleImageError = () => {
-        const nextIndex = candidateIndex + 1;
-        if (nextIndex < candidates.length) {
-            setCandidateIndex(nextIndex);
-            setImgSrc(candidates[nextIndex]);
-            return;
-        }
-        setImgSrc(null);
-    };
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
@@ -47,22 +30,15 @@ export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({ movie, onClo
 
             <div className="relative w-full max-w-2xl bg-[#121212] border border-white/5 shadow-2xl overflow-hidden flex flex-col md:max-w-4xl md:flex-row max-h-[90vh] md:max-h-[760px] animate-slide-up">
                 <div className="md:w-2/5 h-64 md:h-auto relative bg-[#1A1A1A] shrink-0">
-                    {imgSrc ? (
-                        <img
-                            src={imgSrc}
-                            alt={movie.title}
-                            referrerPolicy="origin"
-                            className="absolute inset-0 w-full h-full object-cover"
-                            onError={handleImageError}
-                        />
-                    ) : null}
-
-                    <div className={`${imgSrc ? 'hidden' : ''} absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-[#8A9A5B]/10`}>
-                        <div className="w-12 h-px bg-[#8A9A5B] mb-4 opacity-50"></div>
-                        <span className="text-[10px] uppercase tracking-widest text-[#8A9A5B]/60">
-                            {movie.title}
-                        </span>
-                    </div>
+                    <PosterImage
+                        movieId={movie.id}
+                        posterPath={movie.posterPath}
+                        size="large"
+                        alt={movie.title}
+                        priority
+                        className="absolute inset-0 w-full h-full object-cover"
+                        fallback={posterFallback}
+                    />
 
                     <div className="absolute top-4 left-4 bg-black/80 backdrop-blur px-3 py-1 text-xs font-bold text-[#8A9A5B] tracking-widest uppercase border border-white/5">
                         {movie.voteAverage?.toFixed(1) || 'N/A'}

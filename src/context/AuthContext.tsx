@@ -70,6 +70,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }, []);
 
+    // Lifecycle: start on [setSessionUser], cleanup on unmount/dep-change
+    // Auth reset: handled via Supabase SIGNED_OUT event
+    // Background: no action (subscription auto-pauses)
+    // Retry: none — auth state drives refresh
     useEffect(() => {
         if (!isSupabaseLive() || !supabase) {
             return;

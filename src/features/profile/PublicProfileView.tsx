@@ -5,8 +5,8 @@ import { LEAGUE_NAMES, resolveLeagueInfo, resolveLeagueKey, useXP } from '../../
 import { useLanguage } from '../../context/LanguageContext';
 import { TMDB_SEEDS } from '../../data/tmdbSeeds';
 import { runWithAbortTimeout } from '../../lib/network';
-import { resolvePosterCandidates } from '../../lib/posterCandidates';
 import { isSupabaseLive, supabase } from '../../lib/supabase';
+import { PosterImage } from '../../components/PosterImage';
 import { LEVEL_THRESHOLD } from '../../context/xpShared/state';
 import {
     getDefaultProfileVisibility,
@@ -165,38 +165,18 @@ const isSupabaseCapabilityError = (
 };
 
 const CommentFilmPoster: React.FC<{ movieId: number; posterPath?: string; title: string; className?: string }> = ({ movieId, posterPath, title, className }) => {
-    const [candidateIndex, setCandidateIndex] = useState(0);
-    const candidates = useMemo(
-        () => resolvePosterCandidates(movieId, posterPath, 'w200'),
-        [movieId, posterPath]
-    );
-
-    useEffect(() => {
-        setCandidateIndex(0);
-    }, [movieId, posterPath]);
-
-    const currentSrc = candidates[candidateIndex] ?? null;
-
-    if (!currentSrc) {
-        return (
-            <div className={`w-16 h-24 bg-white/5 border border-white/10 rounded-md flex items-center justify-center text-[9px] uppercase tracking-[0.18em] text-sage/60 ${className || ''}`}>
-                {title.slice(0, 2)}
-            </div>
-        );
-    }
-
     return (
-        <img
-            src={currentSrc}
+        <PosterImage
+            movieId={movieId}
+            posterPath={posterPath}
+            size="small"
             alt={title}
-            referrerPolicy="origin"
             className={`w-16 h-24 object-cover rounded-md border border-white/10 bg-[#0f0f0f] ${className || ''}`}
-            onError={() => {
-                const next = candidateIndex + 1;
-                if (next < candidates.length) {
-                    setCandidateIndex(next);
-                }
-            }}
+            fallback={
+                <div className={`w-16 h-24 bg-white/5 border border-white/10 rounded-md flex items-center justify-center text-[9px] uppercase tracking-[0.18em] text-sage/60 ${className || ''}`}>
+                    {title.slice(0, 2)}
+                </div>
+            }
         />
     );
 };

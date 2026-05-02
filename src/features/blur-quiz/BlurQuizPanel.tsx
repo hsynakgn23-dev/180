@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLanguage } from '../../context/LanguageContext';
+import { PosterImage } from '../../components/PosterImage';
 import {
     fetchBlurMovie,
     verifyBlurGuess,
@@ -8,8 +9,6 @@ import {
     type BlurQuizJokerKey,
 } from '../../lib/blurQuizApi';
 import type { PoolLanguageCode } from '../../lib/poolQuizApi';
-
-const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
 
 // Blur values per step (0 = most blurred/hardest, 5 = clear/easiest)
 const BLUR_PX = [40, 28, 18, 10, 4, 0];
@@ -322,7 +321,7 @@ export function BlurQuizPanel() {
     const potentialXp = isActive
         ? Math.max(10, XP_PER_STEP[state.blurStep] - state.jokers.size * 5)
         : 0;
-    const posterUrl = isActive ? `${TMDB_IMAGE_BASE}${state.posterPath}` : null;
+    const posterPath = isActive ? state.posterPath : null;
 
     // ── Render ────────────────────────────────────────────────────────────────
     return (
@@ -411,7 +410,7 @@ export function BlurQuizPanel() {
                 )}
 
                 {/* ACTIVE */}
-                {state.phase === 'active' && posterUrl && (
+                {state.phase === 'active' && posterPath && (
                     <div style={{ animation: 'blurSlideUp 0.3s ease-out' }}>
                         {/* Timer bar */}
                         <div className="mb-4 h-1 rounded-full bg-white/10 overflow-hidden">
@@ -428,8 +427,9 @@ export function BlurQuizPanel() {
                         <div className="flex justify-center mb-5">
                             <div className="relative rounded-xl overflow-hidden border border-white/10"
                                 style={{ width: 200, height: 280 }}>
-                                <img
-                                    src={posterUrl}
+                                <PosterImage
+                                    posterPath={posterPath}
+                                    size="large"
                                     alt="?"
                                     style={{
                                         width: '100%', height: '100%', objectFit: 'cover',

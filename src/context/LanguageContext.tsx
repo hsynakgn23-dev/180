@@ -2,7 +2,6 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import {
     LANGUAGE_DICTIONARY,
     LANGUAGE_STORAGE_KEY,
-    LANGUAGE_CHANGE_EVENT,
     PRIMARY_LANGUAGE,
     type FormatParams,
     formatTemplate,
@@ -42,17 +41,17 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const setLanguage = useCallback((nextLanguage: LanguageCode) => {
         const normalizedLanguage = normalizeActiveLanguageCode(nextLanguage);
-        setLanguageState((currentLanguage) => {
-            if (normalizedLanguage === currentLanguage) return currentLanguage;
-            window.dispatchEvent(new CustomEvent(LANGUAGE_CHANGE_EVENT, { detail: normalizedLanguage }));
-            return normalizedLanguage;
-        });
+        setLanguageState(normalizedLanguage);
     }, []);
 
     useEffect(() => {
         document.documentElement.lang = language;
     }, [language]);
 
+    // Lifecycle: start on [], cleanup on unmount/dep-change
+    // Auth reset: not auth-scoped
+    // Background: no action (storage subscription is browser-managed)
+    // Retry: none — storage event-driven
     useEffect(() => {
         const handleStorage = (event: StorageEvent) => {
             if (event.key !== LANGUAGE_STORAGE_KEY) return;
@@ -60,18 +59,10 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             setLanguageState(normalizeActiveLanguageCode(event.newValue));
         };
 
-        const handleLanguageEvent = (event: Event) => {
-            const customEvent = event as CustomEvent;
-            if (!isLanguageCode(customEvent.detail)) return;
-            setLanguageState(normalizeActiveLanguageCode(customEvent.detail));
-        };
-
         window.addEventListener('storage', handleStorage);
-        window.addEventListener(LANGUAGE_CHANGE_EVENT, handleLanguageEvent);
 
         return () => {
             window.removeEventListener('storage', handleStorage);
-            window.removeEventListener(LANGUAGE_CHANGE_EVENT, handleLanguageEvent);
         };
     }, []);
 

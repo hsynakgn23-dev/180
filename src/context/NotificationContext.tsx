@@ -2,11 +2,15 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { useLanguage } from './LanguageContext';
 import { useXP } from './XPContext';
 import {
-    fetchRecentNotificationEvents,
-    markNotificationEventsRead,
-    subscribeToNotificationEvents,
+    loadNotifications,
+    mutateNotificationsRead,
+    subscribeNotifications,
     type NotificationEventSnapshot
-} from '../lib/notificationEvents';
+} from '../lib/supabase/notifications';
+import {
+    useAppLifecycleSubscription,
+    type AppLifecycleSnapshot
+} from '../hooks/useAppLifecycleSubscription';
 
 export interface Notification {
     id: string;
@@ -259,40 +263,41 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
         persistLocalNotificationsToStorage(storageKey, localNotifications);
     }, [isHydrated, localNotifications, storageKey]);
 
+    // Fetch strategy: initial foreground sync + realtime subscription.
+    // No polling. If subscription drops, user can pull-to-refresh or foreground the app.
+    // On auth change: hook re-runs via stable callbacks, previous subscription disposed.
+    // Lifecycle: foreground via useAppLifecycleSubscription, cleanup on background/unmount/dep-change
+    // Auth reset: handled via [user?.id] dep
+    // Background: subscription disposed; foreground resync restarts it
+    // Retry: none - user-triggered refresh or next foreground sync
     useEffect(() => {
         if (!user?.id) {
             setRemoteNotifications([]);
-            return;
         }
-
-        let active = true;
-
-        const syncRemoteNotifications = async () => {
-            const nextNotifications = await fetchRecentNotificationEvents({
-                limit: MAX_NOTIFICATIONS
-            });
-            if (!active) return;
-            setRemoteNotifications(nextNotifications);
-        };
-
-        void syncRemoteNotifications();
-
-        const unsubscribe = subscribeToNotificationEvents({
-            onChange: () => {
-                void syncRemoteNotifications();
-            }
-        });
-
-        const pollId = window.setInterval(() => {
-            void syncRemoteNotifications();
-        }, 30000);
-
-        return () => {
-            active = false;
-            window.clearInterval(pollId);
-            unsubscribe();
-        };
     }, [user?.id]);
+
+    const syncRemoteNotifications = useCallback(async (lifecycle?: AppLifecycleSnapshot) => {
+        if (!user?.id) return;
+
+        const nextNotifications = await loadNotifications({
+            limit: MAX_NOTIFICATIONS
+        });
+        if (lifecycle && !lifecycle.isCurrent()) return;
+        setRemoteNotifications(nextNotifications);
+    }, [user?.id]);
+
+    const subscribeRemoteNotifications = useCallback((lifecycle: AppLifecycleSnapshot) =>
+        subscribeNotifications({
+            onChange: () => {
+                void syncRemoteNotifications(lifecycle);
+            }
+        }), [syncRemoteNotifications]);
+
+    useAppLifecycleSubscription({
+        enabled: Boolean(user?.id),
+        onForeground: syncRemoteNotifications,
+        subscribe: subscribeRemoteNotifications
+    });
 
     const notifications = useMemo(() => {
         const merged = [
@@ -350,7 +355,7 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
         );
 
         if (remoteIds.length > 0) {
-            void markNotificationEventsRead({ notificationIds: remoteIds }).then((updatedCount) => {
+            void mutateNotificationsRead({ notificationIds: remoteIds }).then((updatedCount) => {
                 if (updatedCount === 0) {
                     console.warn('[Notifications] remote read sync returned no updated rows.');
                 }

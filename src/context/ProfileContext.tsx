@@ -13,13 +13,13 @@ import { sendEngagementNotification } from '../lib/engagementNotificationApi.js'
 import { fetchWithAuth } from '../lib/fetchWithAuth.js';
 import { claimInviteCodeViaApi } from '../lib/referralApi.js';
 import { isSupabaseLive, supabase } from '../lib/supabase.js';
+import { mutateFollow } from '../lib/supabase/progression.js';
 
 import { useAuth } from './AuthContext.js';
 import { useProgression } from './ProgressionContext.js';
 import { normalizeAuthError } from './xpShared/auth.js';
 import {
     buildFollowUserIdKey,
-    isSupabaseCapabilityError,
     normalizeFollowKey,
     REGISTRATION_GENDERS,
     USERNAME_REGEX,
@@ -70,12 +70,24 @@ export type ProfileContextValue = {
     redeemInviteCode: (code: string) => AuthResult;
 };
 
+type ProfileFields = Pick<
+    ProfileContextValue,
+    'bio' | 'avatarId' | 'avatarUrl' | 'fullName' | 'username' | 'gender' | 'birthDate' | 'following'
+>;
+
 const ProfileContext = createContext<ProfileContextValue | undefined>(undefined);
+const EMPTY_FOLLOWING: string[] = [];
+const INVITE_CODE = '';
+const INVITE_LINK = '';
+const INVITED_BY_CODE: string | null = null;
+const INVITE_CLAIMS_COUNT = 0;
+const INVITE_REWARDS_EARNED = 0;
+const INVITE_REWARD_CONFIG = { inviterXp: 0, inviteeXp: 0 };
 
 export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const auth = useAuth();
     const progression = useProgression();
-    const { user } = auth;
+    const { user, mergeSessionUser } = auth;
     const {
         state,
         updateState,
@@ -84,11 +96,17 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
         canWriteFollowRef,
     } = progression;
 
+    const userId = user?.id || '';
+    const userEmail = user?.email || '';
+    const userName = user?.name || '';
+    const userFullName = user?.fullName || '';
+    const userUsername = user?.username || '';
+    const userSessionKey = userId || userEmail;
     const [isPremium, setIsPremium] = useState(false);
 
     // Subscription tier fetch
     useEffect(() => {
-        if (!user) {
+        if (!userSessionKey) {
             setIsPremium(false);
             return;
         }
@@ -109,7 +127,32 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
         return () => {
             cancelled = true;
         };
-    }, [user]);
+    }, [userSessionKey]);
+
+    const following = useMemo(() => state.following || EMPTY_FOLLOWING, [state.following]);
+
+    const profileFields = useMemo<ProfileFields>(
+        () => ({
+            bio: state.bio,
+            avatarId: state.avatarId,
+            avatarUrl: state.avatarUrl,
+            fullName: state.fullName || '',
+            username: state.username || '',
+            gender: state.gender || '',
+            birthDate: state.birthDate || '',
+            following,
+        }),
+        [
+            state.bio,
+            state.avatarId,
+            state.avatarUrl,
+            state.fullName,
+            state.username,
+            state.gender,
+            state.birthDate,
+            following,
+        ],
+    );
 
     const updateAvatar = useCallback(
         (url: string) => {
@@ -129,7 +172,6 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     const isFollowingUser = useCallback(
         (targetUserId?: string | null, username?: string): boolean => {
-            const following = state.following || [];
             if (following.length === 0) return false;
 
             const userIdKey = buildFollowUserIdKey(targetUserId);
@@ -143,7 +185,7 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 return normalizedEntry === normalizedUsername;
             });
         },
-        [state.following],
+        [following],
     );
 
     const toggleFollowUser = useCallback(
@@ -156,9 +198,9 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 return { ok: false, message: 'Takip edilecek kullanici adi gecersiz.' };
             }
 
-            const normalizedCurrentName = (user?.name || '').trim().toLowerCase();
+            const normalizedCurrentName = userName.trim().toLowerCase();
             const normalizedTargetName = normalizedUsername.toLowerCase();
-            if (target.userId && user?.id && target.userId === user.id) {
+            if (target.userId && userId && target.userId === userId) {
                 return { ok: false, message: 'Kendini takip edemezsin.' };
             }
             if (
@@ -213,51 +255,24 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
             });
 
             let syncWarning: string | null = null;
-            if (
-                isSupabaseLive() &&
-                supabase &&
-                user?.id &&
-                target.userId &&
-                canWriteFollowRef.current
-            ) {
-                if (didFollow) {
-                    const { error } = await supabase.from('user_follows').upsert(
-                        [
-                            {
-                                follower_user_id: user.id,
-                                followed_user_id: target.userId,
-                            },
-                        ],
-                        {
-                            onConflict: 'follower_user_id,followed_user_id',
-                            ignoreDuplicates: true,
-                        },
-                    );
+            if (userId && target.userId && canWriteFollowRef.current) {
+                const result = await mutateFollow({
+                    followerUserId: userId,
+                    followedUserId: target.userId,
+                    shouldFollow: didFollow,
+                });
 
-                    if (error) {
-                        if (isSupabaseCapabilityError(error)) {
-                            canWriteFollowRef.current = false;
-                        } else {
-                            console.error('[XP] failed to sync follow insert', error);
-                            syncWarning = 'Takip kaydedildi, cloud senkronu basarisiz.';
-                        }
+                if (result.ok) {
+                    didSyncFollowInsert = didFollow;
+                } else if (result.error) {
+                    if (result.capabilityBlocked) {
+                        canWriteFollowRef.current = false;
+                    } else if (didFollow) {
+                        console.error('[XP] failed to sync follow insert', result.error);
+                        syncWarning = 'Takip kaydedildi, cloud senkronu basarisiz.';
                     } else {
-                        didSyncFollowInsert = true;
-                    }
-                } else {
-                    const { error } = await supabase
-                        .from('user_follows')
-                        .delete()
-                        .eq('follower_user_id', user.id)
-                        .eq('followed_user_id', target.userId);
-
-                    if (error) {
-                        if (isSupabaseCapabilityError(error)) {
-                            canWriteFollowRef.current = false;
-                        } else {
-                            console.error('[XP] failed to sync follow delete', error);
-                            syncWarning = 'Takipten cikarma kaydedildi, cloud senkronu basarisiz.';
-                        }
+                        console.error('[XP] failed to sync follow delete', result.error);
+                        syncWarning = 'Takipten cikarma kaydedildi, cloud senkronu basarisiz.';
                     }
                 }
             }
@@ -266,10 +281,10 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 if (didSyncFollowInsert && target.userId) {
                     const actorLabel =
                         (
-                            user?.name ||
-                            user?.fullName ||
-                            user?.username ||
-                            user?.email.split('@')[0] ||
+                            userName ||
+                            userFullName ||
+                            userUsername ||
+                            userEmail.split('@')[0] ||
                             ''
                         ).trim() || normalizedUsername;
                     void sendEngagementNotification({
@@ -295,12 +310,22 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 message: syncWarning || `${normalizedUsername} takipten cikarildi.`,
             };
         },
-        [user, updateState, tryUnlockMark, triggerWhisper, canWriteFollowRef],
+        [
+            userId,
+            userEmail,
+            userName,
+            userFullName,
+            userUsername,
+            updateState,
+            tryUnlockMark,
+            triggerWhisper,
+            canWriteFollowRef,
+        ],
     );
 
     const updatePersonalInfo = useCallback(
         async (profile: RegistrationProfileInput): Promise<AuthResult> => {
-            if (!user) {
+            if (!userEmail) {
                 return { ok: false, message: 'Oturum bulunamadi.' };
             }
 
@@ -342,8 +367,8 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
             });
 
             const displayName =
-                normalizedProfile.fullName || normalizedProfile.username || user.name;
-            auth.mergeSessionUser({
+                normalizedProfile.fullName || normalizedProfile.username || userName;
+            mergeSessionUser({
                 name: displayName,
                 fullName: normalizedProfile.fullName,
                 username: normalizedProfile.username,
@@ -373,7 +398,7 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
             triggerWhisper('Identity shifted.');
             return { ok: true, message: 'Profil bilgileri guncellendi.' };
         },
-        [user, auth, updateState, triggerWhisper],
+        [userEmail, userName, mergeSessionUser, updateState, triggerWhisper],
     );
 
     const getInviteCodeValidationMessage = useCallback((code: string): string | null => {
@@ -478,60 +503,32 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
         ],
     );
 
-    const inviteCode = '';
-    const inviteLink = '';
-    const invitedByCode = null;
-    const inviteClaimsCount = 0;
-    const inviteRewardsEarned = 0;
-
     const value = useMemo<ProfileContextValue>(
         () => ({
-            bio: state.bio,
-            avatarId: state.avatarId,
-            avatarUrl: state.avatarUrl,
-            fullName: state.fullName || '',
-            username: state.username || '',
-            gender: state.gender || '',
-            birthDate: state.birthDate || '',
-            following: state.following || [],
+            ...profileFields,
             isPremium,
             updateIdentity,
             updatePersonalInfo,
             updateAvatar,
             isFollowingUser,
             toggleFollowUser,
-            inviteCode,
-            inviteLink,
-            invitedByCode,
-            inviteClaimsCount,
-            inviteRewardsEarned,
-            inviteRewardConfig: {
-                inviterXp: 0,
-                inviteeXp: 0,
-            },
+            inviteCode: INVITE_CODE,
+            inviteLink: INVITE_LINK,
+            invitedByCode: INVITED_BY_CODE,
+            inviteClaimsCount: INVITE_CLAIMS_COUNT,
+            inviteRewardsEarned: INVITE_REWARDS_EARNED,
+            inviteRewardConfig: INVITE_REWARD_CONFIG,
             claimInviteCode,
             redeemInviteCode,
         }),
         [
-            state.bio,
-            state.avatarId,
-            state.avatarUrl,
-            state.fullName,
-            state.username,
-            state.gender,
-            state.birthDate,
-            state.following,
+            profileFields,
             isPremium,
             updateIdentity,
             updatePersonalInfo,
             updateAvatar,
             isFollowingUser,
             toggleFollowUser,
-            inviteCode,
-            inviteLink,
-            invitedByCode,
-            inviteClaimsCount,
-            inviteRewardsEarned,
             claimInviteCode,
             redeemInviteCode,
         ],

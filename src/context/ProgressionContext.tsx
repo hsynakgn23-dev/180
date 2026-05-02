@@ -11,7 +11,7 @@ import React, {
 import { MAJOR_MARKS } from '../data/marksData.js';
 import { STREAK_MILESTONE_SET } from '../domain/celebrations.js';
 import { moderateComment } from '../lib/commentModeration.js';
-import { isSupabaseLive, supabase } from '../lib/supabase.js';
+import { loadUserProgression, mutateRitual, mutateXP } from '../lib/supabase/progression.js';
 
 import { useAuth } from './AuthContext.js';
 import {
@@ -19,16 +19,13 @@ import {
     persistUserRitualBackupToLocal,
     persistUserXpStateToLocal,
     readUserRitualBackupFromLocal,
-    readUserRitualsFromCloud,
     readUserXpStateFromLocal,
 } from './xpShared/persistence.js';
 import {
     applyXPDelta,
-    buildFollowUserIdKey,
     buildInitialXPState,
     getLeagueIndexFromXp,
     getLocalDateKey,
-    isSupabaseCapabilityError,
     KNOWN_MOVIES_BY_ID,
     LEAGUE_NAMES,
     LEAGUES_DATA,
@@ -38,7 +35,6 @@ import {
     mergeRitualLogs,
     mergeStringLists,
     mergeXPStates,
-    normalizeXPState,
     parseDateKeyToDayIndex,
     ritualFingerprint,
     SHARE_REWARD_XP,
@@ -53,10 +49,6 @@ import type {
     StreakCelebrationEvent,
     XPState,
 } from './xpShared/types.js';
-
-type UserFollowRow = {
-    followed_user_id: string | null;
-};
 
 export type ProgressionContextValue = {
     // State
@@ -243,48 +235,19 @@ export const ProgressionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             let cloudFollowingKeys: string[] = [];
             let didReadCloudFollowing = false;
 
-            if (isSupabaseLive() && supabase && user.id && canReadProfileStateRef.current) {
-                const { data, error } = await supabase
-                    .from('profiles')
-                    .select('xp_state')
-                    .eq('user_id', user.id)
-                    .maybeSingle();
+            if (user.id) {
+                const hydration = await loadUserProgression(user.id, {
+                    canReadProfileState: canReadProfileStateRef.current,
+                    canReadFollow: canReadFollowRef.current,
+                });
 
-                if (!error && data?.xp_state && typeof data.xp_state === 'object') {
-                    remoteState = normalizeXPState(data.xp_state as Partial<XPState>);
-                } else if (error) {
-                    if (isSupabaseCapabilityError(error)) {
-                        canReadProfileStateRef.current = false;
-                    } else {
-                        console.error('[XP] failed to read profile state', error);
-                    }
-                }
-
-                const cloudRitualResult = await readUserRitualsFromCloud(user.id);
-                cloudRituals = cloudRitualResult.rituals;
-                didReadCloudRituals = cloudRitualResult.didRead;
-
-                if (canReadFollowRef.current) {
-                    const { data: followData, error: followError } = await supabase
-                        .from('user_follows')
-                        .select('followed_user_id')
-                        .eq('follower_user_id', user.id)
-                        .limit(1000);
-
-                    if (!followError) {
-                        const rows = Array.isArray(followData)
-                            ? (followData as UserFollowRow[])
-                            : [];
-                        cloudFollowingKeys = rows
-                            .map((row) => buildFollowUserIdKey(row.followed_user_id))
-                            .filter((value): value is string => Boolean(value));
-                        didReadCloudFollowing = true;
-                    } else if (isSupabaseCapabilityError(followError)) {
-                        canReadFollowRef.current = false;
-                    } else {
-                        console.error('[XP] failed to read follow graph', followError);
-                    }
-                }
+                remoteState = hydration.remoteState;
+                cloudRituals = hydration.cloudRituals;
+                didReadCloudRituals = hydration.didReadCloudRituals;
+                cloudFollowingKeys = hydration.cloudFollowingKeys;
+                didReadCloudFollowing = hydration.didReadCloudFollowing;
+                canReadProfileStateRef.current = hydration.canReadProfileState;
+                canReadFollowRef.current = hydration.canReadFollow;
             }
 
             localState = readUserXpStateFromLocal(user.email);
@@ -458,6 +421,10 @@ export const ProgressionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
     // ---------- dwell time ----------
 
+    // Lifecycle: start on [dailyDwellXP,lastDwellDate], cleanup on unmount/dep-change
+    // Auth reset: handled via progression hydrate effects
+    // Background: no action (timer resumes naturally)
+    // Retry: none — timer-driven
     useEffect(() => {
         const interval = setInterval(() => {
             const today = getToday();
@@ -484,29 +451,21 @@ export const ProgressionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
         const stateForCloud = compactStateForPersistence(state);
 
-        if (!isSupabaseLive() || !supabase || !user.id || !canWriteProfileStateRef.current) return;
+        if (!user.id || !canWriteProfileStateRef.current) return;
 
-        void supabase
-            .from('profiles')
-            .upsert(
-                {
-                    user_id: user.id,
-                    email: user.email,
-                    display_name: state.username || state.fullName || user.name,
-                    xp_state: stateForCloud,
-                    updated_at: new Date().toISOString(),
-                },
-                { onConflict: 'user_id' },
-            )
-            .then(({ error }) => {
-                if (error) {
-                    if (isSupabaseCapabilityError(error)) {
-                        canWriteProfileStateRef.current = false;
-                    } else {
-                        console.error('[XP] failed to upsert profile state', error);
-                    }
-                }
-            });
+        void mutateXP({
+            userId: user.id,
+            email: user.email,
+            displayName: state.username || state.fullName || user.name,
+            xpState: stateForCloud,
+        }).then((result) => {
+            if (result.ok || !result.error) return;
+            if (result.capabilityBlocked) {
+                canWriteProfileStateRef.current = false;
+            } else {
+                console.error('[XP] failed to upsert profile state', result.error);
+            }
+        });
     }, [isXpHydrated, state, user]);
 
     // ---------- progression methods ----------
@@ -694,144 +653,47 @@ export const ProgressionProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 date: today,
             });
 
-            if (isSupabaseLive() && supabase && user?.id && canWriteRitualRef.current) {
+            if (user?.id && canWriteRitualRef.current) {
                 const leagueForInsert = LEAGUE_NAMES[getLeagueIndexFromXp(newTotalXP)];
-                void (async () => {
-                    const { data: sessionData } = await supabase.auth.getSession();
-                    const sessionUser = sessionData.session?.user;
+                void mutateRitual({
+                    author: user.name || user.email?.split('@')[0] || 'Observer',
+                    movieTitle: newRitual.movieTitle,
+                    posterPath: newRitual.posterPath || null,
+                    text: newRitual.text,
+                    league: leagueForInsert,
+                    year: knownMovie?.year ? String(knownMovie.year) : null,
+                }).then((result) => {
+                    if (result.ok) return;
 
-                    if (!sessionUser?.id) {
+                    if (result.missingSession) {
                         triggerWhisper('Ritual yerelde kaydedildi. Cloud icin tekrar giris yap.');
                         return;
                     }
 
-                    const nowIso = new Date().toISOString();
-                    const ritualInsertPayloads: Array<Record<string, string | null>> = [
-                        {
-                            user_id: sessionUser.id,
-                            author: user.name || sessionUser.email?.split('@')[0] || 'Observer',
-                            movie_title: newRitual.movieTitle,
-                            poster_path: newRitual.posterPath || null,
-                            text: newRitual.text,
-                            timestamp: nowIso,
-                            league: leagueForInsert,
-                            year: knownMovie?.year ? String(knownMovie.year) : null,
-                        },
-                        {
-                            user_id: sessionUser.id,
-                            author: user.name || sessionUser.email?.split('@')[0] || 'Observer',
-                            movie_title: newRitual.movieTitle,
-                            poster_path: newRitual.posterPath || null,
-                            text: newRitual.text,
-                            timestamp: nowIso,
-                            league: leagueForInsert,
-                        },
-                        {
-                            user_id: sessionUser.id,
-                            author: user.name || sessionUser.email?.split('@')[0] || 'Observer',
-                            movie_title: newRitual.movieTitle,
-                            text: newRitual.text,
-                            timestamp: nowIso,
-                            league: leagueForInsert,
-                        },
-                        {
-                            user_id: sessionUser.id,
-                            author: user.name || sessionUser.email?.split('@')[0] || 'Observer',
-                            movie_title: newRitual.movieTitle,
-                            text: newRitual.text,
-                            timestamp: nowIso,
-                        },
-                        {
-                            user_id: sessionUser.id,
-                            author: user.name || sessionUser.email?.split('@')[0] || 'Observer',
-                            movie_title: newRitual.movieTitle,
-                            poster_path: newRitual.posterPath || null,
-                            text: newRitual.text,
-                            created_at: nowIso,
-                            league: leagueForInsert,
-                            year: knownMovie?.year ? String(knownMovie.year) : null,
-                        },
-                        {
-                            user_id: sessionUser.id,
-                            author: user.name || sessionUser.email?.split('@')[0] || 'Observer',
-                            movie_title: newRitual.movieTitle,
-                            text: newRitual.text,
-                            created_at: nowIso,
-                            league: leagueForInsert,
-                        },
-                        {
-                            user_id: sessionUser.id,
-                            author: user.name || sessionUser.email?.split('@')[0] || 'Observer',
-                            movie_title: newRitual.movieTitle,
-                            text: newRitual.text,
-                            created_at: nowIso,
-                        },
-                        {
-                            user_id: sessionUser.id,
-                            author: user.name || sessionUser.email?.split('@')[0] || 'Observer',
-                            movie_title: newRitual.movieTitle,
-                            poster_path: newRitual.posterPath || null,
-                            text: newRitual.text,
-                            league: leagueForInsert,
-                            year: knownMovie?.year ? String(knownMovie.year) : null,
-                        },
-                        {
-                            user_id: sessionUser.id,
-                            author: user.name || sessionUser.email?.split('@')[0] || 'Observer',
-                            movie_title: newRitual.movieTitle,
-                            text: newRitual.text,
-                            league: leagueForInsert,
-                        },
-                        {
-                            user_id: sessionUser.id,
-                            author: user.name || sessionUser.email?.split('@')[0] || 'Observer',
-                            movie_title: newRitual.movieTitle,
-                            text: newRitual.text,
-                        },
-                    ];
+                    if (!result.error) return;
 
-                    let insertError: { code?: string | null; message?: string | null } | null =
-                        null;
-
-                    for (const payload of ritualInsertPayloads) {
-                        const { error } = await supabase.from('rituals').insert([payload]);
-                        if (!error) {
-                            insertError = null;
-                            break;
-                        }
-                        insertError = error;
-                        if (!isSupabaseCapabilityError(error)) {
-                            break;
-                        }
+                    if (result.capabilityBlocked) {
+                        canWriteRitualRef.current = false;
+                        triggerWhisper(
+                            'Cloud ritual sync devre disi. Yerel kayitla devam ediliyor.',
+                        );
+                        return;
                     }
 
-                    if (insertError) {
-                        if (isSupabaseCapabilityError(insertError)) {
-                            canWriteRitualRef.current = false;
-                            triggerWhisper(
-                                'Cloud ritual sync devre disi. Yerel kayitla devam ediliyor.',
-                            );
-                            return;
-                        }
-                        console.error('[Ritual] Failed to sync ritual:', insertError);
-                        const lowered = (insertError.message || '').toLowerCase();
-                        if (
-                            lowered.includes('permission') ||
-                            lowered.includes('policy') ||
-                            lowered.includes('jwt')
-                        ) {
-                            triggerWhisper('Cloud izni reddedildi. Cikis-giris yapip tekrar dene.');
-                        } else if (lowered.includes('rate limit') || lowered.includes('too many')) {
-                            triggerWhisper(
-                                'Cok hizli gonderim algilandi. Biraz bekleyip tekrar dene.',
-                            );
-                        } else {
-                            triggerWhisper(
-                                'Ritual kaydedildi ama cloud senkronu basarisiz oldu.',
-                            );
-                        }
+                    console.error('[Ritual] Failed to sync ritual:', result.error);
+                    const lowered = (result.error.message || '').toLowerCase();
+                    if (
+                        lowered.includes('permission') ||
+                        lowered.includes('policy') ||
+                        lowered.includes('jwt')
+                    ) {
+                        triggerWhisper('Cloud izni reddedildi. Cikis-giris yapip tekrar dene.');
+                    } else if (lowered.includes('rate limit') || lowered.includes('too many')) {
+                        triggerWhisper('Cok hizli gonderim algilandi. Biraz bekleyip tekrar dene.');
+                    } else {
+                        triggerWhisper('Ritual kaydedildi ama cloud senkronu basarisiz oldu.');
                     }
-                })();
+                });
             }
 
             return { ok: true, message: 'Yorum kaydedildi.' };

@@ -1,9 +1,18 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TMDB_SEEDS } from '../data/tmdbSeeds';
 import { DAILY_SLOTS, FALLBACK_GRADIENTS } from '../data/dailyConfig';
 import type { Movie } from '../data/mockMovies';
 import { buildApiUrl } from '../lib/apiBase';
-import { supabase, isSupabaseLive } from '../lib/supabase';
+import { isSupabaseLive } from '../lib/supabase';
+import {
+    loadDailyShowcase,
+    loadRecentDailyShowcases,
+    mutateDailyShowcase
+} from '../lib/supabase/dailyMovies';
+import {
+    useAppLifecycleSubscription,
+    type AppLifecycleSnapshot
+} from './useAppLifecycleSubscription';
 
 type LooseMovie = Partial<Movie> & {
     poster_path?: string;
@@ -1024,50 +1033,56 @@ export const useDailyMovies = ({
     const [loading, setLoading] = useState(true);
     const [dateKey, setDateKey] = useState<string>(getDailyDateKey);
 
-    useEffect(() => {
-        let dateKeyTimer: number | null = null;
-        let isMounted = true;
+    // Lifecycle: foreground via useAppLifecycleSubscription, cleanup on background/unmount/dep-change
+    // Auth reset: not auth-scoped
+    // Background: minute tick disposed; foreground resync restarts it
+    // Retry: none - next foreground/minute tick refreshes
+    const isDateKeyMountedRef = useRef(false);
 
-        const syncDateKey = async () => {
-            const localDateKey = getDailyDateKey();
-            const serverDateKey = await readCurrentDailyDateFromEdge();
-            const nextDateKey = serverDateKey || localDateKey;
-            if (!isMounted) return;
-            setDateKey((prev) => (prev === nextDateKey ? prev : nextDateKey));
+    useEffect(() => {
+        isDateKeyMountedRef.current = true;
+        return () => {
+            isDateKeyMountedRef.current = false;
         };
+    }, []);
+
+    const syncDateKey = useCallback(async (lifecycle?: AppLifecycleSnapshot) => {
+        const localDateKey = getDailyDateKey();
+        const serverDateKey = await readCurrentDailyDateFromEdge();
+        const nextDateKey = serverDateKey || localDateKey;
+        if (!isDateKeyMountedRef.current || (lifecycle && !lifecycle.isCurrent())) return;
+        setDateKey((prev) => (prev === nextDateKey ? prev : nextDateKey));
+    }, []);
+
+    const subscribeDateKeyTick = useCallback((lifecycle: AppLifecycleSnapshot) => {
+        let dateKeyTimer: number | null = null;
+        let isActive = true;
 
         const scheduleDateKeyTick = () => {
+            if (!isActive || !lifecycle.isCurrent()) return;
             const nowMs = Date.now();
             const waitMs = Math.max(500, 60000 - (nowMs % 60000) + 200);
             dateKeyTimer = window.setTimeout(() => {
-                void syncDateKey();
+                if (!isActive || !lifecycle.isCurrent()) return;
+                void syncDateKey(lifecycle);
                 scheduleDateKeyTick();
             }, waitMs);
         };
 
-        const handleVisibility = () => {
-            if (document.visibilityState === 'visible') {
-                void syncDateKey();
-            }
-        };
-
-        void syncDateKey();
         scheduleDateKeyTick();
-        const handleFocus = () => {
-            void syncDateKey();
-        };
-        window.addEventListener('focus', handleFocus);
-        document.addEventListener('visibilitychange', handleVisibility);
 
         return () => {
-            isMounted = false;
+            isActive = false;
             if (dateKeyTimer !== null) {
                 window.clearTimeout(dateKeyTimer);
             }
-            window.removeEventListener('focus', handleFocus);
-            document.removeEventListener('visibilitychange', handleVisibility);
         };
-    }, []);
+    }, [syncDateKey]);
+
+    useAppLifecycleSubscription({
+        onForeground: syncDateKey,
+        subscribe: subscribeDateKeyTick
+    });
 
     useEffect(() => {
         const fetchDaily5 = async () => {
@@ -1162,19 +1177,18 @@ export const useDailyMovies = ({
             }
 
             // 1. SUPABASE STRATEGY (The Absolute Source)
-            if (isSupabaseLive() && supabase) {
+            if (isSupabaseLive()) {
                 if (isDev) {
                     console.log('[Daily5] Checking Supabase for global sync...');
                 }
 
                 try {
                     if (cooldownExcludedMovieIds.length === 0) {
-                        const { data: recentRows } = await supabase
-                            .from('daily_showcase')
-                            .select('date,movies')
-                            .gte('date', cooldownStartKey)
-                            .lt('date', todayKey)
-                            .limit(120);
+                        const { data: recentRows } = await loadRecentDailyShowcases(
+                            cooldownStartKey,
+                            todayKey,
+                            120
+                        );
                         const rowList = Array.isArray(recentRows) ? recentRows : [];
                         cooldownExcludedMovieIds = normalizeMovieIds(
                             rowList.flatMap((row) => {
@@ -1196,11 +1210,7 @@ export const useDailyMovies = ({
                     }
 
                     // a) READ from DB
-                    const { data, error } = await supabase
-                        .from('daily_showcase')
-                        .select('*')
-                        .eq('date', todayKey)
-                        .maybeSingle();
+                    const { data, error } = await loadDailyShowcase(todayKey);
 
                     if (data && data.movies) {
                         const fromDb = Array.isArray(data.movies) ? (data.movies as unknown[]) : [];
@@ -1300,7 +1310,7 @@ export const useDailyMovies = ({
             }
             finalMovies = finalMovies.filter(isMovieEligibleForDaily).slice(0, DAILY_MOVIE_COUNT);
 
-            if (finalMovies.length !== DAILY_MOVIE_COUNT && isSupabaseLive() && supabase) {
+            if (finalMovies.length !== DAILY_MOVIE_COUNT && isSupabaseLive()) {
                 try {
                     await fetch(buildApiUrl('/api/cron/daily'));
                     const refreshedFromCache = await readDailyShowcaseFromEdgeCache(todayKey);
@@ -1310,32 +1320,28 @@ export const useDailyMovies = ({
                     ) {
                         finalMovies = refreshedFromCache || [];
                     } else {
-                    const { data: refreshedData } = await supabase
-                        .from('daily_showcase')
-                        .select('*')
-                        .eq('date', todayKey)
-                        .maybeSingle();
+                        const { data: refreshedData } = await loadDailyShowcase(todayKey);
 
-                    const refreshedMovies = Array.isArray(refreshedData?.movies)
-                        ? (refreshedData.movies as unknown[])
-                              .map((movie) => normalizeMovie(movie))
-                              .filter(isMovieEligibleForDaily)
-                        : [];
+                        const refreshedMovies = Array.isArray(refreshedData?.movies)
+                            ? (refreshedData.movies as unknown[])
+                                  .map((movie) => normalizeMovie(movie))
+                                  .filter(isMovieEligibleForDaily)
+                            : [];
 
-                    if (
-                        isSelectionEligibleForDaily(refreshedMovies) &&
-                        !hasCooldownCollision(refreshedMovies, cooldownExcludedMovieIds)
-                    ) {
-                        finalMovies = refreshedMovies;
-                    } else {
-                        const publicRefreshedMovies = await readDailyShowcaseFromPublic(todayKey);
                         if (
-                            isSelectionEligibleForDaily(publicRefreshedMovies || []) &&
-                            !hasCooldownCollision(publicRefreshedMovies || [], cooldownExcludedMovieIds)
+                            isSelectionEligibleForDaily(refreshedMovies) &&
+                            !hasCooldownCollision(refreshedMovies, cooldownExcludedMovieIds)
                         ) {
-                            finalMovies = publicRefreshedMovies || [];
+                            finalMovies = refreshedMovies;
+                        } else {
+                            const publicRefreshedMovies = await readDailyShowcaseFromPublic(todayKey);
+                            if (
+                                isSelectionEligibleForDaily(publicRefreshedMovies || []) &&
+                                !hasCooldownCollision(publicRefreshedMovies || [], cooldownExcludedMovieIds)
+                            ) {
+                                finalMovies = publicRefreshedMovies || [];
+                            }
                         }
-                    }
                     }
                 } catch {
                     // noop: if cron endpoint is protected or unavailable, keep current fallback path
@@ -1344,16 +1350,15 @@ export const useDailyMovies = ({
 
 
             // c) SAVE TO DB (Only when explicitly enabled; cron should be the default writer)
-            if (allowClientDailyWrite && isSupabaseLive() && supabase && finalMovies.length === 5) {
+            if (allowClientDailyWrite && isSupabaseLive() && finalMovies.length === 5) {
                 if (isDev) {
                     console.log('[Daily5] Writing generated list to Supabase...');
                 }
-                const { error: insertError } = await supabase
-                    .from('daily_showcase')
-                    .upsert([{ date: todayKey, movies: finalMovies }], {
-                        onConflict: 'date',
-                        ignoreDuplicates: true
-                    });
+                const { error: insertError } = await mutateDailyShowcase({
+                    date: todayKey,
+                    movies: finalMovies,
+                    ignoreDuplicates: true
+                });
 
                 if (insertError) console.error('[Daily5] Failed to write to DB:', insertError);
             }
@@ -1383,7 +1388,7 @@ export const useDailyMovies = ({
             dateKey,
             personalizationSeed
         );
-    }, [baseMovies, candidateMovies, dateKey, exclusionKey, exclusionTitleKey, excludedMovieIds, excludedMovieTitles, personalizationSeed]);
+    }, [baseMovies, candidateMovies, dateKey, exclusionKey, exclusionTitleKey, personalizationSeed]);
 
     return { movies, loading, dateKey };
 };

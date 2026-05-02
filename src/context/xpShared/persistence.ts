@@ -1,11 +1,7 @@
 import { MAX_AVATAR_DATA_URL_LENGTH } from '../../lib/avatarUpload.js';
-import { isSupabaseLive, supabase } from '../../lib/supabase.js';
 import type { RitualLog, XPState } from './types.js';
 import {
-    fallbackMovieIdFromTitle,
-    isSupabaseCapabilityError,
     mergeRitualLogs,
-    normalizeRitualDateKey,
     normalizeRitualLog,
     normalizeXPState,
     STORAGE_RECOVERY_KEYS,
@@ -153,97 +149,4 @@ export const readUserRitualBackupFromLocal = (email: string): RitualLog[] => {
         localStorage.removeItem(key);
         return [];
     }
-};
-
-type RitualBackupRow = {
-    id: string | null;
-    movie_title: string | null;
-    poster_path?: string | null;
-    text: string | null;
-    timestamp?: string | null;
-};
-
-export type CloudRitualReadResult = {
-    rituals: RitualLog[];
-    didRead: boolean;
-};
-
-const RITUAL_READ_VARIANTS = [
-    {
-        select: 'id, movie_title, poster_path, text, timestamp',
-        orderBy: 'timestamp'
-    },
-    {
-        select: 'id, movie_title, poster_path, text, timestamp:created_at',
-        orderBy: 'created_at'
-    },
-    {
-        select: 'id, movie_title, text, timestamp',
-        orderBy: 'timestamp'
-    },
-    {
-        select: 'id, movie_title, text, timestamp:created_at',
-        orderBy: 'created_at'
-    }
-] as const;
-
-export const readUserRitualsFromCloud = async (userId: string): Promise<CloudRitualReadResult> => {
-    if (!userId || !isSupabaseLive() || !supabase) {
-        return { rituals: [], didRead: false };
-    }
-
-    let rows: RitualBackupRow[] = [];
-    let queryError: { code?: string | null; message?: string | null } | null = null;
-
-    for (const variant of RITUAL_READ_VARIANTS) {
-        const { data, error } = await supabase
-            .from('rituals')
-            .select(variant.select)
-            .eq('user_id', userId)
-            .order(variant.orderBy, { ascending: false })
-            .limit(500);
-
-        if (error) {
-            queryError = error;
-            if (isSupabaseCapabilityError(error)) {
-                continue;
-            }
-            console.error('[XP] failed to read ritual backups', error);
-            return { rituals: [], didRead: false };
-        }
-
-        rows = Array.isArray(data) ? (data as unknown as RitualBackupRow[]) : [];
-        queryError = null;
-        break;
-    }
-
-    if (queryError) {
-        return { rituals: [], didRead: false };
-    }
-
-    const mapped: RitualLog[] = rows
-        .map((row, index) => {
-            const text = (row.text || '').trim();
-            const movieTitle = (row.movie_title || '').trim();
-            if (!text || !movieTitle) return null;
-
-            const date = normalizeRitualDateKey(row.timestamp);
-            const movieId = fallbackMovieIdFromTitle(movieTitle);
-            const stableId = (row.id || '').trim() || `cloud-${date}-${movieId}-${index}`;
-
-            return normalizeRitualLog({
-                id: stableId,
-                date,
-                movieId,
-                movieTitle,
-                text,
-                posterPath: row.poster_path || undefined
-            });
-        })
-        .filter((item): item is RitualLog => Boolean(item));
-
-    return {
-        rituals: mergeRitualLogs(mapped),
-        didRead: true
-    };
 };
