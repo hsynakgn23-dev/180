@@ -13,6 +13,7 @@
 import {
   Animated,
   Easing,
+  InteractionManager,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -7904,10 +7905,16 @@ const MobileDailyQuizPanel = ({
       setLoading(false);
     };
 
-    void load();
+    // Modal'ın slide animasyonu bitmeden mount olan component'te setState
+    // çağrıları iOS'ta render'a yansımayabiliyor. runAfterInteractions,
+    // tüm animasyonlar tamamlandıktan sonra load'u başlatır.
+    const task = InteractionManager.runAfterInteractions(() => {
+      if (active) void load();
+    });
 
     return () => {
       active = false;
+      task.cancel();
     };
   }, [copy.error, dateKey, language, movieId]);
 

@@ -18,6 +18,9 @@ const DEFAULT_READ_TIMEOUT_MS = 15000;
 const DEFAULT_WRITE_TIMEOUT_MS = 20000;
 const DEFAULT_MAX_ATTEMPTS = 3; // ilk deneme + 2 retry
 const RETRY_BASE_DELAY_MS = 400;
+// iOS AsyncStorage (SQLite) ilk okumada askida kalabilir; fetch'ten önce
+// token okumasi buraya takilirsa tüm istek sonsuza dek bekler.
+const AUTH_READ_TIMEOUT_MS = 4000;
 
 export type QuizRequestInit = RequestInit;
 
@@ -43,15 +46,23 @@ const isMethodWrite = (method: string | undefined): boolean => {
 
 /** Suanki access token. Yoksa bos string doner (401 riski). */
 const readAccessToken = async (): Promise<string> => {
-  const sessionResult = await readSupabaseSessionSafe();
-  return String(sessionResult.session?.access_token || '').trim();
+  const sessionResult = await Promise.race([
+    readSupabaseSessionSafe(),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), AUTH_READ_TIMEOUT_MS)),
+  ]);
+  return String(sessionResult?.session?.access_token || '').trim();
 };
 
 /** Supabase'i zorla yenile. Basarili olursa yeni token'i doner. */
 const refreshAccessToken = async (): Promise<string> => {
   if (!supabase) return '';
   try {
-    const { data, error } = await supabase.auth.refreshSession();
+    const result = await Promise.race([
+      supabase.auth.refreshSession(),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), AUTH_READ_TIMEOUT_MS)),
+    ]);
+    if (!result) return '';
+    const { data, error } = result;
     if (error) return '';
     return String(data.session?.access_token || '').trim();
   } catch {

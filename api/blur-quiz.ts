@@ -69,19 +69,28 @@ type BlurQuizSessionRow = {
 };
 
 const TMDB_API_BASE = 'https://api.themoviedb.org/3';
-const TITLE_DIRECT_ACCEPT_SCORE = 0.93;
-const TITLE_CONFIRM_SCORE = 0.82;
-const TITLE_MIN_CONFIRM_LENGTH = 4;
+const TITLE_DIRECT_ACCEPT_SCORE = 0.90;
+const TITLE_CONFIRM_SCORE = 0.78;
+const TITLE_MIN_CONFIRM_LENGTH = 3;
 const BLUR_STEP_DURATION_MS = 5000;
 const BLUR_TOTAL_STEPS = 6;
 const BLUR_MAX_STEP = BLUR_TOTAL_STEPS - 1;
 const BLUR_JOKER_KEYS = new Set<BlurQuizJokerKey>(['director', 'year', 'cast', 'genre']);
 const TITLE_STOPWORDS = new Set([
-    'the', 'a', 'an', 'and',
-    'el', 'la', 'los', 'las', 'lo', 'y',
-    'le', 'les', 'un', 'une', 'des', 'et',
-    'de', 'del', 'da', 'do', 'du', 'of',
-    'der', 'die', 'das', 'ein', 'eine',
+    // English
+    'the', 'a', 'an', 'and', 'of', 'in', 'on',
+    // Spanish
+    'el', 'la', 'los', 'las', 'lo', 'y', 'en', 'con',
+    // French
+    'le', 'les', 'un', 'une', 'des', 'et', 'du', 'au',
+    // Italian
+    'il', 'gli', 'uno', 'e',
+    // Portuguese
+    'do', 'da', 'dos', 'das', 'os', 'as',
+    // German
+    'der', 'die', 'das', 'ein', 'eine', 'dem', 'den',
+    // General
+    'de', 'del', 'di', 'van', 'von',
 ]);
 const ROMAN_NUMERAL_MAP: Record<string, string> = {
     i: '1',
@@ -113,6 +122,35 @@ const TITLE_CANONICAL_TOKEN_MAP: Record<string, string> = {
     doktor: 'doctor',
     matrix: 'matrix',
     matriks: 'matrix',
+    // phantom: ph→f handled by phonetic, but "fantom" stays "fantom" without this
+    phantom: 'phantom',
+    fantom: 'phantom',
+    // fantastic
+    fantastic: 'fantastic',
+    fantastik: 'fantastic',
+    // galaxy
+    galaxy: 'galaxy',
+    galaksi: 'galaxy',
+    // prince / prens (Latin-root borrowing)
+    prince: 'prince',
+    prens: 'prince',
+    prins: 'prince',
+    // princess / prenses
+    princess: 'princess',
+    prenses: 'princess',
+    // zombie / zombi (final e is silent variant)
+    zombie: 'zombie',
+    zombi: 'zombie',
+    // vampire / vampir
+    vampire: 'vampire',
+    vampir: 'vampire',
+    vampyr: 'vampire',
+    // professor
+    professor: 'professor',
+    profesor: 'professor',
+    // inspector
+    inspector: 'inspector',
+    inspektor: 'inspector',
 };
 const tmdbTitleAliasCache = new Map<number, string[]>();
 let titleAliasesColumnAvailable: boolean | null = null;
@@ -159,7 +197,22 @@ const getTmdbReadAccessToken = (): string => {
 };
 
 const stripDiacritics = (value: string): string =>
-    value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+    value
+        // Turkish dotless i / dotted I (don't decompose via NFKD)
+        .replace(/\u0131/g, 'i')
+        .replace(/\u0130/g, 'I')
+        // German \u00df \u2192 ss (NFKD doesn't map it to ASCII)
+        .replace(/\u00df/g, 'ss')
+        // Nordic/Icelandic eth and thorn
+        .replace(/[\u00f0\u00fe]/g, 't')
+        .replace(/[\u00d0\u00de]/g, 'T')
+        // Nordic \u00d8/\u00f8 \u2192 o, \u00c6/\u00e6 \u2192 ae, \u00c5/\u00e5 handled by NFKD+combining strip
+        .replace(/\u00f8/g, 'o')
+        .replace(/\u00d8/g, 'O')
+        .replace(/\u00e6/g, 'ae')
+        .replace(/\u00c6/g, 'Ae')
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '');
 
 const normalizeTitle = (value: string): string => {
     const normalized = stripDiacritics(value)
@@ -224,14 +277,28 @@ const commonPrefixLength = (left: string, right: string): number => {
 
 const normalizePhoneticToken = (value: string): string =>
     value
-        .replace(/ph/g, 'f')
-        .replace(/ck/g, 'k')
-        .replace(/qu/g, 'k')
-        .replace(/c(?=[aou])/g, 'k')
-        .replace(/x/g, 'ks')
-        .replace(/w/g, 'v')
-        .replace(/y/g, 'i')
-        .replace(/z/g, 's');
+        // multi-char digraphs first (order matters)
+        .replace(/sch/g, 's')           // DE: Schindler→Sindler
+        .replace(/tch/g, 'c')           // EN: catch, watch
+        .replace(/ph/g, 'f')            // EN/GR: phone, phantom
+        .replace(/ck/g, 'k')            // EN: black, back
+        .replace(/qu/g, 'k')            // EN/FR: queen, quintet
+        .replace(/kn/g, 'n')            // EN: knight, knife
+        .replace(/ght/g, 't')           // EN: night, knight, light
+        .replace(/wh/g, 'v')            // EN: white, where
+        .replace(/sh/g, 's')            // EN→TR: sheriff, Shirley
+        .replace(/ch/g, 'k')            // EN/GR: character, chaos (default hard-ch)
+        .replace(/th/g, 't')            // EN→TR: Thor, Godfather→Godfater
+        .replace(/gn/g, 'n')            // FR/IT: montagne, cognac
+        .replace(/mn/g, 'n')            // GR: mnemonic
+        // single-char mappings
+        .replace(/c(?=[aou])/g, 'k')    // EN: cat, coat
+        .replace(/x/g, 'ks')            // EN: xena, exodus
+        .replace(/w/g, 'v')             // DE/TR: wolf→volf
+        .replace(/y/g, 'i')             // TR: gladyator→gladiator
+        .replace(/z/g, 's')             // TR/DE: zombie→sombie (then canonical handles)
+        // collapse repeated letters (handles ß→ss→s, gemination in IT/TR/JA)
+        .replace(/(.)\1+/g, '$1');
 
 const canonicalizeToken = (value: string): string => {
     const cleaned = String(value || '').trim();
