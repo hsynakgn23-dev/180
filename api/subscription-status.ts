@@ -59,8 +59,10 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     .eq('user_id', user.id)
     .maybeSingle();
 
-  const { data: dailyRushCount } = await supabase
-    .rpc('get_daily_rush_count', { p_user_id: user.id });
+  const [{ data: dailyRush15Count }, { data: dailyRush30Count }] = await Promise.all([
+    supabase.rpc('get_daily_rush_count_by_mode', { p_user_id: user.id, p_mode: 'rush_15' }),
+    supabase.rpc('get_daily_rush_count_by_mode', { p_user_id: user.id, p_mode: 'rush_30' }),
+  ]);
 
   const entitlement = resolveSubscriptionEntitlement({
     subscriptionPlan: subscription?.plan,
@@ -70,7 +72,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   const tier = entitlement.tier;
   const isPremium = entitlement.isPremium;
   const dailyRushLimit = isPremium ? null : 3;
-  const dailyRushUsed = Number(dailyRushCount) || 0;
+  const dailyRush15Used = Number(dailyRush15Count) || 0;
+  const dailyRush30Used = Number(dailyRush30Count) || 0;
   const showAds = !isPremium;
 
   return sendJson(res, 200, {
@@ -79,7 +82,11 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     isPremium,
     show_ads: showAds,
     daily_rush_limit: dailyRushLimit,
-    daily_rush_used: dailyRushUsed,
+    daily_rush_used: dailyRush15Used + dailyRush30Used,
+    daily_rush_15_limit: dailyRushLimit,
+    daily_rush_15_used: dailyRush15Used,
+    daily_rush_30_limit: dailyRushLimit,
+    daily_rush_30_used: dailyRush30Used,
     subscription: subscription
       ? {
           plan: subscription.plan,
@@ -91,8 +98,10 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         }
       : null,
     limits: {
-      dailyRushUsed,
-      dailyRushLimit,
+      dailyRush15Used,
+      dailyRush15Limit: dailyRushLimit,
+      dailyRush30Used,
+      dailyRush30Limit: dailyRushLimit,
       endlessMode: isPremium,
       adsEnabled: showAds,
     },

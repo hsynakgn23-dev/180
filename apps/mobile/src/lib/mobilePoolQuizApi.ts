@@ -123,6 +123,10 @@ export type SubscriptionStatus = {
   tier: 'free' | 'premium';
   daily_rush_limit: number | null;
   daily_rush_used: number;
+  daily_rush_15_limit: number | null;
+  daily_rush_15_used: number;
+  daily_rush_30_limit: number | null;
+  daily_rush_30_used: number;
   show_ads: boolean;
 };
 
@@ -601,6 +605,10 @@ export const fetchSubscriptionStatus = async (): Promise<SubscriptionStatus> => 
       const limits = isRecord(payload.limits) ? payload.limits : {};
       const dailyRushLimit = toNullableNumber(payload.daily_rush_limit ?? limits.dailyRushLimit);
       const dailyRushUsed = Number(payload.daily_rush_used ?? limits.dailyRushUsed) || 0;
+      const dailyRush15Limit = toNullableNumber(payload.daily_rush_15_limit ?? limits.dailyRush15Limit ?? dailyRushLimit);
+      const dailyRush15Used = Number(payload.daily_rush_15_used ?? limits.dailyRush15Used) || 0;
+      const dailyRush30Limit = toNullableNumber(payload.daily_rush_30_limit ?? limits.dailyRush30Limit ?? dailyRushLimit);
+      const dailyRush30Used = Number(payload.daily_rush_30_used ?? limits.dailyRush30Used) || 0;
       const tier = payload.tier === 'premium' ? 'premium' : 'free';
       const showAds = payload.show_ads === false
         ? false
@@ -611,12 +619,16 @@ export const fetchSubscriptionStatus = async (): Promise<SubscriptionStatus> => 
         tier,
         daily_rush_limit: dailyRushLimit,
         daily_rush_used: dailyRushUsed,
+        daily_rush_15_limit: dailyRush15Limit,
+        daily_rush_15_used: dailyRush15Used,
+        daily_rush_30_limit: dailyRush30Limit,
+        daily_rush_30_used: dailyRush30Used,
         show_ads: showAds,
       };
     }
-    return { tier: 'free', daily_rush_limit: 3, daily_rush_used: 0, show_ads: true };
+    return { tier: 'free', daily_rush_limit: 3, daily_rush_used: 0, daily_rush_15_limit: 3, daily_rush_15_used: 0, daily_rush_30_limit: 3, daily_rush_30_used: 0, show_ads: true };
   } catch {
-    return { tier: 'free', daily_rush_limit: 3, daily_rush_used: 0, show_ads: true };
+    return { tier: 'free', daily_rush_limit: 3, daily_rush_used: 0, daily_rush_15_limit: 3, daily_rush_15_used: 0, daily_rush_30_limit: 3, daily_rush_30_used: 0, show_ads: true };
   }
 };
 

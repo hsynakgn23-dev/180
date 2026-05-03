@@ -214,7 +214,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
   if (!isPremium && !rewardUnlock) {
     const { data: dailyCount } = await supabase
-      .rpc('get_daily_rush_count', { p_user_id: user.id });
+      .rpc('get_daily_rush_count_by_mode', { p_user_id: user.id, p_mode: mode });
 
     if ((Number(dailyCount) || 0) >= FREE_DAILY_RUSH_LIMIT) {
       return sendJson(res, 429, {
@@ -224,6 +224,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         requiresSubscription: true,
         rewardedAdAvailable: true,
         dailyLimit: FREE_DAILY_RUSH_LIMIT,
+        mode,
       }, cors);
     }
   }

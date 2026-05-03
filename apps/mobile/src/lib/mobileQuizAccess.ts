@@ -12,7 +12,7 @@ type QuizUsageRecord = {
 
 export const FREE_DAILY_QUIZ_LIMITS: Record<LocalQuizKey, number> = {
   swipe: 3,
-  blur: 3,
+  blur: 6,
 };
 
 export const MAX_DAILY_REWARD_CREDITS: Record<LocalQuizKey, number> = {

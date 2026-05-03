@@ -73,12 +73,20 @@ const DEFAULT_FREE_SUBSCRIPTION_STATUS: SubscriptionStatus = {
   tier: 'free',
   daily_rush_limit: 3,
   daily_rush_used: 0,
+  daily_rush_15_limit: 3,
+  daily_rush_15_used: 0,
+  daily_rush_30_limit: 3,
+  daily_rush_30_used: 0,
   show_ads: true,
 };
 const DEFAULT_PREMIUM_SUBSCRIPTION_STATUS: SubscriptionStatus = {
   tier: 'premium',
   daily_rush_limit: null,
   daily_rush_used: 0,
+  daily_rush_15_limit: null,
+  daily_rush_15_used: 0,
+  daily_rush_30_limit: null,
+  daily_rush_30_used: 0,
   show_ads: false,
 };
 
@@ -2038,6 +2046,7 @@ const BlurQuizModal = ({
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const submittingRef = useRef(false);
   const skipResultAdRef = useRef(false);
+  const blurCompletionCountRef = useRef(0);
 
   useEffect(() => {
     activeRef.current = state.phase === 'active' ? state : null;
@@ -2087,7 +2096,9 @@ const BlurQuizModal = ({
       return;
     }
 
-    await runAfterQuizAd(showAds && !skipResultAdRef.current, () => {
+    blurCompletionCountRef.current += 1;
+    const showBlurAd = showAds && !skipResultAdRef.current && blurCompletionCountRef.current % 2 === 0;
+    await runAfterQuizAd(showBlurAd, () => {
       const resolvedTitle =
         res.ok && res.correct
           ? String(res.matched_title || guess || s.guess.trim())
@@ -3052,15 +3063,24 @@ export const QuizHomeScreen = ({
 
   const swipeSummaryValue = isPremium ? 'INF' : String(swipeAccess.remaining);
   const blurSummaryValue = isPremium ? 'INF' : String(blurAccess.remaining);
-  const rushDailyLimit = rushAccess.daily_rush_limit ?? 3;
-  const rushRemaining = isPremium ? rushDailyLimit : Math.max(0, rushDailyLimit - rushAccess.daily_rush_used);
-  const rushLimitReached = !isPremium && rushRemaining <= 0;
-  const rushSummaryValue = isPremium ? 'NO ADS' : `${rushRemaining}/${rushDailyLimit}`;
-  const rushAccessCopy = isPremium
+  const rush15DailyLimit = rushAccess.daily_rush_15_limit ?? 3;
+  const rush30DailyLimit = rushAccess.daily_rush_30_limit ?? 3;
+  const rush15Remaining = isPremium ? rush15DailyLimit : Math.max(0, rush15DailyLimit - (rushAccess.daily_rush_15_used ?? 0));
+  const rush30Remaining = isPremium ? rush30DailyLimit : Math.max(0, rush30DailyLimit - (rushAccess.daily_rush_30_used ?? 0));
+  const rush15LimitReached = !isPremium && rush15Remaining <= 0;
+  const rush30LimitReached = !isPremium && rush30Remaining <= 0;
+  const rush15SummaryValue = isPremium ? 'NO ADS' : `${rush15Remaining}/${rush15DailyLimit}`;
+  const rush30SummaryValue = isPremium ? 'NO ADS' : `${rush30Remaining}/${rush30DailyLimit}`;
+  const rush15AccessCopy = isPremium
     ? 'Premium ile sinirsiz giris.'
-    : rushLimitReached
+    : rush15LimitReached
       ? 'Gunluk hak bitti. Reklam izle ve +1 tur ac.'
-      : `Bugun kalan hak: ${rushRemaining}/${rushDailyLimit}`;
+      : `Bugun kalan hak: ${rush15Remaining}/${rush15DailyLimit}`;
+  const rush30AccessCopy = isPremium
+    ? 'Premium ile sinirsiz giris.'
+    : rush30LimitReached
+      ? 'Gunluk hak bitti. Reklam izle ve +1 tur ac.'
+      : `Bugun kalan hak: ${rush30Remaining}/${rush30DailyLimit}`;
   const showLeftIndicator = dragDisplay < -30;
   const showRightIndicator = dragDisplay > 30;
 
@@ -3784,9 +3804,9 @@ export const QuizHomeScreen = ({
               <View style={[qs.quizTileIconWrap, { backgroundColor: accentFaded }]}>
                 <Ionicons name="flash-outline" size={22} color={accent} />
               </View>
-              <View style={[qs.quizTileStatus, rushLimitReached && !isPremium ? qs.quizTileStatusDanger : null]}>
-                <Text style={[qs.quizTileStatusText, rushLimitReached && !isPremium ? qs.quizTileStatusTextDanger : null]}>
-                  {rushSummaryValue}
+              <View style={[qs.quizTileStatus, rush15LimitReached && !isPremium ? qs.quizTileStatusDanger : null]}>
+                <Text style={[qs.quizTileStatusText, rush15LimitReached && !isPremium ? qs.quizTileStatusTextDanger : null]}>
+                  {rush15SummaryValue}
                 </Text>
               </View>
             </View>
@@ -3794,7 +3814,7 @@ export const QuizHomeScreen = ({
             <Text style={qs.quizTileTitle}>{copy.rushModes.rush_15.label}</Text>
             <Text style={qs.quizTileCopy}>{copy.rushModes.rush_15.sub}</Text>
             {!isPremium ? (
-              <Text style={[qs.quizTileAccessText, rushLimitReached ? qs.quizTileAccessTextDanger : null]}>{rushAccessCopy}</Text>
+              <Text style={[qs.quizTileAccessText, rush15LimitReached ? qs.quizTileAccessTextDanger : null]}>{rush15AccessCopy}</Text>
             ) : null}
             {!isPremium ? (
               <Text style={qs.quizTileRewardText}>Reklam: limitte +1 tur acilir, tur icinde 1 bonus joker alinir.</Text>
@@ -3809,8 +3829,8 @@ export const QuizHomeScreen = ({
                 <Text style={qs.quizMiniStatText}>15 soru</Text>
               </View>
             </View>
-            <View style={[qs.quizTileAction, { backgroundColor: rushLimitReached ? `${accent}20` : accentFaded }]}>
-              <Ionicons name={rushLimitReached ? 'play-circle-outline' : 'play'} size={14} color={accent} />
+            <View style={[qs.quizTileAction, { backgroundColor: rush15LimitReached ? `${accent}20` : accentFaded }]}>
+              <Ionicons name={rush15LimitReached ? 'play-circle-outline' : 'play'} size={14} color={accent} />
               <Text style={[qs.quizTileActionText, { color: accent }]}>BASLAT</Text>
             </View>
           </Pressable>
@@ -3835,18 +3855,18 @@ export const QuizHomeScreen = ({
               <View
                 style={[
                   qs.quizTileStatus,
-                  !rushLimitReached ? { backgroundColor: 'rgba(165,113,100,0.10)', borderColor: 'rgba(165,113,100,0.22)' } : null,
-                  rushLimitReached && !isPremium ? qs.quizTileStatusDanger : null,
+                  !rush30LimitReached ? { backgroundColor: 'rgba(165,113,100,0.10)', borderColor: 'rgba(165,113,100,0.22)' } : null,
+                  rush30LimitReached && !isPremium ? qs.quizTileStatusDanger : null,
                 ]}
               >
                 <Text
                   style={[
                     qs.quizTileStatusText,
-                    !rushLimitReached ? { color: '#F1DDD6' } : null,
-                    rushLimitReached && !isPremium ? qs.quizTileStatusTextDanger : null,
+                    !rush30LimitReached ? { color: '#F1DDD6' } : null,
+                    rush30LimitReached && !isPremium ? qs.quizTileStatusTextDanger : null,
                   ]}
                 >
-                  {rushSummaryValue}
+                  {rush30SummaryValue}
                 </Text>
               </View>
             </View>
@@ -3854,7 +3874,7 @@ export const QuizHomeScreen = ({
             <Text style={[qs.quizTileTitle, { color: '#F1DDD6' }]}>{copy.rushModes.rush_30.label}</Text>
             <Text style={qs.quizTileCopy}>{copy.rushModes.rush_30.sub}</Text>
             {!isPremium ? (
-              <Text style={[qs.quizTileAccessText, rushLimitReached ? qs.quizTileAccessTextDanger : null]}>{rushAccessCopy}</Text>
+              <Text style={[qs.quizTileAccessText, rush30LimitReached ? qs.quizTileAccessTextDanger : null]}>{rush30AccessCopy}</Text>
             ) : null}
             {!isPremium ? (
               <Text style={qs.quizTileRewardText}>Reklam: limitte +1 maraton acilir, tur icinde 1 bonus joker alinir.</Text>
@@ -3869,8 +3889,8 @@ export const QuizHomeScreen = ({
                 <Text style={[qs.quizMiniStatText, { color: '#d8c5be' }]}>30 soru</Text>
               </View>
             </View>
-            <View style={[qs.quizTileAction, { backgroundColor: rushLimitReached ? 'rgba(165,113,100,0.22)' : 'rgba(165,113,100,0.14)' }]}>
-              <Ionicons name={rushLimitReached ? 'play-circle-outline' : 'play'} size={14} color="#A57164" />
+            <View style={[qs.quizTileAction, { backgroundColor: rush30LimitReached ? 'rgba(165,113,100,0.22)' : 'rgba(165,113,100,0.14)' }]}>
+              <Ionicons name={rush30LimitReached ? 'play-circle-outline' : 'play'} size={14} color="#A57164" />
               <Text style={[qs.quizTileActionText, { color: '#F1DDD6' }]}>BASLAT</Text>
             </View>
           </Pressable>
