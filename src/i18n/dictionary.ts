@@ -332,7 +332,7 @@ export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
             later: 'Sonra'
         },
         landing: {
-            login: 'Giriş Yap', refreshInfo: "Her gün 00:00\'da yenilenir", titleLine1: 'GÜNLÜK', titleLine2: 'SİNEMA LİSTESİ',
+            login: 'Giriş Yap', refreshInfo: "Her gün 00:00'da yenilenir", titleLine1: 'GÜNLÜK', titleLine2: 'SİNEMA LİSTESİ',
             subtitle: 'Her gün özenle seçilen 5 filmden birine 180 karakterlik bir yorum yaz ve serini sürdür.', start: 'Başla',
             featureDailyTitle: 'Günlük 5 Film', featureDailyText: 'Her sabah yenilenen 5 filmlik seçim.',
             featureCommentTitle: '180 Karakter', featureCommentText: 'Kısa ve net yorumlar yaz.',
@@ -1261,9 +1261,9 @@ export const MARK_DICTIONARY: Record<LanguageCode, Record<string, MarkCopy>> = {
         quiz_master: { title: 'Quiz Ustası', description: '500 havuz sorusunu doğru cevapla.', whisper: 'Ustalık kazanıldı.' },
         perfect_film: { title: 'Kusursuz Hafıza', description: 'Tek bir filmde 5 soruyu doğru cevapla.', whisper: 'Tam hatırlama.' },
         perfect_streak: { title: 'Kusursuz Seri', description: 'Art arda 3 filmde 5/5 doğru yap.', whisper: 'Hassasiyet sürdürüldü.' },
-        rush_survivor: { title: 'Rush Hayatta Kalan', description: 'Bir Rush 10 oturumunu tamamla.', whisper: "Rush\'tan sağ çıktın." },
-        rush_ace: { title: 'Rush Ası', description: "Rush 10\'da 7+ doğru yap.", whisper: 'Baskı altında berraklık.' },
-        rush_legend: { title: 'Rush Efsanesi', description: "Rush 20\'de 14+ doğru yap.", whisper: 'Ateşte dövülmüş efsane.' },
+        rush_survivor: { title: 'Rush Hayatta Kalan', description: 'Bir Rush 10 oturumunu tamamla.', whisper: "Rush'tan sağ çıktın." },
+        rush_ace: { title: 'Rush Ası', description: "Rush 10'da 7+ doğru yap.", whisper: 'Baskı altında berraklık.' },
+        rush_legend: { title: 'Rush Efsanesi', description: "Rush 20'de 14+ doğru yap.", whisper: 'Ateşte dövülmüş efsane.' },
         rush_endless_10: { title: 'Durdurulamaz', description: 'Sınırsız modda 10 doğru cevaba ulaş.', whisper: 'Son görünmede değil.' },
         swipe_explorer: { title: 'Film Kaşifi', description: '20 filme sağa kaydır.', whisper: 'Hep arayan.' },
         genre_brain: { title: 'Tür Beyni', description: '5 farklı türde doğru cevap ver.', whisper: 'Sınır tanımayan zihin.' },
