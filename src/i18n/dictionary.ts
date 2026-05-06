@@ -415,7 +415,7 @@ export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
         notifications: { title: 'Bildirimler', panelTitle: 'Bildirim Merkezi', empty: 'Bildirim yok.' },
         profileWidget: {
             profile: 'Profil', openArchive: 'Profili aç', openSettings: 'Ayarları aç', xpToNext: 'Sonraki seviye için {xp} XP',
-            streak: 'Seri', comments: 'Yorum', days: 'Gün', marksUnlocked: 'Açılan işaretler', observer: 'Gözlemci'
+            streak: 'Seri', comments: 'Yorum', days: 'Gün', marksUnlocked: 'Açılan Marklar', observer: 'Gözlemci'
         },
         profile: {
             backHome: 'Ana sayfaya dön', openSettings: 'Ayarları aç', logout: 'Çıkış yap', upload: 'Yükle', save: 'Kaydet', cancel: 'İptal',
@@ -423,7 +423,7 @@ export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
             genreDistribution: 'Tür Dağılımı', stats: 'İstatistik', days: 'Gün', rituals: 'Yorumlar', comments: 'Yorumlar', films: 'Filmler', topGenre: 'En Çok Tür', mostCommented: 'En Çok Yorumlanan',
             noRecords: 'Kayıt yok', activity: 'Etkinlik', profileFeed: 'Profil Akışı', filmArchive: 'Film Arşivi',
             noFilmComments: 'Henüz yorumlanan film yok.', noFilmCommentsHint: 'İlk yorumunla arşivi başlat.',
-            marksArchive: 'İşaret Arşivi', featured: '{count}/3 Öne Çıkan', markCategorySuffix: 'İşaretleri', requirement: 'Koşul', unlocked: 'Açıldı', locked: 'Kilitli',
+            marksArchive: 'Mark Arşivi', featured: '{count}/3 Öne Çıkan', markCategorySuffix: 'Markları', requirement: 'Koşul', unlocked: 'Açıldı', locked: 'Kilitli',
             closeMovieModal: 'Film penceresini kapat', unknownGenre: 'Tür bilinmiyor', commentsAndReplies: 'Yorumlar ve Yanıtlar', commentRecords: '{count} yorum kaydı',
             close: 'Kapat', repliesLoading: 'Yanıtlar yükleniyor...', replies: 'Yanıtlar ({count})', deleteComment: 'Yorumu sil', noReplies: 'Bu yoruma henüz yanıt yok.',
             openFilmDetails: '{title} yorum ve yanıtlarını aç', observerHandle: 'gözlemci', curatorFallback: 'KÜRATÖR', filmCount: '{count} Film', commentCount: '{count} yorum',
@@ -431,7 +431,7 @@ export const UI_DICTIONARY: Record<LanguageCode, UiDictionary> = {
             loadingProfile: 'Profil yükleniyor...', profileLoadFailed: 'Profil verisi yüklenemedi.', publicProfileRequiresSupabase: 'Genel profil Supabase gerektirir.',
             timeToday: 'Bugün', timeJustNow: 'Şimdi', timeHoursAgo: '{count}s önce', timeDaysAgo: '{count}g önce'
         },
-        xp: { markUnlockedFallback: 'Yeni işaret açıldı.' }
+        xp: { markUnlockedFallback: 'Yeni Mark açıldı.' }
     },
     en: {
         app: {
@@ -583,7 +583,7 @@ UI_DICTIONARY.es = {
         ...EN_UI_BASE.webToApp,
         badge: 'Seguir en móvil',
         title: 'Continuar en la app',
-        subtitle: 'Abra su próximo flujo de comentarios en móvil y mantenga su ritmo sincronizado.',
+        subtitle: 'Abre tu próximo flujo de comentarios en móvil y mantén tu ritmo sincronizado.',
         openInApp: 'Abrir en la app',
         joinBeta: 'Unirse a la beta móvil',
         later: 'Más tarde'
@@ -594,7 +594,7 @@ UI_DICTIONARY.es = {
         refreshInfo: 'Se actualiza cada día a las 00:00',
         titleLine1: 'LISTA',
         titleLine2: 'DIARIA DE CINE',
-        subtitle: 'Escriba un comentario enfocado de 180 caracteres sobre 1 de 5 películas diarias y mantenga su racha en marcha.',
+        subtitle: 'Escribe un comentario enfocado de 180 caracteres sobre 1 de 5 películas diarias y mantén tu racha en marcha.',
         start: 'Empezar',
         featureDailyTitle: '5 diarias',
         featureDailyText: 'Una nueva selección de 5 películas cada mañana.',
@@ -609,17 +609,17 @@ UI_DICTIONARY.es = {
         manifestoTitle: 'Manifiesto 180',
         manifestoBody: '180 está hecho para convertir el visionado diario en una práctica de comentario enfocada.',
         manifestoPoints: [
-            'Construya constancia conectando con el cine cada día.',
-            'Piense con claridad en poco espacio y con precisión de 180 caracteres.',
-            'Priorice el ritmo, el oficio y la conversación valiosa por encima del ruido.'
+            'Construye constancia conectando con el cine cada día.',
+            'Piensa con claridad en poco espacio y con precisión de 180 caracteres.',
+            'Prioriza el ritmo, el oficio y la conversación valiosa por encima del ruido.'
         ],
         rulesTitle: 'Reglas de la plataforma',
-        rulesBody: 'Para mantener este espacio limpio y justo, siga estas reglas:',
+        rulesBody: 'Para mantener este espacio limpio y justo, sigue estas reglas:',
         rulesPoints: [
-            'Sea respetuoso; no se permite acoso, insultos ni abuso dirigido.',
-            'Marque los spoilers con claridad; no arruine experiencias clave de visionado.',
-            'Mantenga los comentarios centrados en la película; sin spam ni contenido repetitivo fuera de tema.',
-            'Use una sola cuenta auténtica; sin suplantación ni identidad engañosa.',
+            'Sé respetuoso; no se permite acoso, insultos ni abuso dirigido.',
+            'Marca los spoilers con claridad; no arruines experiencias clave de visionado.',
+            'Mantén los comentarios centrados en la película; sin spam ni contenido repetitivo fuera de tema.',
+            'Usa una sola cuenta auténtica; sin suplantación ni identidad engañosa.',
             'Se prohíben el discurso de odio, la discriminación, las amenazas y el lenguaje violento.',
             'El contenido que infrinja las reglas puede eliminarse; los abusos repetidos pueden generar restricciones.'
         ]
@@ -634,10 +634,10 @@ UI_DICTIONARY.es = {
         loginForm: 'Formulario de acceso',
         forgotPasswordForm: 'Restablecer contraseña',
         resetPasswordForm: 'Crear nueva contraseña',
-        registerInfo: 'Su usuario, género y fecha de nacimiento se guardarán en su perfil.',
-        loginInfo: 'Inicie sesión con su cuenta existente.',
-        forgotPasswordInfo: 'Ingrese el correo de su cuenta y le enviaremos un enlace de restablecimiento.',
-        resetPasswordInfo: 'Defina una nueva contraseña segura para continuar.',
+        registerInfo: 'Tu usuario, género y fecha de nacimiento se guardarán en tu perfil.',
+        loginInfo: 'Inicia sesión con tu cuenta existente.',
+        forgotPasswordInfo: 'Ingresa el correo de tu cuenta y te enviaremos un enlace de restablecimiento.',
+        resetPasswordInfo: 'Define una nueva contraseña segura para continuar.',
         fullName: 'Nombre completo',
         username: 'Usuario',
         gender: 'Género',
@@ -650,14 +650,14 @@ UI_DICTIONARY.es = {
         usernamePlaceholder: 'usuario_ejemplo',
         emailPlaceholder: 'ejemplo@email.com',
         passwordPlaceholder: 'mínimo 6 caracteres',
-        newPasswordPlaceholder: 'su nueva contraseña (mínimo 6 caracteres)',
-        confirmNewPasswordPlaceholder: 'repita su nueva contraseña',
+        newPasswordPlaceholder: 'tu nueva contraseña (mínimo 6 caracteres)',
+        confirmNewPasswordPlaceholder: 'repite tu nueva contraseña',
         submitRegister: 'Registrarse',
         submitLogin: 'Iniciar sesión',
         submitForgotPassword: 'Enviar enlace',
         submitResetPassword: 'Actualizar contraseña',
         submitLoading: 'Espere...',
-        forgotPasswordLink: '¿Olvidó su contraseña?',
+        forgotPasswordLink: '¿Olvidaste tu contraseña?',
         backToLogin: 'Volver al acceso',
         googleContinue: 'Continuar con Google',
         googleRedirecting: 'Redirigiendo...',
@@ -690,7 +690,7 @@ UI_DICTIONARY.es = {
         select: 'Seleccionar',
         usernameHint: 'Usuario: 3-20 caracteres, letras/números/_',
         bio: 'Biografía',
-        bioPlaceholder: 'Escriba una nota breve para su perfil...',
+        bioPlaceholder: 'Escribe una nota breve para tu perfil...',
         saveIdentity: 'Guardar identidad',
         theme: 'Tema',
         themeMidnight: 'Noche',
@@ -702,11 +702,11 @@ UI_DICTIONARY.es = {
         unknown: 'desconocido',
         sessionControl: 'Control de sesión',
         logout: 'Cerrar sesión',
-        logoutConfirm: 'Pulse otra vez para cerrar sesión',
+        logoutConfirm: 'Pulsa otra vez para cerrar sesión',
         accountDeletion: 'Eliminación de cuenta',
-        accountDeletionDescription: 'Abra las instrucciones públicas de eliminación y retención de esta app.',
+        accountDeletionDescription: 'Abre las instrucciones públicas de eliminación y retención de esta app.',
         accountDeletionOpen: 'Abrir página de eliminación',
-        accountDeletionMeta: 'Envíe la solicitud desde el correo vinculado a la cuenta mediante el soporte de App Store.',
+        accountDeletionMeta: 'Envía la solicitud desde el correo vinculado a tu cuenta mediante el soporte de App Store.',
         statusThemeUpdated: 'Tema actualizado',
         statusLanguageSaved: 'Idioma guardado',
         statusIdentitySaveFailed: 'No se pudo guardar la identidad.',
@@ -720,7 +720,7 @@ UI_DICTIONARY.es = {
         subtitle: '5 películas seleccionadas para hoy',
         swipeHint: 'Deslizar tarjetas',
         lockLine1: 'Para desbloquear',
-        lockLine2: 'publique 1 comentario',
+        lockLine2: 'publica 1 comentario',
         newSelection: 'NUEVA SELECCIÓN',
         scrollLeftAria: 'Desplazar películas a la izquierda',
         scrollRightAria: 'Desplazar películas a la derecha'
@@ -744,30 +744,30 @@ UI_DICTIONARY.es = {
     writeOverlay: {
         ...EN_UI_BASE.writeOverlay,
         title: 'Comentario',
-        placeholder: 'Escriba su opinión...',
+        placeholder: 'Escribe tu opinión...',
         cancel: 'Cancelar',
         save: 'Guardar'
     },
     arena: {
         ...EN_UI_BASE.arena,
-        title: 'Feed de comentarios',
+        title: 'Flujo de comentarios',
         subtitle: 'Los comentarios se publican desde las tarjetas de películas.',
         all: 'Todo',
         today: 'Hoy',
-        selfHandleLabel: 'Su usuario: @{handle}',
+        selfHandleLabel: 'Tu usuario: @{handle}',
         findMyComments: 'Buscar mis comentarios',
         searchPlaceholder: 'Buscar comentarios...',
         sortLatest: 'Más recientes',
         sortMostLiked: 'Más valorados',
-        loading: 'Cargando el feed global de comentarios...',
+        loading: 'Cargando el flujo global de comentarios...',
         empty: 'No se encontraron comentarios para este filtro.',
-        end: 'Fin del feed de comentarios',
+        end: 'Fin del flujo de comentarios',
         hotStreakBadge: 'Racha activa',
-        feedFallback: 'El feed global de comentarios no está disponible. Se muestra el feed local.',
-        feedLoadFailed: 'No se pudo cargar el feed de comentarios. Revise su conexión e inténtelo de nuevo.',
-        reactionLoadFailed: 'No se pudieron sincronizar las reacciones. Actualice e inténtelo de nuevo.',
-        replyLoadFailed: 'No se pudieron sincronizar las respuestas. Actualice e inténtelo de nuevo.',
-        deleteFailed: 'No se pudo eliminar el comentario. Inténtelo de nuevo.'
+        feedFallback: 'El flujo global de comentarios no está disponible. Se muestra el flujo local.',
+        feedLoadFailed: 'No se pudo cargar el flujo de comentarios. Revisa tu conexión e inténtalo de nuevo.',
+        reactionLoadFailed: 'No se pudieron sincronizar las reacciones. Actualiza e inténtalo de nuevo.',
+        replyLoadFailed: 'No se pudieron sincronizar las respuestas. Actualiza e inténtalo de nuevo.',
+        deleteFailed: 'No se pudo eliminar el comentario. Inténtalo de nuevo.'
     },
     ritualCard: {
         ...EN_UI_BASE.ritualCard,
@@ -776,16 +776,16 @@ UI_DICTIONARY.es = {
         reactions: '{count} REACCIONES',
         reply: 'RESPONDER ({count})',
         delete: 'ELIMINAR',
-        deleteTitle: 'Eliminar su comentario',
-        replyPlaceholder: 'Escriba una respuesta...',
+        deleteTitle: 'Eliminar tu comentario',
+        replyPlaceholder: 'Escribe una respuesta...',
         send: 'Enviar',
         anonymous: 'ANÓNIMO',
-        reactionSyncFailed: 'No se pudieron sincronizar las reacciones. Actualice el feed e inténtelo de nuevo.',
-        replySyncFailed: 'No se pudieron sincronizar las respuestas. Actualice el feed e inténtelo de nuevo.',
-        rateLimitReached: 'Se alcanzó el límite. Espere un momento e inténtelo de nuevo.',
+        reactionSyncFailed: 'No se pudieron sincronizar las reacciones. Actualiza el flujo e inténtalo de nuevo.',
+        replySyncFailed: 'No se pudieron sincronizar las respuestas. Actualiza el flujo e inténtalo de nuevo.',
+        rateLimitReached: 'Se alcanzó el límite. Espera un momento e inténtalo de nuevo.',
         follow: 'Seguir',
         following: 'Siguiendo',
-        you: 'Usted',
+        you: 'Tú',
         openProfile: 'Abrir perfil',
         replyNotification: 'Respuesta enviada a {author}: "{text}"',
         now: 'Ahora'
@@ -805,7 +805,7 @@ UI_DICTIONARY.es = {
         streak: 'Racha',
         comments: 'Comentarios',
         days: 'Días',
-        marksUnlocked: 'Marcas desbloqueadas',
+        marksUnlocked: 'Marks desbloqueados',
         observer: 'Observador'
     },
     profile: {
@@ -831,13 +831,13 @@ UI_DICTIONARY.es = {
         mostCommented: 'Más comentada',
         noRecords: 'Sin registros',
         activity: 'Actividad',
-        profileFeed: 'Feed del perfil',
+        profileFeed: 'Flujo del perfil',
         filmArchive: 'Archivo de películas',
         noFilmComments: 'Aún no hay películas comentadas.',
-        noFilmCommentsHint: 'Empiece su archivo con su primer comentario.',
-        marksArchive: 'Archivo de marcas',
-        featured: '{count}/3 destacadas',
-        markCategorySuffix: 'Marcas',
+        noFilmCommentsHint: 'Empieza tu archivo con tu primer comentario.',
+        marksArchive: 'Archivo de Marks',
+        featured: '{count}/3 destacados',
+        markCategorySuffix: 'Marks',
         requirement: 'Requisito',
         unlocked: 'Desbloqueada',
         locked: 'Bloqueada',
@@ -862,11 +862,11 @@ UI_DICTIONARY.es = {
         block: 'Bloquear',
         blocked: 'Bloqueado',
         unblock: 'Desbloquear',
-        blockConfirm: '¿Desea bloquear a este usuario?',
+        blockConfirm: '¿Quieres bloquear a este usuario?',
         blockSuccess: 'Usuario bloqueado.',
         unblockSuccess: 'Usuario desbloqueado.',
-        blockedNotice: 'Ha bloqueado a este usuario. El contenido está oculto.',
-        blockedNoticeMeta: 'No volverá a ver este perfil hasta quitar el bloqueo.',
+        blockedNotice: 'Has bloqueado a este usuario. El contenido está oculto.',
+        blockedNoticeMeta: 'No volverás a ver este perfil hasta quitar el bloqueo.',
         followCountsHidden: 'Los conteos de seguimiento están ocultos.',
         profileStatsHidden: 'Este usuario oculta las estadísticas del perfil.',
         activityHidden: 'Este usuario oculta la actividad.',
@@ -883,7 +883,7 @@ UI_DICTIONARY.es = {
     },
     xp: {
         ...EN_UI_BASE.xp,
-        markUnlockedFallback: 'Marca desbloqueada.'
+        markUnlockedFallback: 'Mark desbloqueado.'
     }
 };
 
@@ -1026,7 +1026,7 @@ UI_DICTIONARY.fr = {
         unknown: 'inconnu',
         sessionControl: 'Gestion de session',
         logout: 'Se déconnecter',
-        logoutConfirm: 'Appuyer encore pour se déconnecter',
+        logoutConfirm: 'Appuyez encore pour vous déconnecter',
         accountDeletion: 'Suppression du compte',
         accountDeletionDescription: 'Ouvrir les consignes publiques de suppression et de conservation pour cette app.',
         accountDeletionOpen: 'Ouvrir la page de suppression',
@@ -1107,12 +1107,12 @@ UI_DICTIONARY.fr = {
         reactionSyncFailed: 'La synchronisation des réactions a échoué. Actualisez le flux puis réessayez.',
         replySyncFailed: 'La synchronisation des réponses a échoué. Actualisez le flux puis réessayez.',
         rateLimitReached: 'La limite est atteinte. Veuillez patienter puis réessayer.',
-        follow: 'Suivre',
-        following: 'Suivi',
-        you: 'Vous',
-        openProfile: 'Ouvrir le profil',
-        replyNotification: 'Réponse envoyée à {author} : "{text}"',
-        now: 'À l’instant'
+        follow: ‘Suivre’,
+        following: ‘Abonné’,
+        you: ‘Vous’,
+        openProfile: ‘Ouvrir le profil’,
+        replyNotification: ‘Réponse envoyée à {author} : "{text}"’,
+        now: ‘À l’instant’
     },
     notifications: {
         ...EN_UI_BASE.notifications,
@@ -1129,7 +1129,7 @@ UI_DICTIONARY.fr = {
         streak: 'Série',
         comments: 'Commentaires',
         days: 'Jours',
-        marksUnlocked: 'Marques débloquées',
+        marksUnlocked: 'Marks débloqués',
         observer: 'Observateur'
     },
     profile: {
@@ -1159,9 +1159,9 @@ UI_DICTIONARY.fr = {
         filmArchive: 'Archive des films',
         noFilmComments: 'Aucun film commenté pour le moment.',
         noFilmCommentsHint: 'Commencez votre archive avec votre premier commentaire.',
-        marksArchive: 'Archive des marques',
-        featured: '{count}/3 en vedette',
-        markCategorySuffix: 'Marques',
+        marksArchive: 'Archive des Marks',
+        featured: '{count}/3 en avant',
+        markCategorySuffix: 'Marks',
         requirement: 'Condition',
         unlocked: 'Débloquée',
         locked: 'Verrouillée',
@@ -1181,7 +1181,7 @@ UI_DICTIONARY.fr = {
         commentCount: '{count} commentaires',
         filmFallback: 'Film #{id}',
         follow: 'Suivre',
-        following: 'Suivi',
+        following: 'Abonné',
         followers: 'Abonnés',
         block: 'Bloquer',
         blocked: 'Bloqué',
@@ -1207,7 +1207,7 @@ UI_DICTIONARY.fr = {
     },
     xp: {
         ...EN_UI_BASE.xp,
-        markUnlockedFallback: 'Marque débloquée.'
+        markUnlockedFallback: 'Mark débloqué.'
     }
 };
 

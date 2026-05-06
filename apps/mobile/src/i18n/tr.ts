@@ -179,7 +179,7 @@ export const tr = {
       profileSummary: 'Avatar, isim, bio ve profil linki',
       appearanceSummary: 'Tema ve dil',
       privacySummary: 'Profilde görünen alanlar',
-      accountSummary: 'E-posta, sifre, hediye kodu ve hesap',
+      accountSummary: 'E-posta, şifre, hediye kodu ve hesap',
       profileTitle: 'Profil',
       profileIdentityTitle: 'Temel bilgiler',
       profileBioTitle: 'Bio ve link',
@@ -206,7 +206,7 @@ export const tr = {
       appearanceHint: 'Değişiklikler anında uygulanır.',
       privacyHint: 'Seçimleriniz profil görünürlüğüne uygulanır.',
       guestTitle: 'Misafir',
-      inviteMatchedBody: 'Bu hediye kodu kullanildi.',
+      inviteMatchedBody: 'Bu hediye kodu kullanıldı.',
     },
     genderFieldLabel: 'Cinsiyet',
     genderOptions: [
