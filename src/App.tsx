@@ -3,6 +3,7 @@ import './App.css'
 import { XPProvider, useXP } from './context/XPContext'
 import { NotificationProvider, useNotifications } from './context/NotificationContext'
 import { ProfileWidget } from './components/ProfileWidget'
+import { SearchBar } from './features/search'
 import { NotificationCenter } from './features/notifications/NotificationCenter'
 import { LeagueTransition } from './components/LeagueTransition'
 import { StreakCelebration } from './components/StreakCelebration'
@@ -51,6 +52,9 @@ const WebToAppPrompt = lazy(() =>
 const AdminPanel = lazy(() =>
   import('./features/admin/AdminPanel').then((mod) => ({ default: mod.AdminPanel }))
 )
+const MoviePage = lazy(() =>
+  import('./features/movie-page/MoviePage').then((mod) => ({ default: mod.MoviePage }))
+)
 
 const parsePublicProfileHash = (hash: string): PublicProfileTarget | null => {
   const normalized = (hash || '').trim()
@@ -91,6 +95,12 @@ const parseAdminHash = (hash: string): boolean => {
   return normalized === '#/admin' || normalized.startsWith('#/admin?')
 }
 
+const parseMoviePageHash = (hash: string): string | null => {
+  const normalized = (hash || '').trim()
+  if (!normalized.startsWith('#/film/')) return null
+  return decodeURIComponent(normalized.slice(7)) || null
+}
+
 const AppContent = () => {
   const { text, language } = useLanguage();
   const { addNotification } = useNotifications();
@@ -114,6 +124,7 @@ const AppContent = () => {
   const [startProfileInSettings, setStartProfileInSettings] = useState(false);
   const [publicProfileTarget, setPublicProfileTarget] = useState<PublicProfileTarget | null>(() => parsePublicProfileHash(window.location.hash));
   const [showAdminPanel, setShowAdminPanel] = useState<boolean>(() => parseAdminHash(window.location.hash));
+  const [moviePageId, setMoviePageId] = useState<string | null>(() => parseMoviePageHash(window.location.hash));
   const [canOpenAdminPanel, setCanOpenAdminPanel] = useState(false);
   const [DebugPanelComponent, setDebugPanelComponent] = useState<ComponentType | null>(null);
   const lastLevelUpNotificationKeyRef = useRef('');
@@ -162,6 +173,7 @@ const AppContent = () => {
     const syncFromHash = () => {
       setPublicProfileTarget(parsePublicProfileHash(window.location.hash));
       setShowAdminPanel(parseAdminHash(window.location.hash));
+      setMoviePageId(parseMoviePageHash(window.location.hash));
     };
 
     syncFromHash();
@@ -438,6 +450,12 @@ const AppContent = () => {
         </Suspense>
       )}
 
+      {moviePageId && (
+        <Suspense fallback={null}>
+          <MoviePage movieId={moviePageId} />
+        </Suspense>
+      )}
+
       {showAdminPanel && (
         <Suspense fallback={null}>
           <AdminPanel
@@ -463,6 +481,10 @@ const AppContent = () => {
               <p className="text-clay font-medium tracking-[0.2em] text-sm md:text-base uppercase group-hover:tracking-[0.3em] group-hover:text-sage transition-all duration-700 ease-[cubic-bezier(0.25,1,0.5,1)]">{text.app.brandSubtitle}</p>
             </button>
           </header>
+
+          <div className="mb-8">
+            <SearchBar />
+          </div>
 
           <Suspense fallback={null}>
             <WebToAppPrompt

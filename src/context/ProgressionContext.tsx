@@ -545,8 +545,7 @@ export const ProgressionProvider: React.FC<{ children: React.ReactNode }> = ({ c
             let newStreak = state.streak;
             let nonConsecutive = state.nonConsecutiveCount;
 
-            const hasdoneRitualToday = state.dailyRituals.some((r) => r.date === today);
-            const shouldIncreaseStreakToday = !hasdoneRitualToday;
+            const shouldIncreaseStreakToday = !state.activeDays.includes(today);
             if (shouldIncreaseStreakToday) {
                 if (state.lastStreakDate) {
                     const gap = checkStreakMaintenance(state.lastStreakDate, today);
