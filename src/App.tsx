@@ -19,9 +19,6 @@ import { readAdminSession } from './lib/adminApi'
 const DailyShowcase = lazy(() =>
   import('./features/daily-showcase/DailyShowcase').then((mod) => ({ default: mod.DailyShowcase }))
 )
-const QuizSection = lazy(() =>
-  import('./features/quiz/QuizSection').then((mod) => ({ default: mod.QuizSection }))
-)
 const MovieDetailModal = lazy(() =>
   import('./features/daily-showcase/MovieDetailModal').then((mod) => ({ default: mod.MovieDetailModal }))
 )
@@ -54,6 +51,9 @@ const AdminPanel = lazy(() =>
 )
 const MoviePage = lazy(() =>
   import('./features/movie-page/MoviePage').then((mod) => ({ default: mod.MoviePage }))
+)
+const Arena = lazy(() =>
+  import('./features/arena/Arena').then((mod) => ({ default: mod.Arena }))
 )
 
 const parsePublicProfileHash = (hash: string): PublicProfileTarget | null => {
@@ -504,9 +504,9 @@ const AppContent = () => {
             </SectionErrorBoundary>
           </Suspense>
 
-          <Suspense fallback={<section className="mx-auto mb-16 max-w-5xl px-4 sm:px-6"><div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-10 text-center text-sm text-white/30 animate-pulse">...</div></section>}>
-            <SectionErrorBoundary key="quiz-web-redesign-v4" title="Quiz" fallbackMessage="">
-              <QuizSection />
+          <Suspense fallback={<section className="rounded-2xl border border-white/10 bg-white/5 px-4 py-6 text-sm text-white/30 animate-pulse mt-8">...</section>}>
+            <SectionErrorBoundary key="arena-feed-v1" title="Arena" fallbackMessage="">
+              <Arena />
             </SectionErrorBoundary>
           </Suspense>
 

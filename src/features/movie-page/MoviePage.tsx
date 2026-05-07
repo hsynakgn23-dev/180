@@ -4,6 +4,7 @@ import { resolveImageUrl } from '../../lib/tmdbImage';
 import { MovieHero } from './MovieHero';
 import { MovieRecommendations } from './MovieRecommendations';
 import { MovieRitualSection } from './MovieRitualSection';
+import { MovieQuizPanel } from './MovieQuizPanel';
 import { useProgression } from '../../context/ProgressionContext';
 
 interface MoviePageProps {
@@ -148,6 +149,12 @@ export function MoviePage({ movieId, onClose }: MoviePageProps) {
               </div>
             </div>
           )}
+
+          {/* Quiz section */}
+          <MovieQuizPanel
+            poolMovieId={movie.id}
+            movieTitle={movie.title}
+          />
 
           {/* Ritual section */}
           <div id="ritual-section">
