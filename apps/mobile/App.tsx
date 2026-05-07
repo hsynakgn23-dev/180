@@ -187,6 +187,7 @@ import {
 import { useBackHandler } from './src/hooks/useBackHandler';
 import { getDeviceLanguage, mobileTranslations } from './src/i18n';
 import { SearchModal } from './src/ui/searchScreen';
+import { MoviePageModal } from './src/ui/moviePageScreen';
 
 const debugRequireAppDependency = <T,>(label: string, loader: () => T): T => {
   console.log('APP_IMPORT_STAGE', label);
@@ -892,6 +893,9 @@ export default function App() {
     });
   const [ritualComposerVisible, setRitualComposerVisible] = useState(false);
   const [searchVisible, setSearchVisible] = useState(false);
+  const [moviePageVisible, setMoviePageVisible] = useState(false);
+  const [moviePageId, setMoviePageId] = useState<string | null>(null);
+  const [moviePageTitle, setMoviePageTitle] = useState('');
   const [ritualQueueState, setRitualQueueState] = useState<RitualQueueState>({
     status: 'idle',
     message: '',
@@ -7536,13 +7540,25 @@ export default function App() {
             onClose={() => setRitualComposerVisible(false)}
           />
 
+          <MoviePageModal
+            visible={moviePageVisible}
+            movieId={moviePageId}
+            movieTitle={moviePageTitle}
+            onClose={() => setMoviePageVisible(false)}
+            onWriteRitual={(id, title) => {
+              setMoviePageVisible(false);
+              setRitualComposerVisible(true);
+            }}
+          />
+
           <SearchModal
             visible={searchVisible}
             onClose={() => setSearchVisible(false)}
             onMovieSelect={(movieId, movieTitle) => {
               setSearchVisible(false);
-              // TODO Adım 2'de film sayfası açılacak
-              console.log('Film seçildi:', movieId, movieTitle);
+              setMoviePageId(movieId);
+              setMoviePageTitle(movieTitle);
+              setMoviePageVisible(true);
             }}
             onUserSelect={(userId, username) => {
               setSearchVisible(false);
