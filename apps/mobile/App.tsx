@@ -7545,7 +7545,7 @@ export default function App() {
             movieId={moviePageId}
             movieTitle={moviePageTitle}
             onClose={() => setMoviePageVisible(false)}
-            onWriteRitual={(id, title) => {
+            onWriteRitual={(_id, _title) => {
               setMoviePageVisible(false);
               setRitualComposerVisible(true);
             }}

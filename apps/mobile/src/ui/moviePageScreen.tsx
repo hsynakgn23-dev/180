@@ -336,7 +336,7 @@ const MovieQuizOverlay = ({ visible, movieId, movieTitle, onClose }: QuizOverlay
           <Text style={qs.questionText}>{question.question}</Text>
 
           <View style={qs.optionsContainer}>
-            {question.options.map((opt, idx) => {
+            {question.options.map((opt, _idx) => {
               const isSelected = selected === opt.key;
               const isCorrectOpt = answered && correctOption === opt.key;
               const isWrongOpt = answered && isSelected && !isCorrect;
@@ -442,7 +442,7 @@ const MoviePageView = ({
   onOpenQuiz,
   onRecommendationPress,
 }: MoviePageViewProps) => {
-  const genres = movie.genre ? movie.genre.split(/[\/,]/).map((g) => g.trim()).filter(Boolean) : [];
+  const genres = movie.genre ? movie.genre.split(/[/,]/).map((g) => g.trim()).filter(Boolean) : [];
   const initials = getInitials(movie.title);
 
   return (
@@ -679,7 +679,7 @@ export const MoviePageModal = ({
   }, [visible, movieId, loadMovie]);
 
   const handleRecommendationPress = useCallback(
-    (id: string, title: string) => {
+    (id: string, _title: string) => {
       // Load the new movie in the same modal
       void loadMovie(id);
     },
