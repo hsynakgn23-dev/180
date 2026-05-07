@@ -52,5 +52,51 @@ export const MarkIcons = {
             <path fillRule="evenodd" clipRule="evenodd" d="M7 15C8.65685 15 10 13.6569 10 12C10 10.3431 8.65685 9 7 9C5.34315 9 4 10.3431 4 12C4 13.6569 5.34315 15 7 15ZM12.7071 9.29289C12.3166 9.68342 12.3166 10.3166 12.7071 10.7071L14 12L12.7071 13.2929C12.3166 13.6834 12.3166 14.3166 12.7071 14.7071C13.0976 15.0976 13.7308 15.0976 14.1213 14.7071L16.1213 12.7071C16.5118 12.3166 16.5118 11.6834 16.1213 11.2929L14.1213 9.29289C13.7308 8.90237 13.0976 8.90237 12.7071 9.29289Z" />
             <path d="M12 12L20 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
         </svg>
-    )
+    ),
+
+    // ── Film-page marks (custom SVGs from design) ──────────
+    PageRitualist: ({ size = 16, className = "" }) => (
+        <svg width={size} height={size} viewBox="0 0 32 32" fill="none" className={className}>
+            <rect x="6" y="9" width="20" height="14" rx="1" stroke="currentColor" strokeWidth="1.5" />
+            <circle cx="9" cy="11.5" r="0.7" fill="currentColor" />
+            <circle cx="13" cy="11.5" r="0.7" fill="currentColor" />
+            <circle cx="19" cy="11.5" r="0.7" fill="currentColor" />
+            <circle cx="23" cy="11.5" r="0.7" fill="currentColor" />
+            <circle cx="9" cy="20.5" r="0.7" fill="currentColor" />
+            <circle cx="13" cy="20.5" r="0.7" fill="currentColor" />
+            <circle cx="19" cy="20.5" r="0.7" fill="currentColor" />
+            <circle cx="23" cy="20.5" r="0.7" fill="currentColor" />
+            <path d="M9 19L21 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <path d="M21 13L24 12.2L23 14.5L21 13Z" fill="currentColor" />
+            <circle cx="9" cy="19" r="1.1" fill="currentColor" />
+        </svg>
+    ),
+
+    ScreenTraveler: ({ size = 16, className = "" }) => (
+        <svg width={size} height={size} viewBox="0 0 32 32" fill="none" className={className}>
+            <rect x="14" y="5" width="14" height="9" stroke="currentColor" strokeWidth="1.25" opacity="0.55" />
+            <rect x="9" y="10" width="14" height="9" stroke="currentColor" strokeWidth="1.5" opacity="0.8" />
+            <rect x="4" y="15" width="14" height="9" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M11 24L16 19L20 14L25 9" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeDasharray="1.5 2" opacity="0.7" />
+            <circle cx="11" cy="24" r="1.2" fill="currentColor" />
+            <circle cx="16" cy="19" r="1" fill="currentColor" opacity="0.85" />
+            <circle cx="20" cy="14" r="0.9" fill="currentColor" opacity="0.7" />
+            <circle cx="25" cy="9" r="1.1" fill="currentColor" />
+        </svg>
+    ),
+
+    FilmExaminer: ({ size = 16, className = "" }) => (
+        <svg width={size} height={size} viewBox="0 0 32 32" fill="none" className={className}>
+            <rect x="22" y="4" width="6" height="24" stroke="currentColor" strokeWidth="1" opacity="0.45" />
+            <line x1="22" y1="9" x2="28" y2="9" stroke="currentColor" strokeWidth="1" opacity="0.45" />
+            <line x1="22" y1="16" x2="28" y2="16" stroke="currentColor" strokeWidth="1" opacity="0.45" />
+            <line x1="22" y1="23" x2="28" y2="23" stroke="currentColor" strokeWidth="1" opacity="0.45" />
+            <circle cx="13" cy="14" r="8" stroke="currentColor" strokeWidth="1.75" />
+            <circle cx="13" cy="14" r="3.5" stroke="currentColor" strokeWidth="1" opacity="0.5" />
+            <line x1="13" y1="11.5" x2="13" y2="16.5" stroke="currentColor" strokeWidth="1" opacity="0.5" />
+            <line x1="10.5" y1="14" x2="15.5" y2="14" stroke="currentColor" strokeWidth="1" opacity="0.5" />
+            <circle cx="13" cy="14" r="1" fill="currentColor" />
+            <path d="M19 20L25 26" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+    ),
 };

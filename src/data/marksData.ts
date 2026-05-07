@@ -16,6 +16,9 @@ import { ShieldMark } from '../components/icons/ShieldMark';
 import { AtomMark } from '../components/icons/AtomMark';
 import { SignalMark } from '../components/icons/SignalMark';
 import { MonumentMark } from '../components/icons/MonumentMark';
+import { PageRitualistMark } from '../components/icons/PageRitualistMark';
+import { ScreenTravelerMark } from '../components/icons/ScreenTravelerMark';
+import { FilmExaminerMark } from '../components/icons/FilmExaminerMark';
 import { MARK_CATALOG, type MarkCategory, type MarkMotion } from '../domain/marksCatalog';
 import {
   resolveMarkIconKey,
@@ -41,13 +44,16 @@ const ICON_BY_KEY: Record<MarkIconKey, MarkIcon> = {
   cross: CrossMark,
   diamond: DiamondMark,
   eye: EyeMark,
+  film_examiner: FilmExaminerMark,
   grid: GridMark,
   hexagon: HexagonMark,
   infinity: InfinityMark,
   monument: MonumentMark,
   nested_square: NestedSquareMark,
   orbit: OrbitMark,
+  page_ritualist: PageRitualistMark,
   pentagon: PentagonMark,
+  screen_traveler: ScreenTravelerMark,
   shield: ShieldMark,
   signal: SignalMark,
   spark: SparkMark,
