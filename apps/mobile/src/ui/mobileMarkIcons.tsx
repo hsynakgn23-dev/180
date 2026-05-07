@@ -8,12 +8,14 @@ import {
 type MobileMarkIconProps = {
   markId: string;
   color?: string;
+  fillColor?: string;
   size?: number;
   opacity?: number;
 };
 
 type MarkSvgProps = {
   color: string;
+  fillColor?: string;
   size: number;
   opacity: number;
 };
@@ -141,10 +143,10 @@ const AtomIcon = ({ color, size, opacity }: MarkSvgProps) => (
   </SvgFrame>
 );
 
-const EyeIcon = ({ color, size, opacity }: MarkSvgProps) => (
+const EyeIcon = ({ color, fillColor, size, opacity }: MarkSvgProps) => (
   <SvgFrame size={size} opacity={opacity}>
     <Path d="M1 12C1 12 5 4 12 4C19 4 23 12 23 12C23 12 19 20 12 20C5 20 1 12 1 12Z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-    <Circle cx="12" cy="12" r="3" fill={color} />
+    <Circle cx="12" cy="12" r="3" fill={fillColor || color} />
   </SvgFrame>
 );
 
@@ -182,9 +184,10 @@ const ICONS: Record<MarkIconKey, React.FC<MarkSvgProps>> = {
 export const MobileMarkIcon: React.FC<MobileMarkIconProps> = ({
   markId,
   color = '#8A9A5B',
+  fillColor,
   size = 18,
   opacity = 1,
 }) => {
   const Icon = ICONS[resolveMarkIconKey(markId)] || CircleIcon;
-  return <Icon color={color} size={size} opacity={opacity} />;
+  return <Icon color={color} fillColor={fillColor} size={size} opacity={opacity} />;
 };

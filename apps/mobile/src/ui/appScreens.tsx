@@ -2755,6 +2755,239 @@ const MobileMarkPill = ({
   );
 };
 
+const MOVIE_PAGE_MARK_IDS = ['page_ritualist', 'screen_traveler', 'film_examiner'] as const;
+const MOVIE_PAGE_MARK_ID_SET = new Set<string>(MOVIE_PAGE_MARK_IDS);
+
+type MoviePageMarkId = typeof MOVIE_PAGE_MARK_IDS[number];
+
+type MoviePageMarkPalette = {
+  stroke: string;
+  fill?: string;
+  tint: string;
+  glow: string;
+};
+
+const MOVIE_PAGE_MARK_PALETTES: Record<MoviePageMarkId, MoviePageMarkPalette> = {
+  page_ritualist: {
+    stroke: '#8A9A5B',
+    tint: 'rgba(138, 154, 91, 0.16)',
+    glow: '#8A9A5B',
+  },
+  screen_traveler: {
+    stroke: '#A57164',
+    tint: 'rgba(165, 113, 100, 0.16)',
+    glow: '#A57164',
+  },
+  film_examiner: {
+    stroke: '#8A9A5B',
+    fill: '#A57164',
+    tint: 'rgba(165, 113, 100, 0.16)',
+    glow: '#8A9A5B',
+  },
+};
+
+const resolveMoviePageMarkPalette = (markId: string): MoviePageMarkPalette =>
+  MOVIE_PAGE_MARK_PALETTES[markId as MoviePageMarkId] || MOVIE_PAGE_MARK_PALETTES.page_ritualist;
+
+const MobileMoviePageMarkCard = ({
+  mark,
+  isUnlocked,
+  isFeatured,
+  statusLabels,
+  onPress,
+  accessibilityLabel,
+}: {
+  mark: ReturnType<typeof resolveMobileMarkMeta>;
+  isUnlocked: boolean;
+  isFeatured: boolean;
+  statusLabels: {
+    locked: string;
+    unlocked: string;
+    featured: string;
+  };
+  onPress: () => void;
+  accessibilityLabel: string;
+}) => {
+  const palette = resolveMoviePageMarkPalette(mark.id);
+  const states = [
+    { key: 'locked', label: statusLabels.locked, meta: isUnlocked ? '0/1' : '1/1' },
+    { key: 'unlocked', label: statusLabels.unlocked, meta: isUnlocked ? '1/1' : '0/1' },
+    { key: 'featured', label: statusLabels.featured, meta: isFeatured ? '1/1' : '0/1' },
+  ] as const;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={PRESSABLE_HIT_SLOP}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      style={({ pressed }) => [
+        {
+          backgroundColor: 'rgba(31, 31, 31, 0.82)',
+          borderWidth: 1,
+          borderColor: 'rgba(255, 255, 255, 0.10)',
+          borderRadius: 16,
+          padding: 18,
+          gap: 14,
+          opacity: pressed ? 0.86 : 1,
+        },
+      ]}
+    >
+      <View style={{ flexDirection: 'row', gap: 14, alignItems: 'flex-start' }}>
+        <View style={{ width: 70, height: 70, flexShrink: 0 }}>
+          <View
+            style={{
+              position: 'absolute',
+              top: -4,
+              right: -4,
+              bottom: -4,
+              left: -4,
+              borderRadius: 20,
+              borderWidth: 1,
+              borderColor: palette.stroke,
+              opacity: 0.4,
+            }}
+          />
+          <View
+            style={{
+              width: 70,
+              height: 70,
+              borderRadius: 14,
+              backgroundColor: palette.tint,
+              borderWidth: 1,
+              borderColor: palette.stroke,
+              alignItems: 'center',
+              justifyContent: 'center',
+              ...buildAccentGlowStyle(palette.glow),
+            }}
+          >
+            <MobileMarkIcon
+              markId={mark.id}
+              color={palette.stroke}
+              fillColor={palette.fill}
+              size={42}
+            />
+          </View>
+        </View>
+
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text
+            style={{
+              color: palette.stroke,
+              fontSize: 8,
+              fontFamily: 'Inter_700Bold',
+              fontWeight: '700',
+              letterSpacing: 2.2,
+              textTransform: 'uppercase',
+              marginBottom: 4,
+            }}
+          >
+            {mark.categoryLabel}
+          </Text>
+          <Text
+            style={{
+              color: '#E5E4E2',
+              fontSize: 16,
+              lineHeight: 21,
+              fontFamily: 'Inter_600SemiBold',
+              fontWeight: '600',
+              marginBottom: 5,
+            }}
+          >
+            {mark.title}
+          </Text>
+          <Text
+            style={{
+              color: '#a09890',
+              fontSize: 11,
+              lineHeight: 16,
+              fontFamily: 'Inter_400Regular',
+              fontStyle: 'italic',
+            }}
+          >
+            {mark.description || mark.whisper}
+          </Text>
+        </View>
+      </View>
+
+      <View
+        style={{
+          borderTopWidth: 1,
+          borderTopColor: 'rgba(255, 255, 255, 0.08)',
+          paddingTop: 12,
+          flexDirection: 'row',
+          gap: 8,
+        }}
+      >
+        {states.map((stateItem) => {
+          const active =
+            stateItem.key === 'locked'
+              ? !isUnlocked
+              : stateItem.key === 'unlocked'
+                ? isUnlocked
+                : isFeatured;
+          const muted = !active;
+          const iconColor = muted ? 'rgba(142, 139, 132, 0.62)' : palette.stroke;
+          const iconFill = muted ? undefined : palette.fill;
+
+          return (
+            <View
+              key={`${mark.id}-${stateItem.key}`}
+              style={{ flex: 1, alignItems: 'center', gap: 6 }}
+            >
+              <View
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 10,
+                  backgroundColor: muted ? 'rgba(255, 255, 255, 0.04)' : palette.tint,
+                  borderWidth: 1,
+                  borderStyle: muted ? 'dashed' : 'solid',
+                  borderColor: muted ? 'rgba(255, 255, 255, 0.12)' : palette.stroke,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: stateItem.key === 'locked' && !isUnlocked ? 0.72 : muted ? 0.48 : 1,
+                  ...(stateItem.key === 'featured' && isFeatured ? buildAccentGlowStyle(palette.glow) : {}),
+                }}
+              >
+                <MobileMarkIcon
+                  markId={mark.id}
+                  color={iconColor}
+                  fillColor={iconFill}
+                  size={28}
+                  opacity={muted ? 0.72 : 1}
+                />
+              </View>
+              <Text
+                style={{
+                  color: active ? palette.stroke : '#8e8b84',
+                  fontSize: 7,
+                  fontFamily: 'Inter_700Bold',
+                  fontWeight: '700',
+                  letterSpacing: 1.7,
+                  textTransform: 'uppercase',
+                }}
+              >
+                {stateItem.label}
+              </Text>
+              <Text
+                style={{
+                  color: '#8e8b84',
+                  fontSize: 8,
+                  fontFamily: 'Inter_600SemiBold',
+                  letterSpacing: 1.1,
+                }}
+              >
+                {stateItem.meta}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+    </Pressable>
+  );
+};
+
 const MOBILE_MARK_DETAIL_COPY: Record<
   MobileSettingsLanguage,
   {
@@ -4405,6 +4638,20 @@ const ProfileMarksCard = ({
   );
   const activeMark = activeMarkId ? resolveMobileMarkMeta(activeMarkId, language) : null;
   const visibleGroups = mode === 'unlocked' ? groupedUnlockedMarks : groupedCatalogMarks;
+  const moviePageMarks = useMemo(
+    () => MOVIE_PAGE_MARK_IDS.map((markId) => resolveMobileMarkMeta(markId, language)),
+    [language]
+  );
+  const regularVisibleGroups = useMemo(
+    () =>
+      visibleGroups
+        .map((group) => ({
+          ...group,
+          marks: group.marks.filter((mark) => !MOVIE_PAGE_MARK_ID_SET.has(mark.id)),
+        }))
+        .filter((group) => group.marks.length > 0),
+    [visibleGroups]
+  );
   const copy =
     language === 'tr'
       ? {
@@ -4413,6 +4660,8 @@ const ProfileMarksCard = ({
           titleAll: 'Mark Arsivi',
           bodyUnlocked: 'Kazandigin marklar burada toplaniyor.',
           bodyAll: 'Tum marklar tek yerde gorunur.',
+          newMarks: 'Cycle XII · Yeni',
+          locked: 'kilitli',
           unlocked: 'acik',
           featured: 'vitrin',
           groups: 'grup',
@@ -4434,6 +4683,8 @@ const ProfileMarksCard = ({
           titleAll: 'Marks Archive',
           bodyUnlocked: 'The marks you earned gather here.',
           bodyAll: 'Every mark appears in one place.',
+          newMarks: 'Cycle XII · New',
+          locked: 'locked',
           unlocked: 'unlocked',
           featured: 'featured',
           groups: 'groups',
@@ -4471,27 +4722,6 @@ const ProfileMarksCard = ({
         title={state.status === 'loading' ? copy.loadingTitle : copy.unavailableTitle}
         body={state.status === 'loading' ? copy.loadingBody : copy.unavailableBody}
       />
-    );
-  }
-
-  if (mode === 'unlocked' && unlockedMarks.length === 0) {
-    return (
-      <>
-        <StatePanel
-          tone="sage"
-          variant="empty"
-          eyebrow={copy.eyebrow}
-          title={copy.emptyTitle}
-          body={copy.emptyBody}
-        />
-        <MobileMarkDetailModal
-          mark={activeMark}
-          language={language}
-          isUnlocked={Boolean(activeMarkId && unlockedSet.has(activeMarkId))}
-          isFeatured={Boolean(activeMarkId && featuredMarks.includes(activeMarkId))}
-          onClose={() => setActiveMarkId(null)}
-        />
-      </>
     );
   }
 
@@ -4553,8 +4783,35 @@ const ProfileMarksCard = ({
 
         <View style={[styles.profileUnifiedDivider, { marginTop: 16 }]} />
 
+        <View style={{ marginTop: 16, gap: 14 }}>
+          <Text style={styles.subSectionLabel}>{copy.newMarks}</Text>
+          {moviePageMarks.map((mark) => {
+            const isUnlocked = unlockedSet.has(mark.id);
+            const isFeatured = featuredMarks.includes(mark.id);
+            return (
+              <MobileMoviePageMarkCard
+                key={`movie-page-mark-${mark.id}`}
+                mark={mark}
+                isUnlocked={isUnlocked}
+                isFeatured={isUnlocked && isFeatured}
+                statusLabels={{
+                  locked: copy.locked,
+                  unlocked: copy.unlocked,
+                  featured: copy.featured,
+                }}
+                onPress={() => setActiveMarkId(mark.id)}
+                accessibilityLabel={`${mark.title} ${copy.detailSuffix}`}
+              />
+            );
+          })}
+        </View>
+
+        {mode === 'unlocked' && unlockedMarks.length === 0 ? (
+          <Text style={[styles.sectionLeadBody, { marginTop: 16 }]}>{copy.emptyBody}</Text>
+        ) : null}
+
         <View style={[styles.markCategoryList, { marginTop: 14 }]}>
-          {visibleGroups.map((group) => (
+          {regularVisibleGroups.map((group) => (
             <View key={`mark-category-${group.category}`} style={styles.markCategoryBlock}>
               <Text style={styles.markCategoryTitle}>{group.label}</Text>
               <View style={styles.markPillRow}>
