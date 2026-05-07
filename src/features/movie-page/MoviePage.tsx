@@ -110,10 +110,16 @@ export function MoviePage({ movieId, onClose }: MoviePageProps) {
             onWriteRitual={openWriteOverlay}
           />
 
-          {/* Overview */}
+          {/* Overview — two-column layout per design */}
           {movie.overview && (
-            <div className="px-4 sm:px-6 py-4 border-t border-white/5">
-              <p className="text-sm text-white/50 leading-relaxed">{movie.overview}</p>
+            <div className="px-4 sm:px-8 py-8 border-t border-white/5">
+              <div className="flex flex-col sm:grid sm:gap-12 max-w-4xl" style={{ gridTemplateColumns: '140px 1fr' }}>
+                <div className="mb-2 sm:mb-0">
+                  <div className="text-[11px] font-bold tracking-[0.3em] uppercase text-sage">Story</div>
+                  <div className="mt-1.5 text-[11px] text-white/30 italic">The premise</div>
+                </div>
+                <p className="text-base text-white/75 leading-relaxed font-light">{movie.overview}</p>
+              </div>
             </div>
           )}
 

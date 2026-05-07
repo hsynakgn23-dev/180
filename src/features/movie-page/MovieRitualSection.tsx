@@ -2,32 +2,30 @@ import { useState } from 'react';
 import { submitMovieRitual } from '../../lib/movieApi';
 import { useProgression } from '../../context/ProgressionContext';
 
+const SAGE = '#8A9A5B';
+const MAX_CHARS = 180;
+const RATINGS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+
 interface MovieRitualSectionProps {
   poolMovieId: string;
   movieTitle: string;
   onRitualSubmitted?: () => void;
 }
 
-const STARS = [1, 2, 3, 4, 5] as const;
-const MAX_CHARS = 180;
-
 export function MovieRitualSection({ poolMovieId, movieTitle, onRitualSubmitted }: MovieRitualSectionProps) {
   const { state, updateState, tryUnlockMark } = useProgression();
   const [text, setText] = useState('');
   const [rating, setRating] = useState(0);
-  const [hoveredStar, setHoveredStar] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
 
-  const charsLeft = MAX_CHARS - text.length;
+  const progress = text.length / MAX_CHARS;
+  const canSubmit = text.trim().length > 0 && rating > 0 && !submitting;
 
   const handleSubmit = async () => {
-    if (text.trim().length === 0) return;
-    if (rating === 0) {
-      setError('Puan seçmeden ritual yazamazsın.');
-      return;
-    }
+    if (!canSubmit) return;
+    if (rating === 0) { setError('Bir puan seç'); return; }
     setSubmitting(true);
     setError('');
     try {
@@ -54,82 +52,116 @@ export function MovieRitualSection({ poolMovieId, movieTitle, onRitualSubmitted 
     }
   };
 
-  if (submitted) {
-    return (
-      <div className="px-4 sm:px-6 py-6 border-t border-white/5">
-        <div className="rounded-xl border border-sage/20 bg-sage/5 px-5 py-4 text-center">
-          <div className="text-sage text-sm mb-1">Ritual kaydedildi ✓</div>
-          <div className="text-white/30 text-xs">+15 XP kazandın</div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="px-4 sm:px-6 py-6 border-t border-white/5">
-      <h2 className="text-[10px] uppercase tracking-[0.2em] text-white/30 mb-4">
-        Bu Film İçin Ritual Yaz
-      </h2>
-
-      {/* Star rating */}
-      <div className="flex items-center gap-1 mb-4">
-        {STARS.map((star) => (
-          <button
-            key={star}
-            type="button"
-            onMouseEnter={() => setHoveredStar(star)}
-            onMouseLeave={() => setHoveredStar(0)}
-            onClick={() => { setRating(star); setError(''); }}
-            className="text-2xl transition-transform hover:scale-110 focus:outline-none"
-            aria-label={`${star} yıldız`}
-          >
-            <span className={star <= (hoveredStar || rating) ? 'text-sage' : 'text-white/15'}>★</span>
-          </button>
-        ))}
-        {rating > 0 && (
-          <span className="ml-2 text-xs text-white/30">{rating}/5</span>
-        )}
-      </div>
-
-      {/* Text area */}
-      <div className="relative mb-3">
-        <textarea
-          value={text}
-          onChange={(e) => {
-            if (e.target.value.length <= MAX_CHARS) {
-              setText(e.target.value);
-              if (error) setError('');
-            }
-          }}
-          placeholder={`${movieTitle} hakkında ne düşünüyorsun?`}
-          className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 placeholder-white/20 outline-none focus:border-sage/30 focus:bg-white/8 transition-all resize-none min-h-[100px]"
-          aria-label="Ritual metni"
-        />
-        <div className={`absolute bottom-2 right-3 text-[10px] ${charsLeft < 20 ? 'text-clay/60' : 'text-white/20'}`}>
-          {charsLeft}
+    <div className="px-4 sm:px-8 py-8 border-t border-white/5">
+      {/* Header */}
+      <div className="flex items-baseline justify-between mb-6">
+        <div className="flex items-baseline gap-3.5">
+          <span className="text-[11px] font-bold tracking-[0.3em] uppercase" style={{ color: SAGE }}>Rituals</span>
+          <span className="text-[11px] text-white/35 italic">180 characters at a time</span>
         </div>
       </div>
 
-      {error && (
-        <div className="text-xs text-clay/80 mb-3">{error}</div>
-      )}
+      {/* Write box */}
+      {submitted ? (
+        <div className="rounded-2xl border px-6 py-5 text-center mb-8"
+          style={{ background: 'rgba(138,154,91,0.05)', borderColor: 'rgba(138,154,91,0.2)' }}>
+          <div className="text-sm font-medium mb-1" style={{ color: SAGE }}>Ritual kaydedildi ✓</div>
+          <div className="text-xs text-white/25">+15 XP kazandın</div>
+        </div>
+      ) : (
+        <div className="rounded-2xl border px-6 py-5 mb-8 transition-all duration-200"
+          style={{
+            background: 'linear-gradient(180deg, #181818, #141414)',
+            borderColor: 'rgba(138,154,91,0.15)',
+            boxShadow: '0 0 30px -10px rgba(138,154,91,0.08)'
+          }}>
+          <div className="flex gap-4">
+            {/* Avatar placeholder */}
+            <div className="w-10 h-10 rounded-full shrink-0 flex items-center justify-center font-bold text-[13px]"
+              style={{ background: SAGE, color: '#121212' }}>
+              {state.username ? state.username.slice(0, 2).toUpperCase() : 'YO'}
+            </div>
 
-      <button
-        type="button"
-        onClick={handleSubmit}
-        disabled={submitting || text.trim().length === 0}
-        className="rounded-xl border border-sage/30 bg-sage/10 px-5 py-2.5 text-sm text-sage hover:bg-sage/20 hover:border-sage/50 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
-      >
-        {submitting ? (
-          <>
-            <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-            Gönderiliyor…
-          </>
-        ) : 'Ritual Gönder'}
-      </button>
+            <div className="flex-1 min-w-0">
+              <div className="text-[11px] italic mb-2.5" style={{ color: 'rgba(138,154,91,0.65)' }}>
+                Your ritual note · {movieTitle}
+              </div>
+
+              {/* Text area */}
+              <textarea
+                value={text}
+                onChange={(e) => {
+                  if (e.target.value.length <= MAX_CHARS) {
+                    setText(e.target.value);
+                    if (error) setError('');
+                  }
+                }}
+                placeholder="What moved you?"
+                className="w-full bg-transparent text-base text-white/60 font-light placeholder-white/20 outline-none resize-none min-h-[44px] border-b border-white/8 pb-3"
+                rows={2}
+                aria-label="Ritual metni"
+              />
+
+              {/* Progress bar */}
+              <div className="flex items-center gap-3 mt-3.5">
+                <div className="flex-1 h-0.5 rounded-full bg-white/8">
+                  <div
+                    className="h-full rounded-full transition-all duration-200"
+                    style={{
+                      width: `${progress * 100}%`,
+                      background: progress > 0.9 ? '#A57164' : SAGE
+                    }}
+                  />
+                </div>
+                <span className="font-mono text-[11px] tracking-[0.18em] text-white/35">
+                  {text.length}/{MAX_CHARS}
+                </span>
+              </div>
+
+              {error && (
+                <div className="text-xs text-clay/70 mt-2">{error}</div>
+              )}
+
+              {/* Rating + submit */}
+              <div className="flex items-center justify-between mt-4 sm:mt-5">
+                <div className="flex gap-1.5 flex-wrap">
+                  {RATINGS.map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => { setRating(n); setError(''); }}
+                      className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold cursor-pointer transition-all duration-150"
+                      style={{
+                        background: rating === n ? SAGE : 'rgba(255,255,255,0.05)',
+                        color: rating === n ? '#121212' : '#8e8b84',
+                        transform: rating === n ? 'scale(1.1)' : 'scale(1)',
+                      }}
+                      aria-label={`${n} puan`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={!canSubmit}
+                  className="px-7 py-2.5 text-[10px] font-bold tracking-[0.2em] uppercase rounded-full transition-all duration-200"
+                  style={{
+                    background: canSubmit ? '#2C2C2C' : '#1a1a1a',
+                    color: canSubmit ? 'white' : 'rgba(255,255,255,0.25)',
+                    cursor: canSubmit ? 'pointer' : 'not-allowed',
+                    opacity: canSubmit ? 1 : 0.4,
+                  }}
+                >
+                  {submitting ? '…' : 'Submit'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

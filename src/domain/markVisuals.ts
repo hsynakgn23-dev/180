@@ -6,13 +6,16 @@ export type MarkIconKey =
   | 'cross'
   | 'diamond'
   | 'eye'
+  | 'film_examiner'
   | 'grid'
   | 'hexagon'
   | 'infinity'
   | 'monument'
   | 'nested_square'
   | 'orbit'
+  | 'page_ritualist'
   | 'pentagon'
+  | 'screen_traveler'
   | 'shield'
   | 'signal'
   | 'spark'
@@ -82,9 +85,9 @@ export const MARK_ICON_KEY_BY_ID: Record<string, MarkIconKey> = {
   streak_thirty: 'monument',
 
   // Film page marks
-  page_ritualist: 'nested_square',
-  screen_traveler: 'orbit',
-  film_examiner: 'eye',
+  page_ritualist: 'page_ritualist',
+  screen_traveler: 'screen_traveler',
+  film_examiner: 'film_examiner',
 };
 
 export const MARK_MOTION_DURATION_MS: Record<MarkMotion, number> = {
