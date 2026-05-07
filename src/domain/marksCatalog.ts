@@ -91,4 +91,9 @@ export const MARK_CATALOG: MarkCatalogEntry[] = [
   // Extended streak marks
   { id: 'streak_fourteen', title: 'Fortnight', description: 'Maintain a 14-day streak.', category: 'Rhythm', whisper: 'Two weeks without missing a beat.', motion: 'pulse' },
   { id: 'streak_thirty', title: 'The Constant', description: 'Maintain a 30-day streak.', category: 'Rhythm', whisper: 'A month. Unbroken.', motion: 'float' },
+
+  // Film page marks
+  { id: 'page_ritualist', title: 'Page Ritualist', description: 'Write your first ritual from a film page.', category: 'Ritual', whisper: 'You found the page. You left a mark.', motion: 'pulse' },
+  { id: 'screen_traveler', title: 'Screen Traveler', description: 'Visit 5 different film pages.', category: 'Discovery', whisper: 'Five doors opened.', motion: 'float' },
+  { id: 'film_examiner', title: 'Film Examiner', description: 'Answer a quiz question correctly.', category: 'Knowledge', whisper: 'You look closer than most.', motion: 'signal' },
 ];

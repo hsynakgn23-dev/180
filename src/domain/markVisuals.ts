@@ -80,6 +80,11 @@ export const MARK_ICON_KEY_BY_ID: Record<string, MarkIconKey> = {
   // Extended streak marks
   streak_fourteen: 'signal',
   streak_thirty: 'monument',
+
+  // Film page marks
+  page_ritualist: 'nested_square',
+  screen_traveler: 'orbit',
+  film_examiner: 'eye',
 };
 
 export const MARK_MOTION_DURATION_MS: Record<MarkMotion, number> = {

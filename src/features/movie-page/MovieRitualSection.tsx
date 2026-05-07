@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { submitMovieRitual } from '../../lib/movieApi';
+import { useProgression } from '../../context/ProgressionContext';
+
 interface MovieRitualSectionProps {
   poolMovieId: string;
   movieTitle: string;
@@ -10,6 +12,7 @@ const STARS = [1, 2, 3, 4, 5] as const;
 const MAX_CHARS = 180;
 
 export function MovieRitualSection({ poolMovieId, movieTitle, onRitualSubmitted }: MovieRitualSectionProps) {
+  const { state, updateState, tryUnlockMark } = useProgression();
   const [text, setText] = useState('');
   const [rating, setRating] = useState(0);
   const [hoveredStar, setHoveredStar] = useState(0);
@@ -33,6 +36,12 @@ export function MovieRitualSection({ poolMovieId, movieTitle, onRitualSubmitted 
       setText('');
       setRating(0);
       onRitualSubmitted?.();
+      // Update local XPState for mark unlocking
+      const nextCount = (typeof state.movieRitualsWritten === 'number' ? state.movieRitualsWritten : 0) + 1;
+      const nextMarks = nextCount >= 1
+        ? tryUnlockMark('page_ritualist', state.marks)
+        : state.marks;
+      updateState({ movieRitualsWritten: nextCount, marks: nextMarks });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Gönderilemedi';
       if (msg.includes('Already wrote')) {

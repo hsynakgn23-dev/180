@@ -1278,7 +1278,10 @@ export const MARK_DICTIONARY: Record<LanguageCode, Record<string, MarkCopy>> = {
         league_grandmaster: { title: 'Büyükusta', description: 'Büyükusta ligine ulaş.', whisper: 'Az kişi buraya geldi.' },
         league_absolute: { title: 'Mutlak', description: 'Mutlak ligine ulaş.', whisper: 'Bilinmeyene doğru.' },
         streak_fourteen: { title: 'İki Hafta', description: '14 günlük seri yap.', whisper: 'İki hafta, tek bir atış gibi.' },
-        streak_thirty: { title: 'Sabit Olan', description: '30 günlük seri yap.', whisper: 'Bir ay. Kırılmamış.' }
+        streak_thirty: { title: 'Sabit Olan', description: '30 günlük seri yap.', whisper: 'Bir ay. Kırılmamış.' },
+        page_ritualist: { title: 'Sayfa Ritualist', description: 'Film sayfasından ilk ritualini yaz.', whisper: 'Sayfayı buldun. İz bıraktın.' },
+        screen_traveler: { title: 'Ekran Gezgini', description: '5 farklı film sayfasını ziyaret et.', whisper: 'Beş kapı açıldı.' },
+        film_examiner: { title: 'Film Muayeni', description: 'Bir quiz sorusunu doğru yanıtla.', whisper: 'Çoğundan daha derin bakıyorsun.' }
     },
     en: {
         first_mark: { title: 'First Mark', description: 'Complete your first comment.', whisper: 'It begins.' },
@@ -1341,7 +1344,10 @@ export const MARK_DICTIONARY: Record<LanguageCode, Record<string, MarkCopy>> = {
         league_grandmaster: { title: 'Grandmaster', description: 'Reach Grandmaster league.', whisper: 'Few have walked here.' },
         league_absolute: { title: 'The Absolute', description: 'Reach Absolute league.', whisper: 'Into the void.' },
         streak_fourteen: { title: 'Fortnight', description: 'Maintain a 14-day streak.', whisper: 'Two weeks without missing a beat.' },
-        streak_thirty: { title: 'The Constant', description: 'Maintain a 30-day streak.', whisper: 'A month. Unbroken.' }
+        streak_thirty: { title: 'The Constant', description: 'Maintain a 30-day streak.', whisper: 'A month. Unbroken.' },
+        page_ritualist: { title: 'Page Ritualist', description: 'Write your first ritual from a film page.', whisper: 'You found the page. You left a mark.' },
+        screen_traveler: { title: 'Screen Traveler', description: 'Visit 5 different film pages.', whisper: 'Five doors opened.' },
+        film_examiner: { title: 'Film Examiner', description: 'Answer a quiz question correctly.', whisper: 'You look closer than most.' }
     },
     es: {
         first_mark: { title: 'Primera Marca', description: 'Completar el primer comentario.', whisper: 'Comienzo.' },
@@ -1404,7 +1410,10 @@ export const MARK_DICTIONARY: Record<LanguageCode, Record<string, MarkCopy>> = {
         league_grandmaster: { title: 'Gran Maestro', description: 'Alcanzar la liga Gran Maestro.', whisper: 'Pocos han llegado aquí.' },
         league_absolute: { title: 'El Absoluto', description: 'Alcanzar la liga Absolute.', whisper: 'Hacia el vacío.' },
         streak_fourteen: { title: 'Quincena', description: 'Mantener una racha de 14 días.', whisper: 'Dos semanas sin perder el ritmo.' },
-        streak_thirty: { title: 'Lo Constante', description: 'Mantener una racha de 30 días.', whisper: 'Un mes. Sin romper.' }
+        streak_thirty: { title: 'Lo Constante', description: 'Mantener una racha de 30 días.', whisper: 'Un mes. Sin romper.' },
+        page_ritualist: { title: 'Ritualista de Página', description: 'Escribe tu primer ritual desde una página de película.', whisper: 'Encontraste la página. Dejaste huella.' },
+        screen_traveler: { title: 'Viajero de Pantalla', description: 'Visita 5 páginas de películas distintas.', whisper: 'Cinco puertas abiertas.' },
+        film_examiner: { title: 'Examinador de Cine', description: 'Responde correctamente una pregunta del quiz.', whisper: 'Miras más de cerca que la mayoría.' }
     },
     fr: {
         first_mark: { title: 'Première Marque', description: 'Compléter le premier commentaire.', whisper: 'Le départ.' },
@@ -1467,7 +1476,10 @@ export const MARK_DICTIONARY: Record<LanguageCode, Record<string, MarkCopy>> = {
         league_grandmaster: { title: 'Grand Maître', description: 'Atteindre la ligue Grand Maître.', whisper: 'Peu sont arrivés jusque-là.' },
         league_absolute: { title: "L'Absolu", description: 'Atteindre la ligue Absolute.', whisper: 'Vers le vide.' },
         streak_fourteen: { title: 'Quinzaine', description: 'Maintenir une série de 14 jours.', whisper: 'Deux semaines sans manquer un battement.' },
-        streak_thirty: { title: 'La Constante', description: 'Maintenir une série de 30 jours.', whisper: 'Un mois. Sans briser.' }
+        streak_thirty: { title: 'La Constante', description: 'Maintenir une série de 30 jours.', whisper: 'Un mois. Sans briser.' },
+        page_ritualist: { title: 'Ritualiste de Page', description: 'Écris ton premier rituel depuis une page de film.', whisper: 'Tu as trouvé la page. Tu as laissé une trace.' },
+        screen_traveler: { title: 'Voyageur d\'Écran', description: 'Visite 5 pages de films différentes.', whisper: 'Cinq portes ouvertes.' },
+        film_examiner: { title: 'Examinateur de Film', description: 'Réponds correctement à une question du quiz.', whisper: 'Tu regardes plus attentivement que la plupart.' }
     }
 };
 

@@ -4,6 +4,7 @@ import { resolveImageUrl } from '../../lib/tmdbImage';
 import { MovieHero } from './MovieHero';
 import { MovieRecommendations } from './MovieRecommendations';
 import { MovieRitualSection } from './MovieRitualSection';
+import { useProgression } from '../../context/ProgressionContext';
 
 interface MoviePageProps {
   movieId: string;
@@ -11,6 +12,7 @@ interface MoviePageProps {
 }
 
 export function MoviePage({ movieId, onClose }: MoviePageProps) {
+  const { state, updateState, tryUnlockMark } = useProgression();
   const [data, setData] = useState<MoviePageResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -31,6 +33,17 @@ export function MoviePage({ movieId, onClose }: MoviePageProps) {
         if (!cancelled) {
           setData(res);
           setLoading(false);
+          // Track page visit in local XPState for mark unlocking
+          if (res.isFirstVisit) {
+            const prevVisited = Array.isArray(state.moviePagesVisited) ? state.moviePagesVisited : [];
+            if (!prevVisited.includes(currentMovieId)) {
+              const nextVisited = [...prevVisited, currentMovieId];
+              const nextMarks = nextVisited.length >= 5
+                ? tryUnlockMark('screen_traveler', state.marks)
+                : state.marks;
+              updateState({ moviePagesVisited: nextVisited, marks: nextMarks });
+            }
+          }
         }
       })
       .catch((err) => {
