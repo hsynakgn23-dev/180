@@ -319,6 +319,12 @@ export const resolveStoredProfileMarks = (
   if (swipeCount >= 20) marks = applyMark(marks, 'swipe_explorer');
   if (genresAnswered.length >= 5) marks = applyMark(marks, 'genre_brain');
 
+  // Film page marks
+  if (toSafeInt(xpState.movieRitualsWritten) >= 1) marks = applyMark(marks, 'page_ritualist');
+  const moviePagesVisited = sanitizeStringList(xpState.moviePagesVisited, 420, 80);
+  if (moviePagesVisited.length >= 5) marks = applyMark(marks, 'screen_traveler');
+  if (totalPoolCorrect >= 1) marks = applyMark(marks, 'film_examiner');
+
   const sortedMarks = sortMarkIds(marks);
   return {
     marks: sortedMarks,

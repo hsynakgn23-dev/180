@@ -46,6 +46,8 @@ export interface XPState {
     referralCode: string;
     referralCount: number;
     invitedBy?: string;
+    moviePagesVisited?: string[];
+    movieRitualsWritten?: number;
 }
 
 export interface AuthResult {
