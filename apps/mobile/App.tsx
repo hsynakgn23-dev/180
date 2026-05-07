@@ -186,6 +186,7 @@ import {
 } from './src/lib/mobileThemeMode';
 import { useBackHandler } from './src/hooks/useBackHandler';
 import { getDeviceLanguage, mobileTranslations } from './src/i18n';
+import { SearchModal } from './src/ui/searchScreen';
 
 const debugRequireAppDependency = <T,>(label: string, loader: () => T): T => {
   console.log('APP_IMPORT_STAGE', label);
@@ -890,6 +891,7 @@ export default function App() {
       error: '',
     });
   const [ritualComposerVisible, setRitualComposerVisible] = useState(false);
+  const [searchVisible, setSearchVisible] = useState(false);
   const [ritualQueueState, setRitualQueueState] = useState<RitualQueueState>({
     status: 'idle',
     message: '',
@@ -6487,8 +6489,20 @@ export default function App() {
         <View style={styles.heroTicketDotClay} />
         <View style={styles.heroTicketDash} />
       </View>
-      <Text style={styles.heroEyebrow}>Absolute Cinema</Text>
-      <Text style={styles.title}>180 Absolute Cinema</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <View>
+          <Text style={styles.heroEyebrow}>Absolute Cinema</Text>
+          <Text style={styles.title}>180 Absolute Cinema</Text>
+        </View>
+        <Pressable
+          onPress={() => setSearchVisible(true)}
+          hitSlop={10}
+          accessibilityLabel="Ara"
+          style={{ padding: 6 }}
+        >
+          <Ionicons name="search" size={22} color="rgba(163,177,138,0.6)" />
+        </Pressable>
+      </View>
       {dailyHeroGreeting ? (
         <View style={styles.heroPulseWrap}>
           <View style={styles.heroPulseBodyRow}>
@@ -7520,6 +7534,20 @@ export default function App() {
             onSubmit={handleSubmitRitualDraft}
             onFlushQueue={handleFlushRitualQueue}
             onClose={() => setRitualComposerVisible(false)}
+          />
+
+          <SearchModal
+            visible={searchVisible}
+            onClose={() => setSearchVisible(false)}
+            onMovieSelect={(movieId, movieTitle) => {
+              setSearchVisible(false);
+              // TODO Adım 2'de film sayfası açılacak
+              console.log('Film seçildi:', movieId, movieTitle);
+            }}
+            onUserSelect={(userId, username) => {
+              setSearchVisible(false);
+              console.log('Kullanici seçildi:', userId, username);
+            }}
           />
 
           <ProfileCommentsModal
